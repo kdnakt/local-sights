@@ -68,3 +68,5 @@
 <!-- Format: NEVER/ALWAYS [behavior] (learned [date]) -->
 - 「Rust製」「GetLogEvents API」は利用者自身が指定した制約として扱い、ideation 成果物でも実装詳細ではなく前提条件として残す (learned 2026-10-02) <!-- cid:261002-cwlogs-viewer:intent-capture:74d4398b24a4f112f577207863f10250ccf36e3bb70cba67a834eb98c33dc7ee -->
 - ALWAYS 質問は一問ずつ構造化質問で提示する（利用者が Chat モードを選んでも、論点をまとめて投げず一問ずつ聞く） (learned 2026-10-03) <!-- cid:261002-cwlogs-viewer:feasibility:05a9352b368ecb7c5eb634bb983900899de8d8f71c8fdc06ff5f6fe29b4b0e75 -->
+- ALWAYS 進捗表示を対象外にした場合でも、処理中であることを示す最低限の状態表示（例：Fetching 表示とボタン無効化）は画面に含める (learned 2026-10-03) <!-- cid:261002-cwlogs-viewer:rough-mockups:a49c7eff6e1d6606f95c463f6bdc84b675b0e15c6d554db57e55516124d026b7 -->
+- デスクトップ GUI の MVP は、見た目を標準部品のみ・作り込みなしとして期限を優先する (learned 2026-10-03) <!-- cid:261002-cwlogs-viewer:rough-mockups:b9a3c28dbc3b57f7f1b6aa4f5d8e57dbea355bb53f4f21dd2e76aa55c5430c24 -->

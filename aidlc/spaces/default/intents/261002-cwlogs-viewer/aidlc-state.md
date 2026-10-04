@@ -40,6 +40,8 @@
 - **Construction Iteration**: unit-major
 - **Construction Execution**: serial
 
+- **Skeleton Stance**: on
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 

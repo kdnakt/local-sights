@@ -54,6 +54,10 @@
 
 
 
+- **Active Unit**: u3-fetch-robustness
+
+- **Unit State**: in-progress
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -115,7 +119,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-04T22:45:52Z
+- **Last Updated**: 2026-10-04T23:15:54Z
 
 - **Construction Autonomy Mode**: autonomous
 

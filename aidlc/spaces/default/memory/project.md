@@ -83,3 +83,4 @@ None. (affirmed 2026-10-03)
 - ALWAYS 部品（コンポーネント）は書くコードだけにし、AWS SDK・外部 API・ファイルシステム・GUI フレームワークは外部依存として扱い、それらに触れる境界のコードを部品にする (learned 2026-10-03) <!-- cid:261002-cwlogs-viewer:domain-design:735533c17cfc1b86b464424e28676424e2c8c9a75125564547127189b4c88c20 -->
 - ALWAYS 後のステージに先送りした技術選定でも、次の作業（例：薄い一本で GUI を動かす）に必要になった時点で質問して決める (learned 2026-10-03) <!-- cid:261002-cwlogs-viewer:units-generation:b5d44bcd5056cb51e60285d4db0301a99fb4119aeb6817cd775df432a6f60855 -->
 - ALWAYS 薄い一本をさらに薄くして外れた機能は、既存の作業単位に詰め込まず、独立した作業単位として切り出す (learned 2026-10-03) <!-- cid:261002-cwlogs-viewer:units-generation:8a8e9098c04b2f6a206b6c6ff98433829c4295d90a08c0a80d76161c508e13bf -->
+- ALWAYS レビュー回数の上限に達した後に出た指摘や、レビューを記録した後に気づいた修正は、その作業単位では直さず次の作業単位に回す（作業単位のチェックポイントはレビュー済みの内容との一致を求めるため） (learned 2026-10-04) <!-- cid:261002-cwlogs-viewer:functional-design:b9f0a9e7db912fc99ec48e2f1b217c684a4c71d2a260354f920166d54e4cfdfb -->

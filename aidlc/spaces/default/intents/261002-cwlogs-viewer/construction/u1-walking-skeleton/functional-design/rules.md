@@ -51,8 +51,8 @@ rules:
     category: policy
     applies_to: ConnectionTarget.region
     trigger: 取得を始めるとき
-    logic: IF 既定のリージョンが見つからない THEN 取得を始めず RegionMissing のエラーとする
-    violation: エラー（RegionMissing）を表示し、phase を Failed にする
+    logic: CloudWatchLogsGateway が接続先（ConnectionTarget）を解決する。IF 既定のリージョンが見つからない THEN GetLogEvents を呼ばずに RegionMissing を返す
+    violation: FetchCoordinator は FetchJob を Failed にし、AppSession は phase を Failed にしてエラーを表示する
     source: Q1
   - id: BR1.7
     statement: 認証方式は AWS SDK に任せ、SSO・アクセスキー・AssumeRole・環境変数のいずれのプロファイルでも接続できる
@@ -62,6 +62,15 @@ rules:
     logic: 認証情報の解決は SDK の仕組みに任せ、アプリは認証情報を読み出さず保存もしない
     violation: SDK が認証に失敗したら AuthRequired のエラーとする
     source: FR1.2、NFR5
+
+  - id: BR1.8
+    statement: 取得条件の検証と範囲の算出は、画面にも確認用プログラムにも依存しない共通の検証で行う
+    category: constraint
+    applies_to: FetchRequest
+    trigger: 取得を始める前
+    logic: BR1.1〜BR1.3 の検証と BR2.1・BR2.2 の範囲の算出を、ライブラリの共通の検証（FetchRequest の検証と TimeRangeModel）にまとめる。AppSession は入力が変わるたびにこれを呼び、確認用プログラムは引数を受けたときにこれを呼ぶ。FetchCoordinator は検証済みの条件と TimeRange だけを受け取る
+    violation: 確認用プログラムは使い方と理由を標準エラーに出し、0 以外の終了コードで終わる
+    source: レビュー R-06
 
   - id: BR2.1
     statement: 開始のミリ秒は、開始日時のその秒の 0 ミリ秒
@@ -91,9 +100,9 @@ rules:
   - id: BR3.2
     statement: ページの終わりは、渡したトークンと同じトークンが返ったときだけ
     category: constraint
-    applies_to: PageCursor
+    applies_to: StreamFetchOutcome（EventFetcher の内部のページング）
     trigger: 各ページの応答を受けたとき
-    logic: IF 最初の呼び出しではなく、かつ receivedToken = sentToken THEN 終わる。ELSE receivedToken を次の sentToken にして続ける。空のページや件数の少ないページでは終わらない
+    logic: IF 最初の呼び出しではなく、かつ受け取ったトークン = 送ったトークン THEN 終わる。IF 応答に次のトークンがない THEN それ以上たどれないため終わる（防御のための扱い）。ELSE 受け取ったトークンを次に送って続ける。空のページや件数の少ないページでは終わらない。pageCount は応答を受けた回数で、最後の同じトークンの応答も数える
     violation: なし
     source: FR4.4、constraint-register C-T2・C-T3
   - id: BR3.3
@@ -109,14 +118,14 @@ rules:
     category: constraint
     applies_to: CloudWatchLogsGateway
     trigger: 常に
-    logic: 境界（trait）は読み取り 3 API だけを持ち、U1 では GetLogEvents だけを使う
+    logic: AWS への呼び出しの境界は読み取り 3 API だけを持ち、U1 では GetLogEvents だけを使う
     violation: なし（それ以外の API を呼ぶ手段を作らない）
     source: NFR6、project.md Forbidden
 
   - id: BR4.1
     statement: 取得の途中でエラーになっても、取得できたページの分は表示したままにする
     category: policy
-    applies_to: FetchOutcome
+    applies_to: FetchJob、EventTimeline
     trigger: GetLogEvents がエラーを返したとき
     logic: IF エラー THEN それまでの LogEvent を残し、status = Failed とし、ApiFailure を付ける
     violation: なし
@@ -146,12 +155,21 @@ rules:
     violation: なし
     source: unit-of-work（エラー表示の暫定扱い）
 
+  - id: BR4.5
+    statement: 取得の進み具合とログは、取得開始時に呼び出し元が渡した受け口に届け、ログは EventTimeline が持つ
+    category: policy
+    applies_to: FetchCoordinator、EventTimeline
+    trigger: 取得の開始から終わりまで
+    logic: FetchCoordinator は取得の開始時に EventTimeline の保持ログを破棄し、受け口に「開始」を届ける。各ページを受け取るたびに、その LogEvent を EventTimeline に追加し、受け口に「追加された LogEvent のまとまり（ページ単位）と累計件数」を届ける。終わったら FetchJob（status・件数・失敗）を受け口に届ける。画面はページのまとまりを受けるたびに一覧を更新してよく、確認用プログラムは受け取ったまとまりを順に標準出力に出す
+    violation: なし
+    source: レビュー R-01、ADR-007
+
   - id: BR5.1
-    statement: 一覧は取得した順（古い順）に、取得した全件を並べる
+    statement: 一覧は timestamp の昇順、同じ timestamp は sequence（API が返した順）の昇順で、取得した全件を並べる
     category: policy
     applies_to: LogEvent
     trigger: 取得が終わったとき
-    logic: sequence の昇順で並べる。件数で打ち切らない
+    logic: 並べ替えのキーは (timestamp, sequence)。U1 は 1 ストリームで API が古い順に返すため、通常は取得順と一致する。件数で打ち切らない
     violation: なし
     source: Q4、FR4.6
   - id: BR5.2
@@ -225,17 +243,19 @@ rules:
 | BR1.5 | プロファイル空欄は SDK の既定 | policy | Q2、FR1.2 |
 | BR1.6 | リージョンはプロファイルの既定、なければエラー | policy | Q1 |
 | BR1.7 | 認証は SDK に任せる | policy | FR1.2、NFR5 |
+| BR1.8 | 検証と範囲の算出は画面・確認用プログラム共通 | constraint | レビュー R-06 |
 | BR2.1 | 開始はその秒の 0 ミリ秒 | calculation | FR3.1 |
 | BR2.2 | 終了はその秒の 999 ミリ秒まで含む | calculation | FR3.5 |
 | BR3.1 | 開始・終了を必ず指定、古い順 | constraint | FR4.3 |
-| BR3.2 | 同じトークンが返ったら終わり | constraint | FR4.4 |
+| BR3.2 | 同じトークンが返ったら終わり（次のトークンがなくても終わり） | constraint | FR4.4 |
 | BR3.3 | 件数の上限なし | policy | FR4.6 |
 | BR3.4 | 呼ぶ API は GetLogEvents だけ | constraint | NFR6 |
 | BR4.1 | エラーでも取得できた分は表示 | policy | Q3 |
 | BR4.2 | エラーの種類の分類 | calculation | ADR-006 |
 | BR4.3 | 秘密とアクセスキー ID を出さない | constraint | FR8.3 |
 | BR4.4 | U1 のエラーは暫定表示 | policy | unit-of-work |
-| BR5.1 | 取得順に全件並べる | policy | Q4、FR4.6 |
+| BR4.5 | 進み具合とログは受け口へ、ログは EventTimeline が持つ | policy | レビュー R-01、ADR-007 |
+| BR5.1 | (timestamp, sequence) の昇順で全件並べる | policy | Q4、FR4.6 |
 | BR5.2 | メッセージは 1 行分 | policy | FR5.1 |
 | BR5.3 | 時刻は UTC・ミリ秒まで | calculation | FR3.1 |
 | BR5.4 | 件数と 0 件の表示 | policy | FR4.11 |

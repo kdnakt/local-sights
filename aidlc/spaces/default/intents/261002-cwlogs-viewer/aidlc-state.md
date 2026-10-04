@@ -36,7 +36,7 @@
 
 ## Runtime State
 - **Revision Count**: 11
-- **Construction Checkpoints**: enabled
+- **Construction Checkpoints**: disabled
 - **Construction Iteration**: unit-major
 - **Construction Execution**: serial
 

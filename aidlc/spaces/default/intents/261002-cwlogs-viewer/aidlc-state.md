@@ -48,6 +48,10 @@
 
 - **Construction Verification Command**: cargo test --workspace && npx vitest run && cargo build -p local-sights
 
+- **Active Unit**: u2-connection-selection
+
+- **Unit State**: in-progress
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -109,7 +113,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-04T07:30:56Z
+- **Last Updated**: 2026-10-04T11:13:52Z
 
 - **Construction Autonomy Mode**: autonomous
 

@@ -33,9 +33,7 @@ const api = await import("./api");
 describe("App", () => {
   beforeEach(() => {
     vi.mocked(api.getSession).mockResolvedValue(sessionView());
-    vi.mocked(api.startFetch).mockResolvedValue(
-      sessionView({ phase: "Fetching", canFetch: false }),
-    );
+    vi.mocked(api.startFetch).mockResolvedValue(undefined);
     vi.mocked(api.updateInput).mockResolvedValue(sessionView());
   });
 
@@ -50,7 +48,7 @@ describe("App", () => {
     expect(screen.getAllByTestId("log-table-row")).toHaveLength(3);
 
     act(() => {
-      handlers.session?.(sessionView({ phase: "Fetching", currentJobId: null }));
+      handlers.session?.(sessionView({ phase: "Fetching", currentJobId: "job-2" }));
     });
     expect(screen.queryAllByTestId("log-table-row")).toHaveLength(0);
     act(() => {
@@ -58,6 +56,44 @@ describe("App", () => {
     });
     expect(screen.getAllByTestId("log-table-row")).toHaveLength(1);
     expect(screen.getByText("new")).toBeInTheDocument();
+  });
+
+  it("keeps the job's rows when events arrive before the start_fetch response", async () => {
+    let resolveStart: () => void = () => undefined;
+    vi.mocked(api.startFetch).mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveStart = resolve;
+      }),
+    );
+    vi.mocked(api.getSession).mockResolvedValue(sessionView({ canFetch: true }));
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await user.click(await screen.findByTestId("fetch-form-submit-button"));
+
+    act(() => {
+      handlers.session?.(sessionView({ phase: "Fetching", canFetch: false, currentJobId: null }));
+      handlers.session?.(
+        sessionView({ phase: "Fetching", canFetch: false, currentJobId: "job-x" }),
+      );
+      handlers.batch?.({ jobId: "job-x", events: [logEvent(0), logEvent(1)], total: 2 });
+      handlers.session?.(sessionView({ phase: "Done", currentJobId: "job-x", eventCount: 2 }));
+    });
+    await act(async () => {
+      resolveStart();
+    });
+
+    expect(screen.getAllByTestId("log-table-row")).toHaveLength(2);
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("2 events");
+  });
+
+  it("does not discard rows on a view without a job ID", async () => {
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    act(() => {
+      handlers.batch?.({ jobId: "job-1", events: [logEvent(0)], total: 1 });
+      handlers.session?.(sessionView({ phase: "Fetching", currentJobId: null }));
+    });
+    expect(screen.getAllByTestId("log-table-row")).toHaveLength(1);
   });
 
   it("shows a refused command as a message and dismisses it with Escape", async () => {

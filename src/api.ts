@@ -94,8 +94,13 @@ export function updateInput(field: InputField, value: string): Promise<SessionVi
   return invoke<SessionView>("update_input", { field, value });
 }
 
-export function startFetch(): Promise<SessionView> {
-  return invoke<SessionView>("start_fetch");
+/**
+ * Starts a fetch. Resolves with nothing: the resulting state arrives only
+ * through `session-changed` and `log-batch`, so a late response can never
+ * overwrite newer state.
+ */
+export function startFetch(): Promise<void> {
+  return invoke<void>("start_fetch");
 }
 
 export function onSessionChanged(handler: (view: SessionView) => void): Promise<UnlistenFn> {

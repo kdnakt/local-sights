@@ -56,6 +56,19 @@ Enter the conditions (times are UTC, `yyyy-mm-dd hh:mm:ss`; the end second is
 included up to its last millisecond) and press **Fetch** or Enter. Leave the
 profile blank to use the SDK default profile.
 
+## Manual GUI check (walking-skeleton checkpoint)
+
+Run these on your own machine with your own AWS credentials (`npm run tauri dev`):
+
+- [ ] The app starts and shows the five inputs, the **Fetch** button and the reasons why Fetch is unavailable.
+- [ ] With valid conditions, pressing Enter in any input starts the fetch (same as clicking **Fetch**).
+- [ ] While fetching, every input and **Fetch** are disabled and the status line says it is fetching.
+- [ ] The fetched rows appear with the time in UTC to the millisecond (`yyyy-mm-dd hh:mm:ss.mmm`).
+- [ ] A long message, or one with line breaks, is shown on one line and cut with an ellipsis (…) at the edge of the column.
+- [ ] The status line shows the event count, and for a range with no logs says explicitly that there are 0 events.
+- [ ] On an error (for example a misspelled log group, or a profile without a default region), the status line shows the error kind and the safe detail, which contains no secret or access key ID; rows fetched before the error stay visible.
+- [ ] After a fetch finishes, the inputs are enabled again and fetching again replaces the previous rows.
+
 ## Check against real AWS from the terminal
 
 `fetch_check` uses the same validation and fetch flow as the app. Run it only

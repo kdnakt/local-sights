@@ -224,6 +224,25 @@ impl AppSession {
         });
     }
 
+    /// Ends a fetch that stopped abnormally (for example, its task panicked
+    /// before reporting a result) so the session never stays in Fetching:
+    /// moves to Failed with `failure` and re-enables the inputs. Returns
+    /// whether the session changed; outside Fetching it does nothing.
+    pub fn abort_fetch_with_failure(&mut self, failure: ApiFailure) -> bool {
+        if self.phase != Phase::Fetching {
+            return false;
+        }
+        self.phase = Phase::Failed;
+        self.last_job = Some(JobSummary {
+            job_id: self.current_job_id.clone().unwrap_or_default(),
+            status: JobStatus::Failed,
+            event_count: self.event_count,
+            page_count: 0,
+            failure: Some(failure),
+        });
+        true
+    }
+
     /// Snapshot for the screen.
     pub fn view(&self) -> SessionView {
         SessionView {
@@ -402,6 +421,70 @@ mod tests {
         session.finish_fetch(&job);
         assert_eq!(session.phase(), Phase::Failed);
         assert!(session.begin_fetch().is_ok());
+    }
+
+    fn other_failure() -> ApiFailure {
+        ApiFailure::new(
+            FailureKind::Other,
+            &SafeDetailFields {
+                api_name: Some("GetLogEvents".to_string()),
+                ..SafeDetailFields::default()
+            },
+        )
+    }
+
+    #[test]
+    fn aborting_a_running_fetch_fails_it_and_reenables_input() {
+        let mut session = AppSession::new();
+        fill_valid(&mut session);
+        session.begin_fetch().unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job);
+        session.on_progress(7);
+
+        assert!(session.abort_fetch_with_failure(other_failure()));
+
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Failed);
+        assert!(view.can_fetch);
+        assert_eq!(view.event_count, 7);
+        let summary = view.last_job.unwrap();
+        assert_eq!(summary.job_id, job.job_id);
+        assert_eq!(summary.status, JobStatus::Failed);
+        let failure = summary.failure.unwrap();
+        assert_eq!(failure.kind(), FailureKind::Other);
+        assert_eq!(failure.safe_detail(), "kind=Other; api=GetLogEvents");
+        assert!(
+            session
+                .update_input(InputField::LogStreamName, "stream-b".to_string())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn aborting_before_the_job_started_also_fails_the_fetch() {
+        let mut session = AppSession::new();
+        fill_valid(&mut session);
+        session.begin_fetch().unwrap();
+        assert!(session.abort_fetch_with_failure(other_failure()));
+        assert_eq!(session.phase(), Phase::Failed);
+        assert_eq!(session.view().last_job.unwrap().job_id, "");
+    }
+
+    #[test]
+    fn aborting_outside_fetching_changes_nothing() {
+        let mut session = AppSession::new();
+        assert!(!session.abort_fetch_with_failure(other_failure()));
+        assert_eq!(session.phase(), Phase::Idle);
+        assert!(session.view().last_job.is_none());
+
+        fill_valid(&mut session);
+        session.begin_fetch().unwrap();
+        let job = finished_job(&mut session, 5, None);
+        session.finish_fetch(&job);
+        let before = session.view();
+        assert!(!session.abort_fetch_with_failure(other_failure()));
+        assert_eq!(session.view(), before);
     }
 
     #[test]

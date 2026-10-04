@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use local_sights_core::coordinator::{FetchJob, FetchSink, JobStatus, run_fetch};
 use local_sights_core::event::LogEvent;
+use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
+use local_sights_core::gateway::GET_LOG_EVENTS;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::session::{AppSession, InputField, SessionError, SessionView};
 use local_sights_core::timeline::EventTimeline;
@@ -84,26 +86,65 @@ fn update_input(
     Ok(session.view())
 }
 
-/// Starts fetching with the validated conditions. Progress arrives through
-/// the `session-changed` and `log-batch` events.
+/// Starts fetching with the validated conditions. The command returns
+/// nothing: the new state (Fetching), the job, each page and the result all
+/// arrive through the `session-changed` and `log-batch` events, in order, so
+/// a late command response can never overwrite newer state.
 #[tauri::command]
-fn start_fetch(app: AppHandle, state: State<'_, AppState>) -> Result<SessionView, CommandError> {
+fn start_fetch(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
     let (validated, view) = {
         let mut session = lock_session(&state.session);
         let validated = session.begin_fetch()?;
         (validated, session.view())
     };
-    emit_or_log(&app, SESSION_CHANGED, view.clone());
+    emit_or_log(&app, SESSION_CHANGED, view);
 
     let session = Arc::clone(&state.session);
     let timeline = Arc::clone(&state.timeline);
     let gateway = Arc::clone(&state.gateway);
-    tauri::async_runtime::spawn(async move {
+    let task_app = app.clone();
+    let task_session = Arc::clone(&session);
+    let task = tauri::async_runtime::spawn(async move {
         let mut timeline = timeline.lock().await;
-        let mut sink = TauriSink { app, session };
+        let mut sink = TauriSink {
+            app: task_app,
+            session: task_session,
+        };
         run_fetch(gateway.as_ref(), &validated, &mut timeline, &mut sink).await;
     });
-    Ok(view)
+    tauri::async_runtime::spawn(async move {
+        let ended_normally = task.await.is_ok();
+        recover_if_still_fetching(&app, &session, ended_normally);
+    });
+    Ok(())
+}
+
+/// Runs after the fetch task ends. If it ended (normally or not) without
+/// reporting a result, the session would stay in Fetching forever; move it
+/// to Failed (kind Other) and tell the screen. The panic message is not
+/// logged: only a safe detail is.
+fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended_normally: bool) {
+    let failure = ApiFailure::new(
+        FailureKind::Other,
+        &SafeDetailFields {
+            api_name: Some(GET_LOG_EVENTS.to_string()),
+            ..SafeDetailFields::default()
+        },
+    );
+    let view = {
+        let mut session = lock_session(session);
+        if !session.abort_fetch_with_failure(failure) {
+            return;
+        }
+        session.view()
+    };
+    let how = if ended_normally {
+        "without a result"
+    } else {
+        "abnormally"
+    };
+    eprintln!("local-sights: the fetch task ended {how}; the fetch was marked as failed");
+    emit_or_log(app, SESSION_CHANGED, view);
 }
 
 /// Forwards fetch progress to AppSession and to the screen.

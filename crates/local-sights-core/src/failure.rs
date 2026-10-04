@@ -2,8 +2,10 @@
 //!
 //! The safe detail is assembled only from an allow-list of fields (kind, API
 //! name, request ID, profile name, role ARN, account ID, log group, log
-//! stream). The raw SDK error message is never included, and every field
-//! value is passed through [`redact_secrets`] as a second line of defence.
+//! stream). The raw SDK error message is never included. As a second line of
+//! defence, user-entered names are masked for access key IDs
+//! ([`redact_access_key_ids`]) and every other value goes through the
+//! broader [`redact_secrets`].
 
 use std::sync::LazyLock;
 
@@ -149,23 +151,43 @@ impl ApiFailure {
 }
 
 /// Builds `kind=...; api=...; ...` from the allow-listed fields only.
+///
+/// Profile, log group and log stream names (typed by the user) are masked
+/// only for access key IDs; the other fields go through [`redact_secrets`].
 pub fn build_safe_detail(kind: FailureKind, fields: &SafeDetailFields) -> String {
+    // User-entered names get only the access-key-ID redaction, so that long
+    // or 40-character names stay readable; every other (SDK-derived) value
+    // also gets the secret-key and token heuristics.
+    let user_entered: fn(&str) -> String = redact_access_key_ids;
+    let sdk_derived: fn(&str) -> String = redact_secrets;
     let labelled = [
-        ("api", &fields.api_name),
-        ("requestId", &fields.request_id),
-        ("profile", &fields.profile_name),
-        ("roleArn", &fields.role_arn),
-        ("accountId", &fields.account_id),
-        ("logGroup", &fields.log_group_name),
-        ("logStream", &fields.log_stream_name),
+        ("api", &fields.api_name, sdk_derived),
+        ("requestId", &fields.request_id, sdk_derived),
+        ("profile", &fields.profile_name, user_entered),
+        ("roleArn", &fields.role_arn, sdk_derived),
+        ("accountId", &fields.account_id, sdk_derived),
+        ("logGroup", &fields.log_group_name, user_entered),
+        ("logStream", &fields.log_stream_name, user_entered),
     ];
     let mut parts = vec![format!("kind={}", kind.as_str())];
-    parts.extend(labelled.iter().filter_map(|(label, value)| {
+    parts.extend(labelled.iter().filter_map(|(label, value, redact)| {
         value
             .as_deref()
-            .map(|value| format!("{label}={}", redact_secrets(value)))
+            .map(|value| format!("{label}={}", redact(value)))
     }));
     parts.join("; ")
+}
+
+/// Masks only access key IDs (`AKIA`/`ASIA` + 16 characters).
+///
+/// Used for names the user typed (profile, log group, log stream), which may
+/// legitimately be long or 40 characters of base64-like text. If the pattern
+/// cannot be compiled (a programming error), the whole text is masked.
+pub fn redact_access_key_ids(text: &str) -> String {
+    match ACCESS_KEY_ID.as_ref() {
+        Some(pattern) => pattern.replace_all(text, REDACTED).into_owned(),
+        None => REDACTED.to_string(),
+    }
 }
 
 /// Masks access key IDs (`AKIA`/`ASIA` + 16 characters), 40-character
@@ -298,6 +320,71 @@ mod tests {
         assert!(failure.retryable());
         let failure = ApiFailure::new(FailureKind::NotFound, &SafeDetailFields::default());
         assert!(!failure.retryable());
+    }
+
+    fn ecs_group_name() -> String {
+        // 40 characters of [A-Za-z0-9/]: the shape of a secret access key.
+        format!("ecs/app/{}", "0123456789abcdef".repeat(2))
+    }
+
+    #[test]
+    fn user_entered_names_keep_long_values_visible() {
+        let group = ecs_group_name();
+        assert_eq!(group.len(), 40);
+        let stream = "k8s-node-".repeat(13) + "abc";
+        assert_eq!(stream.len(), 120);
+        let fields = SafeDetailFields {
+            profile_name: Some("p".repeat(110)),
+            log_group_name: Some(group.clone()),
+            log_stream_name: Some(stream.clone()),
+            ..SafeDetailFields::default()
+        };
+        let detail = build_safe_detail(FailureKind::NotFound, &fields);
+        assert!(detail.contains(&format!("logGroup={group}")), "{detail}");
+        assert!(detail.contains(&format!("logStream={stream}")), "{detail}");
+        assert!(
+            detail.contains(&format!("profile={}", "p".repeat(110))),
+            "{detail}"
+        );
+        assert!(!detail.contains(REDACTED), "{detail}");
+    }
+
+    #[test]
+    fn access_key_id_inside_user_entered_name_is_still_redacted() {
+        let fields = SafeDetailFields {
+            log_stream_name: Some(format!("app/{}/run", dummy_access_key_id("ASIA"))),
+            ..SafeDetailFields::default()
+        };
+        assert_eq!(
+            build_safe_detail(FailureKind::NotFound, &fields),
+            format!("kind=NotFound; logStream=app/{REDACTED}/run")
+        );
+    }
+
+    #[test]
+    fn sdk_derived_fields_keep_the_40_and_100_character_heuristics() {
+        let fields = SafeDetailFields {
+            request_id: Some(dummy_secret_access_key()),
+            role_arn: Some(dummy_session_token()),
+            ..SafeDetailFields::default()
+        };
+        assert_eq!(
+            build_safe_detail(FailureKind::Other, &fields),
+            format!("kind=Other; requestId={REDACTED}; roleArn={REDACTED}")
+        );
+    }
+
+    #[test]
+    fn access_key_id_redaction_leaves_other_long_runs_alone() {
+        let group = ecs_group_name();
+        assert_eq!(redact_access_key_ids(&group), group);
+        let token = dummy_session_token();
+        assert_eq!(redact_access_key_ids(&token), token);
+        let key = dummy_access_key_id("AKIA");
+        assert_eq!(
+            redact_access_key_ids(&format!("x {key} y")),
+            format!("x {REDACTED} y")
+        );
     }
 
     #[test]

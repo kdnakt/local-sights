@@ -24,9 +24,16 @@ interface Rows {
 
 const NO_ROWS: Rows = { jobId: null, events: [] };
 
-/** Rows belong to one job; a different job starts from an empty list. */
+/**
+ * Rows belong to one job. Only a known job ID that differs from the rows'
+ * job starts an empty list; a view without a job ID (e.g. "Fetching" before
+ * the job has started) never discards rows, whatever order it arrives in.
+ */
 function rowsForSession(rows: Rows, view: SessionView): Rows {
-  return view.currentJobId === rows.jobId ? rows : { jobId: view.currentJobId, events: [] };
+  if (view.currentJobId === null || view.currentJobId === rows.jobId) {
+    return rows;
+  }
+  return { jobId: view.currentJobId, events: [] };
 }
 
 function rowsWithBatch(rows: Rows, batch: LogBatch): Rows {
@@ -102,8 +109,9 @@ export function App({ locale }: AppProps) {
 
   const handleFetch = useCallback(() => {
     setCommandError(null);
-    startFetch().then(applySession, reportError);
-  }, [applySession, reportError]);
+    // The new state arrives through events only (see `startFetch`).
+    startFetch().catch(reportError);
+  }, [reportError]);
 
   return (
     <main className="app" data-testid="app">

@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window may use the core defaults (including event listening) and only this app's own commands.",
+  "description": "The main window may only listen to and unlisten from events (core:event:default) and invoke this app's own three commands.",
   "windows": ["main"],
-  "permissions": ["core:default", "allow-get-session", "allow-update-input", "allow-start-fetch"]
+  "permissions": [
+    "core:event:default",
+    "allow-get-session",
+    "allow-update-input",
+    "allow-start-fetch"
+  ]
 }

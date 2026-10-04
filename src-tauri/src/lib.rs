@@ -24,7 +24,7 @@ use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_li
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::paging::PageDecision;
 use local_sights_core::session::{
-    AppSession, ConnectionEffect, InputField, SessionError, SessionView,
+    AppSession, ConnectionEffect, InputField, Phase, SessionError, SessionView,
 };
 use local_sights_core::timeline::EventTimeline;
 use serde::Serialize;
@@ -169,26 +169,39 @@ fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended
     emit_or_log(app, SESSION_CHANGED, view);
 }
 
-/// Runs a session operation that may change the connection, pushes the new
-/// state, then performs the effect: clear the shown logs (U2:BR2.4) and/or
-/// start a log group listing (U2:BR2.3, BR3.5).
-fn change_connection(
+/// Runs a session operation that may change the connection, then pushes the
+/// new state and starts a log group listing when needed (U2:BR2.3, BR3.5).
+///
+/// When the operation discards the shown logs (U2:BR2.4), the EventTimeline
+/// is cleared inside this command, while its lock is held across the session
+/// change, before `session-changed` is emitted. A new fetch can only start
+/// once that is done, so a late clear can never wipe the logs of a newer
+/// fetch. During a fetch the operations that discard logs are refused, so
+/// the lock (held by the running fetch) is not awaited then.
+async fn change_connection(
     app: &AppHandle,
     state: &AppState,
-    operation: impl FnOnce(&mut AppSession) -> Result<ConnectionEffect, SessionError>,
+    operation: impl FnOnce(&mut AppSession) -> Result<ConnectionEffect, SessionError> + Send,
 ) -> Result<(), CommandError> {
+    let fetching = lock_session(&state.session).phase() == Phase::Fetching;
+    let mut timeline = if fetching {
+        None
+    } else {
+        Some(state.timeline.lock().await)
+    };
     let (effect, view) = {
         let mut session = lock_session(&state.session);
         let effect = operation(&mut session)?;
         (effect, session.view())
     };
-    emit_or_log(app, SESSION_CHANGED, view);
     if effect.logs_cleared {
-        let timeline = Arc::clone(&state.timeline);
-        tauri::async_runtime::spawn(async move {
-            timeline.lock().await.clear();
-        });
+        match timeline.as_mut() {
+            Some(timeline) => timeline.clear(),
+            None => state.timeline.lock().await.clear(),
+        }
     }
+    drop(timeline);
+    emit_or_log(app, SESSION_CHANGED, view);
     if let Some(request) = effect.listing {
         start_listing(app, state, request);
     }
@@ -241,36 +254,36 @@ fn start_listing(app: &AppHandle, state: &AppState, request: ListingRequest) {
 
 /// Chooses a profile (U2:BR2.2, BR2.5).
 #[tauri::command]
-fn select_profile(
+async fn select_profile(
     profile: ProfileSelector,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, |session| session.select_profile(profile))
+    change_connection(&app, &state, |session| session.select_profile(profile)).await
 }
 
 /// Chooses a region (U2:BR2.3, BR2.5).
 #[tauri::command]
-fn select_region(
+async fn select_region(
     region: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, |session| session.select_region(region))
+    change_connection(&app, &state, |session| session.select_region(region)).await
 }
 
 /// Applies the connection change awaiting confirmation (U2:BR2.5).
 #[tauri::command]
-fn confirm_connection_change(
+async fn confirm_connection_change(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, AppSession::confirm_connection_change)
+    change_connection(&app, &state, AppSession::confirm_connection_change).await
 }
 
 /// Drops the connection change awaiting confirmation (U2:BR2.5).
 #[tauri::command]
-fn cancel_connection_change(
+async fn cancel_connection_change(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
@@ -278,11 +291,12 @@ fn cancel_connection_change(
         session.cancel_connection_change()?;
         Ok(ConnectionEffect::default())
     })
+    .await
 }
 
 /// Lists the log groups of the current connection again (U2:BR3.5).
 #[tauri::command]
-fn reload_log_groups(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+async fn reload_log_groups(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
     change_connection(&app, &state, |session| {
         let listing = session.reload_log_groups()?;
         Ok(ConnectionEffect {
@@ -290,24 +304,26 @@ fn reload_log_groups(app: AppHandle, state: State<'_, AppState>) -> Result<(), C
             ..ConnectionEffect::default()
         })
     })
+    .await
 }
 
 /// Changes the log group filter (U2:BR3.7).
 #[tauri::command]
-fn update_log_group_filter(
+async fn update_log_group_filter(
     text: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
     change_connection(&app, &state, |session| {
-        session.update_log_group_filter(text);
+        session.update_log_group_filter(text)?;
         Ok(ConnectionEffect::default())
     })
+    .await
 }
 
 /// Selects one log group (U2:BR3.8).
 #[tauri::command]
-fn select_log_group(
+async fn select_log_group(
     name: String,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -316,6 +332,7 @@ fn select_log_group(
         session.select_log_group(name)?;
         Ok(ConnectionEffect::default())
     })
+    .await
 }
 
 /// Applies listing pages to the session and pushes the new state.

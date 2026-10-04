@@ -444,6 +444,30 @@ mod tests {
         assert_eq!(config.region_of("also-ok"), Some("us-east-2"));
     }
 
+    /// R-01 (human decision b): an unclosed `[profile x` header is not an
+    /// unreadable file; the line is skipped, its `region` is not attached to
+    /// any profile, and every readable section is still used.
+    #[test]
+    fn unclosed_profile_header_is_skipped_and_the_rest_is_used() {
+        let text = "[profile before]\nregion = us-east-1\n[profile x\nregion = eu-west-1\n\
+                    [profile after]\nregion = ap-south-1\n";
+        let config = parse_sections(text, ConfigFileKind::Config);
+        assert_eq!(config.names(), ["before", "after"]);
+        assert_eq!(config.region_of("before"), Some("us-east-1"));
+        assert_eq!(config.region_of("x"), None);
+        assert_eq!(config.region_of("after"), Some("ap-south-1"));
+        let profiles = build_profiles(
+            &config,
+            &ProfileSections::default(),
+            &EnvRegionHints::default(),
+        );
+        assert_eq!(
+            profiles.len(),
+            3,
+            "SDK default plus the two readable profiles"
+        );
+    }
+
     #[test]
     fn empty_files_give_only_the_sdk_default() {
         let none = ProfileSections::default();

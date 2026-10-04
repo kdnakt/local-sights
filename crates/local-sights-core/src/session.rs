@@ -331,11 +331,10 @@ impl AppSession {
     }
 
     /// Changes one typed field and re-validates. Refused while a fetch is
-    /// running (U1:BR1.4).
+    /// running (U1:BR1.4) and while a connection change awaits confirmation
+    /// (U2:BR2.6).
     pub fn update_input(&mut self, field: InputField, value: String) -> Result<(), SessionError> {
-        if self.phase == Phase::Fetching {
-            return Err(SessionError::Busy);
-        }
+        self.ensure_can_change()?;
         let slot = match field {
             InputField::LogStreamName => &mut self.input.log_stream_name,
             InputField::StartText => &mut self.input.start_text,
@@ -409,8 +408,14 @@ impl AppSession {
     }
 
     /// Changes the filter text; kept across connection changes (U2:BR3.7).
-    pub fn update_log_group_filter(&mut self, text: String) {
+    /// Refused while a connection change awaits confirmation (U2:BR2.6);
+    /// allowed during a fetch, since filtering calls no API.
+    pub fn update_log_group_filter(&mut self, text: String) -> Result<(), SessionError> {
+        if self.connection.pending().is_some() {
+            return Err(SessionError::ConfirmationPending);
+        }
         self.log_group_filter = text;
+        Ok(())
     }
 
     /// Selects one listed log group; the shown logs stay (U2:BR3.8).
@@ -1076,6 +1081,56 @@ mod tests {
     }
 
     #[test]
+    fn typing_and_filtering_are_refused_while_confirmation_is_pending() {
+        let mut session = done_session(5);
+        session
+            .update_log_group_filter("orders".to_string())
+            .unwrap();
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert!(session.view().pending_change.is_some());
+        assert_eq!(
+            session.update_input(InputField::LogStreamName, "other".to_string()),
+            Err(SessionError::ConfirmationPending)
+        );
+        assert_eq!(
+            session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
+            Err(SessionError::ConfirmationPending)
+        );
+        assert_eq!(
+            session.update_log_group_filter("x".to_string()),
+            Err(SessionError::ConfirmationPending)
+        );
+        let view = session.view();
+        assert_eq!(view.input.log_stream_name, "stream-a");
+        assert_eq!(view.log_group_filter, "orders");
+        assert!(!view.can_change_connection && !view.can_fetch && !view.can_reload);
+
+        session.cancel_connection_change().unwrap();
+        assert!(
+            session
+                .update_input(InputField::LogStreamName, "other".to_string())
+                .is_ok()
+        );
+        assert!(session.update_log_group_filter("x".to_string()).is_ok());
+    }
+
+    #[test]
+    fn filtering_is_allowed_during_a_fetch_but_typing_is_not() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session.begin_fetch().unwrap();
+        assert!(
+            session
+                .update_log_group_filter("lambda".to_string())
+                .is_ok()
+        );
+        assert_eq!(
+            session.update_input(InputField::EndText, "x".to_string()),
+            Err(SessionError::Busy)
+        );
+    }
+
+    #[test]
     fn confirming_a_change_after_failure_returns_to_idle() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
@@ -1174,12 +1229,14 @@ mod tests {
     #[test]
     fn list_view_filters_and_keeps_the_filter_across_changes() {
         let (mut session, _) = connected_session();
-        session.update_log_group_filter("  myfunc ".to_string());
+        session
+            .update_log_group_filter("  myfunc ".to_string())
+            .unwrap();
         let list = session.view().log_groups.unwrap();
         assert_eq!(list.visible_groups, ["/aws/lambda/MyFunction"]);
         assert_eq!(list.total_count, 2);
         assert_eq!(list.status, ListingStatus::Complete);
-        session.update_log_group_filter("zzz".to_string());
+        session.update_log_group_filter("zzz".to_string()).unwrap();
         assert_eq!(
             session.view().log_groups.unwrap().empty_state,
             Some(EmptyState::NoMatches)

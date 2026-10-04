@@ -61,6 +61,7 @@ export function LogGroupPane({
             placeholder={t("logGroups.filter.placeholder")}
             autoComplete="off"
             spellCheck={false}
+            disabled={session.pendingChange !== null}
             data-testid="log-group-pane-filter-input"
             onChange={(event) => {
               setFilter(event.target.value);
@@ -127,6 +128,7 @@ function renderStatus(session: SessionView, t: Translate) {
     return null;
   }
   if (list.status === "Partial" && list.failure) {
+    // A partial list can still be filtered to nothing: say both (U2:BR3.10).
     return (
       <>
         <span data-testid="log-group-pane-partial">
@@ -135,6 +137,12 @@ function renderStatus(session: SessionView, t: Translate) {
         <span data-testid="log-group-pane-detail">
           {t("status.detail", { detail: list.failure.safeDetail })}
         </span>
+        {list.emptyState === "NoMatches" && (
+          <>
+            {" "}
+            <span data-testid="log-group-pane-no-matches">{t("logGroups.empty.noMatches")}</span>
+          </>
+        )}
       </>
     );
   }

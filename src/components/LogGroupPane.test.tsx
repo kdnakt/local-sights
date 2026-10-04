@@ -146,4 +146,47 @@ describe("LogGroupPane", () => {
       expect(screen.getByTestId(testId)).toHaveFocus();
     }
   });
+  it("disables the filter, list and reload while confirmation is pending", async () => {
+    const { onSelect, onFilterChange } = renderPane(
+      connectedView({
+        pendingChange: { proposedProfile: { kind: "SdkDefault" }, proposedRegion: null },
+        canChangeConnection: false,
+        canReload: false,
+      }),
+    );
+    const filter = screen.getByTestId("log-group-pane-filter-input");
+    expect(filter).toBeDisabled();
+    await userEvent.type(filter, "x");
+    expect(onFilterChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId("log-group-pane-reload-button")).toBeDisabled();
+    expect(screen.getByTestId("log-group-pane-list")).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(screen.getAllByTestId("log-group-pane-option")[0]!);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps the filter usable during a fetch", () => {
+    renderPane(connectedView({ canChangeConnection: false, canReload: false, phase: "Fetching" }));
+    expect(screen.getByTestId("log-group-pane-filter-input")).toBeEnabled();
+  });
+
+  it("shows both the partial notice and no matches", () => {
+    renderPane(
+      connectedView({
+        logGroupFilter: "zzz",
+        logGroups: {
+          status: "Partial",
+          visibleGroups: [],
+          totalCount: 3,
+          emptyState: "NoMatches",
+          failure: { kind: "Throttled", safeDetail: "kind=Throttled", retryable: true },
+        },
+      }),
+    );
+    expect(screen.getByTestId("log-group-pane-partial")).toHaveTextContent(
+      "The list is incomplete: Throttled",
+    );
+    expect(screen.getByTestId("log-group-pane-no-matches")).toHaveTextContent(
+      "No log groups match.",
+    );
+  });
 });

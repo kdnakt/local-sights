@@ -19,6 +19,7 @@
     { "path": "crates/local-sights-core/src/session.rs" },
     { "path": "crates/local-sights-core/tests/support/fake_gateway.rs" },
     { "path": "crates/local-sights-core/tests/support/mod.rs" },
+    { "path": "crates/local-sights-core/tests/u1_fetch_flow.rs" },
     { "path": "crates/local-sights-core/tests/u2_log_group_listing.rs" },
     { "path": "src-tauri/build.rs" },
     { "path": "src-tauri/capabilities/default.json" },

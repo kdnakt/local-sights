@@ -3,6 +3,7 @@
 
 mod support;
 
+use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::coordinator::{FetchJob, FetchSink, JobStatus, run_fetch};
 use local_sights_core::event::LogEvent;
 use local_sights_core::failure::FailureKind;
@@ -235,4 +236,56 @@ async fn blank_profile_is_passed_as_sdk_default() {
     let mut sink = RecordingSink::default();
     run_fetch(&gateway, &validated("  "), &mut timeline, &mut sink).await;
     assert_eq!(gateway.calls()[0].profile_name, None);
+}
+
+/// U2:BR2.8 — a fetch from the screen connects with the selected profile
+/// and the selected region on every call.
+#[tokio::test]
+async fn screen_connection_passes_the_selected_profile_and_region() {
+    let gateway = FakeGateway::new(vec![
+        page(&[(START, "a")], Some("f/1")),
+        page(&[], Some("f/1")),
+    ]);
+    let mut fetch = validated("");
+    fetch.request = fetch.request.with_connection(
+        ProfileSelector::Named("prod".to_string()),
+        "eu-west-1".to_string(),
+    );
+    let mut timeline = EventTimeline::new();
+    let mut sink = RecordingSink::default();
+    run_fetch(&gateway, &fetch, &mut timeline, &mut sink).await;
+
+    let calls = gateway.calls();
+    assert_eq!(calls.len(), 2);
+    for call in &calls {
+        assert_eq!(call.profile_name.as_deref(), Some("prod"));
+        assert_eq!(call.region.as_deref(), Some("eu-west-1"));
+    }
+}
+
+/// U2:BR2.8 with the SDK default: no profile is passed, the region is.
+#[tokio::test]
+async fn screen_connection_with_sdk_default_passes_no_profile() {
+    let gateway = FakeGateway::new(vec![page(&[], None)]);
+    let mut fetch = validated("dev");
+    fetch.request = fetch
+        .request
+        .with_connection(ProfileSelector::SdkDefault, "us-east-1".to_string());
+    let mut timeline = EventTimeline::new();
+    let mut sink = RecordingSink::default();
+    run_fetch(&gateway, &fetch, &mut timeline, &mut sink).await;
+
+    assert_eq!(gateway.calls()[0].profile_name, None);
+    assert_eq!(gateway.calls()[0].region.as_deref(), Some("us-east-1"));
+}
+
+/// The fetch_check path (no screen connection) leaves the region unset so
+/// the profile's default region is used (U2:BR2.8, R-11).
+#[tokio::test]
+async fn fetch_check_path_passes_no_region() {
+    let gateway = FakeGateway::new(vec![page(&[], None)]);
+    let mut timeline = EventTimeline::new();
+    let mut sink = RecordingSink::default();
+    run_fetch(&gateway, &validated("dev"), &mut timeline, &mut sink).await;
+    assert_eq!(gateway.calls()[0].region, None);
 }

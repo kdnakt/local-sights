@@ -21,7 +21,7 @@
     { "id": "BR2.5", "status": "OK", "target": "crates/local-sights-core/src/connection.rs" },
     { "id": "BR2.6", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
     { "id": "BR2.7", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
-    { "id": "BR2.8", "status": "OK", "target": "crates/local-sights-core/src/gateway/aws.rs" },
+    { "id": "BR2.8", "status": "OK", "target": "crates/local-sights-core/tests/u1_fetch_flow.rs" },
     { "id": "BR3.1", "status": "OK", "target": "crates/local-sights-core/src/log_groups/mod.rs" },
     { "id": "BR3.2", "status": "OK", "target": "crates/local-sights-core/tests/u2_log_group_listing.rs" },
     { "id": "BR3.3", "status": "OK", "target": "crates/local-sights-core/src/log_groups/mod.rs" },

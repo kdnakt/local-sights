@@ -41,7 +41,8 @@ export interface FetchFormProps {
  * The selected log group (always shown, U2:BR3.8), the stream and time
  * inputs, and the Fetch button. Fetch works only when the core says the
  * selection and input are valid; otherwise the reasons are listed. While
- * fetching, every control is disabled (U1:BR1.4). Enter in any input submits
+ * fetching (U1:BR1.4) or while a connection change awaits confirmation
+ * (U2:BR2.6), every control is disabled. Enter in any input submits
  * the form (U1:BR6.2).
  */
 export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
@@ -49,7 +50,8 @@ export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
   // core, which owns the state. Mount with a `key` to reset from a session.
   const [drafts, setDrafts] = useState<FetchInput>(session.input);
   const fetching = session.phase === "Fetching";
-  const canSubmit = session.canFetch && !fetching;
+  const locked = fetching || session.pendingChange !== null;
+  const canSubmit = session.canFetch && !locked;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -88,7 +90,7 @@ export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
               name={spec.field}
               value={drafts[spec.field]}
               placeholder={t(spec.placeholder)}
-              disabled={fetching}
+              disabled={locked}
               autoComplete="off"
               spellCheck={false}
               data-testid={spec.testId}

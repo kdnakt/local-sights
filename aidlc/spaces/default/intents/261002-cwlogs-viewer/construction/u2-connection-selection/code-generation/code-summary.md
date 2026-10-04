@@ -26,22 +26,25 @@
 - 「表示中のログがある」は件数が 1 以上のとき。0 件の取得や失敗のあとは確認ダイアログを出さない。
 - 接続の変更でログを捨てたときは `timelineGeneration` を増やし、画面はそれを見て行を消す（U3 に回した R-06 の「取得開始時の消去」とは別の合図。R-06 は入れていない）。
 - 設定ファイルを読めなかったときの知らせは、ファイルの種類（config か credentials）だけ（R-12）。
-- 確認待ちの間も、ストリーム名と日時の入力は受け付ける（BR2.5 が止める操作は、接続の変更・ロググループの選択・[Fetch]）。
+- 確認待ちの間は、BR2.6 のとおり確認ダイアログの [変える]・[キャンセル] 以外の操作をすべて止める。ストリーム名・日時の入力、絞り込み、一覧、[再読み込み]、[Fetch] を無効にし、AppSession の側でも拒否する。フォーカスはダイアログの中に閉じ込める（Tab・Shift+Tab で 2 つのボタンの間を行き来する）。取得中でも、絞り込みは使える（BR2.6 が取得中に止める操作に絞り込みは入っていない）（レビュー R-03）。
+- 一覧が途中までで、絞り込みに一致するものがないときは、「途中まで」の知らせと「一致するロググループがありません」の両方を出す（レビュー R-04）。
+- 接続を変えてログを捨てるときは、コマンドの中で EventTimeline の鍵を取ったまま消してから画面に知らせる。そのため、遅れて走った消去が次の取得のログを消すことはない（レビュー R-05）。
+- 画面からの取得で、選んだプロファイルとリージョンが GetLogEvents の要求に入ることを `tests/u1_fetch_flow.rs` で確かめる。確認用プログラムの経路ではリージョンを渡さない（レビュー R-02、R-11）。
 
 ## テストの結果
 
 | コマンド | 結果 |
 |----------|------|
-| `cargo test -p local-sights-core --lib -- catalog:: log_groups:: connection:: session:: gateway::` | 73 件成功 |
+| `cargo test -p local-sights-core --lib -- catalog:: log_groups:: connection:: session:: gateway::` | 76 件成功 |
 | `cargo test -p local-sights-core --test u2_log_group_listing` | 9 件成功 |
-| `npx vitest run`（U2 の 6 ファイル） | 40 件成功（全体では 9 ファイル 54 件） |
-| `cargo test --workspace` | 成功（lib 121・u1_fetch_flow 8・u2_log_group_listing 9） |
+| `npx vitest run`（U2 の 6 ファイル） | 45 件成功（全体では 9 ファイル 59 件） |
+| `cargo test --workspace` | 成功（lib 124・u1_fetch_flow 11・u2_log_group_listing 9） |
 | `cargo fmt --check`・`cargo clippy --workspace --all-targets` | 成功・警告 0 |
 | `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
 | `npm audit` | 脆弱性 0 件 |
 | `cargo build -p local-sights` | 成功 |
 
-U2 のライブラリ側の件数：catalog 8、catalog::files 4、catalog::regions 3、connection 8、log_groups 9、session +12、request +2、gateway::aws +3、結合テスト 9。画面側：ConnectionBar 5、LogGroupPane 9、ConfirmDialog 4、FetchForm +2、App +3。テスト先行の部分（Step 3）は、実装前に失敗を確かめてから実装した（28 件中 27 件が失敗。残る 1 件は ARN を画面に送らないことを serde の指定だけで満たすため、最初から通った）。
+U2 のライブラリ側の件数：catalog 9、catalog::files 4、catalog::regions 3、connection 8、log_groups 9、session +14、request +2、gateway::aws +3、u1_fetch_flow +3、結合テスト u2_log_group_listing 9。画面側：ConnectionBar 5、LogGroupPane 12、ConfirmDialog 5、FetchForm +3、App +3。テスト先行の部分（Step 3）は、実装前に失敗を確かめてから実装した（28 件中 27 件が失敗。残る 1 件は ARN を画面に送らないことを serde の指定だけで満たすため、最初から通った）。
 
 ## 計画との違い
 
@@ -51,6 +54,7 @@ U2 のライブラリ側の件数：catalog 8、catalog::files 4、catalog::regi
 4. 一覧の取得のタスクが結果を出さずに終わったとき、一覧を Partial（Other）にして画面に知らせる回復を足した（U1 の R-04 と同じ考え方）。
 5. Tab の順を BR5.2 に合わせて「絞り込み → 一覧 → [再読み込み]」にした。
 6. 確認ダイアログは `<dialog>` ではなく `role="dialog"` の要素で作った（テスト環境の jsdom の対応のため）。
+7. 機能設計の BR1.3 からの意図した逸脱（人間の判断、レビュー R-01）：設定ファイルの中に解釈できない行（閉じていない `[profile x` の見出しなど）があっても、そのファイル全体を 0 件にはせず、その行だけを読み飛ばして読めた分を使う。この場合は知らせを出さない。知らせを出すのは、ファイルを開けない・ディレクトリを指す・UTF-8 でないときだけ。この振る舞いはテスト `catalog::tests::broken_lines_are_skipped_and_the_rest_is_used` と `catalog::tests::unclosed_profile_header_is_skipped_and_the_rest_is_used` で確かめる。
 
 ## まだ確かめていないこと
 

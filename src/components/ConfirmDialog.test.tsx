@@ -38,4 +38,27 @@ describe("ConfirmDialog", () => {
     );
     expect(screen.getByTestId("confirm-dialog-change-button")).toHaveTextContent("変える");
   });
+  it("keeps focus inside the dialog with Tab and Shift+Tab", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button" data-testid="outside-button">
+          outside
+        </button>
+        <ConfirmDialog t={t} onConfirm={vi.fn()} onCancel={vi.fn()} />
+      </>,
+    );
+    const change = screen.getByTestId("confirm-dialog-change-button");
+    const cancel = screen.getByTestId("confirm-dialog-cancel-button");
+    expect(cancel).toHaveFocus();
+    await user.tab();
+    expect(change).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(change).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(cancel).toHaveFocus();
+    expect(screen.getByTestId("outside-button")).not.toHaveFocus();
+  });
 });

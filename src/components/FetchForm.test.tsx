@@ -93,4 +93,14 @@ describe("FetchForm", () => {
       expect(screen.getByTestId(testId)).toHaveFocus();
     }
   });
+  it("disables every control while a connection change awaits confirmation", () => {
+    renderForm({
+      canFetch: false,
+      pendingChange: { proposedProfile: null, proposedRegion: "eu-west-1" },
+    });
+    for (const input of screen.getAllByRole("textbox")) {
+      expect(input).toBeDisabled();
+    }
+    expect(screen.getByTestId("fetch-form-submit-button")).toBeDisabled();
+  });
 });

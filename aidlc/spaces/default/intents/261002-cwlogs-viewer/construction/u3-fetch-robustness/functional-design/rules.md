@@ -21,9 +21,10 @@ rules:
     category: policy
     applies_to: StreamPlan.listingStatus
     trigger: 列挙のページを受けたとき
-    logic: IF ページの中に lastEventTimestamp を持ち、かつ lastEventTimestamp < TimeRange.startInstant − 3,600,000 ミリ秒のストリームがある THEN そのストリームとそれより後ろ（同じページの残りを含む）は対象にせず、次のページを呼ばずに listingStatus = StoppedEarly とする。lastEventTimestamp を持たないストリームでは打ち切らない
+    logic: IF ページの中に lastEventTimestamp を持ち、かつ lastEventTimestamp < TimeRange.startInstant − 3,600,000 ミリ秒のストリームがある THEN そのストリームと、同じページでそれより後ろにある lastEventTimestamp を持つストリームは対象にせず、次のページを呼ばずに listingStatus = StoppedEarly とする。打ち切ったページの中でも、lastEventTimestamp を持たないストリームは位置にかかわらず BR1.3 のとおり対象に残す。lastEventTimestamp を持たないストリームでは打ち切らない
     violation: なし
-    source: FR4.2、Q2
+    assumption: 最後のイベント時刻の順で列挙したとき、lastEventTimestamp を持たないストリームがどこに並ぶかは API の文書に書かれていない。ここでは「時刻を持つストリームの後ろか、ページの中に混ざって返る」と仮定する。打ち切った後のページに並ぶ時刻なしのストリームは取得しない（取りこぼしうる）。この並びは、開発者本人が実際の AWS で確かめる手元の確認の項目に入れる（team.md Walking Skeleton の 2）
+    source: FR4.2、Q2、U3 の機能設計のレビュー R-01
   - id: BR1.3
     statement: 範囲と重なるストリームと、時刻を持たないストリームだけを取得対象にする
     category: calculation
@@ -54,9 +55,9 @@ rules:
     category: policy
     applies_to: RetryPolicy
     trigger: DescribeLogStreams または GetLogEvents がエラーを返したとき
-    logic: IF エラーの種類が Throttled か Network THEN n 回目の再試行の前に baseDelaysSeconds[n−1] 秒（1・2・4・8・16 秒）× (1 + 乱数 −0.2〜+0.2) だけ待ち、同じ要求（同じ次のトークン）を送り直す。5 回再試行しても失敗したら、その要求を失敗とする。IF それ以外の種類 THEN 再試行せずにすぐ失敗とする
+    logic: IF エラーの種類が Throttled か Network THEN n 回目の再試行の前に baseDelaysSeconds[n−1] 秒（1・2・4・8・16 秒）× (1 + 乱数 −0.2〜+0.2) だけ待ち、同じ要求（同じ次のトークン）を送り直す。5 回再試行しても失敗したら、その要求を失敗とする。IF それ以外の種類 THEN 再試行せずにすぐ失敗とする。取得全体の上限として、再試行を使い切って失敗したストリームが続けて 3 つ（maxConsecutiveExhausted）になったら、残りのストリームは GetLogEvents を呼ばずに、最後のストリームと同じ ApiFailure で失敗とする（BR3.3、BR5.3）。途中で 1 つでも成功するか、再試行を使い切らずに失敗したら、続けての数は 0 に戻す
     violation: 失敗の扱いは BR1.5（列挙）と BR3.3（ストリーム）
-    source: FR4.5、NFR4、Q1
+    source: FR4.5、FR4.10、NFR4、Q1、U3 の機能設計のレビュー R-03
   - id: BR2.2
     statement: 再試行の回数は、要求（1 回の API 呼び出し）ごとに数える
     category: calculation
@@ -128,17 +129,17 @@ rules:
     category: calculation
     applies_to: EventTimeline
     trigger: 画面が見ている位置を保つとき
-    logic: (logStreamName, sequence) を受けたら、そのログのいまの位置（何番目か）を返す。ないときはないと返す
+    logic: (logStreamName, sequence) を受けたら、そのログのいまの位置（何番目か）を返す。ないときはないと返す。100 万件を保持していても、1 回の問い合わせは 10 ミリ秒以内に返す（全件をなめずに、二分探索などで求める）
     violation: なし
-    source: Q4
+    source: Q4、NFR2、U3 の機能設計のレビュー R-07
   - id: BR4.5
-    statement: 新しい取得を始めた時点と中断した時点で、保持ログを破棄する
+    statement: 新しい取得を始めた時点、中断した時点、接続先の変更で破棄する時点で、保持ログを破棄する
     category: policy
     applies_to: EventTimeline
-    trigger: 取得の開始時（BR5.6）と中断時（BR5.5）
-    logic: 保持ログをすべて捨て、timelineVersion を増やす
+    trigger: 取得の開始時（BR5.6）、中断時（BR5.5）、接続先の変更を確定したとき（U2:BR2.4）
+    logic: 保持ログをすべて捨て、どの場合も timelineVersion を増やす（画面は位置を保つ対象を失うため、一番上に戻す）
     violation: なし
-    source: components.md の EventTimeline（レビュー R-06）、U1 のコード生成のレビュー R-06
+    source: components.md の EventTimeline（レビュー R-06）、U1 のコード生成のレビュー R-06、U2:BR2.4、U3 の機能設計のレビュー R-08
 
   - id: BR5.1
     statement: 1 回の取得は「列挙と選定 → ストリームごとの取得 → 逐次の追加」の順に進める
@@ -169,9 +170,9 @@ rules:
     category: policy
     applies_to: FetchCoordinator
     trigger: 取得の開始から終わりまで
-    logic: 受け口に、開始 → 計画したストリーム数 → ページごとの追加（追加件数と累計件数）→ ストリームごとの終了（成功・失敗）→ 終了（FetchJob）の順で届ける（U1:BR4.5 を広げる）。FetchCoordinator は呼び出し元を知らない（ADR-007）
+    logic: 受け口に、開始 → 列挙の途中経過（列挙のページを受けるたびに、それまでに見たストリーム数と対象にしたストリーム数）→ 計画したストリーム数 → ページごとの追加（追加件数と累計件数）→ ストリームごとの終了（成功・失敗）→ 終了（FetchJob）の順で届ける（U1:BR4.5 を広げる）。FetchCoordinator は呼び出し元を知らない（ADR-007）
     violation: なし
-    source: FR4.7、NFR3、ADR-007
+    source: FR4.7、NFR3、ADR-007、U3 の機能設計のレビュー R-06
   - id: BR5.5
     statement: 中断を指示されたら、次の API を呼ばずに止め、取得途中の結果を捨てる
     category: policy
@@ -202,9 +203,9 @@ rules:
     category: policy
     applies_to: DesktopUi
     trigger: 進み具合を受けたとき
-    logic: 取得中は「取得中」と、終えたストリーム数／計画したストリーム数、累計件数を出す。終わったら件数を出し、0 件なら 0 件と文字で出す。失敗したストリームがあれば「N ストリームで失敗」、列挙が途中までなら「ストリームの列挙は途中まで」を出す。Failed なら種類名と安全な詳細を出す（U1:BR4.4 の暫定表示）。Aborted は表示しない（ウィンドウを閉じるときだけ起きるため）
+    logic: 列挙中（計画したストリーム数が決まる前）は「ストリームを列挙中」と、それまでに対象にしたストリーム数を出す。取得中は「取得中」と、終えたストリーム数／計画したストリーム数、累計件数を出す。終わったら件数を出し、0 件なら 0 件と文字で出す。失敗したストリームがあれば「N ストリームで失敗」、列挙が途中までなら「ストリームの列挙は途中まで」を出す。Failed なら種類名と安全な詳細を出す（U1:BR4.4 の暫定表示）。Aborted は表示しない（ウィンドウを閉じるときだけ起きるため）
     violation: なし
-    source: FR4.8、FR4.10、FR4.11、project.md Corrections（最低限の状態表示）
+    source: FR4.8、FR4.10、FR4.11、project.md Corrections（最低限の状態表示）、U3 の機能設計のレビュー R-06
   - id: BR6.3
     statement: 失敗の数を押すと、失敗したストリームの一覧を出す
     category: policy
@@ -218,9 +219,9 @@ rules:
     category: policy
     applies_to: DesktopUi
     trigger: 一覧を描くとき
-    logic: 画面は保持ログを持たず、表示範囲の行だけを RowWindow で取り寄せて描く（BR4.3）。各行は 1 行の高さで、時刻（U1:BR5.3）、ストリーム名、メッセージ（U1:BR5.2 の 1 行表示）を出す。スクロールの範囲は totalCount から決める
+    logic: 画面は保持ログを持たず、表示範囲の行だけを RowWindow で取り寄せて描く（BR4.3）。各行は 1 行の高さで、時刻（U1:BR5.3）、ストリーム名、メッセージ（U1:BR5.2 の 1 行表示）を出す。スクロールの範囲は totalCount から決める。全件を見ないと中身に合わせた幅は決められないため、列の幅は固定（時刻・ストリーム名は決まった幅で、はみ出す分は省略）とし、メッセージは折り返さず 1 行に収まらない分を省略する
     violation: なし
-    source: FR4.7、NFR2、NFR3、unit-of-work のログの置き場所
+    source: FR4.7、NFR2、NFR3、unit-of-work のログの置き場所、U3 の機能設計のレビュー R-07
   - id: BR6.5
     statement: 取得中に行が増えても、画面の一番上に見えている行を動かさない
     category: policy
@@ -242,9 +243,10 @@ rules:
     category: constraint
     applies_to: AppSession
     trigger: 画面から操作が届いたとき
-    logic: ロググループ一覧の絞り込みとロググループの選択は、ほかの処理を待たずに受け取った順に処理し、その結果を画面に返す。保持ログに触れる操作（接続の変更・取得の開始）だけが、保持ログの処理を待つ
-    violation: なし
-    source: U2 のコード生成のレビュー R-06
+    logic: ロググループ一覧の絞り込みとロググループの選択は、ほかの処理を待たずに受け取った順に処理し、その結果を画面に返す。保持ログに触れる操作（接続の変更・取得の開始）だけが、保持ログの処理を待つ。順序を守る仕組みとして、AppSession は接続先の世代番号（connectionGeneration）を持ち、接続先の変更を確定するたびに 1 増やす。ロググループ一覧の読み込み・ロググループの選択・取得の開始は、受け取った時点の世代番号を覚えておき、結果を SessionState に書く前に、いまの世代番号と比べる。IF 違う THEN その結果は捨て、画面にも返さない（後から始めた接続先の変更が先に確定した場合に、古い接続先の結果で上書きしない）
+    violation: 古い世代の結果は SessionState に反映しない
+    test_viewpoint: 接続先の変更の確定より前に受け取ったロググループの選択・一覧の読み込みが、確定の後に終わったとき、その結果が捨てられ、選択と一覧が変更後の接続先のままであること。同じ世代の操作は受け取った順に反映されること
+    source: U2 のコード生成のレビュー R-06、U3 の機能設計のレビュー R-02
   - id: BR6.8
     statement: U3 の画面の文字列も文言キーから英日を引き、キーボードだけで操作できる
     category: policy
@@ -268,11 +270,11 @@ rules:
 | ID | ルール | 種類 | 出典 |
 |----|--------|------|------|
 | BR1.1 | 最後のイベント時刻の新しい順に列挙 | constraint | FR4.1、Q2 |
-| BR1.2 | 「開始 − 1 時間」より古いストリームで列挙をやめる | policy | FR4.2、Q2 |
+| BR1.2 | 「開始 − 1 時間」より古いストリームで列挙をやめる（時刻なしは残す） | policy | FR4.2、Q2、R-01 |
 | BR1.3 | 範囲と重なるストリームと時刻なしを対象にする | calculation | FR4.2 |
 | BR1.4 | DescribeLogStreams を足す、読み取り 3 API だけ | constraint | NFR6 |
 | BR1.5 | 列挙の途中のエラーは、選んだ分だけ取得 | policy | FR4.10 |
-| BR2.1 | スロットリング・通信のエラーは倍々に待って最大 5 回 | policy | FR4.5、Q1 |
+| BR2.1 | スロットリング・通信のエラーは倍々に待って最大 5 回。使い切りが 3 ストリーム続いたら残りは失敗 | policy | FR4.5、Q1、R-03 |
 | BR2.2 | 再試行は要求ごとに数える | calculation | FR4.5 |
 | BR2.3 | 待ちの間の中断ですぐやめる | constraint | FR4.9 |
 | BR3.1 | ストリームを 1 つずつ順に取得 | policy | FR4.1 |
@@ -281,20 +283,24 @@ rules:
 | BR4.1 | 時刻 → ストリーム名 → ストリームの中の順 | calculation | FR4.7、Q3 |
 | BR4.2 | 逐次、時刻順を保って足す | policy | FR4.7 |
 | BR4.3 | 表示範囲の行だけを取り出す | calculation | NFR2 |
-| BR4.4 | 1 件の位置を求める | calculation | Q4 |
-| BR4.5 | 取得の開始と中断で保持ログを破棄 | policy | R-06 |
+| BR4.4 | 1 件の位置を 10 ミリ秒以内に求める | calculation | Q4、R-07 |
+| BR4.5 | 取得の開始・中断・接続先の変更で保持ログを破棄 | policy | R-06、R-08 |
 | BR5.1 | 列挙と選定 → 取得 → 追加の順 | policy | FR4.1 |
 | BR5.2 | 結果の状態の決め方 | calculation | FR4.10、FR4.11 |
 | BR5.3 | 失敗したストリームのまとめ | policy | FR4.10、Q5 |
-| BR5.4 | 進み具合を受け口に届ける | policy | FR4.7、ADR-007 |
+| BR5.4 | 進み具合（列挙の途中経過を含む）を受け口に届ける | policy | FR4.7、ADR-007、R-06 |
 | BR5.5 | 中断で止めて結果を捨てる | policy | FR4.9 |
 | BR5.6 | 取得の開始時に前回の行と件数を消す | policy | U1 の R-06 |
 | BR6.1 | ストリーム名の手入力をなくす | validation | FR4.1 |
-| BR6.2 | ステータス行の進み具合・件数・失敗 | policy | FR4.8、FR4.10、FR4.11 |
+| BR6.2 | ステータス行の列挙中・進み具合・件数・失敗 | policy | FR4.8、FR4.10、FR4.11、R-06 |
 | BR6.3 | 失敗したストリームの一覧 | policy | FR4.10、Q5 |
-| BR6.4 | 3 列で表示範囲だけ描く | policy | FR4.7、NFR2 |
+| BR6.4 | 3 列で表示範囲だけ描く。列の幅は固定 | policy | FR4.7、NFR2、R-07 |
 | BR6.5 | 一番上に見えている行を動かさない | policy | Q4 |
 | BR6.6 | 取得中は取得条件を変えられない | constraint | FR4.8 |
-| BR6.7 | 画面からの操作は受け取った順に処理 | constraint | U2 の R-06 |
+| BR6.7 | 画面からの操作は受け取った順に処理。古い接続先の世代の結果は捨てる | constraint | U2 の R-06、R-02 |
 | BR6.8 | 文言とキーボード操作 | policy | NFR12、NFR13 |
 | BR6.9 | 確認用プログラムもロググループ全体 | policy | U1:BR7.1 |
+
+## 前提と手元の確認の項目
+
+- BR1.2 の仮定（時刻を持たないストリームの並び）は API の文書で確かめられないため、開発者本人が実際の AWS で確認用プログラムを使って確かめる。確かめ方：イベントのないストリームを含むロググループで、範囲の開始を古いストリームより新しくして取得し、時刻なしのストリームが対象に入るか（確認用プログラムが標準エラーに出すストリーム数）を見る。仮定と違えば、次の作業単位で BR1.2 を見直す。

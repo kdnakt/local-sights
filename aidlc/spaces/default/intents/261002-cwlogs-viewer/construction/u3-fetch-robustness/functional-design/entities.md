@@ -81,6 +81,12 @@ entities:
         default: 5
         min: 0
         constraints: 最初の呼び出しを含めて最大 6 回呼ぶ
+      - name: maxConsecutiveExhausted
+        type: integer
+        required: true
+        default: 3
+        min: 1
+        constraints: 再試行を使い切って失敗したストリームがこの数だけ続いたら、残りのストリームは呼ばずに失敗とする（BR2.1、レビュー R-03）
     constraints: []
     relationships: []
 
@@ -164,6 +170,12 @@ entities:
     description: 1 回の取得の状態と結果
     identifier: [jobId]
     attributes:
+      - name: jobId
+        type: integer
+        required: true
+        unique: true
+        min: 0
+        constraints: アプリの実行の中で取得を始めるたびに増える番号
       - name: status
         type: enum
         allowed_values: [Running, Completed, CompletedWithFailures, Failed, Aborted]
@@ -186,7 +198,7 @@ entities:
         type: reference
         references: ApiFailure
         required: false
-        constraints: ストリームの列挙が途中でエラーになったときだけ持つ（BR1.5）
+        constraints: ストリームの列挙が途中でエラーになったときだけ持つ（BR1.5）。正は StreamPlan.listingFailure で、これはその写し（StreamPlan がないときも結果として渡せるように FetchJob にも持つ。値は常に同じ）
       - name: eventCount
         type: integer
         required: true
@@ -195,11 +207,14 @@ entities:
       - finishedStreamCount <= plannedStreamCount
     relationships:
       - target: StreamPlan
-        cardinality: 1..1
-        direction: FetchJob が参照する
+        cardinality: 0..1
+        direction: FetchJob が参照する（列挙を終える前に中断したときは持たない）
       - target: FailedStream
         cardinality: 0..*
         direction: FetchJob が持つ
+      - target: StreamFetchOutcome
+        cardinality: 0..*
+        direction: FetchJob がストリームごとに集める
 
   - name: FetchRequest
     owner: AppSession
@@ -225,8 +240,17 @@ entities:
         required: true
         default: false
         constraints: 失敗したストリームの一覧を開いているか（Q5）
+      - name: connectionGeneration
+        type: integer
+        required: true
+        default: 0
+        min: 0
+        constraints: 接続先の変更を確定するたびに 1 増える。古い世代の操作の結果は反映しない（BR6.7、レビュー R-02）
     constraints: []
-    relationships: []
+    relationships:
+      - target: FetchJob
+        cardinality: 0..1
+        direction: SessionState が進み具合として表示する
 
   - name: ViewportAnchor
     owner: DesktopUi
@@ -252,12 +276,12 @@ entities:
 |--------------|--------|------------------------|------|
 | LogStream | StreamPlanner | 同名 | 最初・最後のイベント時刻はないことがある |
 | StreamPlan | StreamPlanner | 選定の結果の補助 | 打ち切り（Q2）と、列挙の途中のエラー |
-| RetryPolicy | EventFetcher | 再試行の決まりの補助 | 1・2・4・8・16 秒、±20%、最大 5 回（Q1） |
+| RetryPolicy | EventFetcher | 再試行の決まりの補助 | 1・2・4・8・16 秒、±20%、最大 5 回（Q1）。使い切りが 3 ストリーム続いたら残りは失敗 |
 | StreamFetchOutcome | EventFetcher | 同名（属性を足す） | 再試行の回数 |
 | LogEvent | EventTimeline | 同名（意味を変える） | sequence はストリームごと。並びは時刻 → ストリーム名 → sequence（Q3） |
 | RowWindow | EventTimeline | 表示範囲の行の補助 | 100 万件を表示範囲だけ描く |
 | FailedStream | FetchCoordinator | 部分失敗の 1 件の補助 | 名前と安全な詳細（Q5） |
-| FetchJob | FetchCoordinator | 同名（広げる） | CompletedWithFailures・Aborted を足す |
+| FetchJob | FetchCoordinator | 同名（広げる） | CompletedWithFailures・Aborted を足す。jobId。StreamPlan は 0..1 |
 | FetchRequest | AppSession | U1・U2 の補助（属性を外す） | ストリーム名をなくす |
-| SessionState | AppSession | 同名（属性を足す） | 進み具合、失敗の一覧 |
+| SessionState | AppSession | 同名（属性を足す） | 進み具合、失敗の一覧、接続先の世代番号 |
 | ViewportAnchor | DesktopUi | 位置を保つ補助 | Q4 |

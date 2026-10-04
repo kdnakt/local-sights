@@ -9,7 +9,8 @@
     "FR5", "FR5.1", "FR5.2", "FR5.3", "FR5.4",
     "FR6", "FR6.1", "FR6.2", "FR6.3", "FR6.4", "FR6.5",
     "FR7", "FR7.1", "FR7.2", "FR7.3", "FR7.4", "FR7.5", "FR7.6", "FR7.7", "FR7.8", "FR7.9",
-    "FR8", "FR8.1", "FR8.2", "FR8.3"
+    "FR8", "FR8.1", "FR8.2", "FR8.3",
+    "NFR2", "NFR3", "NFR4", "NFR6", "NFR12", "NFR13"
   ],
   "coverage": [
     {"id": "FR1", "status": "N/A", "target": "U2 で実装済み"},
@@ -39,7 +40,7 @@
     {"id": "FR4.7", "status": "OK", "target": "BR4.1, BR4.2, BR5.4, BR6.4, BR6.5"},
     {"id": "FR4.8", "status": "OK", "target": "BR6.6, BR6.2"},
     {"id": "FR4.9", "status": "Deferred", "target": "U7（U3 は中断の内部処理 BR5.5 だけを作る）"},
-    {"id": "FR4.10", "status": "OK", "target": "BR1.5, BR3.3, BR5.2, BR5.3, BR6.2, BR6.3"},
+    {"id": "FR4.10", "status": "OK", "target": "BR1.5, BR2.1, BR3.3, BR5.2, BR5.3, BR6.2, BR6.3（受け入れ条件は functional-spec.md の UC3）"},
     {"id": "FR4.11", "status": "OK", "target": "BR5.2, BR6.2"},
     {"id": "FR5", "status": "Deferred", "target": "U7"},
     {"id": "FR5.1", "status": "N/A", "target": "U1 で実装済み"},
@@ -65,17 +66,23 @@
     {"id": "FR8", "status": "Deferred", "target": "U7"},
     {"id": "FR8.1", "status": "Deferred", "target": "U7"},
     {"id": "FR8.2", "status": "Deferred", "target": "U7"},
-    {"id": "FR8.3", "status": "N/A", "target": "U1 で実装済み"}
+    {"id": "FR8.3", "status": "N/A", "target": "U1 で実装済み"},
+    {"id": "NFR2", "status": "OK", "target": "BR4.2, BR4.3, BR4.4, BR6.4"},
+    {"id": "NFR3", "status": "OK", "target": "BR4.3, BR5.4, BR6.2, BR6.4, BR6.6"},
+    {"id": "NFR4", "status": "OK", "target": "BR1.5, BR2.1, BR2.2"},
+    {"id": "NFR6", "status": "OK", "target": "BR1.4"},
+    {"id": "NFR12", "status": "OK", "target": "BR6.8"},
+    {"id": "NFR13", "status": "OK", "target": "BR6.8"}
   ],
   "reverse": [
     {"id": "BR2.3", "status": "N/A", "target": "中断と再試行の待ちの関係（FR4.9 の内部処理）"},
     {"id": "BR3.2", "status": "N/A", "target": "U1:BR3.1〜U1:BR3.3 をストリームごとに適用する（FR4.3、FR4.4、FR4.6）"},
     {"id": "BR4.3", "status": "N/A", "target": "表示範囲の取り出し（NFR2、NFR3）"},
     {"id": "BR4.4", "status": "N/A", "target": "位置を保つための 1 件の位置（Q4）"},
-    {"id": "BR4.5", "status": "N/A", "target": "保持ログの破棄（components.md の EventTimeline、U1 のコード生成のレビュー R-06）"},
+    {"id": "BR4.5", "status": "N/A", "target": "保持ログの破棄（components.md の EventTimeline、U1 のコード生成のレビュー R-06、U2:BR2.4）"},
     {"id": "BR5.5", "status": "N/A", "target": "中断の内部処理（FR4.9 は U7）"},
     {"id": "BR5.6", "status": "N/A", "target": "取得の開始時の消去（U1 のコード生成のレビュー R-06）"},
-    {"id": "BR6.7", "status": "N/A", "target": "画面からの操作の順序（U2 のコード生成のレビュー R-06）"},
+    {"id": "BR6.7", "status": "N/A", "target": "画面からの操作の順序と接続先の世代番号（U2 のコード生成のレビュー R-06、U3 の機能設計のレビュー R-02）"},
     {"id": "BR6.8", "status": "N/A", "target": "英日の文言とキーボード操作（NFR12、NFR13）"},
     {"id": "BR6.9", "status": "N/A", "target": "確認用プログラム（U1:BR7.1、team.md Walking Skeleton）"}
   ]

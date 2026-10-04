@@ -1,6 +1,6 @@
 # Business Rules — U2 接続とロググループの選択（u2-connection-selection）
 
-上流の成果物：`inception/requirements-analysis/requirements.md`（U2 の FR：FR1.1、FR1.3、FR1.4、FR2.1〜FR2.3）、`inception/units-generation/unit-of-work.md`、`inception/domain-design/components.md`、`entities.md`。質問票の回答は `functional-design-questions.md` の Q1〜Q6。U1 のルール（`construction/u1-walking-skeleton/functional-design/rules.md`）はそのまま有効で、ここでは U2 で足すルールと、U1 のルールを置き換えるところだけを書く。
+上流の成果物：`inception/requirements-analysis/requirements.md`（U2 の FR：FR1.1、FR1.3、FR1.4、FR2.1〜FR2.3）、`inception/units-generation/unit-of-work.md`、`inception/domain-design/components.md`、`entities.md`。質問票の回答は `functional-design-questions.md` の Q1〜Q6。U1 のルール（`construction/u1-walking-skeleton/functional-design/rules.md`）はそのまま有効で、ここでは U2 で足すルールと、U1 のルールを置き換えるところだけを書く。U1 と U2 でルールの番号が重なるため、U1 のルールは `U1:BR1.6` のように作業単位名を前に付けて書く。前に何も付けない `BRx.y` は、この文書（U2）のルールを指す。
 
 ## ルール（機械可読）
 
@@ -19,15 +19,15 @@ rules:
     category: constraint
     applies_to: ConnectionCatalog
     trigger: 設定ファイルを読むとき
-    logic: セクション名（プロファイル名）と、そのセクションの region の値だけを取り出す。aws_access_key_id・aws_secret_access_key・aws_session_token・sso の各項目などの値は、読み取りの結果に含めない
+    logic: 読むときに見るのはセクションの見出し行と region の行だけで、ほかの行（aws_access_key_id・aws_secret_access_key・aws_session_token・sso の各項目など）は値を保持せずに捨てる。読み取りの結果に含めるのはセクション名（プロファイル名）と region の値だけ。解釈に失敗したときのエラーにも、ファイルの行の中身を引用しない
     violation: なし（取り出す手段を作らない）
-    source: NFR5、project.md Forbidden
+    source: NFR5、project.md Forbidden、レビュー R-09
   - id: BR1.3
     statement: 設定ファイルがない・読めない・形式が崩れているときも、アプリは止めずに「既定の設定」だけで一覧を作る
     category: policy
     applies_to: ConnectionCatalog
     trigger: 設定ファイルを読むとき
-    logic: IF ファイルがない THEN そのファイルからのプロファイルは 0 件として扱う。IF 読めない、または解釈できない THEN そのファイルからのプロファイルは 0 件とし、読めなかったことを文言キーで画面に知らせる（ファイルの中身は出さない）
+    logic: IF ファイルがない THEN そのファイルからのプロファイルは 0 件として扱い、通知しない。IF 読めない、または解釈できない THEN そのファイルからのプロファイルは 0 件とし、読めなかったことを文言キー（BR5.1）で上部バーのプロファイルの欄の近くに知らせる。知らせにはファイルの種類（config か credentials）だけを出し、パス以外のファイルの中身は出さない。知らせはアプリを起動し直すまで出したままにする
     violation: 一覧は「既定の設定」と、読めた方のファイルのプロファイルだけになる
     source: FR1.1、NFR5
   - id: BR1.4
@@ -35,17 +35,17 @@ rules:
     category: calculation
     applies_to: RegionOption
     trigger: アプリの起動時
-    logic: SDK が持つ公開リージョン（標準のパーティション）の一覧からコードを取り出して昇順に並べる。SDK から一覧を得られない場合は、アプリに組み込んだ同じ内容の一覧を使う
+    logic: SDK が持つ公開リージョン（標準のパーティション）の一覧からコードを取り出して昇順に並べる。SDK から一覧を得られない場合は、アプリに組み込んだ同じ内容の一覧を使う。どちらも静的な一覧で、ネットワークを使わず、AWS の API（EC2 の DescribeRegions など）は呼ばない（読み取り 3 API 以外を呼ばない）
     violation: なし
-    source: FR1.3、レビュー R-06（requirements）
+    source: FR1.3、requirements のレビュー R-06、NFR6、レビュー R-09
   - id: BR1.5
     statement: プロファイルの既定のリージョンは、設定ファイルのそのプロファイルの region。「既定の設定」は SDK と同じ順で決める
     category: calculation
     applies_to: ConnectionProfile.defaultRegion
     trigger: プロファイルの一覧を作るとき
-    logic: kind が Named なら、config のそのプロファイルのセクションの region。kind が SdkDefault なら、環境変数 AWS_REGION、次に AWS_DEFAULT_REGION、次に config の [default] の region の順で最初に見つかったもの。見つからなければ持たない。IF 既定のリージョンが BR1.4 の選択肢にない THEN そのコードを選択肢に足す
+    logic: kind が Named なら、config のそのプロファイルのセクションの region。kind が SdkDefault なら、ここで決める順として、環境変数 AWS_REGION、次に AWS_DEFAULT_REGION、次に環境変数 AWS_PROFILE があればそのプロファイルの region、なければ config の [default] の region の順で最初に見つかったもの。見つからなければ持たない。これは画面に出すリージョンの初期値であり、画面からの取得は選んだ regionCode を必ず渡す（BR2.8）ため、SDK 自身の決め方と違っても接続先はずれない。IF 既定のリージョンが BR1.4 の選択肢にない THEN そのコードを選択肢に足す
     violation: なし
-    source: FR1.3
+    source: FR1.3、レビュー R-06
 
   - id: BR2.1
     statement: 起動時は、プロファイルもリージョンも未選択で、ロググループ一覧を取らない
@@ -68,7 +68,7 @@ rules:
     category: policy
     applies_to: LogGroupListing
     trigger: プロファイルかリージョンが変わり、両方が選ばれた状態になったとき
-    logic: IF profile と regionCode の両方が選ばれている THEN 新しい LogGroupListing（status = Loading）を始める。どちらかが未選択なら一覧を取らず、一覧の欄を空にする
+    logic: 接続が変わったら、まず進行中の一覧の取得を無効にする（いまの listingId を持たない状態にする、BR3.6）。IF profile と regionCode の両方が選ばれている THEN 新しい LogGroupListing（status = Loading）を始める。どちらかが未選択なら一覧を取らず、一覧の欄を空にし、いまの listingId を持たないままにする
     violation: なし
     source: FR1.4、Q2、Q3
   - id: BR2.4
@@ -76,9 +76,9 @@ rules:
     category: policy
     applies_to: SessionState
     trigger: 接続の変更を適用するとき
-    logic: selectedLogGroupName を外す。EventTimeline の保持ログを破棄し、件数と直近の FetchJob の要約を消す。その後 BR2.3 に従う
+    logic: selectedLogGroupName を外す。EventTimeline の保持ログを破棄し、件数と直近の FetchJob の要約（直近の失敗の種類名と安全な詳細を含む）を消す。SessionState.phase を Idle に戻し（Done または Failed から Idle への遷移。U1 の phase の遷移にこの 1 本を足す）、validationErrors を新しい選択の状態で作り直す（BR2.7）。その後 BR2.3 に従う
     violation: なし
-    source: FR1.4、Q6
+    source: FR1.4、Q6、レビュー R-02
   - id: BR2.5
     statement: 表示中のログがあるときは、接続を変える前に確認ダイアログを出す
     category: policy
@@ -92,25 +92,25 @@ rules:
     category: constraint
     applies_to: SessionState
     trigger: phase が Fetching の間、または PendingConnectionChange があるとき
-    logic: IF phase = Fetching、または PendingConnectionChange がある THEN プロファイル・リージョン・ロググループの選択と [再読み込み] を無効にする（U1 の BR1.4 を広げる）。確認を待っている間に使えるのは確認ダイアログの [変える]・[キャンセル] だけ
+    logic: IF phase = Fetching、または PendingConnectionChange がある THEN プロファイル・リージョン・ロググループの選択と [再読み込み] を無効にする（U1:BR1.4 を広げる）。確認を待っている間に使えるのは確認ダイアログの [変える]・[キャンセル] だけ
     violation: 操作を受け付けない
-    source: FR4.8（U1 の BR1.4）、Q6
+    source: FR4.8（U1:BR1.4）、Q6
   - id: BR2.7
     statement: "[Fetch] を押せるのは、プロファイル・リージョン・ロググループが選ばれ、ストリーム名と日時が U1 の検証を通るとき"
     category: validation
     applies_to: FetchRequest
     trigger: 選択または入力が変わったとき
-    logic: IF プロファイル・リージョン・ロググループのどれかが未選択 THEN [Fetch] を押せず、未選択の項目を理由（文言キー）として示す。ストリーム名と日時は U1 の BR1.1〜BR1.3 のまま。ロググループ名の手入力の検証（U1 の BR1.1 のロググループ名の部分）は、一覧からの選択に置き換える
-    violation: "[Fetch] を無効にし、理由の文言キーを validationErrors に入れる"
-    source: FR2.3、U1 の BR1.1・BR1.8
+    logic: 検証は 2 つに分ける。(1) 画面の経路だけの選択の検証：AppSession が選択の状態から作り、IF プロファイル・リージョン・ロググループのどれかが未選択 THEN 未選択の項目を理由（文言キー）として示す。(2) 共通の検証（U1:BR1.8）：画面と確認用プログラムの両方が使い、U1:BR1.1〜U1:BR1.3 のとおりロググループ名とストリーム名が空でないこと、日時の形式と前後を確かめる（ロググループ名が空でないことの確認は残す）。画面では (1) のあとに、選んだロググループ名を入れた FetchRequest で (2) を呼ぶ。確認用プログラムは (2) だけを使う。両方を通ったときだけ [Fetch] を押せる
+    violation: "[Fetch] を無効にし、(1) と (2) の理由の文言キーを validationErrors に入れる"
+    source: FR2.3、U1:BR1.1・U1:BR1.8、レビュー R-01
   - id: BR2.8
     statement: 画面からの取得は、選んだプロファイルとリージョンで接続する
     category: policy
     applies_to: FetchRequest.regionCode
     trigger: 取得を始めるとき
-    logic: 画面からの FetchRequest は、選んだ profile と regionCode を必ず持つ。CloudWatchLogsGateway はそのリージョンで接続する（U1 の BR1.6 のプロファイルの既定のリージョンによる解決は、regionCode を省略した確認用プログラムの取得でだけ使う）。kind が SdkDefault なら、プロファイルを指定せずに接続する（U1 の BR1.5）
+    logic: 画面からの FetchRequest は、選んだ profile と regionCode を必ず持つ。CloudWatchLogsGateway はそのリージョンで接続する（U1:BR1.6 のプロファイルの既定のリージョンによる解決は、regionCode を省略した確認用プログラムの取得でだけ使う）。kind が SdkDefault なら、プロファイルを指定せずに接続する（U1:BR1.5）
     violation: なし
-    source: FR1.3、FR1.4、U1 の BR1.5・BR1.6
+    source: FR1.3、FR1.4、U1:BR1.5・U1:BR1.6
 
   - id: BR3.1
     statement: ロググループ一覧は、DescribeLogGroups のページをすべてたどって作る
@@ -141,7 +141,7 @@ rules:
     category: policy
     applies_to: LogGroupListing
     trigger: DescribeLogGroups がエラーを返したとき
-    logic: それ以上たどらず、status = Partial にし、それまでの groups を残し、ApiFailure（U1 の BR4.2 の種類と BR4.3 の安全な詳細）を付ける。画面には「一覧が途中までであること」と種類名・安全な詳細を出す（U1 の BR4.4 の暫定表示）。最初のページでエラーなら groups は空のまま Partial になる
+    logic: それ以上たどらず、status = Partial にし、それまでの groups を残し、ApiFailure（U1:BR4.2 の種類と U1:BR4.3 の安全な詳細）を付ける。画面には「一覧が途中までであること」と種類名・安全な詳細を出す（U1:BR4.4 の暫定表示）。最初のページでエラーなら groups は空のまま Partial になる
     violation: なし
     source: FR2 の受け入れ基準、Q4
   - id: BR3.5
@@ -157,9 +157,9 @@ rules:
     category: constraint
     applies_to: LogGroupListing.listingId
     trigger: 一覧の取得の応答を受けたとき
-    logic: IF 応答の listingId が、いまの LogGroupListing の listingId と違う THEN その応答を捨てる（接続の変更や再読み込みの後に、前の取得の応答が遅れて届いた場合）。古い取得は、次のページを呼ばずにやめる
+    logic: IF いまの LogGroupListing がない（接続が未決のため listingId を持たない）、または応答の listingId が、いまの LogGroupListing の listingId と違う THEN その応答を捨てる（接続の変更や再読み込みの後に、前の取得の応答が遅れて届いた場合）。古い取得は、次のページを呼ばずにやめる
     violation: なし
-    source: FR1.4
+    source: FR1.4、レビュー R-04
   - id: BR3.7
     statement: ロググループ名の絞り込みは、大文字と小文字を区別しない部分一致
     category: calculation
@@ -173,7 +173,7 @@ rules:
     category: constraint
     applies_to: SessionState.selectedLogGroupName
     trigger: 一覧の行を選んだとき
-    logic: 新しく選んだら、それまでの選択は外れる。選び直しても表示中のログは消さない（次の [Fetch] で置き換わる）
+    logic: 新しく選んだら、それまでの選択は外れる。選び直しても表示中のログは消さない（次の [Fetch] で置き換わる）。選んでいるロググループ名は、一覧とは別に、ストリーム名の入力欄の近くに常に表示する（絞り込みで一覧から隠れても分かるようにする。未選択なら「未選択」と表示する）
     violation: なし
     source: FR2.3
   - id: BR3.9
@@ -200,16 +200,16 @@ rules:
     trigger: 一覧の取得で AuthRequired・AccessDenied などが返ったとき
     logic: BR3.4 のとおり Partial にして種類名と安全な詳細を出す。プロファイルとリージョンは選び直せる。「何が起きたか」と「次の行動」の文への仕上げは U7（FR1.5）
     violation: なし
-    source: FR1 と FR2 の受け入れ基準、U1 の BR4.4
+    source: FR1 と FR2 の受け入れ基準、U1:BR4.4
 
   - id: BR5.1
     statement: U2 の画面の文字列も、すべて文言キーから英日を引く
     category: policy
     applies_to: MessageCatalog
     trigger: 画面を描くとき
-    logic: プロファイル・リージョンの欄、「既定の設定（SDK に任せる）」、うながしの文言、一覧の読み込み中・途中まで・0 件の文言、絞り込みの欄、[再読み込み]、確認ダイアログの文言とボタンの文言キーを足し、英日の両方をそろえる（U1 の BR6.1）
+    logic: プロファイル・リージョンの欄、「既定の設定（SDK に任せる）」、うながしの文言、設定ファイルを読めなかったことの知らせ（BR1.3）、一覧の読み込み中・途中まで・0 件の文言、絞り込みの欄、[再読み込み]、選択中のロググループ名の欄の見出し（BR3.8）、確認ダイアログの文言とボタンの文言キーを足し、英日の両方をそろえる（U1:BR6.1）
     violation: なし
-    source: NFR12（U1 の BR6.1）
+    source: NFR12（U1:BR6.1）
   - id: BR5.2
     statement: U2 の画面もキーボードだけで操作できる
     category: policy
@@ -217,7 +217,7 @@ rules:
     trigger: 常に
     logic: Tab でプロファイル・リージョン・絞り込み・ロググループ一覧・[再読み込み] を順に移動できる。一覧は上下の矢印キーで移動し、Enter かスペースで選べる。確認ダイアログは開いたときに [キャンセル] にフォーカスを置き、Escape で閉じる（[キャンセル] と同じ）
     violation: なし
-    source: NFR13（U1 の BR6.2）、Q6
+    source: NFR13（U1:BR6.2）、Q6
 ```
 
 ## まとめ
@@ -232,7 +232,7 @@ rules:
 | BR2.1 | 起動時は未選択で一覧を取らない | policy | Q2 |
 | BR2.2 | プロファイルを選ぶとリージョンに既定を入れる、なければうながす | policy | FR1.3、Q3 |
 | BR2.3 | 接続が決まったら一覧を取り直す | policy | FR1.4 |
-| BR2.4 | 接続を変えたら選択と表示中のログを消す | policy | FR1.4、Q6 |
+| BR2.4 | 接続を変えたら選択と表示中のログを消し、phase を Idle に戻す | policy | FR1.4、Q6 |
 | BR2.5 | 表示中のログがあれば確認ダイアログ | policy | Q6 |
 | BR2.6 | 取得中・確認中は選択を変えられない | constraint | FR4.8 |
 | BR2.7 | [Fetch] を押せる条件に選択を足す | validation | FR2.3 |

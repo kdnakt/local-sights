@@ -26,7 +26,7 @@ graph LR
 
 ### UC1：起動してプロファイルとリージョンを選ぶ
 
-1. アプリを起動する。ConnectionCatalog は設定ファイルからプロファイルの一覧を作り（先頭は「既定の設定（SDK に任せる）」、BR1.1〜BR1.3、BR1.5）、リージョンの選択肢を作る（BR1.4）。
+1. アプリを起動する。ConnectionCatalog は設定ファイルからプロファイルの一覧を作り（先頭は「既定の設定（SDK に任せる）」、BR1.1〜BR1.3、BR1.5）、リージョンの選択肢を作る（BR1.4）。設定ファイルを読めなかったときは、上部バーのプロファイルの欄の近くに、読めなかったファイルの種類を知らせる（起動し直すまで出したまま、BR1.3）。
 2. AppSession はプロファイルもリージョンも未選択で始め、ロググループ一覧は取らない。一覧の欄には「プロファイルを選んでください」を出す（BR2.1）。
 3. 利用者がプロファイルを選ぶ。
    1. そのプロファイルに既定のリージョンがあれば、リージョンにそれが入る（BR2.2）。→ 手順 4。
@@ -44,7 +44,7 @@ graph LR
 ### UC3：絞り込んでロググループを選び、取得する
 
 1. 利用者が絞り込みの欄に文字を入れると、取得済みの一覧を、大文字・小文字を区別しない部分一致で絞り込んで出す（BR3.7）。AWS の API は呼ばない。0 件なら「一致するロググループがありません」を出す（BR3.10）。
-2. 利用者がロググループを 1 つ選ぶ（矢印キーと Enter でも選べる、BR5.2）。それまでの選択は外れる（BR3.8）。表示中のログは消さない。
+2. 利用者がロググループを 1 つ選ぶ（矢印キーと Enter でも選べる、BR5.2）。それまでの選択は外れる（BR3.8）。表示中のログは消さない。選んだロググループ名は、ストリーム名の入力欄の近くに常に表示する（絞り込みで一覧から隠れても分かる、BR3.8）。
 3. 利用者がストリーム名と日時を入れる。[Fetch] は、プロファイル・リージョン・ロググループが選ばれ、ストリーム名と日時が U1 の検証を通ったときだけ押せる（BR2.7）。
 4. [Fetch] を押すと、選んだプロファイル・リージョン・ロググループで U1 の UC1 の手順 5 以降と同じく取得する（BR2.8）。取得中は、プロファイル・リージョン・ロググループの選択と [再読み込み] も無効になる（BR2.6）。
 
@@ -57,7 +57,7 @@ graph LR
 3. 利用者の選択：
    1. [変える]：手順 4 へ。
    2. [キャンセル] または Escape キー：変更を捨て、プロファイルとリージョンの欄を元の選択に戻す。ロググループの選択、表示中のログ、一覧はそのまま。
-4. 変更を適用する。ロググループの選択を外し、表示中のログ・件数・直近の取得の結果を消す（BR2.4）。プロファイルを変えた場合は BR2.2 でリージョンの初期値を決める。両方が決まっていれば UC2 で一覧を取り直す（BR2.3）。絞り込みの文字列は残す（BR3.7）。
+4. 変更を適用する。進行中の一覧の取得を無効にする（BR2.3、BR3.6）。ロググループの選択を外し、表示中のログ・件数・直近の取得の結果（失敗の種類名と安全な詳細を含む）を消し、phase を Idle に戻して [Fetch] を押せない理由を作り直す（BR2.4、BR2.7）。プロファイルを変えた場合は BR2.2 でリージョンの初期値を決める。両方が決まっていれば UC2 で一覧を取り直し、決まっていなければ一覧を空にして、遅れて届いた前の接続の応答は捨てる（BR2.3、BR3.6）。絞り込みの文字列は残す（BR3.7）。
 
 ### UC5：一覧を再読み込みする
 
@@ -91,13 +91,17 @@ stateDiagram-v2
   NoProfile --> NoRegion : 既定のリージョンがないプロファイルを選ぶ
   NoProfile --> Connected : 既定のリージョンがあるプロファイルを選ぶ
   NoRegion --> Connected : リージョンを選ぶ
+  NoRegion --> Connected : 既定のリージョンがあるプロファイルに変える
+  NoRegion --> NoRegion : 既定のリージョンがないプロファイルに変える
   Connected --> Confirming : 接続を変える（表示中のログあり）
-  Connected --> Connected : 接続を変える（表示中のログなし）
-  Confirming --> Connected : 変える（ログを消して新しい接続へ）
+  Connected --> Connected : 接続を変える（ログなし、新しい接続のリージョンが決まる）
+  Connected --> NoRegion : 既定のリージョンがないプロファイルに変える（ログなし）
+  Confirming --> Connected : 変える（ログを消し、新しい接続のリージョンが決まる）
+  Confirming --> NoRegion : 変える（ログを消し、新しいプロファイルに既定のリージョンがない）
   Confirming --> Connected : キャンセル（元の接続のまま）
 ```
 
-<!-- Text fallback: 起動時はプロファイル未選択（NoProfile）。既定のリージョンがないプロファイルを選ぶとリージョン未選択（NoRegion）、あるプロファイルを選ぶか、リージョンを選ぶと接続が決まる（Connected）。接続が決まった状態で接続を変えると、表示中のログがあれば確認中（Confirming）になり、変えるなら新しい接続、キャンセルなら元の接続に戻る。表示中のログがなければ確認なしで新しい接続になる。新しい接続でリージョンが決まらない場合は NoRegion に戻る。 -->
+<!-- Text fallback: 起動時はプロファイル未選択（NoProfile）。既定のリージョンがないプロファイルを選ぶとリージョン未選択（NoRegion）、あるプロファイルを選ぶか、リージョンを選ぶと接続が決まる（Connected）。NoRegion のままプロファイルを変えると、既定のリージョンがあれば Connected、なければ NoRegion のまま。Connected で接続を変えると、表示中のログがあれば確認中（Confirming）になり、変えるなら新しい接続（リージョンが決まれば Connected、新しいプロファイルに既定のリージョンがなければ NoRegion）、キャンセルなら元の接続のまま Connected。表示中のログがなければ確認なしで新しい接続になり、同じくリージョンが決まれば Connected、決まらなければ NoRegion。 -->
 
 | 状態 | プロファイル・リージョンの欄 | ロググループ一覧 | [Fetch] |
 |------|------------------------------|------------------|---------|
@@ -106,7 +110,21 @@ stateDiagram-v2
 | Connected | 操作できる（取得中は無効） | 読み込み中・一覧・途中まで・0 件 | ロググループを選び、U1 の検証を通れば押せる |
 | Confirming | 無効（ダイアログだけ操作できる） | そのまま | 押せない |
 
-SessionState.phase の遷移（Idle・Fetching・Done・Failed）は U1 のまま。Fetching の間は、上の表の操作もすべて無効になる（BR2.6）。
+SessionState.phase の遷移（Idle・Fetching・Done・Failed）は U1 のままで、U2 では「接続の変更を適用したら Done または Failed から Idle に戻る」遷移を 1 本足す（BR2.4）。Fetching の間は接続を変えられないため、Fetching からこの遷移はない。Fetching の間は、上の表の操作もすべて無効になる（BR2.6）。
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Fetching : Fetch（検証を通ったとき）
+  Done --> Fetching : Fetch（検証を通ったとき）
+  Failed --> Fetching : Fetch（検証を通ったとき）
+  Fetching --> Done : 最後のページまで取得
+  Fetching --> Failed : エラー
+  Done --> Idle : 接続の変更を適用（U2 で足す）
+  Failed --> Idle : 接続の変更を適用（U2 で足す）
+```
+
+<!-- Text fallback: U1 の phase の遷移（Idle・Done・Failed から検証を通れば Fetch で Fetching、Fetching から Done か Failed）に、U2 で Done・Failed から接続の変更の適用で Idle に戻る遷移を足す。 -->
 
 ## 4. 画面（U2 で足すもの）
 
@@ -114,9 +132,9 @@ U2 の種類は service のため、frontend-components.md は作らない。U2 
 
 | 部分 | 内容 |
 |------|------|
-| 上部バー | プロファイルの選択（先頭は「既定の設定（SDK に任せる）」）、リージョンの選択。未選択の状態を持つ |
+| 上部バー | プロファイルの選択（先頭は「既定の設定（SDK に任せる）」）、リージョンの選択。未選択の状態を持つ。設定ファイルを読めなかったときの知らせをプロファイルの欄の近くに出す（BR1.3） |
 | 左ペイン | 絞り込みの欄、[再読み込み]、ロググループ一覧（1 つだけ選べる）、読み込み中・途中まで（種類名と安全な詳細）・0 件・うながしの文言 |
-| 入力欄 | U1 のプロファイル名とロググループ名の手入力欄をなくす。ストリーム名と日時は U1 のまま |
+| 入力欄 | U1 のプロファイル名とロググループ名の手入力欄をなくす。選択中のロググループ名（未選択なら「未選択」）を、ストリーム名の入力欄の近くに常に表示する（BR3.8）。ストリーム名と日時は U1 のまま |
 | 確認ダイアログ | 「表示中のログが消えます。変えてよいですか？」と [変える]・[キャンセル]。開いたときのフォーカスは [キャンセル]、Escape で閉じる |
 
 画面は U1 と同じく、AppSession の状態を表示し、操作を伝えるだけにする（ADR-001）。
@@ -128,13 +146,14 @@ erDiagram
   SessionState ||--|| ConnectionSelection : holds
   SessionState ||--o| LogGroupListing : refers
   SessionState ||--o| PendingConnectionChange : holds
+  SessionState ||--|| LogGroupFilter : holds
   ConnectionSelection }o--o| ConnectionProfile : selects
   ConnectionSelection }o--o| RegionOption : selects
   LogGroupListing ||--o{ LogGroup : contains
   LogGroupListing ||--o| ApiFailure : refers
 ```
 
-<!-- Text fallback: SessionState は ConnectionSelection を 1 つ持ち、直近の LogGroupListing を 0〜1 つ参照し、確認待ちの PendingConnectionChange を 0〜1 つ持つ。ConnectionSelection は ConnectionProfile と RegionOption をそれぞれ 0〜1 つ選ぶ。LogGroupListing は LogGroup を 0 件以上持ち、ApiFailure を 0〜1 つ参照する。LogGroupFilter は絞り込みの条件で、LogGroupListing の表示を絞る。 -->
+<!-- Text fallback: SessionState は ConnectionSelection を 1 つ持ち、直近の LogGroupListing を 0〜1 つ参照し、確認待ちの PendingConnectionChange を 0〜1 つ持つ。ConnectionSelection は ConnectionProfile と RegionOption をそれぞれ 0〜1 つ選ぶ。LogGroupListing は LogGroup を 0 件以上持ち、ApiFailure を 0〜1 つ参照する。SessionState は絞り込みの条件 LogGroupFilter を 1 つ持ち、LogGroupListing の表示を絞る。 -->
 
 ## 6. ルールの要約（rules.md から写したもの）
 

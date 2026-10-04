@@ -158,6 +158,8 @@ entities:
         type: text
         required: false
     constraints:
+      - proposedProfile と proposedRegionCode の少なくとも一方を持つ（プロファイルを変えるなら proposedProfile、リージョンだけを変えるなら proposedRegionCode）
+      - プロファイルを変える場合のリージョンは持たず、適用するときに BR2.2 で決める
       - 確認を待っている間は、ほかの接続の変更と [Fetch] を受け付けない（BR2.5）
       - 同時に 1 つだけ
     relationships: []
@@ -179,8 +181,19 @@ entities:
         type: reference
         references: PendingConnectionChange
         required: false
+      - name: currentListing
+        type: reference
+        references: LogGroupListing
+        required: false
+        constraints: いまの接続のロググループ一覧。接続が未決のときは持たない（BR2.3、BR3.6）
+      - name: logGroupFilter
+        type: reference
+        references: LogGroupFilter
+        required: true
+        constraints: 接続の変更・再読み込みでも消さない（BR3.7）
     constraints:
       - phase が Fetching の間は、connection・selectedLogGroupName を変えられない（BR2.6）
+      - 接続の変更を適用したら phase を Idle に戻す（BR2.4）
     relationships:
       - target: ConnectionSelection
         cardinality: 1..1
@@ -188,6 +201,9 @@ entities:
       - target: LogGroupListing
         cardinality: 0..1
         direction: SessionState が直近の一覧を参照する
+      - target: LogGroupFilter
+        cardinality: 1..1
+        direction: SessionState が持つ（絞り込みの条件は LogGroupBrowser が解釈する）
 
   - name: FetchRequest
     owner: AppSession

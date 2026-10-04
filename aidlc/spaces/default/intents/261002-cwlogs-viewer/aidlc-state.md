@@ -46,6 +46,8 @@
 
 
 
+- **Construction Verification Command**: cargo test --workspace && npx vitest run && cargo build -p local-sights
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 

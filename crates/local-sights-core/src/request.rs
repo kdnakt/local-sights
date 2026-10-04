@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::catalog::ProfileSelector;
 use crate::time_range::{TimeRange, parse_utc_seconds};
 
 /// Maximum length (characters) of a log group or log stream name.
@@ -15,7 +16,8 @@ pub const MAX_NAME_LEN: usize = 512;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchInput {
-    /// AWS profile name; blank means "SDK default" (BR1.5).
+    /// AWS profile name; blank means "SDK default" (U1:BR1.5). Used by the
+    /// `fetch_check` example; the screen selects a profile instead (U2).
     pub profile_name: String,
     /// Log group name (required).
     pub log_group_name: String,
@@ -46,10 +48,11 @@ pub enum ValidationError {
     RangeOrder,
 }
 
-/// Validated, trimmed conditions of one fetch (one stream in U1).
+/// Validated, trimmed conditions of one fetch (one stream).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchRequest {
-    profile_name: Option<String>,
+    profile: ProfileSelector,
+    region: Option<String>,
     log_group_name: String,
     log_stream_name: String,
 }
@@ -92,20 +95,41 @@ impl ValidationError {
 impl FetchRequest {
     /// Builds a request directly; prefer [`validate_fetch_input`].
     pub fn new(
-        profile_name: Option<String>,
+        profile: ProfileSelector,
+        region: Option<String>,
         log_group_name: String,
         log_stream_name: String,
     ) -> Self {
         Self {
-            profile_name,
+            profile,
+            region,
             log_group_name,
             log_stream_name,
         }
     }
 
-    /// Profile name, or `None` to use the SDK default (BR1.5).
+    /// The same request with the connection chosen on the screen: the
+    /// selected profile and region are always passed (U2:BR2.8).
+    pub fn with_connection(mut self, profile: ProfileSelector, region: String) -> Self {
+        self.profile = profile;
+        self.region = Some(region);
+        self
+    }
+
+    /// The profile (SdkDefault: let the SDK decide, U1:BR1.5).
+    pub fn profile(&self) -> &ProfileSelector {
+        &self.profile
+    }
+
+    /// Profile name, or `None` to use the SDK default (U1:BR1.5).
     pub fn profile_name(&self) -> Option<&str> {
-        self.profile_name.as_deref()
+        self.profile.profile_name()
+    }
+
+    /// Region to connect to; `None` means the profile's default region
+    /// (only the `fetch_check` example omits it, U2:BR2.8).
+    pub fn region(&self) -> Option<&str> {
+        self.region.as_deref()
     }
 
     /// Log group name.
@@ -157,7 +181,8 @@ pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<Va
         (Some(log_group), Some(log_stream), Some(range)) if errors.is_empty() => {
             Ok(ValidatedFetch {
                 request: FetchRequest::new(
-                    normalize_profile(&input.profile_name),
+                    ProfileSelector::from_optional_name(Some(&input.profile_name)),
+                    None,
                     log_group,
                     log_stream,
                 ),
@@ -181,12 +206,6 @@ fn record_error<T, E>(
             None
         }
     }
-}
-
-/// Trims the profile name; blank means "use the SDK default" (BR1.5).
-fn normalize_profile(raw: &str) -> Option<String> {
-    let profile = raw.trim();
-    (!profile.is_empty()).then(|| profile.to_string())
 }
 
 /// Trims a required name and checks it is present and not too long.
@@ -292,6 +311,33 @@ mod tests {
             validate_fetch_input(&input).unwrap().request.profile_name(),
             None
         );
+    }
+
+    #[test]
+    fn profile_argument_maps_to_sdk_default_or_named_without_region() {
+        let mut input = valid_input();
+        input.profile_name = String::new();
+        let request = validate_fetch_input(&input).unwrap().request;
+        assert_eq!(request.profile(), &ProfileSelector::SdkDefault);
+        assert_eq!(request.region(), None);
+        input.profile_name = "dev".to_string();
+        let request = validate_fetch_input(&input).unwrap().request;
+        assert_eq!(
+            request.profile(),
+            &ProfileSelector::Named("dev".to_string())
+        );
+        assert_eq!(request.region(), None);
+    }
+
+    #[test]
+    fn screen_connection_replaces_profile_and_sets_region() {
+        let request = validate_fetch_input(&valid_input())
+            .unwrap()
+            .request
+            .with_connection(ProfileSelector::SdkDefault, "eu-west-1".to_string());
+        assert_eq!(request.profile_name(), None);
+        assert_eq!(request.region(), Some("eu-west-1"));
+        assert_eq!(request.log_group_name(), "/aws/lambda/orders");
     }
 
     #[test]

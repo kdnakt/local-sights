@@ -11,18 +11,6 @@ interface FieldSpec {
 
 const FIELDS: readonly FieldSpec[] = [
   {
-    field: "profileName",
-    label: "form.profile.label",
-    placeholder: "form.profile.placeholder",
-    testId: "fetch-form-profile-input",
-  },
-  {
-    field: "logGroupName",
-    label: "form.logGroup.label",
-    placeholder: "form.logGroup.placeholder",
-    testId: "fetch-form-log-group-input",
-  },
-  {
     field: "logStreamName",
     label: "form.logStream.label",
     placeholder: "form.logStream.placeholder",
@@ -50,10 +38,11 @@ export interface FetchFormProps {
 }
 
 /**
- * The five inputs and the Fetch button. Fetch works only when the core says
- * the input is valid; otherwise the reasons are listed. While fetching,
- * every control is disabled (BR1.4). Enter in any input submits the form
- * (BR6.2).
+ * The selected log group (always shown, U2:BR3.8), the stream and time
+ * inputs, and the Fetch button. Fetch works only when the core says the
+ * selection and input are valid; otherwise the reasons are listed. While
+ * fetching, every control is disabled (U1:BR1.4). Enter in any input submits
+ * the form (U1:BR6.2).
  */
 export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
   // Local drafts keep typing responsive; every change is forwarded to the
@@ -82,6 +71,15 @@ export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
       onSubmit={handleSubmit}
     >
       <div className="fetch-form-fields">
+        <div className="fetch-form-field">
+          <span>{t("form.selectedLogGroup.label")}</span>
+          <output
+            className="fetch-form-selected-log-group"
+            data-testid="fetch-form-selected-log-group"
+          >
+            {session.selectedLogGroupName ?? t("form.selectedLogGroup.none")}
+          </output>
+        </div>
         {FIELDS.map((spec) => (
           <label key={spec.field} className="fetch-form-field">
             <span>{t(spec.label)}</span>

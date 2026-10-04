@@ -6,14 +6,18 @@ use std::sync::Mutex;
 
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use local_sights_core::gateway::{
-    CloudWatchLogsGateway, GatewayEvent, GetLogEventsPage, GetLogEventsRequest,
+    CloudWatchLogsGateway, DescribeLogGroupsPage, DescribeLogGroupsRequest, GatewayEvent,
+    GetLogEventsPage, GetLogEventsRequest,
 };
+use local_sights_core::log_groups::LogGroup;
 
 /// Scripted gateway.
 #[derive(Debug, Default)]
 pub struct FakeGateway {
     responses: Mutex<VecDeque<Result<GetLogEventsPage, ApiFailure>>>,
     calls: Mutex<Vec<GetLogEventsRequest>>,
+    group_responses: Mutex<VecDeque<Result<DescribeLogGroupsPage, ApiFailure>>>,
+    group_calls: Mutex<Vec<DescribeLogGroupsRequest>>,
     connect_failure: Option<ApiFailure>,
 }
 
@@ -24,6 +28,20 @@ impl FakeGateway {
             responses: Mutex::new(responses.into()),
             ..Self::default()
         }
+    }
+
+    /// A gateway that answers `DescribeLogGroups` with `responses`, one per
+    /// call (U2).
+    pub fn with_log_group_pages(responses: Vec<Result<DescribeLogGroupsPage, ApiFailure>>) -> Self {
+        Self {
+            group_responses: Mutex::new(responses.into()),
+            ..Self::default()
+        }
+    }
+
+    /// `DescribeLogGroups` requests that reached the (fake) API, in order.
+    pub fn group_calls(&self) -> Vec<DescribeLogGroupsRequest> {
+        self.group_calls.lock().unwrap().clone()
     }
 
     /// A gateway whose connection target cannot be resolved: every call
@@ -56,6 +74,39 @@ impl CloudWatchLogsGateway for FakeGateway {
             .pop_front()
             .expect("FakeGateway received more calls than scripted responses")
     }
+
+    async fn describe_log_groups(
+        &self,
+        request: DescribeLogGroupsRequest,
+    ) -> Result<DescribeLogGroupsPage, ApiFailure> {
+        if let Some(failure) = &self.connect_failure {
+            return Err(failure.clone());
+        }
+        self.group_calls.lock().unwrap().push(request);
+        self.group_responses
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("FakeGateway received more DescribeLogGroups calls than scripted")
+    }
+}
+
+/// A `DescribeLogGroups` page with the given names and next token.
+pub fn group_page(
+    names: &[&str],
+    token: Option<&str>,
+) -> Result<DescribeLogGroupsPage, ApiFailure> {
+    Ok(DescribeLogGroupsPage {
+        groups: names
+            .iter()
+            .map(|name| LogGroup {
+                log_group_name: (*name).to_string(),
+                arn: None,
+                creation_time: None,
+            })
+            .collect(),
+        next_token: token.map(str::to_string),
+    })
 }
 
 /// A page with events `(timestamp, message)` and an optional forward token.

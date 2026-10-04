@@ -58,6 +58,7 @@ where
     loop {
         let call = GetLogEventsRequest {
             profile_name: request.profile_name().map(str::to_string),
+            region: request.region().map(str::to_string),
             log_group_name: request.log_group_name().to_string(),
             log_stream_name: request.log_stream_name().to_string(),
             start_time: fetch.range.start_instant(),

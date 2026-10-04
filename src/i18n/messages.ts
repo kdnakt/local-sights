@@ -10,10 +10,8 @@ export type Locale = "en" | "ja";
 export const messages = {
   "app.title": { en: "local-sights", ja: "local-sights" },
   "form.label": { en: "Fetch conditions", ja: "取得条件" },
-  "form.profile.label": { en: "Profile", ja: "プロファイル" },
-  "form.profile.placeholder": { en: "(SDK default)", ja: "（SDK の既定）" },
-  "form.logGroup.label": { en: "Log group", ja: "ロググループ" },
-  "form.logGroup.placeholder": { en: "/aws/lambda/my-function", ja: "/aws/lambda/my-function" },
+  "form.selectedLogGroup.label": { en: "Log group", ja: "ロググループ" },
+  "form.selectedLogGroup.none": { en: "Not selected", ja: "未選択" },
   "form.logStream.label": { en: "Log stream", ja: "ストリーム" },
   "form.logStream.placeholder": {
     en: "2024/01/02/[$LATEST]0123456789abcdef",
@@ -53,6 +51,76 @@ export const messages = {
     ja: "開始日時は終了日時より前にしてください。",
   },
   "session.busy": { en: "A fetch is in progress.", ja: "取得中です。" },
+  "session.confirmationPending": {
+    en: "Answer the confirmation first.",
+    ja: "先に確認に答えてください。",
+  },
+  "session.notConnected": {
+    en: "Choose a profile and a region first.",
+    ja: "先にプロファイルとリージョンを選んでください。",
+  },
+  "session.unknownProfile": {
+    en: "That profile is not in the list.",
+    ja: "そのプロファイルは一覧にありません。",
+  },
+  "session.unknownRegion": {
+    en: "That region is not in the list.",
+    ja: "そのリージョンは一覧にありません。",
+  },
+  "session.unknownLogGroup": {
+    en: "That log group is not in the list.",
+    ja: "そのロググループは一覧にありません。",
+  },
+  "session.nothingPending": {
+    en: "There is no change to confirm.",
+    ja: "確認する変更はありません。",
+  },
+  "selection.profileRequired": { en: "Choose a profile.", ja: "プロファイルを選んでください。" },
+  "selection.regionRequired": { en: "Choose a region.", ja: "リージョンを選んでください。" },
+  "selection.logGroupRequired": {
+    en: "Choose a log group.",
+    ja: "ロググループを選んでください。",
+  },
+  "connection.label": { en: "Connection", ja: "接続" },
+  "connection.profile.label": { en: "Profile", ja: "プロファイル" },
+  "connection.profile.placeholder": { en: "Choose a profile", ja: "プロファイルを選択" },
+  "connection.profile.sdkDefault": {
+    en: "Default settings (left to the SDK)",
+    ja: "既定の設定（SDK に任せる）",
+  },
+  "connection.region.label": { en: "Region", ja: "リージョン" },
+  "connection.region.placeholder": { en: "Choose a region", ja: "リージョンを選択" },
+  "catalog.unreadable.config": {
+    en: "The AWS config file could not be read; its profiles are not listed.",
+    ja: "AWS の config ファイルを読めませんでした。そのプロファイルは一覧にありません。",
+  },
+  "catalog.unreadable.credentials": {
+    en: "The AWS credentials file could not be read; its profiles are not listed.",
+    ja: "AWS の credentials ファイルを読めませんでした。そのプロファイルは一覧にありません。",
+  },
+  "logGroups.label": { en: "Log groups", ja: "ロググループ" },
+  "logGroups.filter.label": { en: "Filter", ja: "絞り込み" },
+  "logGroups.filter.placeholder": { en: "Part of a name", ja: "名前の一部" },
+  "logGroups.reload": { en: "Reload", ja: "再読み込み" },
+  "logGroups.loading": { en: "Loading…", ja: "読み込み中…" },
+  "logGroups.partial": {
+    en: "The list is incomplete: {kind}",
+    ja: "一覧は途中までです：{kind}",
+  },
+  "logGroups.empty.noGroups": { en: "There are no log groups.", ja: "ロググループがありません。" },
+  "logGroups.empty.noMatches": {
+    en: "No log groups match.",
+    ja: "一致するロググループがありません。",
+  },
+  "logGroups.prompt.profile": { en: "Choose a profile.", ja: "プロファイルを選んでください。" },
+  "logGroups.prompt.region": { en: "Choose a region.", ja: "リージョンを選んでください。" },
+  "confirm.title": { en: "Change the connection?", ja: "接続を変えますか？" },
+  "confirm.message": {
+    en: "The logs shown will be cleared. Change the connection?",
+    ja: "表示中のログが消えます。変えてよいですか？",
+  },
+  "confirm.change": { en: "Change", ja: "変える" },
+  "confirm.cancel": { en: "Cancel", ja: "キャンセル" },
   "session.invalid": {
     en: "The fetch conditions are not valid.",
     ja: "取得条件が正しくありません。",

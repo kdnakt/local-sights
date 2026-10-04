@@ -9,7 +9,30 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type Phase = "Idle" | "Fetching" | "Done" | "Failed";
 
-export type InputField = "profileName" | "logGroupName" | "logStreamName" | "startText" | "endText";
+/** Typed fields; the profile and log group are selected from lists (U2). */
+export type InputField = "logStreamName" | "startText" | "endText";
+
+export type ProfileSelector = { kind: "SdkDefault" } | { kind: "Named"; profileName: string };
+
+export interface ConnectionProfile {
+  kind: "SdkDefault" | "Named";
+  profileName: string | null;
+  defaultRegion: string | null;
+}
+
+export interface ConnectionSelection {
+  profile: ProfileSelector | null;
+  region: string | null;
+}
+
+export interface PendingConnectionChange {
+  proposedProfile: ProfileSelector | null;
+  proposedRegion: string | null;
+}
+
+export type ListingStatus = "Loading" | "Complete" | "Partial";
+
+export type EmptyState = "NoGroups" | "NoMatches";
 
 export type FailureKind =
   | "AuthRequired"
@@ -44,6 +67,15 @@ export interface JobSummary {
   failure: ApiFailure | null;
 }
 
+export interface LogGroupListView {
+  status: ListingStatus;
+  /** Names that pass the filter, ascending. */
+  visibleGroups: string[];
+  totalCount: number;
+  emptyState: EmptyState | null;
+  failure: ApiFailure | null;
+}
+
 export interface SessionView {
   sessionId: string;
   phase: Phase;
@@ -54,6 +86,19 @@ export interface SessionView {
   currentJobId: string | null;
   eventCount: number;
   lastJob: JobSummary | null;
+  profiles: ConnectionProfile[];
+  regions: string[];
+  /** Message keys of the "could not read" notices (file kind only). */
+  catalogNotices: string[];
+  connection: ConnectionSelection;
+  pendingChange: PendingConnectionChange | null;
+  logGroups: LogGroupListView | null;
+  logGroupFilter: string;
+  selectedLogGroupName: string | null;
+  canChangeConnection: boolean;
+  canReload: boolean;
+  /** Changes when a connection change discards the shown logs. */
+  timelineGeneration: number;
 }
 
 export interface LogEvent {
@@ -101,6 +146,48 @@ export function updateInput(field: InputField, value: string): Promise<SessionVi
  */
 export function startFetch(): Promise<void> {
   return invoke<void>("start_fetch");
+}
+
+/** Chooses a profile. The new state arrives through `session-changed`. */
+export function selectProfile(profile: ProfileSelector): Promise<void> {
+  return invoke<void>("select_profile", { profile });
+}
+
+/** Chooses a region. */
+export function selectRegion(region: string): Promise<void> {
+  return invoke<void>("select_region", { region });
+}
+
+/** Applies the connection change awaiting confirmation. */
+export function confirmConnectionChange(): Promise<void> {
+  return invoke<void>("confirm_connection_change");
+}
+
+/** Drops the connection change awaiting confirmation. */
+export function cancelConnectionChange(): Promise<void> {
+  return invoke<void>("cancel_connection_change");
+}
+
+/** Lists the log groups of the current connection again. */
+export function reloadLogGroups(): Promise<void> {
+  return invoke<void>("reload_log_groups");
+}
+
+/** Changes the log group filter text. */
+export function updateLogGroupFilter(text: string): Promise<void> {
+  return invoke<void>("update_log_group_filter", { text });
+}
+
+/** Selects one log group. */
+export function selectLogGroup(name: string): Promise<void> {
+  return invoke<void>("select_log_group", { name });
+}
+
+/** The selector that identifies a profile row. */
+export function selectorOf(profile: ConnectionProfile): ProfileSelector {
+  return profile.kind === "Named" && profile.profileName !== null
+    ? { kind: "Named", profileName: profile.profileName }
+    : { kind: "SdkDefault" };
 }
 
 export function onSessionChanged(handler: (view: SessionView) => void): Promise<UnlistenFn> {

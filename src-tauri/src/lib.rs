@@ -2,19 +2,30 @@
 //!
 //! This crate stays thin: every decision lives in `local-sights-core`.
 //! Operations arrive as Tauri commands (`get_session`, `update_input`,
-//! `start_fetch`); state changes are pushed to the screen with the
-//! `session-changed` event and each fetched page with the `log-batch` event.
+//! `start_fetch` and, since U2, the connection and log group commands);
+//! state changes, including the log group list, are pushed to the screen
+//! with the `session-changed` event and each fetched page of log events
+//! with the `log-batch` event. Commands that change state return nothing:
+//! their result arrives as an event, so a late response never overwrites
+//! newer state.
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use local_sights_core::catalog::ProfileSelector;
+use local_sights_core::catalog::files::load_catalog;
 use local_sights_core::coordinator::{FetchJob, FetchSink, JobStatus, run_fetch};
 use local_sights_core::event::LogEvent;
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
-use local_sights_core::gateway::GET_LOG_EVENTS;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::session::{AppSession, InputField, SessionError, SessionView};
+use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
+use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
+use local_sights_core::log_groups::{ListingStatus, LogGroup};
+use local_sights_core::paging::PageDecision;
+use local_sights_core::session::{
+    AppSession, ConnectionEffect, InputField, SessionError, SessionView,
+};
 use local_sights_core::timeline::EventTimeline;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -25,11 +36,22 @@ pub const SESSION_CHANGED: &str = "session-changed";
 pub const LOG_BATCH: &str = "log-batch";
 
 /// Shared state of the app.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct AppState {
     session: Arc<Mutex<AppSession>>,
     timeline: Arc<tokio::sync::Mutex<EventTimeline>>,
     gateway: Arc<AwsCloudWatchLogsGateway>,
+}
+
+impl AppState {
+    /// Reads the shared AWS config files once at startup (U2:BR1.1-BR1.3).
+    fn load() -> Self {
+        Self {
+            session: Arc::new(Mutex::new(AppSession::with_catalog(load_catalog()))),
+            timeline: Arc::default(),
+            gateway: Arc::default(),
+        }
+    }
 }
 
 /// Payload of [`LOG_BATCH`].
@@ -74,7 +96,7 @@ fn get_session(state: State<'_, AppState>) -> SessionView {
     lock_session(&state.session).view()
 }
 
-/// Changes one input field; refused while fetching (BR1.4).
+/// Changes the stream name or a time; refused while fetching (U1:BR1.4).
 #[tauri::command]
 fn update_input(
     field: InputField,
@@ -147,6 +169,197 @@ fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended
     emit_or_log(app, SESSION_CHANGED, view);
 }
 
+/// Runs a session operation that may change the connection, pushes the new
+/// state, then performs the effect: clear the shown logs (U2:BR2.4) and/or
+/// start a log group listing (U2:BR2.3, BR3.5).
+fn change_connection(
+    app: &AppHandle,
+    state: &AppState,
+    operation: impl FnOnce(&mut AppSession) -> Result<ConnectionEffect, SessionError>,
+) -> Result<(), CommandError> {
+    let (effect, view) = {
+        let mut session = lock_session(&state.session);
+        let effect = operation(&mut session)?;
+        (effect, session.view())
+    };
+    emit_or_log(app, SESSION_CHANGED, view);
+    if effect.logs_cleared {
+        let timeline = Arc::clone(&state.timeline);
+        tauri::async_runtime::spawn(async move {
+            timeline.lock().await.clear();
+        });
+    }
+    if let Some(request) = effect.listing {
+        start_listing(app, state, request);
+    }
+    Ok(())
+}
+
+/// Lists log groups in the background; each page updates the session and
+/// pushes `session-changed`. If the task ends without finishing a listing
+/// that is still current, the listing is marked Partial (kind Other).
+fn start_listing(app: &AppHandle, state: &AppState, request: ListingRequest) {
+    let session = Arc::clone(&state.session);
+    let gateway = Arc::clone(&state.gateway);
+    let mut sink = TauriListingSink {
+        app: app.clone(),
+        session: Arc::clone(&session),
+    };
+    let task_request = request.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        run_listing(gateway.as_ref(), &task_request, &mut sink).await;
+    });
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let ended_normally = task.await.is_ok();
+        let view = {
+            let mut session = lock_session(&session);
+            let still_loading = session.is_current_listing(&request.listing_id)
+                && session.listing().map(|l| l.status()) == Some(ListingStatus::Loading);
+            if !still_loading {
+                return;
+            }
+            let failure = ApiFailure::new(
+                FailureKind::Other,
+                &SafeDetailFields {
+                    api_name: Some(DESCRIBE_LOG_GROUPS.to_string()),
+                    ..SafeDetailFields::default()
+                },
+            );
+            session.apply_listing_failure(&request.listing_id, failure);
+            session.view()
+        };
+        let how = if ended_normally {
+            "without a result"
+        } else {
+            "abnormally"
+        };
+        eprintln!("local-sights: the log group listing ended {how}; it was marked as partial");
+        emit_or_log(&app, SESSION_CHANGED, view);
+    });
+}
+
+/// Chooses a profile (U2:BR2.2, BR2.5).
+#[tauri::command]
+fn select_profile(
+    profile: ProfileSelector,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_connection(&app, &state, |session| session.select_profile(profile))
+}
+
+/// Chooses a region (U2:BR2.3, BR2.5).
+#[tauri::command]
+fn select_region(
+    region: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_connection(&app, &state, |session| session.select_region(region))
+}
+
+/// Applies the connection change awaiting confirmation (U2:BR2.5).
+#[tauri::command]
+fn confirm_connection_change(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_connection(&app, &state, AppSession::confirm_connection_change)
+}
+
+/// Drops the connection change awaiting confirmation (U2:BR2.5).
+#[tauri::command]
+fn cancel_connection_change(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_connection(&app, &state, |session| {
+        session.cancel_connection_change()?;
+        Ok(ConnectionEffect::default())
+    })
+}
+
+/// Lists the log groups of the current connection again (U2:BR3.5).
+#[tauri::command]
+fn reload_log_groups(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    change_connection(&app, &state, |session| {
+        let listing = session.reload_log_groups()?;
+        Ok(ConnectionEffect {
+            listing: Some(listing),
+            ..ConnectionEffect::default()
+        })
+    })
+}
+
+/// Changes the log group filter (U2:BR3.7).
+#[tauri::command]
+fn update_log_group_filter(
+    text: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_connection(&app, &state, |session| {
+        session.update_log_group_filter(text);
+        Ok(ConnectionEffect::default())
+    })
+}
+
+/// Selects one log group (U2:BR3.8).
+#[tauri::command]
+fn select_log_group(
+    name: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_connection(&app, &state, |session| {
+        session.select_log_group(name)?;
+        Ok(ConnectionEffect::default())
+    })
+}
+
+/// Applies listing pages to the session and pushes the new state.
+struct TauriListingSink {
+    app: AppHandle,
+    session: Arc<Mutex<AppSession>>,
+}
+
+impl ListingSink for TauriListingSink {
+    fn is_current(&self, listing_id: &str) -> bool {
+        lock_session(&self.session).is_current_listing(listing_id)
+    }
+
+    fn on_page(
+        &mut self,
+        listing_id: &str,
+        groups: Vec<LogGroup>,
+        next_token: Option<&str>,
+    ) -> Option<PageDecision> {
+        let (decision, view) = {
+            let mut session = lock_session(&self.session);
+            let decision = session.apply_listing_page(listing_id, groups, next_token)?;
+            (decision, session.view())
+        };
+        emit_or_log(&self.app, SESSION_CHANGED, view);
+        Some(decision)
+    }
+
+    fn on_failure(&mut self, listing_id: &str, failure: ApiFailure) -> bool {
+        // Safe detail only: built from allow-listed fields and redacted.
+        let detail = failure.safe_detail().to_string();
+        let view = {
+            let mut session = lock_session(&self.session);
+            if !session.apply_listing_failure(listing_id, failure) {
+                return false;
+            }
+            session.view()
+        };
+        eprintln!("local-sights: log group listing failed: {detail}");
+        emit_or_log(&self.app, SESSION_CHANGED, view);
+        true
+    }
+}
+
 /// Forwards fetch progress to AppSession and to the screen.
 struct TauriSink {
     app: AppHandle,
@@ -196,11 +409,18 @@ impl FetchSink for TauriSink {
 /// Returns the Tauri error when the app cannot be built or run.
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
-        .manage(AppState::default())
+        .manage(AppState::load())
         .invoke_handler(tauri::generate_handler![
             get_session,
             update_input,
-            start_fetch
+            start_fetch,
+            select_profile,
+            select_region,
+            confirm_connection_change,
+            cancel_connection_change,
+            reload_log_groups,
+            update_log_group_filter,
+            select_log_group
         ])
         .run(tauri::generate_context!())
 }

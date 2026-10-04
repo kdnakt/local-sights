@@ -11,6 +11,12 @@
 //!   --start "yyyy-mm-dd hh:mm:ss" --end "yyyy-mm-dd hh:mm:ss"
 //! ```
 //!
+//! Connection (U2, review R-11): without `--profile` the fetch uses the
+//! "default settings" profile (`ProfileSelector::SdkDefault`); with
+//! `--profile NAME` it uses that named profile (`ProfileSelector::Named`).
+//! There is no region argument: the profile's default region is used, as in
+//! U1 (U2:BR2.8, U1:BR1.6).
+//!
 //! Standard output: one event per line, `UTC time<TAB>message on one line`.
 //! Standard error: the event and page counts, or the failure kind and its
 //! safe detail. Exit codes: 0 success, 1 fetch failed, 2 invalid arguments.
@@ -37,6 +43,8 @@ async fn main() -> ExitCode {
         Ok(input) => input,
         Err(message) => return usage_error(&[message]),
     };
+    // The shared validation maps a missing or blank --profile to SdkDefault
+    // and a name to Named, and leaves the region unset (R-11).
     let validated = match validate_fetch_input(&input) {
         Ok(validated) => validated,
         Err(errors) => {

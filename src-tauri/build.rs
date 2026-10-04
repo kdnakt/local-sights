@@ -8,6 +8,13 @@ fn main() {
             "get_session",
             "update_input",
             "start_fetch",
+            "select_profile",
+            "select_region",
+            "confirm_connection_change",
+            "cancel_connection_change",
+            "reload_log_groups",
+            "update_log_group_filter",
+            "select_log_group",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

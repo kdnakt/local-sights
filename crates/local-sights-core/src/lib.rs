@@ -8,13 +8,26 @@
 
 #![warn(missing_docs)]
 
+pub mod catalog;
+pub mod connection;
 pub mod coordinator;
 pub mod event;
 pub mod failure;
 pub mod fetcher;
 pub mod gateway;
+pub mod log_groups;
 pub mod paging;
 pub mod request;
 pub mod session;
 pub mod time_range;
 pub mod timeline;
+
+/// Test-only helpers shared across modules.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::Mutex;
+
+    /// Serializes the unit tests that change process environment variables,
+    /// so they never run concurrently with each other.
+    pub(crate) static ENV_LOCK: Mutex<()> = Mutex::new(());
+}

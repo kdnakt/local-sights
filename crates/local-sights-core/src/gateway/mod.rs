@@ -1,8 +1,9 @@
 //! CloudWatchLogsGateway: the only boundary through which AWS is reached.
 //!
-//! In U1 the boundary exposes a single operation, `GetLogEvents` (BR3.4).
-//! There is deliberately no way to call any other API through it
-//! (project.md Forbidden: read-only APIs only). Tests replace the AWS
+//! The boundary exposes only read-only operations: `GetLogEvents` (U1:BR3.4)
+//! and, since U2, `DescribeLogGroups` (U2:BR3.9). There is deliberately no
+//! way to call any other API through it (project.md Forbidden: read-only
+//! APIs only). Tests replace the AWS
 //! implementation with a fake and never connect to AWS.
 
 pub mod aws;
@@ -13,15 +14,20 @@ use std::future::Future;
 use serde::Serialize;
 
 use crate::failure::ApiFailure;
+use crate::log_groups::LogGroup;
 
-/// Name of the only API operation used in U1.
+/// API name of `GetLogEvents`.
 pub const GET_LOG_EVENTS: &str = "GetLogEvents";
+/// API name of `DescribeLogGroups`.
+pub const DESCRIBE_LOG_GROUPS: &str = "DescribeLogGroups";
 
 /// Arguments of one `GetLogEvents` call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetLogEventsRequest {
     /// Profile used to resolve the connection target (`None`: SDK default).
     pub profile_name: Option<String>,
+    /// Region to connect to (`None`: the profile's default region).
+    pub region: Option<String>,
     /// Log group name.
     pub log_group_name: String,
     /// Log stream name.
@@ -56,6 +62,27 @@ pub struct GetLogEventsPage {
     pub next_forward_token: Option<String>,
 }
 
+/// Arguments of one `DescribeLogGroups` call. Only the next token is passed
+/// to the API; filtering happens on the fetched list (U2:BR3.9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DescribeLogGroupsRequest {
+    /// Profile (`None`: SDK default).
+    pub profile_name: Option<String>,
+    /// Region to connect to (`None`: the profile's default region).
+    pub region: Option<String>,
+    /// `nextToken` from the previous response (`None` on the first call).
+    pub next_token: Option<String>,
+}
+
+/// One page of `DescribeLogGroups`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DescribeLogGroupsPage {
+    /// Log groups in the order the API returned them.
+    pub groups: Vec<LogGroup>,
+    /// `nextToken`, if any.
+    pub next_token: Option<String>,
+}
+
 /// Connection target resolved for one fetch. Holds no credentials.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,10 +96,17 @@ pub struct ConnectionTarget {
 /// Read-only boundary to CloudWatch Logs.
 pub trait CloudWatchLogsGateway: Send + Sync {
     /// Calls `GetLogEvents` once. Before the first call the implementation
-    /// resolves the connection target; when no region can be found it
-    /// returns a `RegionMissing` failure without calling the API (BR1.6).
+    /// resolves the connection target: the given region, or else the
+    /// profile's default region; when no region can be found it returns a
+    /// `RegionMissing` failure without calling the API (U1:BR1.6).
     fn get_log_events(
         &self,
         request: GetLogEventsRequest,
     ) -> impl Future<Output = Result<GetLogEventsPage, ApiFailure>> + Send;
+
+    /// Calls `DescribeLogGroups` once, passing only the next token.
+    fn describe_log_groups(
+        &self,
+        request: DescribeLogGroupsRequest,
+    ) -> impl Future<Output = Result<DescribeLogGroupsPage, ApiFailure>> + Send;
 }

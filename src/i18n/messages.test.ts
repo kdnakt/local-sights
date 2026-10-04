@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { detectLocale, isMessageKey, messages, translate } from "./messages";
 
-// Keys produced by the Rust core (request.rs, failure.rs, session.rs).
+// Keys produced by the Rust core (request.rs, failure.rs, session.rs, catalog).
 const CORE_KEYS = [
   "validation.logGroupRequired",
   "validation.logGroupTooLong",
@@ -20,6 +20,17 @@ const CORE_KEYS = [
   "failure.kind.Other",
   "session.busy",
   "session.invalid",
+  "session.confirmationPending",
+  "session.notConnected",
+  "session.unknownProfile",
+  "session.unknownRegion",
+  "session.unknownLogGroup",
+  "session.nothingPending",
+  "selection.profileRequired",
+  "selection.regionRequired",
+  "selection.logGroupRequired",
+  "catalog.unreadable.config",
+  "catalog.unreadable.credentials",
 ];
 
 describe("message catalog", () => {

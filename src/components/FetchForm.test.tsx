@@ -53,7 +53,7 @@ describe("FetchForm", () => {
       canFetch: false,
       validationErrors: ["validation.endFormat"],
     });
-    await user.type(screen.getByTestId("fetch-form-log-group-input"), "{Enter}");
+    await user.type(screen.getByTestId("fetch-form-log-stream-input"), "{Enter}");
     expect(onFetch).not.toHaveBeenCalled();
   });
 
@@ -65,12 +65,24 @@ describe("FetchForm", () => {
     expect(screen.getByTestId("fetch-form-log-stream-input")).toHaveValue("ab");
   });
 
-  it("moves through the five inputs and Fetch with Tab", async () => {
+  it("has no profile or log group inputs and always shows the selected log group", () => {
+    renderForm({ selectedLogGroupName: "/aws/lambda/MyFunction" });
+    expect(screen.queryByTestId("fetch-form-profile-input")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("fetch-form-log-group-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("fetch-form-selected-log-group")).toHaveTextContent(
+      "/aws/lambda/MyFunction",
+    );
+  });
+
+  it("says when no log group is selected", () => {
+    renderForm({ selectedLogGroupName: null });
+    expect(screen.getByTestId("fetch-form-selected-log-group")).toHaveTextContent("Not selected");
+  });
+
+  it("moves through the three inputs and Fetch with Tab", async () => {
     const user = userEvent.setup();
     renderForm({ canFetch: true });
     const order = [
-      "fetch-form-profile-input",
-      "fetch-form-log-group-input",
       "fetch-form-log-stream-input",
       "fetch-form-start-input",
       "fetch-form-end-input",

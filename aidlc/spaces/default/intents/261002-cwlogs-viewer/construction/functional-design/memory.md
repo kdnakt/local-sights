@@ -14,7 +14,11 @@
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
 - 2026-10-04T06:19:17Z — [u1-walking-skeleton] 途中でエラーが起きても取得できたページは残して表示する（Q3）; 再試行は U3 まで入らないが、薄い一本の確認で取得結果を失わないことを優先した。
 - 2026-10-04T06:19:17Z — [u1-walking-skeleton] U1 では件数の上限を設けず全件を取得・表示する（Q4）; 大量件数での性能は U3 以降に確かめる。
+- 2026-10-04T12:30:00Z — [u2-connection-selection] 接続を変えるとき、表示中のログがあるときだけ確認ダイアログを出す（Q6 の利用者の追加要望）; 誤操作でログを失うのを防ぐ代わりに、操作が 1 手増える。
+- 2026-10-04T12:30:00Z — [u2-connection-selection] 起動時は何も選ばず、前回の選択も覚えない（Q2）; 設定ファイルを保存しない単純さを取り、起動のたびに選ぶ手間を受け入れた。
 
 ## Open questions
 <!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->
 - 2026-10-04T06:19:17Z — [u1-walking-skeleton] プロファイルに既定のリージョンがない場合は RegionMissing を返す（Q1）。リージョンの選択画面は U2 で扱うかを U2 の機能設計で確かめる。
+- 2026-10-04T12:30:00Z — [u2-connection-selection] 再レビュー（上限の 2 回目）の R-11（確認用プログラムのプロファイル名の引数から ConnectionProfile を作る方法）と R-12（BR1.3 の知らせの内容の書き方の食い違い）は、project.md の「レビュー上限後の指摘は次に回す」に従い機能設計では直さない。U2 のコード生成の計画で扱い方を決める（R-11：引数なし＝SdkDefault、引数あり＝その名前の Named。R-12：知らせにはファイルの種類だけを出す）。
+- 2026-10-04T12:30:00Z — [u2-connection-selection] U1 から持ち越した疑問（リージョンの選択画面）は U2 で解決した（Q3：未選択でうながす）。

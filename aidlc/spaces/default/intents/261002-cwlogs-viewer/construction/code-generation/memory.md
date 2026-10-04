@@ -13,9 +13,13 @@
 
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
+- 2026-10-04T14:30:00Z — [u2-connection-selection] 設定ファイルは寛容に読み、解釈できない行だけを読み飛ばす（機能設計の BR1.3 からの意図した逸脱、人間の判断）; 1 行の崩れで全プロファイルが消えるのを避ける代わりに、崩れたプロファイルは知らせなしに一覧から消える。
+- 2026-10-04T14:30:00Z — [u2-connection-selection] リージョンの一覧は組み込みの静的な一覧にした; ネットワークを使わない代わりに、新しいリージョンは手で足す必要がある。
 - 2026-10-04T08:30:00Z — [u1-walking-skeleton] 伏せ字は、利用者が入力した名前にはアクセスキー ID の形だけ、SDK 由来の項目には 40 文字・100 文字以上の判定も使う形にした（R-02）; 失敗した対象が読めることと、秘密を出さないことの両立。
 - 2026-10-04T08:30:00Z — [u1-walking-skeleton] `src-tauri` には自動テストを置かず、判断をライブラリ側（AppSession）に寄せてテストした; つなぎの部分は GUI の目視で確かめる。
 
 ## Open questions
 <!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->
 - 2026-10-04T08:30:00Z — [u1-walking-skeleton] 画面側のテスト（`npm test`）と `cargo-deny` を CI でどう回すかは CI Pipeline ステージで決める。
+- 2026-10-04T14:30:00Z — [u2-connection-selection] 再レビュー（上限の 2 回目）の R-06（絞り込みと一覧の選択が async コマンドになり、到着順の保証が弱まる）は、project.md の決まりに従い U3 で扱う（同期コマンドに戻すか連番を付ける）。U1 から持ち越した R-06（取得開始時に前回の行を消す）・R-08 も U3 で扱う。
+- 2026-10-04T14:30:00Z — [u2-connection-selection] 作業単位ごとのチェックポイントは、後の単位が前の単位のファイルを変えるたびに前の単位の承認が古くなる仕組みのため、人間の承認で無効にした。以降はステージごとの承認で進む。

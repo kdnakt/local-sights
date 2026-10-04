@@ -25,20 +25,15 @@ interface Rows {
 const NO_ROWS: Rows = { jobId: null, events: [] };
 
 /**
- * Rows belong to one job. A view for another known job starts an empty list.
- * A view without a job ID clears the rows only when a new fetch has just
- * entered Fetching (its job has not started yet); otherwise it keeps them.
- * Events arrive in order, so the current job's rows are never dropped by an
- * earlier view arriving late (the start_fetch response carries no state).
+ * Rows belong to one job. Only a known job ID that differs from the rows'
+ * job starts an empty list; a view without a job ID (e.g. "Fetching" before
+ * the job has started) never discards rows, whatever order it arrives in.
  */
 function rowsForSession(rows: Rows, view: SessionView): Rows {
-  if (view.currentJobId === rows.jobId) {
+  if (view.currentJobId === null || view.currentJobId === rows.jobId) {
     return rows;
   }
-  if (view.currentJobId !== null || view.phase === "Fetching") {
-    return { jobId: view.currentJobId, events: [] };
-  }
-  return rows;
+  return { jobId: view.currentJobId, events: [] };
 }
 
 function rowsWithBatch(rows: Rows, batch: LogBatch): Rows {

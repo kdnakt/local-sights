@@ -182,18 +182,15 @@ impl AppSession {
     }
 
     /// Starts a fetch: returns the validated conditions and moves to
-    /// Fetching, clearing the previous job, count and failure. Refused while
-    /// fetching or when the input is invalid.
+    /// Fetching. Refused while fetching or when the input is invalid.
     pub fn begin_fetch(&mut self) -> Result<ValidatedFetch, SessionError> {
         if self.phase == Phase::Fetching {
             return Err(SessionError::Busy);
         }
         let validated = self.validation.clone().map_err(|_| SessionError::Invalid)?;
-        // A new fetch starts with no stale job, count or failure on screen.
         self.phase = Phase::Fetching;
         self.event_count = 0;
         self.current_job_id = None;
-        self.last_job = None;
         Ok(validated)
     }
 
@@ -488,23 +485,6 @@ mod tests {
         let before = session.view();
         assert!(!session.abort_fetch_with_failure(other_failure()));
         assert_eq!(session.view(), before);
-    }
-
-    #[test]
-    fn a_new_fetch_after_done_clears_the_previous_count_and_job() {
-        let mut session = AppSession::new();
-        fill_valid(&mut session);
-        session.begin_fetch().unwrap();
-        let job = finished_job(&mut session, 12, None);
-        session.finish_fetch(&job);
-        assert_eq!(session.view().event_count, 12);
-
-        session.begin_fetch().unwrap();
-        let view = session.view();
-        assert_eq!(view.phase, Phase::Fetching);
-        assert_eq!(view.event_count, 0);
-        assert_eq!(view.current_job_id, None);
-        assert_eq!(view.last_job, None);
     }
 
     #[test]

@@ -100,7 +100,7 @@ rules:
   - id: BR3.2
     statement: ページの終わりは、渡したトークンと同じトークンが返ったときだけ
     category: constraint
-    applies_to: StreamFetchOutcome（EventFetcher の内部のページング）
+    applies_to: PageCursor
     trigger: 各ページの応答を受けたとき
     logic: IF 最初の呼び出しではなく、かつ受け取ったトークン = 送ったトークン THEN 終わる。IF 応答に次のトークンがない THEN それ以上たどれないため終わる（防御のための扱い）。ELSE 受け取ったトークンを次に送って続ける。空のページや件数の少ないページでは終わらない。pageCount は応答を受けた回数で、最後の同じトークンの応答も数える
     violation: なし
@@ -125,7 +125,7 @@ rules:
   - id: BR4.1
     statement: 取得の途中でエラーになっても、取得できたページの分は表示したままにする
     category: policy
-    applies_to: FetchJob、EventTimeline
+    applies_to: FetchOutcome
     trigger: GetLogEvents がエラーを返したとき
     logic: IF エラー THEN それまでの LogEvent を残し、status = Failed とし、ApiFailure を付ける
     violation: なし

@@ -86,36 +86,14 @@ describe("App", () => {
     expect(screen.getByTestId("status-line-count")).toHaveTextContent("2 events");
   });
 
-  it("keeps rows on a view without a job ID that is not a new fetch", async () => {
+  it("does not discard rows on a view without a job ID", async () => {
     render(<App locale="en" />);
     await screen.findByTestId("fetch-form");
     act(() => {
       handlers.batch?.({ jobId: "job-1", events: [logEvent(0)], total: 1 });
-      handlers.session?.(sessionView({ phase: "Done", currentJobId: null, eventCount: 1 }));
+      handlers.session?.(sessionView({ phase: "Fetching", currentJobId: null }));
     });
     expect(screen.getAllByTestId("log-table-row")).toHaveLength(1);
-  });
-
-  it("clears the previous rows and count as soon as a new fetch starts", async () => {
-    render(<App locale="en" />);
-    await screen.findByTestId("fetch-form");
-    act(() => {
-      handlers.session?.(sessionView({ phase: "Fetching", currentJobId: "job-1" }));
-      handlers.batch?.({ jobId: "job-1", events: [logEvent(0), logEvent(1)], total: 2 });
-      handlers.session?.(sessionView({ phase: "Done", currentJobId: "job-1", eventCount: 2 }));
-    });
-    expect(screen.getAllByTestId("log-table-row")).toHaveLength(2);
-    expect(screen.getByTestId("status-line-count")).toHaveTextContent("2 events");
-
-    // begin_fetch: Fetching before the new job has started (no log-batch yet).
-    act(() => {
-      handlers.session?.(sessionView({ phase: "Fetching", currentJobId: null, eventCount: 0 }));
-    });
-    expect(screen.queryAllByTestId("log-table-row")).toHaveLength(0);
-    expect(screen.queryByTestId("status-line-count")).not.toBeInTheDocument();
-    expect(screen.getByTestId("status-line-fetching")).toHaveTextContent(
-      "Fetching… 0 events so far",
-    );
   });
 
   it("shows a refused command as a message and dismisses it with Escape", async () => {

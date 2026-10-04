@@ -1,0 +1,74 @@
+/* Standard controls only; visual polish is out of scope for the MVP. */
+:root {
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 8px 12px;
+}
+
+.app-title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.fetch-form-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.fetch-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fetch-form-reasons ul {
+  margin: 2px 0 0;
+  padding-left: 20px;
+}
+
+.status-line-error {
+  font-weight: bold;
+}
+
+.log-table-container {
+  flex: 1;
+  overflow: auto;
+}
+
+.log-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.log-table-time-column {
+  width: 13em;
+}
+
+.log-table th,
+.log-table td {
+  text-align: left;
+  padding: 1px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-table-time {
+  font-family: ui-monospace, monospace;
+}

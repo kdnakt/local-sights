@@ -105,3 +105,11 @@ aidlc/diagnostics/
 # which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
 .claude/settings.local.json
+
+# ---- local-sights application ----
+/target/
+/node_modules/
+/dist/
+# Tauri-generated capability schemas (regenerated on every build)
+/src-tauri/gen/schemas
+# Cargo.lock and package-lock.json are committed on purpose (team.md Code Style).

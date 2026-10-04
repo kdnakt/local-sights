@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-fetch"
+description = "Enables the start_fetch command without any pre-configured scope."
+commands.allow = ["start_fetch"]
+
+[[permission]]
+identifier = "deny-start-fetch"
+description = "Denies the start_fetch command without any pre-configured scope."
+commands.deny = ["start_fetch"]

@@ -2,45 +2,65 @@
 //!
 //! This crate stays thin: every decision lives in `local-sights-core`.
 //! Operations arrive as Tauri commands (`get_session`, `update_input`,
-//! `start_fetch` and, since U2, the connection and log group commands);
-//! state changes, including the log group list, are pushed to the screen
-//! with the `session-changed` event and each fetched page of log events
-//! with the `log-batch` event. Commands that change state return nothing:
-//! their result arrives as an event, so a late response never overwrites
-//! newer state.
+//! `start_fetch`, since U2 the connection and log group commands, and since
+//! U3 `get_rows`, `find_row_position` and `set_failure_list_open`); state
+//! changes, including the fetch progress and the timeline version, are
+//! pushed to the screen with the `session-changed` event. Commands that
+//! change state return nothing: their result arrives as an event, so a late
+//! response never overwrites newer state.
+//!
+//! Since U3 the screen never holds the fetched events: it reads the rows of
+//! its viewport with `get_rows` (U3:BR4.3, BR6.4). The EventTimeline sits
+//! behind a `std::sync::Mutex` that the fetch locks for one page at a time,
+//! so rows can be read while a fetch runs (NFR3). Lock order is always
+//! session, then timeline; the fetch never holds both.
+//!
+//! Operations that depend on the connection carry the connection generation
+//! the screen last saw; an operation for an older connection is dropped
+//! without an answer (U3:BR6.7).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::catalog::files::load_catalog;
-use local_sights_core::coordinator::{FetchJob, FetchSink, JobStatus, run_fetch};
-use local_sights_core::event::LogEvent;
+use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch};
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
+use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::paging::PageDecision;
+use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
-    AppSession, ConnectionEffect, InputField, Phase, SessionError, SessionView,
+    AppSession, ConnectionEffect, InputField, SessionError, SessionView,
 };
-use local_sights_core::timeline::EventTimeline;
+use local_sights_core::streams::planner::ListingProgress;
+use local_sights_core::timeline::{EventTimeline, RowWindow};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 /// Event carrying the latest [`SessionView`].
 pub const SESSION_CHANGED: &str = "session-changed";
-/// Event carrying one page of fetched log events.
-pub const LOG_BATCH: &str = "log-batch";
+
+/// Most rows one `get_rows` call returns; a viewport needs far fewer.
+const MAX_ROWS_PER_REQUEST: usize = 1_000;
 
 /// Shared state of the app.
 #[derive(Debug)]
 struct AppState {
     session: Arc<Mutex<AppSession>>,
-    timeline: Arc<tokio::sync::Mutex<EventTimeline>>,
+    timeline: Arc<Mutex<EventTimeline>>,
     gateway: Arc<AwsCloudWatchLogsGateway>,
+    /// Abort handle of the running fetch with its fetch number (BR5.5).
+    abort: Arc<Mutex<Option<(u64, AbortHandle)>>>,
+    /// Number of the next fetch, so a finished fetch only forgets its own
+    /// abort handle.
+    next_fetch: AtomicU64,
 }
 
 impl AppState {
@@ -50,17 +70,17 @@ impl AppState {
             session: Arc::new(Mutex::new(AppSession::with_catalog(load_catalog()))),
             timeline: Arc::default(),
             gateway: Arc::default(),
+            abort: Arc::default(),
+            next_fetch: AtomicU64::new(1),
         }
     }
-}
 
-/// Payload of [`LOG_BATCH`].
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LogBatchPayload<'a> {
-    job_id: &'a str,
-    events: &'a [LogEvent],
-    total: u64,
+    /// Asks the running fetch, if any, to stop (window closing, BR5.5).
+    fn abort_fetch(&self) {
+        if let Some((_, handle)) = lock(&self.abort).as_ref() {
+            handle.abort();
+        }
+    }
 }
 
 /// Error returned by a command: a message-catalog key.
@@ -78,10 +98,20 @@ impl From<SessionError> for CommandError {
     }
 }
 
-/// Locks the session. A poisoned lock still holds a consistent session
-/// (every update is a single assignment), so it is recovered, not fatal.
-fn lock_session(session: &Mutex<AppSession>) -> MutexGuard<'_, AppSession> {
-    session.lock().unwrap_or_else(PoisonError::into_inner)
+/// Answer of `find_row_position`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RowPosition {
+    /// Current position of the event, or `None` when it is not held.
+    position: Option<u64>,
+    /// Version of the timeline the position belongs to.
+    timeline_version: u64,
+}
+
+/// Locks a mutex. A poisoned lock still holds consistent data (every
+/// update is a single step), so it is recovered, not fatal.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn emit_or_log<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
@@ -90,52 +120,136 @@ fn emit_or_log<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     }
 }
 
+/// Maps a stale operation (an older connection generation, BR6.7) to a
+/// silent success: it is dropped and nothing is answered.
+fn drop_if_stale(result: Result<(), CommandError>) -> Result<(), CommandError> {
+    match result {
+        Err(error) if error.key == SessionError::StaleGeneration.message_key() => Ok(()),
+        other => other,
+    }
+}
+
 /// Returns the current session state.
 #[tauri::command]
 fn get_session(state: State<'_, AppState>) -> SessionView {
-    lock_session(&state.session).view()
+    lock(&state.session).view()
 }
 
-/// Changes the stream name or a time; refused while fetching (U1:BR1.4).
+/// Changes a time; refused while fetching (U1:BR1.4).
 #[tauri::command]
 fn update_input(
     field: InputField,
     value: String,
     state: State<'_, AppState>,
 ) -> Result<SessionView, CommandError> {
-    let mut session = lock_session(&state.session);
+    let mut session = lock(&state.session);
     session.update_input(field, value)?;
     Ok(session.view())
 }
 
-/// Starts fetching with the validated conditions. The command returns
-/// nothing: the new state (Fetching), the job, each page and the result all
-/// arrive through the `session-changed` and `log-batch` events, in order, so
-/// a late command response can never overwrite newer state.
+/// Returns at most `limit` rows of the timeline from `offset` (U3:BR4.3).
 #[tauri::command]
-fn start_fetch(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
-    let (validated, view) = {
-        let mut session = lock_session(&state.session);
-        let validated = session.begin_fetch()?;
-        (validated, session.view())
+fn get_rows(offset: u64, limit: u64, state: State<'_, AppState>) -> RowWindow {
+    let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+    let limit = usize::try_from(limit)
+        .unwrap_or(usize::MAX)
+        .min(MAX_ROWS_PER_REQUEST);
+    lock(&state.timeline).rows(offset, limit)
+}
+
+/// Returns the current position of one event (U3:BR4.4).
+#[tauri::command]
+fn find_row_position(
+    log_stream_name: String,
+    sequence: u64,
+    state: State<'_, AppState>,
+) -> RowPosition {
+    let timeline = lock(&state.timeline);
+    RowPosition {
+        position: timeline
+            .position_of(&log_stream_name, sequence)
+            .map(|position| position as u64),
+        timeline_version: timeline.version(),
+    }
+}
+
+/// Opens or closes the list of failed streams (U3:BR6.3).
+#[tauri::command]
+fn set_failure_list_open(
+    open: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    let view = {
+        let mut session = lock(&state.session);
+        session.set_failure_list_open(open)?;
+        session.view()
     };
     emit_or_log(&app, SESSION_CHANGED, view);
+    Ok(())
+}
 
+/// Starts fetching the selected log group. The command returns nothing:
+/// the new state (Fetching), the progress and the result all arrive through
+/// `session-changed`, in order. An operation for an older connection is
+/// dropped (BR6.7).
+#[tauri::command]
+fn start_fetch(
+    generation: u64,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    drop_if_stale(begin_and_spawn_fetch(generation, &app, &state))
+}
+
+fn begin_and_spawn_fetch(
+    generation: u64,
+    app: &AppHandle,
+    state: &AppState,
+) -> Result<(), CommandError> {
+    let (validated, view) = {
+        let mut session = lock(&state.session);
+        let validated = session.begin_fetch(generation)?;
+        (validated, session.view())
+    };
+    emit_or_log(app, SESSION_CHANGED, view);
+
+    let (handle, signal) = abort_pair();
+    let fetch_number = state.next_fetch.fetch_add(1, Ordering::Relaxed);
+    *lock(&state.abort) = Some((fetch_number, handle));
     let session = Arc::clone(&state.session);
     let timeline = Arc::clone(&state.timeline);
     let gateway = Arc::clone(&state.gateway);
-    let task_app = app.clone();
-    let task_session = Arc::clone(&session);
+    let mut sink = TauriSink {
+        app: app.clone(),
+        session: Arc::clone(&session),
+    };
     let task = tauri::async_runtime::spawn(async move {
-        let mut timeline = timeline.lock().await;
-        let mut sink = TauriSink {
-            app: task_app,
-            session: task_session,
-        };
-        run_fetch(gateway.as_ref(), &validated, &mut timeline, &mut sink).await;
+        let policy = RetryPolicy::default();
+        let jitter = RandomJitter;
+        let retrier = Retrier::new(&policy, &jitter, &signal);
+        run_fetch(
+            gateway.as_ref(),
+            &validated,
+            timeline.as_ref(),
+            &retrier,
+            &mut sink,
+        )
+        .await;
     });
+    let app = app.clone();
+    let abort = Arc::clone(&state.abort);
     tauri::async_runtime::spawn(async move {
         let ended_normally = task.await.is_ok();
+        {
+            let mut running = lock(&abort);
+            if running
+                .as_ref()
+                .is_some_and(|(number, _)| *number == fetch_number)
+            {
+                running.take();
+            }
+        }
         recover_if_still_fetching(&app, &session, ended_normally);
     });
     Ok(())
@@ -154,7 +268,7 @@ fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended
         },
     );
     let view = {
-        let mut session = lock_session(session);
+        let mut session = lock(session);
         if !session.abort_fetch_with_failure(failure) {
             return;
         }
@@ -173,34 +287,25 @@ fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended
 /// new state and starts a log group listing when needed (U2:BR2.3, BR3.5).
 ///
 /// When the operation discards the shown logs (U2:BR2.4), the EventTimeline
-/// is cleared inside this command, while its lock is held across the session
-/// change, before `session-changed` is emitted. A new fetch can only start
-/// once that is done, so a late clear can never wipe the logs of a newer
-/// fetch. During a fetch the operations that discard logs are refused, so
-/// the lock (held by the running fetch) is not awaited then.
-async fn change_connection(
+/// is cleared while the session lock is still held, and its new version is
+/// recorded in the session (U3:BR4.5), before `session-changed` is emitted.
+/// A new fetch can only start under the same session lock, so a late clear
+/// can never wipe the logs of a newer fetch. During a fetch the operations
+/// that discard logs are refused.
+fn change_connection(
     app: &AppHandle,
     state: &AppState,
-    operation: impl FnOnce(&mut AppSession) -> Result<ConnectionEffect, SessionError> + Send,
+    operation: impl FnOnce(&mut AppSession) -> Result<ConnectionEffect, SessionError>,
 ) -> Result<(), CommandError> {
-    let fetching = lock_session(&state.session).phase() == Phase::Fetching;
-    let mut timeline = if fetching {
-        None
-    } else {
-        Some(state.timeline.lock().await)
-    };
     let (effect, view) = {
-        let mut session = lock_session(&state.session);
+        let mut session = lock(&state.session);
         let effect = operation(&mut session)?;
+        if effect.logs_cleared {
+            let version = lock(&state.timeline).clear();
+            session.set_timeline_version(version);
+        }
         (effect, session.view())
     };
-    if effect.logs_cleared {
-        match timeline.as_mut() {
-            Some(timeline) => timeline.clear(),
-            None => state.timeline.lock().await.clear(),
-        }
-    }
-    drop(timeline);
     emit_or_log(app, SESSION_CHANGED, view);
     if let Some(request) = effect.listing {
         start_listing(app, state, request);
@@ -226,7 +331,7 @@ fn start_listing(app: &AppHandle, state: &AppState, request: ListingRequest) {
     tauri::async_runtime::spawn(async move {
         let ended_normally = task.await.is_ok();
         let view = {
-            let mut session = lock_session(&session);
+            let mut session = lock(&session);
             let still_loading = session.is_current_listing(&request.listing_id)
                 && session.listing().map(|l| l.status()) == Some(ListingStatus::Loading);
             if !still_loading {
@@ -254,36 +359,36 @@ fn start_listing(app: &AppHandle, state: &AppState, request: ListingRequest) {
 
 /// Chooses a profile (U2:BR2.2, BR2.5).
 #[tauri::command]
-async fn select_profile(
+fn select_profile(
     profile: ProfileSelector,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, |session| session.select_profile(profile)).await
+    change_connection(&app, &state, |session| session.select_profile(profile))
 }
 
 /// Chooses a region (U2:BR2.3, BR2.5).
 #[tauri::command]
-async fn select_region(
+fn select_region(
     region: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, |session| session.select_region(region)).await
+    change_connection(&app, &state, |session| session.select_region(region))
 }
 
 /// Applies the connection change awaiting confirmation (U2:BR2.5).
 #[tauri::command]
-async fn confirm_connection_change(
+fn confirm_connection_change(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, AppSession::confirm_connection_change).await
+    change_connection(&app, &state, AppSession::confirm_connection_change)
 }
 
 /// Drops the connection change awaiting confirmation (U2:BR2.5).
 #[tauri::command]
-async fn cancel_connection_change(
+fn cancel_connection_change(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
@@ -291,25 +396,28 @@ async fn cancel_connection_change(
         session.cancel_connection_change()?;
         Ok(ConnectionEffect::default())
     })
-    .await
 }
 
-/// Lists the log groups of the current connection again (U2:BR3.5).
+/// Lists the log groups of the current connection again (U2:BR3.5); an
+/// operation for an older connection is dropped (U3:BR6.7).
 #[tauri::command]
-async fn reload_log_groups(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
-    change_connection(&app, &state, |session| {
-        let listing = session.reload_log_groups()?;
+fn reload_log_groups(
+    generation: u64,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    drop_if_stale(change_connection(&app, &state, |session| {
+        let listing = session.reload_log_groups(generation)?;
         Ok(ConnectionEffect {
             listing: Some(listing),
             ..ConnectionEffect::default()
         })
-    })
-    .await
+    }))
 }
 
 /// Changes the log group filter (U2:BR3.7).
 #[tauri::command]
-async fn update_log_group_filter(
+fn update_log_group_filter(
     text: String,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -318,21 +426,21 @@ async fn update_log_group_filter(
         session.update_log_group_filter(text)?;
         Ok(ConnectionEffect::default())
     })
-    .await
 }
 
-/// Selects one log group (U2:BR3.8).
+/// Selects one log group (U2:BR3.8); an operation for an older connection
+/// is dropped (U3:BR6.7).
 #[tauri::command]
-async fn select_log_group(
+fn select_log_group(
     name: String,
+    generation: u64,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_connection(&app, &state, |session| {
-        session.select_log_group(name)?;
+    drop_if_stale(change_connection(&app, &state, |session| {
+        session.select_log_group(name, generation)?;
         Ok(ConnectionEffect::default())
-    })
-    .await
+    }))
 }
 
 /// Applies listing pages to the session and pushes the new state.
@@ -343,7 +451,7 @@ struct TauriListingSink {
 
 impl ListingSink for TauriListingSink {
     fn is_current(&self, listing_id: &str) -> bool {
-        lock_session(&self.session).is_current_listing(listing_id)
+        lock(&self.session).is_current_listing(listing_id)
     }
 
     fn on_page(
@@ -353,7 +461,7 @@ impl ListingSink for TauriListingSink {
         next_token: Option<&str>,
     ) -> Option<PageDecision> {
         let (decision, view) = {
-            let mut session = lock_session(&self.session);
+            let mut session = lock(&self.session);
             let decision = session.apply_listing_page(listing_id, groups, next_token)?;
             (decision, session.view())
         };
@@ -365,7 +473,7 @@ impl ListingSink for TauriListingSink {
         // Safe detail only: built from allow-listed fields and redacted.
         let detail = failure.safe_detail().to_string();
         let view = {
-            let mut session = lock_session(&self.session);
+            let mut session = lock(&self.session);
             if !session.apply_listing_failure(listing_id, failure) {
                 return false;
             }
@@ -377,36 +485,51 @@ impl ListingSink for TauriListingSink {
     }
 }
 
-/// Forwards fetch progress to AppSession and to the screen.
+/// Forwards fetch progress to AppSession and pushes the new state. The
+/// timeline is never locked here; the coordinator adds each page itself.
 struct TauriSink {
     app: AppHandle,
     session: Arc<Mutex<AppSession>>,
 }
 
 impl TauriSink {
-    fn emit_session(&self) {
-        let view = lock_session(&self.session).view();
+    fn update(&self, change: impl FnOnce(&mut AppSession)) {
+        let view = {
+            let mut session = lock(&self.session);
+            change(&mut session);
+            session.view()
+        };
         emit_or_log(&self.app, SESSION_CHANGED, view);
     }
 }
 
 impl FetchSink for TauriSink {
-    fn on_started(&mut self, job: &FetchJob) {
-        lock_session(&self.session).on_job_started(job);
-        self.emit_session();
+    fn on_started(&mut self, job: &FetchJob, timeline_version: u64) {
+        self.update(|session| session.on_job_started(job, timeline_version));
     }
 
-    fn on_batch(&mut self, job_id: &str, events: &[LogEvent], total: u64) {
-        lock_session(&self.session).on_progress(total);
-        emit_or_log(
-            &self.app,
-            LOG_BATCH,
-            LogBatchPayload {
-                job_id,
-                events,
-                total,
-            },
-        );
+    fn on_listing_progress(&mut self, job_id: u64, progress: ListingProgress) {
+        self.update(|session| session.on_listing_progress(job_id, progress));
+    }
+
+    fn on_planned(&mut self, job: &FetchJob) {
+        self.update(|session| session.on_planned(job));
+    }
+
+    fn on_batch(&mut self, job_id: u64, progress: BatchProgress) {
+        self.update(|session| session.on_batch(job_id, progress));
+    }
+
+    fn on_stream_finished(&mut self, job: &FetchJob, outcome: &StreamFetchOutcome) {
+        if let Some(failure) = &outcome.failure {
+            // Safe detail only: built from allow-listed fields and redacted.
+            eprintln!(
+                "local-sights: fetch {} stream failed: {}",
+                job.job_id,
+                failure.safe_detail()
+            );
+        }
+        self.update(|session| session.on_stream_finished(job));
     }
 
     fn on_finished(&mut self, job: &FetchJob) {
@@ -415,8 +538,7 @@ impl FetchSink for TauriSink {
             let detail = job.failure().map_or("", |failure| failure.safe_detail());
             eprintln!("local-sights: fetch {} failed: {detail}", job.job_id);
         }
-        lock_session(&self.session).finish_fetch(job);
-        self.emit_session();
+        self.update(|session| session.finish_fetch(job));
     }
 }
 
@@ -427,6 +549,16 @@ impl FetchSink for TauriSink {
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
         .manage(AppState::load())
+        .on_window_event(|window, event| {
+            // Closing the window stops a running fetch (BR5.5); the
+            // confirmation dialog comes with U7.
+            if matches!(
+                event,
+                WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
+            ) {
+                window.state::<AppState>().abort_fetch();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_session,
             update_input,
@@ -437,7 +569,10 @@ pub fn run() -> Result<(), tauri::Error> {
             cancel_connection_change,
             reload_log_groups,
             update_log_group_filter,
-            select_log_group
+            select_log_group,
+            get_rows,
+            find_row_position,
+            set_failure_list_open
         ])
         .run(tauri::generate_context!())
 }

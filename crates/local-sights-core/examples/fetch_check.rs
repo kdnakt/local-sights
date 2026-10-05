@@ -1,37 +1,46 @@
-//! fetch_check: developer-only check of the walking skeleton against real AWS.
+//! fetch_check: developer-only check of local-sights against real AWS.
 //!
-//! Uses the same shared validation (BR1.8) and FetchCoordinator as the
-//! desktop app, with the AWS SDK gateway. Run it on your own machine with
-//! your own AWS credentials (team.md Walking Skeleton). It is never run by
-//! `cargo test` or CI (BR7.2) and is not part of the distributed app.
+//! Uses the same shared validation (U1:BR1.8) and FetchCoordinator as the
+//! desktop app, with the AWS SDK gateway, and fetches the whole log group:
+//! every stream that matters for the range (U3:BR6.9). Run it on your own
+//! machine with your own AWS credentials (team.md Walking Skeleton). It is
+//! never run by `cargo test` or CI (U1:BR7.2) and is not part of the
+//! distributed app.
 //!
 //! ```text
 //! cargo run -p local-sights-core --example fetch_check -- \
-//!   [--profile NAME] --log-group NAME --stream NAME \
+//!   [--profile NAME] --log-group NAME \
 //!   --start "yyyy-mm-dd hh:mm:ss" --end "yyyy-mm-dd hh:mm:ss"
 //! ```
 //!
 //! Connection (U2, review R-11): without `--profile` the fetch uses the
 //! "default settings" profile (`ProfileSelector::SdkDefault`); with
 //! `--profile NAME` it uses that named profile (`ProfileSelector::Named`).
-//! There is no region argument: the profile's default region is used, as in
-//! U1 (U2:BR2.8, U1:BR1.6).
+//! There is no region argument: the profile's default region is used
+//! (U2:BR2.8, U1:BR1.6).
 //!
-//! Standard output: one event per line, `UTC time<TAB>message on one line`.
-//! Standard error: the event and page counts, or the failure kind and its
-//! safe detail. Exit codes: 0 success, 1 fetch failed, 2 invalid arguments.
+//! Standard output: one event per line, in time order (U3:BR4.1),
+//! `UTC time<TAB>stream name<TAB>message on one line`.
+//! Standard error: the event, stream and failure counts, then every failed
+//! stream (or the listing failure) with its kind and safe detail.
+//! Exit codes: 0 success, 1 something failed, 2 invalid arguments.
 
 use std::io::{self, BufWriter, Write};
 use std::process::ExitCode;
+use std::sync::{Mutex, PoisonError};
 
-use local_sights_core::coordinator::{FetchJob, FetchSink, JobStatus, run_fetch};
+use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch};
 use local_sights_core::event::LogEvent;
+use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::request::{FetchInput, ValidationError, validate_fetch_input};
+use local_sights_core::retry::{AbortSignal, RandomJitter, Retrier, RetryPolicy};
+use local_sights_core::streams::StreamListingStatus;
+use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_range::format_utc_millis;
 use local_sights_core::timeline::EventTimeline;
 
-const USAGE: &str = "usage: fetch_check [--profile NAME] --log-group NAME --stream NAME \
+const USAGE: &str = "usage: fetch_check [--profile NAME] --log-group NAME \
 --start \"yyyy-mm-dd hh:mm:ss\" --end \"yyyy-mm-dd hh:mm:ss\"   (times in UTC)";
 
 const EXIT_FETCH_FAILED: u8 = 1;
@@ -54,27 +63,54 @@ async fn main() -> ExitCode {
     };
 
     let gateway = AwsCloudWatchLogsGateway::new();
-    let mut timeline = EventTimeline::new();
-    let mut sink = StdoutSink::new();
-    let job = run_fetch(&gateway, &validated, &mut timeline, &mut sink).await;
+    let timeline = Mutex::new(EventTimeline::new());
+    let policy = RetryPolicy::default();
+    let jitter = RandomJitter;
+    let abort = AbortSignal::never();
+    let retrier = Retrier::new(&policy, &jitter, &abort);
+    let mut sink = ProgressSink;
+    let job = run_fetch(&gateway, &validated, &timeline, &retrier, &mut sink).await;
 
-    if let Err(error) = sink.finish() {
+    let timeline = timeline.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Err(error) = write_events(timeline.events()) {
         eprintln!("error: could not write to standard output: {error}");
         return ExitCode::from(EXIT_FETCH_FAILED);
     }
-    eprintln!("events: {}  pages: {}", job.event_count, job.page_count());
-    if job.status == JobStatus::Failed {
-        match job.failure() {
+    report(&job)
+}
+
+/// Prints the counts and the failures to standard error and chooses the
+/// exit code. Only safe details are printed (U1:BR4.3).
+fn report(job: &FetchJob) -> ExitCode {
+    eprintln!(
+        "events: {}  streams: {}  failed streams: {}",
+        job.event_count,
+        job.planned_stream_count,
+        job.failed_streams.len()
+    );
+    if job.listing_status == Some(StreamListingStatus::Partial) {
+        match &job.listing_failure {
             Some(failure) => eprintln!(
-                "error: {} ({})",
+                "error: stream listing stopped part way: {} ({})",
                 failure.kind().as_str(),
                 failure.safe_detail()
             ),
-            None => eprintln!("error: the fetch failed"),
+            None => eprintln!("error: stream listing stopped part way"),
         }
-        return ExitCode::from(EXIT_FETCH_FAILED);
     }
-    ExitCode::SUCCESS
+    for failed in &job.failed_streams {
+        eprintln!(
+            "error: stream {}: {} ({})",
+            failed.log_stream_name,
+            failed.failure.kind().as_str(),
+            failed.failure.safe_detail()
+        );
+    }
+    if job.status == JobStatus::Completed {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(EXIT_FETCH_FAILED)
+    }
 }
 
 fn usage_error(reasons: &[String]) -> ExitCode {
@@ -92,7 +128,6 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<FetchInput, Stri
         let slot = match flag.as_str() {
             "--profile" => &mut input.profile_name,
             "--log-group" => &mut input.log_group_name,
-            "--stream" => &mut input.log_stream_name,
             "--start" => &mut input.start_text,
             "--end" => &mut input.end_text,
             "-h" | "--help" => return Err("help requested".to_string()),
@@ -110,62 +145,48 @@ fn describe(error: ValidationError) -> &'static str {
     match error {
         ValidationError::LogGroupRequired => "--log-group is required",
         ValidationError::LogGroupTooLong => "--log-group must be 512 characters or fewer",
-        ValidationError::LogStreamRequired => "--stream is required",
-        ValidationError::LogStreamTooLong => "--stream must be 512 characters or fewer",
         ValidationError::StartFormat => "--start must be a valid yyyy-mm-dd hh:mm:ss (UTC)",
         ValidationError::EndFormat => "--end must be a valid yyyy-mm-dd hh:mm:ss (UTC)",
         ValidationError::RangeOrder => "--start must be before --end",
     }
 }
 
-/// Prints each delivered page to standard output as soon as it arrives.
-struct StdoutSink {
-    out: BufWriter<io::Stdout>,
-    write_error: Option<io::Error>,
+/// Writes every event, in timeline order, one per line.
+fn write_events(events: &[LogEvent]) -> io::Result<()> {
+    let mut out = BufWriter::new(io::stdout().lock());
+    for event in events {
+        let message = event
+            .message
+            .replace("\r\n", " ")
+            .replace(['\r', '\n'], " ");
+        writeln!(
+            out,
+            "{}\t{}\t{message}",
+            format_utc_millis(event.timestamp),
+            event.log_stream_name
+        )?;
+    }
+    out.flush()
 }
 
-impl StdoutSink {
-    fn new() -> Self {
-        Self {
-            out: BufWriter::new(io::stdout()),
-            write_error: None,
-        }
+/// Shows that the check is working, on standard error; the events are
+/// written in time order once every stream has been read.
+struct ProgressSink;
+
+impl FetchSink for ProgressSink {
+    fn on_started(&mut self, _job: &FetchJob, _timeline_version: u64) {
+        eprintln!("listing streams...");
     }
 
-    fn write_events(&mut self, events: &[LogEvent]) -> io::Result<()> {
-        for event in events {
-            let message = event
-                .message
-                .replace("\r\n", " ")
-                .replace(['\r', '\n'], " ");
-            writeln!(
-                self.out,
-                "{}\t{message}",
-                format_utc_millis(event.timestamp)
-            )?;
-        }
-        self.out.flush()
+    fn on_listing_progress(&mut self, _job_id: u64, _progress: ListingProgress) {}
+
+    fn on_planned(&mut self, job: &FetchJob) {
+        eprintln!("fetching {} streams...", job.planned_stream_count);
     }
 
-    /// Reports the first write error, if any.
-    fn finish(mut self) -> io::Result<()> {
-        match self.write_error.take() {
-            Some(error) => Err(error),
-            None => self.out.flush(),
-        }
-    }
-}
+    fn on_batch(&mut self, _job_id: u64, _progress: BatchProgress) {}
 
-impl FetchSink for StdoutSink {
-    fn on_started(&mut self, _job: &FetchJob) {}
-
-    fn on_batch(&mut self, _job_id: &str, events: &[LogEvent], _total: u64) {
-        if self.write_error.is_none() {
-            if let Err(error) = self.write_events(events) {
-                self.write_error = Some(error);
-            }
-        }
-    }
+    fn on_stream_finished(&mut self, _job: &FetchJob, _outcome: &StreamFetchOutcome) {}
 
     fn on_finished(&mut self, _job: &FetchJob) {}
 }

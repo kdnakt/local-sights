@@ -1,41 +1,245 @@
-import type { LogEvent } from "../api";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type UIEvent,
+} from "react";
+import { findRowPosition, type LogEvent, type RowWindow } from "../api";
 import { formatUtcMillis, toSingleLine } from "../format";
+import { useRowWindow } from "../hooks/useRowWindow";
 import type { Translate } from "../i18n/messages";
+import {
+  MAX_SCROLL_HEIGHT,
+  ROW_HEIGHT,
+  anchorAt,
+  preservedScrollTop,
+  scrollHeight,
+  scrollTopForKey,
+  visibleRows,
+  type Geometry,
+} from "../virtualScroll";
+
+/** Viewport height used until the real one is known. */
+const DEFAULT_VIEWPORT_HEIGHT = 400;
 
 export interface LogTableProps {
-  events: readonly LogEvent[];
+  /** Number of held events (the core's count). */
+  totalCount: number;
+  /** Version of the core's timeline; a change means rows moved or went away. */
+  timelineVersion: number;
   t: Translate;
+  onError: (error: unknown) => void;
+  /** Fixed viewport height in pixels; measured from the element when absent. */
+  viewportHeight?: number;
+}
+
+/** The scroll position and the list size it was taken with. */
+interface ScrollState {
+  top: number;
+  geometry: Geometry;
+}
+
+function rowKey(event: LogEvent): string {
+  return `${event.logStreamName}\u0000${event.sequence}`;
+}
+
+/** The held row at `row`, if the last window contains it. */
+function rowAt(rowWindow: RowWindow | null, row: number): LogEvent | undefined {
+  if (rowWindow === null) {
+    return undefined;
+  }
+  return rowWindow.rows[row - rowWindow.offset];
 }
 
 /**
- * Every fetched event, oldest first as delivered by the core (BR5.1): time in
- * UTC with milliseconds (BR5.3) and the message on one line, cut with an
- * ellipsis when it does not fit (BR5.2). U1 renders all rows; virtual
- * scrolling arrives in a later unit.
+ * The log list: "time / stream / message" with fixed row height and column
+ * widths, the message on one line cut with an ellipsis (U3:BR6.4). Only the
+ * rows of the viewport are fetched and drawn; the core holds the events.
+ * When the timeline changes while scrolled down, the row at the top stays
+ * where it was (BR6.5); at the very top the list stays at the top. The
+ * arrow keys, Page Up, Page Down, Home and End scroll it (BR6.8).
  */
-export function LogTable({ events, t }: LogTableProps) {
+export function LogTable({
+  totalCount,
+  timelineVersion,
+  t,
+  onError,
+  viewportHeight: fixedViewportHeight,
+}: LogTableProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const viewportHeight = fixedViewportHeight ?? measuredHeight ?? DEFAULT_VIEWPORT_HEIGHT;
+
+  const geometry = useMemo<Geometry>(
+    () => ({
+      totalCount,
+      rowHeight: ROW_HEIGHT,
+      viewportHeight,
+      maxScrollHeight: MAX_SCROLL_HEIGHT,
+    }),
+    [totalCount, viewportHeight],
+  );
+  const range = visibleRows(scrollTop, geometry);
+  const rowWindow = useRowWindow(
+    range.firstRow,
+    range.rowCount,
+    timelineVersion,
+    totalCount,
+    onError,
+  );
+
+  // Kept for the effects and handlers below; never read while rendering.
+  const scrollRef = useRef<ScrollState>({ top: 0, geometry });
+  const windowRef = useRef<RowWindow | null>(null);
+  const geometryRef = useRef(geometry);
+  const positionRequest = useRef(0);
+
+  useEffect(() => {
+    windowRef.current = rowWindow;
+  }, [rowWindow]);
+  useEffect(() => {
+    geometryRef.current = geometry;
+  }, [geometry]);
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (fixedViewportHeight !== undefined || element === null) {
+      return undefined;
+    }
+    if (typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+    const observer = new ResizeObserver(() => setMeasuredHeight(element.clientHeight));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [fixedViewportHeight]);
+
+  const applyScrollTop = useCallback((top: number, scrolledGeometry: Geometry) => {
+    scrollRef.current = { top, geometry: scrolledGeometry };
+    if (viewportRef.current !== null) {
+      viewportRef.current.scrollTop = top;
+    }
+    setScrollTop(top);
+  }, []);
+
+  // BR6.5: keep the top row in place when the timeline changes.
+  useEffect(() => {
+    const { top, geometry: scrolledGeometry } = scrollRef.current;
+    positionRequest.current += 1;
+    if (geometryRef.current.totalCount === 0) {
+      // BR4.5: the logs were discarded; start again from the top.
+      if (top !== 0) {
+        applyScrollTop(0, geometryRef.current);
+      }
+      return;
+    }
+    const anchor = anchorAt(top, scrolledGeometry);
+    if (anchor === null) {
+      return;
+    }
+    const request = positionRequest.current;
+    const anchored = rowAt(windowRef.current, anchor.row);
+    if (anchored === undefined) {
+      return;
+    }
+    findRowPosition(anchored.logStreamName, anchored.sequence).then(
+      (answer) => {
+        if (request !== positionRequest.current) {
+          return;
+        }
+        const current = geometryRef.current;
+        applyScrollTop(preservedScrollTop(answer.position, anchor.pixelOffset, current), current);
+      },
+      (error: unknown) => onError(error),
+    );
+  }, [timelineVersion, applyScrollTop, onError]);
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const top = event.currentTarget.scrollTop;
+    scrollRef.current = { top, geometry };
+    setScrollTop(top);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const top = scrollTopForKey(event.key, scrollTop, geometry);
+    if (top === null) {
+      return;
+    }
+    event.preventDefault();
+    applyScrollTop(top, geometry);
+  };
+
+  const rows: Array<{ event: LogEvent; top: number }> = [];
+  if (rowWindow !== null) {
+    rowWindow.rows.forEach((event, index) => {
+      const row = rowWindow.offset + index;
+      if (row >= range.firstRow && row < range.firstRow + range.rowCount) {
+        rows.push({ event, top: range.offsetY + (row - range.firstRow) * ROW_HEIGHT });
+      }
+    });
+  }
+
   return (
-    <div className="log-table-container">
-      <table className="log-table" aria-label={t("table.label")} data-testid="log-table">
-        <colgroup>
-          <col className="log-table-time-column" />
-          <col />
-        </colgroup>
-        <thead>
-          <tr>
-            <th scope="col">{t("table.time")}</th>
-            <th scope="col">{t("table.message")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((event) => (
-            <tr key={`${event.logStreamName}:${event.sequence}`} data-testid="log-table-row">
-              <td className="log-table-time">{formatUtcMillis(event.timestamp)}</td>
-              <td className="log-table-message">{toSingleLine(event.message)}</td>
-            </tr>
+    <div
+      className="log-table"
+      role="table"
+      aria-label={t("table.label")}
+      aria-rowcount={totalCount}
+      data-testid="log-table"
+    >
+      <div className="log-table-header" role="rowgroup">
+        <div className="log-table-row" role="row">
+          <div className="log-table-time" role="columnheader">
+            {t("table.time")}
+          </div>
+          <div className="log-table-stream" role="columnheader">
+            {t("table.stream")}
+          </div>
+          <div className="log-table-message" role="columnheader">
+            {t("table.message")}
+          </div>
+        </div>
+      </div>
+      <div
+        ref={viewportRef}
+        className="log-table-viewport"
+        style={fixedViewportHeight === undefined ? undefined : { height: fixedViewportHeight }}
+        tabIndex={0}
+        aria-label={t("table.scroll")}
+        data-testid="log-table-viewport"
+        onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
+      >
+        <div
+          className="log-table-content"
+          role="rowgroup"
+          style={{ height: scrollHeight(geometry) }}
+        >
+          {rows.map(({ event, top }) => (
+            <div
+              key={rowKey(event)}
+              className="log-table-row"
+              role="row"
+              style={{ top, height: ROW_HEIGHT }}
+              data-testid="log-table-row"
+            >
+              <div className="log-table-time" role="cell">
+                {formatUtcMillis(event.timestamp)}
+              </div>
+              <div className="log-table-stream" role="cell" title={event.logStreamName}>
+                {event.logStreamName}
+              </div>
+              <div className="log-table-message" role="cell">
+                {toSingleLine(event.message)}
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
   );
 }

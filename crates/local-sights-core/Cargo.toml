@@ -12,10 +12,14 @@ aws-config.workspace = true
 aws-sdk-cloudwatchlogs.workspace = true
 aws-credential-types.workspace = true
 chrono.workspace = true
+fastrand.workspace = true
 home.workspace = true
 regex.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+# Retry waits (BR2.1) and the abort signal (BR2.3, BR5.5). The AWS SDK
+# already depends on tokio, so this adds no new crate to the build.
+tokio = { workspace = true, features = ["time"] }
 uuid.workspace = true
 
 [dev-dependencies]
@@ -23,7 +27,8 @@ aws-smithy-runtime-api.workspace = true
 aws-smithy-types.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-tokio.workspace = true
+# `test-util` lets retry tests advance a paused clock instead of waiting.
+tokio = { workspace = true, features = ["test-util"] }
 
 # examples/fetch_check.rs is a manual, developer-only check against real AWS
 # (BR7.1). `cargo test` only compiles examples; it never runs them (BR7.2).

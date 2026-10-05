@@ -2471,6 +2471,7 @@ dependencies = [
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "chrono",
+ "fastrand",
  "home",
  "regex",
  "serde",

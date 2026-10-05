@@ -15,6 +15,9 @@ fn main() {
             "reload_log_groups",
             "update_log_group_filter",
             "select_log_group",
+            "get_rows",
+            "find_row_position",
+            "set_failure_list_open",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

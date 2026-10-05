@@ -17,6 +17,7 @@ aws-credential-types = "1"
 aws-smithy-runtime-api = { version = "1", features = ["http-1x"] }
 aws-smithy-types = "1"
 home = "0.5"
+fastrand = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }

@@ -1,15 +1,20 @@
 //! A fake [`CloudWatchLogsGateway`] for tests. It never connects to AWS: it
 //! returns scripted responses in order and records every request it gets.
+//! Since U3 it also answers `DescribeLogStreams` and keeps a separate script
+//! of `GetLogEvents` responses per stream name.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use local_sights_core::gateway::{
-    CloudWatchLogsGateway, DescribeLogGroupsPage, DescribeLogGroupsRequest, GatewayEvent,
-    GetLogEventsPage, GetLogEventsRequest,
+    CloudWatchLogsGateway, DescribeLogGroupsPage, DescribeLogGroupsRequest, DescribeLogStreamsPage,
+    DescribeLogStreamsRequest, GatewayEvent, GetLogEventsPage, GetLogEventsRequest,
 };
 use local_sights_core::log_groups::LogGroup;
+use local_sights_core::streams::LogStream;
+
+type EventsScript = VecDeque<Result<GetLogEventsPage, ApiFailure>>;
 
 /// Scripted gateway.
 #[derive(Debug, Default)]
@@ -19,6 +24,10 @@ pub struct FakeGateway {
     group_responses: Mutex<VecDeque<Result<DescribeLogGroupsPage, ApiFailure>>>,
     group_calls: Mutex<Vec<DescribeLogGroupsRequest>>,
     connect_failure: Option<ApiFailure>,
+    stream_responses: Mutex<VecDeque<Result<DescribeLogStreamsPage, ApiFailure>>>,
+    stream_calls: Mutex<Vec<DescribeLogStreamsRequest>>,
+    per_stream: Mutex<HashMap<String, EventsScript>>,
+    api_log: Mutex<Vec<String>>,
 }
 
 impl FakeGateway {
@@ -57,6 +66,57 @@ impl FakeGateway {
     pub fn calls(&self) -> Vec<GetLogEventsRequest> {
         self.calls.lock().unwrap().clone()
     }
+
+    /// A gateway that answers `DescribeLogStreams` with `pages`, one per
+    /// call (U3).
+    pub fn with_stream_pages(pages: Vec<Result<DescribeLogStreamsPage, ApiFailure>>) -> Self {
+        Self {
+            stream_responses: Mutex::new(pages.into()),
+            ..Self::default()
+        }
+    }
+
+    /// A gateway whose log group has the single stream `name`, read with
+    /// the U1-style `responses` (U1 tests).
+    pub fn with_single_stream(
+        name: &str,
+        responses: Vec<Result<GetLogEventsPage, ApiFailure>>,
+    ) -> Self {
+        Self::with_stream_pages(vec![stream_page(&[(name, None, None)], None)])
+            .script_stream(name, responses)
+    }
+
+    /// Scripts the `GetLogEvents` responses of one stream.
+    pub fn script_stream(
+        self,
+        name: &str,
+        responses: Vec<Result<GetLogEventsPage, ApiFailure>>,
+    ) -> Self {
+        self.per_stream
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), responses.into());
+        self
+    }
+
+    /// `DescribeLogStreams` requests that reached the (fake) API, in order.
+    pub fn stream_calls(&self) -> Vec<DescribeLogStreamsRequest> {
+        self.stream_calls.lock().unwrap().clone()
+    }
+
+    /// Every call that reached the (fake) API, in order:
+    /// `DescribeLogStreams`, or `GetLogEvents:<stream>`.
+    pub fn api_log(&self) -> Vec<String> {
+        self.api_log.lock().unwrap().clone()
+    }
+
+    /// Streams that `GetLogEvents` was called for, once per call.
+    pub fn fetched_streams(&self) -> Vec<String> {
+        self.calls()
+            .into_iter()
+            .map(|call| call.log_stream_name)
+            .collect()
+    }
 }
 
 impl CloudWatchLogsGateway for FakeGateway {
@@ -67,7 +127,17 @@ impl CloudWatchLogsGateway for FakeGateway {
         if let Some(failure) = &self.connect_failure {
             return Err(failure.clone());
         }
+        self.api_log
+            .lock()
+            .unwrap()
+            .push(format!("GetLogEvents:{}", request.log_stream_name));
+        let stream = request.log_stream_name.clone();
         self.calls.lock().unwrap().push(request);
+        if let Some(script) = self.per_stream.lock().unwrap().get_mut(&stream) {
+            return script.pop_front().unwrap_or_else(|| {
+                panic!("FakeGateway received more GetLogEvents calls for {stream} than scripted")
+            });
+        }
         self.responses
             .lock()
             .unwrap()
@@ -88,6 +158,25 @@ impl CloudWatchLogsGateway for FakeGateway {
             .unwrap()
             .pop_front()
             .expect("FakeGateway received more DescribeLogGroups calls than scripted")
+    }
+
+    async fn describe_log_streams(
+        &self,
+        request: DescribeLogStreamsRequest,
+    ) -> Result<DescribeLogStreamsPage, ApiFailure> {
+        if let Some(failure) = &self.connect_failure {
+            return Err(failure.clone());
+        }
+        self.api_log
+            .lock()
+            .unwrap()
+            .push("DescribeLogStreams".to_string());
+        self.stream_calls.lock().unwrap().push(request);
+        self.stream_responses
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("FakeGateway received more DescribeLogStreams calls than scripted")
     }
 }
 
@@ -133,4 +222,23 @@ pub fn failure(kind: FailureKind) -> ApiFailure {
             ..SafeDetailFields::default()
         },
     )
+}
+
+/// A `DescribeLogStreams` page of `(name, firstEventTimestamp,
+/// lastEventTimestamp)` and an optional next token.
+pub fn stream_page(
+    streams: &[(&str, Option<i64>, Option<i64>)],
+    token: Option<&str>,
+) -> Result<DescribeLogStreamsPage, ApiFailure> {
+    Ok(DescribeLogStreamsPage {
+        streams: streams
+            .iter()
+            .map(|(name, first, last)| LogStream {
+                log_stream_name: (*name).to_string(),
+                first_event_timestamp: *first,
+                last_event_timestamp: *last,
+            })
+            .collect(),
+        next_token: token.map(str::to_string),
+    })
 }

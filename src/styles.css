@@ -140,30 +140,86 @@ body {
   font-weight: bold;
 }
 
-.log-table-container {
-  flex: 1;
-  overflow: auto;
-}
-
+/* Virtual log table (U3:BR6.4): fixed row height and column widths. */
 .log-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid GrayText;
+}
+
+.log-table-header {
+  font-weight: bold;
+  border-bottom: 1px solid GrayText;
+}
+
+.log-table-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.log-table-content {
+  position: relative;
+}
+
+.log-table-row {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
   width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
+  height: 22px;
 }
 
-.log-table-time-column {
-  width: 13em;
+.log-table-content .log-table-row {
+  position: absolute;
+  left: 0;
+  right: 0;
 }
 
-.log-table th,
-.log-table td {
-  text-align: left;
-  padding: 1px 6px;
+.log-table-time,
+.log-table-stream,
+.log-table-message {
+  box-sizing: border-box;
+  padding: 0 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .log-table-time {
+  flex: 0 0 13em;
   font-family: ui-monospace, monospace;
+}
+
+.log-table-stream {
+  flex: 0 0 16em;
+}
+
+.log-table-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.failure-list {
+  border: 1px solid GrayText;
+  padding: 6px 10px;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.failure-list h2 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.failure-list-items {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
+
+.failure-list-name {
+  font-weight: bold;
 }

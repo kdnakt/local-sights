@@ -4,3 +4,4 @@
 #![allow(dead_code)]
 
 pub mod fake_gateway;
+pub mod recording_sink;

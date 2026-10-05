@@ -12,11 +12,6 @@ export const messages = {
   "form.label": { en: "Fetch conditions", ja: "取得条件" },
   "form.selectedLogGroup.label": { en: "Log group", ja: "ロググループ" },
   "form.selectedLogGroup.none": { en: "Not selected", ja: "未選択" },
-  "form.logStream.label": { en: "Log stream", ja: "ストリーム" },
-  "form.logStream.placeholder": {
-    en: "2024/01/02/[$LATEST]0123456789abcdef",
-    ja: "2024/01/02/[$LATEST]0123456789abcdef",
-  },
   "form.start.label": { en: "Start (UTC)", ja: "開始（UTC）" },
   "form.end.label": { en: "End (UTC)", ja: "終了（UTC）" },
   "form.dateTime.placeholder": { en: "yyyy-mm-dd hh:mm:ss", ja: "yyyy-mm-dd hh:mm:ss" },
@@ -29,14 +24,6 @@ export const messages = {
   "validation.logGroupTooLong": {
     en: "The log group name must be 512 characters or fewer.",
     ja: "ロググループ名は 512 文字以内にしてください。",
-  },
-  "validation.logStreamRequired": {
-    en: "Enter a log stream name.",
-    ja: "ストリーム名を入力してください。",
-  },
-  "validation.logStreamTooLong": {
-    en: "The log stream name must be 512 characters or fewer.",
-    ja: "ストリーム名は 512 文字以内にしてください。",
   },
   "validation.startFormat": {
     en: "Enter the start as a valid yyyy-mm-dd hh:mm:ss (UTC).",
@@ -74,6 +61,14 @@ export const messages = {
   "session.nothingPending": {
     en: "There is no change to confirm.",
     ja: "確認する変更はありません。",
+  },
+  "session.staleGeneration": {
+    en: "The connection changed; the operation was ignored.",
+    ja: "接続先が変わったため、操作は取り消されました。",
+  },
+  "session.noFailures": {
+    en: "There are no failures to show.",
+    ja: "表示する失敗はありません。",
   },
   "selection.profileRequired": { en: "Choose a profile.", ja: "プロファイルを選んでください。" },
   "selection.regionRequired": { en: "Choose a region.", ja: "リージョンを選んでください。" },
@@ -129,9 +124,22 @@ export const messages = {
     en: "Enter the conditions and press Fetch.",
     ja: "条件を入力して［取得］を押してください。",
   },
+  "status.listing": {
+    en: "Listing streams… {count} streams selected so far",
+    ja: "ストリームを列挙中… これまでに {count} ストリームを対象にしました",
+  },
   "status.fetching": {
-    en: "Fetching… {count} events so far",
-    ja: "取得中… これまでに {count} 件",
+    en: "Fetching… {finished}/{planned} streams, {count} events so far",
+    ja: "取得中… {finished}/{planned} ストリーム、これまでに {count} 件",
+  },
+  "status.failedStreams": {
+    en: "Failed in {count} streams",
+    ja: "{count} ストリームで失敗",
+  },
+  "status.showFailures": { en: "Show failure details", ja: "失敗の詳細を見る" },
+  "status.listingPartial": {
+    en: "The stream listing is incomplete.",
+    ja: "ストリームの列挙は途中までです。",
   },
   "status.count": { en: "{count} events", ja: "{count} 件" },
   "status.zero": {
@@ -156,7 +164,15 @@ export const messages = {
   "failure.kind.Other": { en: "Other error", ja: "その他のエラー" },
   "table.label": { en: "Log events", ja: "ログ" },
   "table.time": { en: "Time (UTC)", ja: "時刻（UTC）" },
+  "table.stream": { en: "Stream", ja: "ストリーム名" },
   "table.message": { en: "Message", ja: "メッセージ" },
+  "table.scroll": {
+    en: "Log rows: scroll with the arrow keys, Page Up, Page Down, Home and End",
+    ja: "ログの行：矢印キー・Page Up・Page Down・Home・End でスクロール",
+  },
+  "failures.title": { en: "Failures", ja: "失敗の一覧" },
+  "failures.listing": { en: "Stream listing", ja: "ストリームの列挙" },
+  "failures.close": { en: "Close (Esc)", ja: "閉じる（Esc）" },
   "error.command": {
     en: "The operation failed: {detail}",
     ja: "操作に失敗しました：{detail}",

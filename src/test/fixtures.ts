@@ -1,4 +1,4 @@
-import type { LogEvent, SessionView } from "../api";
+import type { LogEvent, RowWindow, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 
 /** English translator used by component tests. */
@@ -11,7 +11,6 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     input: {
       profileName: "",
       logGroupName: "",
-      logStreamName: "",
       startText: "",
       endText: "",
     },
@@ -34,18 +33,43 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     selectedLogGroupName: null,
     canChangeConnection: true,
     canReload: false,
-    timelineGeneration: 0,
+    timelineVersion: 0,
+    connectionGeneration: 0,
+    progress: null,
+    failedStreams: [],
+    listingStatus: null,
+    listingFailure: null,
+    failureListOpen: false,
     ...overrides,
   };
 }
 
-export function logEvent(sequence: number, message = `message ${sequence}`): LogEvent {
+export function logEvent(
+  sequence: number,
+  message = `message ${sequence}`,
+  logStreamName = "stream-a",
+): LogEvent {
   return {
     timestamp: 1_704_164_645_000 + sequence,
     ingestionTime: null,
     message,
-    logStreamName: "stream-a",
+    logStreamName,
     sequence,
+  };
+}
+
+/** A `get_rows` answer cut from `events`, as the core would give it. */
+export function rowWindow(
+  events: readonly LogEvent[],
+  offset: number,
+  limit: number,
+  timelineVersion = 1,
+): RowWindow {
+  return {
+    offset,
+    rows: events.slice(offset, offset + limit),
+    totalCount: events.length,
+    timelineVersion,
   };
 }
 

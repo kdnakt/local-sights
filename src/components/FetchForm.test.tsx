@@ -53,22 +53,24 @@ describe("FetchForm", () => {
       canFetch: false,
       validationErrors: ["validation.endFormat"],
     });
-    await user.type(screen.getByTestId("fetch-form-log-stream-input"), "{Enter}");
+    await user.type(screen.getByTestId("fetch-form-start-input"), "{Enter}");
     expect(onFetch).not.toHaveBeenCalled();
   });
 
   it("forwards each change with its field name", async () => {
     const user = userEvent.setup();
     const { onChange } = renderForm();
-    await user.type(screen.getByTestId("fetch-form-log-stream-input"), "ab");
-    expect(onChange).toHaveBeenLastCalledWith("logStreamName", "ab");
-    expect(screen.getByTestId("fetch-form-log-stream-input")).toHaveValue("ab");
+    await user.type(screen.getByTestId("fetch-form-start-input"), "ab");
+    expect(onChange).toHaveBeenLastCalledWith("startText", "ab");
+    expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("ab");
   });
 
-  it("has no profile or log group inputs and always shows the selected log group", () => {
+  it("has no profile, log group or stream inputs and always shows the selected log group", () => {
     renderForm({ selectedLogGroupName: "/aws/lambda/MyFunction" });
     expect(screen.queryByTestId("fetch-form-profile-input")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fetch-form-log-group-input")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("fetch-form-log-stream-input")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
     expect(screen.getByTestId("fetch-form-selected-log-group")).toHaveTextContent(
       "/aws/lambda/MyFunction",
     );
@@ -79,15 +81,10 @@ describe("FetchForm", () => {
     expect(screen.getByTestId("fetch-form-selected-log-group")).toHaveTextContent("Not selected");
   });
 
-  it("moves through the three inputs and Fetch with Tab", async () => {
+  it("moves through the two inputs and Fetch with Tab", async () => {
     const user = userEvent.setup();
     renderForm({ canFetch: true });
-    const order = [
-      "fetch-form-log-stream-input",
-      "fetch-form-start-input",
-      "fetch-form-end-input",
-      "fetch-form-submit-button",
-    ];
+    const order = ["fetch-form-start-input", "fetch-form-end-input", "fetch-form-submit-button"];
     for (const testId of order) {
       await user.tab();
       expect(screen.getByTestId(testId)).toHaveFocus();

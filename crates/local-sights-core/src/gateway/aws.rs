@@ -4,8 +4,9 @@
 //! access keys, AssumeRole, environment variables; U1:BR1.7). This module
 //! never reads, stores or logs credentials. SDK errors are reduced to an
 //! [`ErrorSignal`], classified, and returned with a safe detail only; the raw
-//! SDK message is never surfaced (U1:BR4.3). Only `GetLogEvents` and
-//! `DescribeLogGroups` are called (U2:BR3.9).
+//! SDK message is never surfaced (U1:BR4.3). Only `GetLogEvents`,
+//! `DescribeLogGroups` and `DescribeLogStreams` are called (U2:BR3.9,
+//! U3:BR1.4).
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -20,20 +21,28 @@ use aws_sdk_cloudwatchlogs::operation::RequestId;
 use aws_sdk_cloudwatchlogs::operation::describe_log_groups::{
     DescribeLogGroupsError, DescribeLogGroupsOutput,
 };
+use aws_sdk_cloudwatchlogs::operation::describe_log_streams::{
+    DescribeLogStreamsError, DescribeLogStreamsOutput,
+};
 use aws_sdk_cloudwatchlogs::operation::get_log_events::{GetLogEventsError, GetLogEventsOutput};
+use aws_sdk_cloudwatchlogs::types::OrderBy;
 
 use super::classify::{ErrorSignal, classify};
 use super::{
-    CloudWatchLogsGateway, ConnectionTarget, DESCRIBE_LOG_GROUPS, DescribeLogGroupsPage,
-    DescribeLogGroupsRequest, GET_LOG_EVENTS, GatewayEvent, GetLogEventsPage, GetLogEventsRequest,
+    CloudWatchLogsGateway, ConnectionTarget, DESCRIBE_LOG_GROUPS, DESCRIBE_LOG_STREAMS,
+    DescribeLogGroupsPage, DescribeLogGroupsRequest, DescribeLogStreamsPage,
+    DescribeLogStreamsRequest, GET_LOG_EVENTS, GatewayEvent, GetLogEventsPage, GetLogEventsRequest,
 };
 use crate::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use crate::log_groups::LogGroup;
+use crate::streams::LogStream;
 
 /// The SDK error type of `GetLogEvents`.
 pub type GetLogEventsSdkError = SdkError<GetLogEventsError, HttpResponse>;
 /// The SDK error type of `DescribeLogGroups`.
 pub type DescribeLogGroupsSdkError = SdkError<DescribeLogGroupsError, HttpResponse>;
+/// The SDK error type of `DescribeLogStreams`.
+pub type DescribeLogStreamsSdkError = SdkError<DescribeLogStreamsError, HttpResponse>;
 
 /// Cache key: (profile name, explicit region).
 type ClientKey = (Option<String>, Option<String>);
@@ -111,6 +120,26 @@ impl CloudWatchLogsGateway for AwsCloudWatchLogsGateway {
             .await
             .map_err(|error| failure_from_describe_error(&error, &request))?;
         Ok(groups_page_from_output(&output))
+    }
+
+    async fn describe_log_streams(
+        &self,
+        request: DescribeLogStreamsRequest,
+    ) -> Result<DescribeLogStreamsPage, ApiFailure> {
+        let client = self
+            .client_for(request.profile_name.as_deref(), request.region.as_deref())
+            .await?;
+        // Newest last event first; no name prefix (U3:BR1.1, BR1.4).
+        let output = client
+            .describe_log_streams()
+            .log_group_name(&request.log_group_name)
+            .order_by(OrderBy::LastEventTime)
+            .descending(true)
+            .set_next_token(request.next_token.clone())
+            .send()
+            .await
+            .map_err(|error| failure_from_describe_streams_error(&error, &request))?;
+        Ok(streams_page_from_output(&output))
     }
 }
 
@@ -191,6 +220,25 @@ fn groups_page_from_output(output: &DescribeLogGroupsOutput) -> DescribeLogGroup
     }
 }
 
+fn streams_page_from_output(output: &DescribeLogStreamsOutput) -> DescribeLogStreamsPage {
+    let streams = output
+        .log_streams()
+        .iter()
+        // A stream always has a name; one without could not be fetched.
+        .filter_map(|stream| {
+            stream.log_stream_name().map(|name| LogStream {
+                log_stream_name: name.to_string(),
+                first_event_timestamp: stream.first_event_timestamp(),
+                last_event_timestamp: stream.last_event_timestamp(),
+            })
+        })
+        .collect();
+    DescribeLogStreamsPage {
+        streams,
+        next_token: output.next_token().map(str::to_string),
+    }
+}
+
 /// Converts a `GetLogEvents` SDK error into an [`ApiFailure`] that carries
 /// only the kind and allow-listed fields; the SDK's own message is dropped.
 pub fn failure_from_sdk_error(
@@ -241,6 +289,37 @@ pub fn failure_from_describe_error(
         api_name: Some(DESCRIBE_LOG_GROUPS.to_string()),
         request_id: error.request_id().map(str::to_string),
         profile_name: request.profile_name.clone(),
+        ..SafeDetailFields::default()
+    };
+    ApiFailure::new(classify_sdk_error(error, modeled), &fields)
+}
+
+/// Converts a `DescribeLogStreams` SDK error into an [`ApiFailure`] with the
+/// same classification and safe detail rules as the other operations.
+pub fn failure_from_describe_streams_error(
+    error: &DescribeLogStreamsSdkError,
+    request: &DescribeLogStreamsRequest,
+) -> ApiFailure {
+    let modeled = match error {
+        SdkError::ServiceError(context) => match context.err() {
+            DescribeLogStreamsError::InvalidParameterException(_) => {
+                Some("InvalidParameterException")
+            }
+            DescribeLogStreamsError::ResourceNotFoundException(_) => {
+                Some("ResourceNotFoundException")
+            }
+            DescribeLogStreamsError::ServiceUnavailableException(_) => {
+                Some("ServiceUnavailableException")
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let fields = SafeDetailFields {
+        api_name: Some(DESCRIBE_LOG_STREAMS.to_string()),
+        request_id: error.request_id().map(str::to_string),
+        profile_name: request.profile_name.clone(),
+        log_group_name: Some(request.log_group_name.clone()),
         ..SafeDetailFields::default()
     };
     ApiFailure::new(classify_sdk_error(error, modeled), &fields)
@@ -585,5 +664,114 @@ mod tests {
         assert_eq!(page.groups[0].log_group_name, "/aws/lambda/MyFunction");
         assert_eq!(page.groups[0].creation_time, Some(5));
         assert!(page.groups[0].arn.is_some());
+    }
+
+    // --- U3: DescribeLogStreams ---
+
+    fn streams_request() -> DescribeLogStreamsRequest {
+        DescribeLogStreamsRequest {
+            profile_name: Some("dev".to_string()),
+            region: Some("ap-northeast-1".to_string()),
+            log_group_name: "/aws/lambda/orders".to_string(),
+            next_token: None,
+        }
+    }
+
+    fn unhandled_streams_error(code: &str, raw_message: &str) -> DescribeLogStreamsSdkError {
+        let meta = ErrorMetadata::builder()
+            .code(code)
+            .message(raw_message)
+            .build();
+        SdkError::service_error(DescribeLogStreamsError::generic(meta), http_response(400))
+    }
+
+    #[test]
+    fn describe_streams_errors_are_classified_and_raw_messages_dropped() {
+        let raw = format!("Rate exceeded for {}", dummy_access_key_id());
+        let throttled = unhandled_streams_error("ThrottlingException", &raw);
+        let failure = failure_from_describe_streams_error(&throttled, &streams_request());
+        assert_eq!(failure.kind(), FailureKind::Throttled);
+        assert!(failure.retryable());
+        assert_eq!(
+            failure.safe_detail(),
+            "kind=Throttled; api=DescribeLogStreams; profile=dev; logGroup=/aws/lambda/orders"
+        );
+        assert!(!failure.safe_detail().contains("Rate exceeded"));
+        assert!(!failure.safe_detail().contains("AKIA"));
+
+        let denied = unhandled_streams_error("AccessDeniedException", "denied");
+        assert_eq!(
+            failure_from_describe_streams_error(&denied, &streams_request()).kind(),
+            FailureKind::AccessDenied
+        );
+        let missing = SdkError::service_error(
+            DescribeLogStreamsError::ResourceNotFoundException(
+                ResourceNotFoundException::builder()
+                    .message("The specified log group does not exist.")
+                    .build(),
+            ),
+            http_response(400),
+        );
+        let failure = failure_from_describe_streams_error(&missing, &streams_request());
+        assert_eq!(failure.kind(), FailureKind::NotFound);
+        assert!(!failure.safe_detail().contains("does not exist"));
+    }
+
+    #[test]
+    fn describe_streams_network_and_credentials_failures_are_classified() {
+        let timeout: DescribeLogStreamsSdkError = SdkError::timeout_error("timed out");
+        let failure = failure_from_describe_streams_error(&timeout, &streams_request());
+        assert_eq!(failure.kind(), FailureKind::Network);
+        assert!(failure.retryable());
+        let io: DescribeLogStreamsSdkError = SdkError::dispatch_failure(ConnectorError::io(
+            std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset").into(),
+        ));
+        assert_eq!(
+            failure_from_describe_streams_error(&io, &streams_request()).kind(),
+            FailureKind::Network
+        );
+        let no_credentials: DescribeLogStreamsSdkError =
+            SdkError::dispatch_failure(ConnectorError::other(
+                CredentialsError::not_loaded("no providers in chain provided credentials").into(),
+                None,
+            ));
+        let failure = failure_from_describe_streams_error(&no_credentials, &streams_request());
+        assert_eq!(failure.kind(), FailureKind::AuthRequired);
+        assert!(!failure.retryable());
+    }
+
+    #[test]
+    fn streams_page_keeps_order_missing_times_and_next_token() {
+        use aws_sdk_cloudwatchlogs::types::LogStream as SdkLogStream;
+        let output = DescribeLogStreamsOutput::builder()
+            .log_streams(
+                SdkLogStream::builder()
+                    .log_stream_name("new")
+                    .first_event_timestamp(10)
+                    .last_event_timestamp(20)
+                    .build(),
+            )
+            .log_streams(SdkLogStream::builder().log_stream_name("empty").build())
+            .log_streams(SdkLogStream::builder().last_event_timestamp(5).build())
+            .next_token("n1")
+            .build();
+        let page = streams_page_from_output(&output);
+        assert_eq!(page.next_token.as_deref(), Some("n1"));
+        assert_eq!(
+            page.streams,
+            vec![
+                LogStream {
+                    log_stream_name: "new".to_string(),
+                    first_event_timestamp: Some(10),
+                    last_event_timestamp: Some(20),
+                },
+                LogStream {
+                    log_stream_name: "empty".to_string(),
+                    first_event_timestamp: None,
+                    last_event_timestamp: None,
+                },
+            ],
+            "a stream without a name cannot be fetched"
+        );
     }
 }

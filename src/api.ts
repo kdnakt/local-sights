@@ -1,7 +1,9 @@
 /**
  * Thin wrapper around the Tauri commands and events of the desktop app
- * (Q1: commands for operations, events for pushed state and log pages).
- * Tests replace this module with `vi.mock`, so Tauri is never started.
+ * (commands for operations, the `session-changed` event for pushed state).
+ * Since U3 the screen holds no log events: it reads the rows of its viewport
+ * with `getRows` (U3:BR4.3). Tests replace this module with `vi.mock`, so
+ * Tauri is never started.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -9,8 +11,11 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type Phase = "Idle" | "Fetching" | "Done" | "Failed";
 
-/** Typed fields; the profile and log group are selected from lists (U2). */
-export type InputField = "logStreamName" | "startText" | "endText";
+/**
+ * Typed fields; the profile and log group are selected from lists (U2) and
+ * there is no stream name since U3 (U3:BR6.1).
+ */
+export type InputField = "startText" | "endText";
 
 export type ProfileSelector = { kind: "SdkDefault" } | { kind: "Named"; profileName: string };
 
@@ -47,7 +52,6 @@ export type FailureKind =
 export interface FetchInput {
   profileName: string;
   logGroupName: string;
-  logStreamName: string;
   startText: string;
   endText: string;
 }
@@ -59,13 +63,35 @@ export interface ApiFailure {
   retryable: boolean;
 }
 
+export type JobStatus = "Running" | "Completed" | "CompletedWithFailures" | "Failed" | "Aborted";
+
 export interface JobSummary {
-  jobId: string;
-  status: "Running" | "Completed" | "Failed";
+  jobId: number;
+  status: JobStatus;
   eventCount: number;
-  pageCount: number;
+  plannedStreamCount: number;
+  finishedStreamCount: number;
+  failedStreamCount: number;
+  /** The failure of the whole job (the stream listing), when it failed. */
   failure: ApiFailure | null;
 }
+
+/** Progress of the running fetch (U3:BR6.2). */
+export interface FetchProgress {
+  seenStreamCount: number;
+  selectedStreamCount: number;
+  /** `null` while the streams are being listed. */
+  plannedStreamCount: number | null;
+  finishedStreamCount: number;
+  eventCount: number;
+}
+
+export interface FailedStream {
+  logStreamName: string;
+  failure: ApiFailure;
+}
+
+export type StreamListingStatus = "Complete" | "StoppedEarly" | "Partial";
 
 export interface LogGroupListView {
   status: ListingStatus;
@@ -83,7 +109,7 @@ export interface SessionView {
   /** Message-catalog keys of the reasons why Fetch cannot be pressed. */
   validationErrors: string[];
   canFetch: boolean;
-  currentJobId: string | null;
+  currentJobId: number | null;
   eventCount: number;
   lastJob: JobSummary | null;
   profiles: ConnectionProfile[];
@@ -97,8 +123,15 @@ export interface SessionView {
   selectedLogGroupName: string | null;
   canChangeConnection: boolean;
   canReload: boolean;
-  /** Changes when a connection change discards the shown logs. */
-  timelineGeneration: number;
+  /** Changes with every added page and every discard (U3:BR4.5). */
+  timelineVersion: number;
+  /** Sent back with the operations that depend on the connection (BR6.7). */
+  connectionGeneration: number;
+  progress: FetchProgress | null;
+  failedStreams: FailedStream[];
+  listingStatus: StreamListingStatus | null;
+  listingFailure: ApiFailure | null;
+  failureListOpen: boolean;
 }
 
 export interface LogEvent {
@@ -106,13 +139,22 @@ export interface LogEvent {
   ingestionTime: number | null;
   message: string;
   logStreamName: string;
+  /** Position within its stream; with the stream name it identifies the event. */
   sequence: number;
 }
 
-export interface LogBatch {
-  jobId: string;
-  events: LogEvent[];
-  total: number;
+/** The rows of one viewport request (U3:BR4.3). */
+export interface RowWindow {
+  offset: number;
+  rows: LogEvent[];
+  totalCount: number;
+  timelineVersion: number;
+}
+
+/** The current position of one event (U3:BR4.4). */
+export interface RowPosition {
+  position: number | null;
+  timelineVersion: number;
 }
 
 /** Error returned by a command: a message-catalog key. */
@@ -121,7 +163,6 @@ export interface CommandError {
 }
 
 export const SESSION_CHANGED = "session-changed";
-export const LOG_BATCH = "log-batch";
 
 export function isCommandError(value: unknown): value is CommandError {
   return (
@@ -140,12 +181,28 @@ export function updateInput(field: InputField, value: string): Promise<SessionVi
 }
 
 /**
- * Starts a fetch. Resolves with nothing: the resulting state arrives only
- * through `session-changed` and `log-batch`, so a late response can never
- * overwrite newer state.
+ * Starts a fetch of the selected log group. Resolves with nothing: the
+ * resulting state arrives only through `session-changed`, so a late response
+ * can never overwrite newer state. `generation` is the connection generation
+ * of the last session view; the core drops the request when it is old.
  */
-export function startFetch(): Promise<void> {
-  return invoke<void>("start_fetch");
+export function startFetch(generation: number): Promise<void> {
+  return invoke<void>("start_fetch", { generation });
+}
+
+/** Reads at most `limit` rows of the timeline from `offset`. */
+export function getRows(offset: number, limit: number): Promise<RowWindow> {
+  return invoke<RowWindow>("get_rows", { offset, limit });
+}
+
+/** Finds the current position of one event. */
+export function findRowPosition(logStreamName: string, sequence: number): Promise<RowPosition> {
+  return invoke<RowPosition>("find_row_position", { logStreamName, sequence });
+}
+
+/** Opens or closes the list of failed streams. */
+export function setFailureListOpen(open: boolean): Promise<void> {
+  return invoke<void>("set_failure_list_open", { open });
 }
 
 /** Chooses a profile. The new state arrives through `session-changed`. */
@@ -169,8 +226,8 @@ export function cancelConnectionChange(): Promise<void> {
 }
 
 /** Lists the log groups of the current connection again. */
-export function reloadLogGroups(): Promise<void> {
-  return invoke<void>("reload_log_groups");
+export function reloadLogGroups(generation: number): Promise<void> {
+  return invoke<void>("reload_log_groups", { generation });
 }
 
 /** Changes the log group filter text. */
@@ -179,8 +236,8 @@ export function updateLogGroupFilter(text: string): Promise<void> {
 }
 
 /** Selects one log group. */
-export function selectLogGroup(name: string): Promise<void> {
-  return invoke<void>("select_log_group", { name });
+export function selectLogGroup(name: string, generation: number): Promise<void> {
+  return invoke<void>("select_log_group", { name, generation });
 }
 
 /** The selector that identifies a profile row. */
@@ -192,8 +249,4 @@ export function selectorOf(profile: ConnectionProfile): ProfileSelector {
 
 export function onSessionChanged(handler: (view: SessionView) => void): Promise<UnlistenFn> {
   return listen<SessionView>(SESSION_CHANGED, (event) => handler(event.payload));
-}
-
-export function onLogBatch(handler: (batch: LogBatch) => void): Promise<UnlistenFn> {
-  return listen<LogBatch>(LOG_BATCH, (event) => handler(event.payload));
 }

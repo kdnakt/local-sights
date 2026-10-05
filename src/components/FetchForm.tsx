@@ -11,12 +11,6 @@ interface FieldSpec {
 
 const FIELDS: readonly FieldSpec[] = [
   {
-    field: "logStreamName",
-    label: "form.logStream.label",
-    placeholder: "form.logStream.placeholder",
-    testId: "fetch-form-log-stream-input",
-  },
-  {
     field: "startText",
     label: "form.start.label",
     placeholder: "form.dateTime.placeholder",
@@ -38,8 +32,9 @@ export interface FetchFormProps {
 }
 
 /**
- * The selected log group (always shown, U2:BR3.8), the stream and time
- * inputs, and the Fetch button. Fetch works only when the core says the
+ * The selected log group (always shown, U2:BR3.8), the time inputs and the
+ * Fetch button; the whole log group is fetched, so there is no stream name
+ * (U3:BR6.1). Fetch works only when the core says the
  * selection and input are valid; otherwise the reasons are listed. While
  * fetching (U1:BR1.4) or while a connection change awaits confirmation
  * (U2:BR2.6), every control is disabled. Enter in any input submits

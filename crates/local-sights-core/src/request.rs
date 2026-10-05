@@ -2,14 +2,15 @@
 //!
 //! Both the desktop app (through AppSession) and the `fetch_check` example
 //! call [`validate_fetch_input`], so neither depends on the other (BR1.8).
-//! Validation failures are reported as message-catalog keys.
+//! Validation failures are reported as message-catalog keys. Since U3 the
+//! fetch covers the whole log group, so there is no stream name (U3:BR6.1).
 
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::ProfileSelector;
 use crate::time_range::{TimeRange, parse_utc_seconds};
 
-/// Maximum length (characters) of a log group or log stream name.
+/// Maximum length (characters) of a log group name.
 pub const MAX_NAME_LEN: usize = 512;
 
 /// Raw, unvalidated input as typed by the user or passed on the command line.
@@ -21,8 +22,6 @@ pub struct FetchInput {
     pub profile_name: String,
     /// Log group name (required).
     pub log_group_name: String,
-    /// Log stream name (required).
-    pub log_stream_name: String,
     /// Start date and time, `yyyy-mm-dd hh:mm:ss` in UTC.
     pub start_text: String,
     /// End date and time, `yyyy-mm-dd hh:mm:ss` in UTC.
@@ -36,10 +35,6 @@ pub enum ValidationError {
     LogGroupRequired,
     /// The log group name is longer than [`MAX_NAME_LEN`].
     LogGroupTooLong,
-    /// BR1.1: the log stream name is blank.
-    LogStreamRequired,
-    /// The log stream name is longer than [`MAX_NAME_LEN`].
-    LogStreamTooLong,
     /// BR1.2: the start is not a valid `yyyy-mm-dd hh:mm:ss`.
     StartFormat,
     /// BR1.2: the end is not a valid `yyyy-mm-dd hh:mm:ss`.
@@ -48,13 +43,12 @@ pub enum ValidationError {
     RangeOrder,
 }
 
-/// Validated, trimmed conditions of one fetch (one stream).
+/// Validated, trimmed conditions of one fetch (the whole log group).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchRequest {
     profile: ProfileSelector,
     region: Option<String>,
     log_group_name: String,
-    log_stream_name: String,
 }
 
 /// A validated request together with its derived time range (BR1.8).
@@ -68,11 +62,9 @@ pub struct ValidatedFetch {
 
 impl ValidationError {
     /// Every variant, in display order.
-    pub const ALL: [ValidationError; 7] = [
+    pub const ALL: [ValidationError; 5] = [
         ValidationError::LogGroupRequired,
         ValidationError::LogGroupTooLong,
-        ValidationError::LogStreamRequired,
-        ValidationError::LogStreamTooLong,
         ValidationError::StartFormat,
         ValidationError::EndFormat,
         ValidationError::RangeOrder,
@@ -83,8 +75,6 @@ impl ValidationError {
         match self {
             ValidationError::LogGroupRequired => "validation.logGroupRequired",
             ValidationError::LogGroupTooLong => "validation.logGroupTooLong",
-            ValidationError::LogStreamRequired => "validation.logStreamRequired",
-            ValidationError::LogStreamTooLong => "validation.logStreamTooLong",
             ValidationError::StartFormat => "validation.startFormat",
             ValidationError::EndFormat => "validation.endFormat",
             ValidationError::RangeOrder => "validation.rangeOrder",
@@ -94,17 +84,11 @@ impl ValidationError {
 
 impl FetchRequest {
     /// Builds a request directly; prefer [`validate_fetch_input`].
-    pub fn new(
-        profile: ProfileSelector,
-        region: Option<String>,
-        log_group_name: String,
-        log_stream_name: String,
-    ) -> Self {
+    pub fn new(profile: ProfileSelector, region: Option<String>, log_group_name: String) -> Self {
         Self {
             profile,
             region,
             log_group_name,
-            log_stream_name,
         }
     }
 
@@ -136,14 +120,10 @@ impl FetchRequest {
     pub fn log_group_name(&self) -> &str {
         &self.log_group_name
     }
-
-    /// Log stream name.
-    pub fn log_stream_name(&self) -> &str {
-        &self.log_stream_name
-    }
 }
 
-/// Validates the raw input (BR1.1-BR1.3) and derives the time range
+/// Validates the raw input (BR1.1-BR1.3; no stream name since U3:BR6.1)
+/// and derives the time range
 /// (BR2.1, BR2.2). On failure, returns every reason found.
 pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<ValidationError>> {
     let mut errors = Vec::new();
@@ -151,12 +131,6 @@ pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<Va
         &input.log_group_name,
         ValidationError::LogGroupRequired,
         ValidationError::LogGroupTooLong,
-        &mut errors,
-    );
-    let log_stream = check_name(
-        &input.log_stream_name,
-        ValidationError::LogStreamRequired,
-        ValidationError::LogStreamTooLong,
         &mut errors,
     );
     let start = record_error(
@@ -177,18 +151,15 @@ pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<Va
         ),
         _ => None,
     };
-    match (log_group, log_stream, range) {
-        (Some(log_group), Some(log_stream), Some(range)) if errors.is_empty() => {
-            Ok(ValidatedFetch {
-                request: FetchRequest::new(
-                    ProfileSelector::from_optional_name(Some(&input.profile_name)),
-                    None,
-                    log_group,
-                    log_stream,
-                ),
-                range,
-            })
-        }
+    match (log_group, range) {
+        (Some(log_group), Some(range)) if errors.is_empty() => Ok(ValidatedFetch {
+            request: FetchRequest::new(
+                ProfileSelector::from_optional_name(Some(&input.profile_name)),
+                None,
+                log_group,
+            ),
+            range,
+        }),
         _ => Err(errors),
     }
 }
@@ -243,7 +214,6 @@ mod tests {
         FetchInput {
             profile_name: "dev".to_string(),
             log_group_name: "/aws/lambda/orders".to_string(),
-            log_stream_name: "2024/01/02/[$LATEST]abc".to_string(),
             start_text: "2024-01-02 03:04:05".to_string(),
             end_text: "2024-01-02 03:05:05".to_string(),
         }
@@ -255,25 +225,18 @@ mod tests {
         let validated = validated.unwrap();
         assert_eq!(validated.request.profile_name(), Some("dev"));
         assert_eq!(validated.request.log_group_name(), "/aws/lambda/orders");
-        assert_eq!(
-            validated.request.log_stream_name(),
-            "2024/01/02/[$LATEST]abc"
-        );
         assert_eq!(validated.range.start_instant(), 1_704_164_645_000);
         assert_eq!(validated.range.end_instant(), 1_704_164_705_999);
     }
 
     #[test]
-    fn blank_group_and_stream_are_required() {
+    fn blank_group_is_required_and_no_stream_name_is_needed() {
         let mut input = valid_input();
+        assert!(validate_fetch_input(&input).is_ok(), "U3:BR6.1");
         input.log_group_name = "   ".to_string();
-        input.log_stream_name = String::new();
         assert_eq!(
             validate_fetch_input(&input),
-            Err(vec![
-                ValidationError::LogGroupRequired,
-                ValidationError::LogStreamRequired
-            ])
+            Err(vec![ValidationError::LogGroupRequired])
         );
     }
 
@@ -281,21 +244,20 @@ mod tests {
     fn names_are_trimmed() {
         let mut input = valid_input();
         input.log_group_name = "  g  ".to_string();
-        input.log_stream_name = "\ts\n".to_string();
         let validated = validate_fetch_input(&input).unwrap();
         assert_eq!(validated.request.log_group_name(), "g");
-        assert_eq!(validated.request.log_stream_name(), "s");
     }
 
     #[test]
     fn overlong_names_are_rejected() {
         let mut input = valid_input();
         input.log_group_name = "g".repeat(MAX_NAME_LEN + 1);
-        input.log_stream_name = "s".repeat(MAX_NAME_LEN);
         assert_eq!(
             validate_fetch_input(&input),
             Err(vec![ValidationError::LogGroupTooLong])
         );
+        input.log_group_name = "g".repeat(MAX_NAME_LEN);
+        assert!(validate_fetch_input(&input).is_ok());
     }
 
     #[test]
@@ -376,7 +338,6 @@ mod tests {
             message_keys(&errors),
             vec![
                 "validation.logGroupRequired",
-                "validation.logStreamRequired",
                 "validation.startFormat",
                 "validation.endFormat",
             ]

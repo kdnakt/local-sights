@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-failure-list-open"
+description = "Enables the set_failure_list_open command without any pre-configured scope."
+commands.allow = ["set_failure_list_open"]
+
+[[permission]]
+identifier = "deny-set-failure-list-open"
+description = "Denies the set_failure_list_open command without any pre-configured scope."
+commands.deny = ["set_failure_list_open"]

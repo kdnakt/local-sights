@@ -7,6 +7,9 @@
 //! connection change awaits confirmation, conflicting operations are refused
 //! (U1:BR1.4, U2:BR2.6). Since U2 the session also holds the connection
 //! selection, the log group list, its filter and the selected log group.
+//! Since U3 it also holds the progress of a fetch, the failed streams and
+//! whether their list is open, and the generation of the connection, which
+//! drops operations made for an older connection (U3:BR6.2, BR6.3, BR6.7).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +17,7 @@ use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileS
 use crate::connection::{
     ChangeOutcome, ConnectionSelection, ConnectionState, ListingCommand, PendingConnectionChange,
 };
-use crate::coordinator::{FetchJob, JobStatus};
+use crate::coordinator::{BatchProgress, FailedStream, FetchJob, JobStatus};
 use crate::failure::ApiFailure;
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -25,6 +28,8 @@ use crate::paging::PageDecision;
 use crate::request::{
     FetchInput, ValidatedFetch, ValidationError, message_keys, validate_fetch_input,
 };
+use crate::streams::StreamListingStatus;
+use crate::streams::planner::ListingProgress;
 
 /// Phase of the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -33,19 +38,17 @@ pub enum Phase {
     Idle,
     /// A fetch is running.
     Fetching,
-    /// The last fetch completed.
+    /// The last fetch completed (Completed or CompletedWithFailures).
     Done,
     /// The last fetch failed.
     Failed,
 }
 
 /// Input field the user types (the profile and log group are selected
-/// from lists since U2; the stream is typed until U3).
+/// from lists since U2; there is no stream name since U3:BR6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum InputField {
-    /// Log stream name.
-    LogStreamName,
     /// Start date and time.
     StartText,
     /// End date and time.
@@ -79,6 +82,12 @@ pub enum SessionError {
     /// No connection change awaits confirmation.
     #[error("no connection change is pending")]
     NothingPending,
+    /// The operation was made for an older connection (BR6.7).
+    #[error("the operation belongs to an older connection")]
+    StaleGeneration,
+    /// There is no failed stream or listing failure to show (BR6.3).
+    #[error("there are no failures to show")]
+    NoFailures,
 }
 
 impl SessionError {
@@ -93,6 +102,8 @@ impl SessionError {
             SessionError::UnknownRegion => "session.unknownRegion",
             SessionError::UnknownLogGroup => "session.unknownLogGroup",
             SessionError::NothingPending => "session.nothingPending",
+            SessionError::StaleGeneration => "session.staleGeneration",
+            SessionError::NoFailures => "session.noFailures",
         }
     }
 }
@@ -135,15 +146,35 @@ pub struct ConnectionEffect {
 #[serde(rename_all = "camelCase")]
 pub struct JobSummary {
     /// Job ID.
-    pub job_id: String,
-    /// Completed or Failed.
+    pub job_id: u64,
+    /// Completed, CompletedWithFailures or Failed.
     pub status: JobStatus,
     /// Number of events fetched.
     pub event_count: u64,
-    /// Number of pages received.
-    pub page_count: u32,
-    /// Failure (kind and safe detail only), when the job failed.
+    /// Number of streams selected for the fetch.
+    pub planned_stream_count: u32,
+    /// Number of streams finished.
+    pub finished_stream_count: u32,
+    /// Number of failed streams.
+    pub failed_stream_count: u32,
+    /// Failure (kind and safe detail only), when the whole job failed.
     pub failure: Option<ApiFailure>,
+}
+
+/// Progress of the running fetch, for the status line (BR6.2).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchProgress {
+    /// Streams seen by the listing so far.
+    pub seen_stream_count: u32,
+    /// Streams selected by the listing so far.
+    pub selected_stream_count: u32,
+    /// Streams to fetch; `None` while the streams are being listed.
+    pub planned_stream_count: Option<u32>,
+    /// Streams finished, successfully or not.
+    pub finished_stream_count: u32,
+    /// Events added so far.
+    pub event_count: u64,
 }
 
 /// The log group list as the screen shows it.
@@ -170,14 +201,14 @@ pub struct SessionView {
     pub session_id: String,
     /// Current phase.
     pub phase: Phase,
-    /// Typed input (stream and times; profile and log group are empty).
+    /// Typed input (the times; profile and log group are empty).
     pub input: FetchInput,
     /// Reasons why Fetch cannot be pressed (message-catalog keys).
     pub validation_errors: Vec<String>,
     /// Whether Fetch can be pressed now.
     pub can_fetch: bool,
     /// ID of the running or last started job.
-    pub current_job_id: Option<String>,
+    pub current_job_id: Option<u64>,
     /// Number of events of the current or last fetch.
     pub event_count: u64,
     /// Most recent finished fetch.
@@ -202,9 +233,22 @@ pub struct SessionView {
     pub can_change_connection: bool,
     /// Whether the list may be reloaded now (U2:BR3.5).
     pub can_reload: bool,
-    /// Incremented whenever the shown logs are discarded by a connection
-    /// change, so the screen drops its rows (U2:BR2.4).
-    pub timeline_generation: u64,
+    /// Version of the EventTimeline: changes with every added page and
+    /// every discard, so the screen re-reads its rows (U3:BR4.5, BR6.5).
+    pub timeline_version: u64,
+    /// Generation of the connection; the screen sends it back with the
+    /// operations that depend on the connection (BR6.7).
+    pub connection_generation: u64,
+    /// Progress of the running fetch (BR6.2).
+    pub progress: Option<FetchProgress>,
+    /// Streams that failed in the last fetch (BR5.3).
+    pub failed_streams: Vec<FailedStream>,
+    /// How the last stream listing ended.
+    pub listing_status: Option<StreamListingStatus>,
+    /// The listing failure of the last fetch, when Partial (BR1.5).
+    pub listing_failure: Option<ApiFailure>,
+    /// Whether the list of failures is open (BR6.3).
+    pub failure_list_open: bool,
 }
 
 /// State of one app session.
@@ -214,7 +258,7 @@ pub struct AppSession {
     phase: Phase,
     input: FetchInput,
     validation: Result<ValidatedFetch, Vec<ValidationError>>,
-    current_job_id: Option<String>,
+    current_job_id: Option<u64>,
     event_count: u64,
     last_job: Option<JobSummary>,
     catalog: ConnectionCatalog,
@@ -222,7 +266,13 @@ pub struct AppSession {
     listing: Option<LogGroupListing>,
     log_group_filter: String,
     selected_log_group: Option<String>,
-    timeline_generation: u64,
+    timeline_version: u64,
+    connection_generation: u64,
+    progress: Option<FetchProgress>,
+    failed_streams: Vec<FailedStream>,
+    listing_status: Option<StreamListingStatus>,
+    listing_failure: Option<ApiFailure>,
+    failure_list_open: bool,
 }
 
 impl Default for AppSession {
@@ -257,10 +307,22 @@ impl AppSession {
             listing: None,
             log_group_filter: String::new(),
             selected_log_group: None,
-            timeline_generation: 0,
+            timeline_version: 0,
+            connection_generation: 0,
+            progress: None,
+            failed_streams: Vec::new(),
+            listing_status: None,
+            listing_failure: None,
+            failure_list_open: false,
         };
         session.revalidate();
         session
+    }
+
+    /// Generation of the connection: incremented whenever a connection
+    /// change is applied (BR6.7).
+    pub fn connection_generation(&self) -> u64 {
+        self.connection_generation
     }
 
     /// Session ID.
@@ -336,7 +398,6 @@ impl AppSession {
     pub fn update_input(&mut self, field: InputField, value: String) -> Result<(), SessionError> {
         self.ensure_can_change()?;
         let slot = match field {
-            InputField::LogStreamName => &mut self.input.log_stream_name,
             InputField::StartText => &mut self.input.start_text,
             InputField::EndText => &mut self.input.end_text,
         };
@@ -397,7 +458,8 @@ impl AppSession {
 
     /// Lists the log groups of the current connection again, keeping the
     /// selected log group and the shown logs (U2:BR3.5).
-    pub fn reload_log_groups(&mut self) -> Result<ListingRequest, SessionError> {
+    pub fn reload_log_groups(&mut self, generation: u64) -> Result<ListingRequest, SessionError> {
+        self.ensure_current_generation(generation)?;
         self.ensure_can_change()?;
         match self.connection.reload() {
             Some(command) => self
@@ -419,7 +481,8 @@ impl AppSession {
     }
 
     /// Selects one listed log group; the shown logs stay (U2:BR3.8).
-    pub fn select_log_group(&mut self, name: String) -> Result<(), SessionError> {
+    pub fn select_log_group(&mut self, name: String, generation: u64) -> Result<(), SessionError> {
+        self.ensure_current_generation(generation)?;
         self.ensure_can_change()?;
         let listed = self.listing.as_ref().is_some_and(|l| l.contains(&name));
         if !listed {
@@ -456,7 +519,8 @@ impl AppSession {
     /// Starts a fetch: returns the validated conditions with the selected
     /// profile and region (U2:BR2.8) and moves to Fetching. Refused while
     /// fetching, while a change awaits confirmation, or when invalid.
-    pub fn begin_fetch(&mut self) -> Result<ValidatedFetch, SessionError> {
+    pub fn begin_fetch(&mut self, generation: u64) -> Result<ValidatedFetch, SessionError> {
+        self.ensure_current_generation(generation)?;
         if self.phase == Phase::Fetching {
             return Err(SessionError::Busy);
         }
@@ -473,42 +537,116 @@ impl AppSession {
             return Err(SessionError::Invalid);
         };
         self.phase = Phase::Fetching;
-        self.event_count = 0;
+        // BR5.6: the previous rows, count, failures and result go away.
         self.current_job_id = None;
+        self.event_count = 0;
+        self.last_job = None;
+        self.failed_streams.clear();
+        self.listing_status = None;
+        self.listing_failure = None;
+        self.failure_list_open = false;
+        self.progress = Some(FetchProgress::default());
         Ok(ValidatedFetch {
             request: validated.request.with_connection(profile, region),
             range: validated.range,
         })
     }
 
-    /// Records the job the coordinator started.
-    pub fn on_job_started(&mut self, job: &FetchJob) {
-        self.current_job_id = Some(job.job_id.clone());
+    /// Records the job the coordinator started and the version of the
+    /// timeline it has just discarded (BR5.6, BR4.5).
+    pub fn on_job_started(&mut self, job: &FetchJob, timeline_version: u64) {
+        if self.phase != Phase::Fetching {
+            return;
+        }
+        self.set_timeline_version(timeline_version);
+        self.current_job_id = Some(job.job_id);
         self.event_count = 0;
+        self.progress = Some(FetchProgress::default());
     }
 
-    /// Records the cumulative number of events received so far.
-    pub fn on_progress(&mut self, total: u64) {
-        self.event_count = total;
+    /// Records the listing progress of the running job (BR6.2).
+    pub fn on_listing_progress(&mut self, job_id: u64, listing: ListingProgress) {
+        if let Some(progress) = self.progress_of(job_id) {
+            progress.seen_stream_count = listing.seen_stream_count;
+            progress.selected_stream_count = listing.selected_stream_count;
+        }
     }
 
-    /// Records the finished job: Completed moves to Done, Failed to Failed.
-    /// A job that is still Running leaves the session in Fetching.
+    /// Records the planned stream count of the running job.
+    pub fn on_planned(&mut self, job: &FetchJob) {
+        if let Some(progress) = self.progress_of(job.job_id) {
+            progress.planned_stream_count = Some(job.planned_stream_count);
+            progress.selected_stream_count = job.planned_stream_count;
+        }
+    }
+
+    /// Records one added page of the running job: the cumulative count and
+    /// the timeline version.
+    pub fn on_batch(&mut self, job_id: u64, batch: BatchProgress) {
+        if let Some(progress) = self.progress_of(job_id) {
+            progress.event_count = batch.total;
+            self.event_count = batch.total;
+            self.timeline_version = self.timeline_version.max(batch.timeline_version);
+        }
+    }
+
+    /// Records one finished stream of the running job.
+    pub fn on_stream_finished(&mut self, job: &FetchJob) {
+        if let Some(progress) = self.progress_of(job.job_id) {
+            progress.finished_stream_count = job.finished_stream_count;
+        }
+    }
+
+    /// Records the finished job: Completed and CompletedWithFailures move to
+    /// Done, Failed to Failed. Aborted (only when the window closes) returns
+    /// to Idle with nothing shown. A job that is still Running, or not the
+    /// current one, leaves the session as it is.
     pub fn finish_fetch(&mut self, job: &FetchJob) {
-        self.phase = match job.status {
-            JobStatus::Completed => Phase::Done,
-            JobStatus::Failed => Phase::Failed,
-            JobStatus::Running => Phase::Fetching,
+        let current = self.current_job_id.is_none_or(|id| id == job.job_id);
+        if self.phase != Phase::Fetching || !current || job.status == JobStatus::Running {
+            return;
+        }
+        self.current_job_id = Some(job.job_id);
+        self.progress = None;
+        if job.status == JobStatus::Aborted {
+            self.phase = Phase::Idle;
+            self.event_count = 0;
+            return;
+        }
+        self.phase = if job.status == JobStatus::Failed {
+            Phase::Failed
+        } else {
+            Phase::Done
         };
-        self.current_job_id = Some(job.job_id.clone());
         self.event_count = job.event_count;
+        self.failed_streams = job.failed_streams.clone();
+        self.listing_status = job.listing_status;
+        self.listing_failure = job.listing_failure.clone();
         self.last_job = Some(JobSummary {
-            job_id: job.job_id.clone(),
+            job_id: job.job_id,
             status: job.status,
             event_count: job.event_count,
-            page_count: job.page_count(),
+            planned_stream_count: job.planned_stream_count,
+            finished_stream_count: job.finished_stream_count,
+            failed_stream_count: u32::try_from(job.failed_streams.len()).unwrap_or(u32::MAX),
             failure: job.failure().cloned(),
         });
+    }
+
+    /// Records the version of the timeline after the caller discarded it
+    /// for a connection change (U3:BR4.5, U2:BR2.4).
+    pub fn set_timeline_version(&mut self, version: u64) {
+        self.timeline_version = self.timeline_version.max(version);
+    }
+
+    /// Opens or closes the list of failures (BR6.3). Opening needs a failed
+    /// stream or a listing failure; closing always works.
+    pub fn set_failure_list_open(&mut self, open: bool) -> Result<(), SessionError> {
+        if open && self.failed_streams.is_empty() && self.listing_failure.is_none() {
+            return Err(SessionError::NoFailures);
+        }
+        self.failure_list_open = open;
+        Ok(())
     }
 
     /// Ends a fetch that stopped abnormally (for example, its task panicked
@@ -520,14 +658,24 @@ impl AppSession {
             return false;
         }
         self.phase = Phase::Failed;
+        let progress = self.progress.take().unwrap_or_default();
         self.last_job = Some(JobSummary {
-            job_id: self.current_job_id.clone().unwrap_or_default(),
+            job_id: self.current_job_id.unwrap_or_default(),
             status: JobStatus::Failed,
             event_count: self.event_count,
-            page_count: 0,
+            planned_stream_count: progress.planned_stream_count.unwrap_or_default(),
+            finished_stream_count: progress.finished_stream_count,
+            failed_stream_count: 0,
             failure: Some(failure),
         });
         true
+    }
+
+    fn progress_of(&mut self, job_id: u64) -> Option<&mut FetchProgress> {
+        if self.phase != Phase::Fetching || self.current_job_id != Some(job_id) {
+            return None;
+        }
+        self.progress.as_mut()
     }
 
     /// Snapshot for the screen.
@@ -554,7 +702,7 @@ impl AppSession {
             input: self.input.clone(),
             validation_errors,
             can_fetch: self.can_fetch(),
-            current_job_id: self.current_job_id.clone(),
+            current_job_id: self.current_job_id,
             event_count: self.event_count,
             last_job: self.last_job.clone(),
             profiles: self.catalog.profiles().to_vec(),
@@ -572,7 +720,13 @@ impl AppSession {
             selected_log_group_name: self.selected_log_group.clone(),
             can_change_connection: self.can_change_connection(),
             can_reload: self.can_change_connection() && self.connection.selection().is_complete(),
-            timeline_generation: self.timeline_generation,
+            timeline_version: self.timeline_version,
+            connection_generation: self.connection_generation,
+            progress: self.progress.clone(),
+            failed_streams: self.failed_streams.clone(),
+            listing_status: self.listing_status,
+            listing_failure: self.listing_failure.clone(),
+            failure_list_open: self.failure_list_open,
         }
     }
 
@@ -586,6 +740,15 @@ impl AppSession {
             total_count: listing.groups().len(),
             empty_state: empty_state(listing, &self.log_group_filter),
             failure: listing.failure().cloned(),
+        }
+    }
+
+    /// BR6.7: an operation made for an older connection is dropped.
+    fn ensure_current_generation(&self, generation: u64) -> Result<(), SessionError> {
+        if generation == self.connection_generation {
+            Ok(())
+        } else {
+            Err(SessionError::StaleGeneration)
         }
     }
 
@@ -618,11 +781,15 @@ impl AppSession {
     /// U2:BR2.4: deselect the log group, discard the shown logs, count and
     /// last result, return to Idle, then list the new connection (BR2.3).
     fn apply_connection_change(&mut self, command: ListingCommand) -> ConnectionEffect {
+        self.connection_generation += 1;
         self.selected_log_group = None;
         self.event_count = 0;
         self.last_job = None;
         self.current_job_id = None;
-        self.timeline_generation += 1;
+        self.failed_streams.clear();
+        self.listing_status = None;
+        self.listing_failure = None;
+        self.failure_list_open = false;
         if matches!(self.phase, Phase::Done | Phase::Failed) {
             self.phase = Phase::Idle;
         }
@@ -672,7 +839,8 @@ impl AppSession {
 mod tests {
     use super::*;
     use crate::failure::{FailureKind, SafeDetailFields};
-    use crate::fetcher::{StreamFetchOutcome, StreamStatus};
+    use crate::streams::StreamListingStatus;
+    use crate::streams::planner::ListingProgress;
 
     fn dev() -> ProfileSelector {
         ProfileSelector::Named("dev".to_string())
@@ -725,10 +893,12 @@ mod tests {
             );
         }
         session
-            .select_log_group("/aws/lambda/orders".to_string())
+            .select_log_group(
+                "/aws/lambda/orders".to_string(),
+                session.connection_generation(),
+            )
             .unwrap();
         let values = [
-            (InputField::LogStreamName, "stream-a"),
             (InputField::StartText, "2024-01-02 03:04:05"),
             (InputField::EndText, "2024-01-02 03:05:05"),
         ];
@@ -737,6 +907,8 @@ mod tests {
         }
     }
 
+    /// A finished one-stream job; `failure` makes the whole job fail (as a
+    /// listing failure on the first page would).
     fn finished_job(
         session: &mut AppSession,
         events: u64,
@@ -744,27 +916,30 @@ mod tests {
     ) -> FetchJob {
         let validated = session.validation.clone().unwrap();
         let mut job = FetchJob::start(validated.range);
-        session.on_job_started(&job);
-        let failed = failure.is_some();
-        job.status = if failed {
+        session.on_job_started(&job, 1);
+        job.status = if failure.is_some() {
             JobStatus::Failed
         } else {
             JobStatus::Completed
         };
-        job.event_count = events;
-        job.failed_stream_count = u32::from(failed);
-        job.outcome = Some(StreamFetchOutcome {
-            log_stream_name: "stream-a".to_string(),
-            event_count: events,
-            page_count: 2,
-            status: if failed {
-                StreamStatus::Failed
-            } else {
-                StreamStatus::Completed
-            },
-            failure,
+        job.planned_stream_count = 1;
+        job.finished_stream_count = 1;
+        job.listing_status = Some(if failure.is_some() {
+            StreamListingStatus::Partial
+        } else {
+            StreamListingStatus::Complete
         });
+        job.listing_failure = failure;
+        job.event_count = events;
         job
+    }
+
+    fn batch(total: u64, timeline_version: u64) -> BatchProgress {
+        BatchProgress {
+            added: total,
+            total,
+            timeline_version,
+        }
     }
 
     #[test]
@@ -792,7 +967,10 @@ mod tests {
             session.view().validation_errors,
             vec!["validation.rangeOrder"]
         );
-        assert_eq!(session.begin_fetch(), Err(SessionError::Invalid));
+        assert_eq!(
+            session.begin_fetch(session.connection_generation()),
+            Err(SessionError::Invalid)
+        );
         assert_eq!(session.phase(), Phase::Idle);
     }
 
@@ -801,33 +979,40 @@ mod tests {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
         assert!(session.can_fetch());
-        let validated = session.begin_fetch().unwrap();
-        assert_eq!(validated.request.log_stream_name(), "stream-a");
+        let validated = session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(validated.request.log_group_name(), "/aws/lambda/orders");
         assert_eq!(session.phase(), Phase::Fetching);
         assert!(!session.view().can_fetch);
         assert_eq!(
-            session.update_input(InputField::LogStreamName, "other".to_string()),
+            session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
             Err(SessionError::Busy)
         );
-        assert_eq!(session.input().log_stream_name, "stream-a");
-        assert_eq!(session.begin_fetch(), Err(SessionError::Busy));
+        assert_eq!(session.input().start_text, "2024-01-02 03:04:05");
+        assert_eq!(
+            session.begin_fetch(session.connection_generation()),
+            Err(SessionError::Busy)
+        );
     }
 
     #[test]
     fn progress_and_completion_move_to_done_with_count() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let job = finished_job(&mut session, 42, None);
-        session.on_progress(40);
+        session.on_batch(job.job_id, batch(40, 1));
         assert_eq!(session.view().event_count, 40);
         session.finish_fetch(&job);
         let view = session.view();
         assert_eq!(view.phase, Phase::Done);
         assert_eq!(view.event_count, 42);
-        assert_eq!(view.current_job_id.as_deref(), Some(job.job_id.as_str()));
+        assert_eq!(view.current_job_id, Some(job.job_id));
         let summary = view.last_job.unwrap();
-        assert_eq!(summary.page_count, 2);
+        assert_eq!(summary.planned_stream_count, 1);
         assert_eq!(summary.failure, None);
     }
 
@@ -835,7 +1020,9 @@ mod tests {
     fn zero_events_is_done_with_zero_count() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let job = finished_job(&mut session, 0, None);
         session.finish_fetch(&job);
         assert_eq!(session.phase(), Phase::Done);
@@ -846,7 +1033,9 @@ mod tests {
     fn failure_moves_to_failed_with_kind_and_safe_detail() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let failure = ApiFailure::new(
             FailureKind::AccessDenied,
             &SafeDetailFields {
@@ -868,19 +1057,21 @@ mod tests {
     fn done_and_failed_sessions_can_fetch_again() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let job = finished_job(&mut session, 1, None);
         session.finish_fetch(&job);
         session
-            .update_input(InputField::LogStreamName, "stream-b".to_string())
+            .update_input(InputField::StartText, "2024-01-02 03:04:00".to_string())
             .unwrap();
-        assert!(session.begin_fetch().is_ok());
+        assert!(session.begin_fetch(session.connection_generation()).is_ok());
         assert_eq!(session.view().event_count, 0);
         let failure = ApiFailure::new(FailureKind::Network, &SafeDetailFields::default());
         let job = finished_job(&mut session, 0, Some(failure));
         session.finish_fetch(&job);
         assert_eq!(session.phase(), Phase::Failed);
-        assert!(session.begin_fetch().is_ok());
+        assert!(session.begin_fetch(session.connection_generation()).is_ok());
     }
 
     fn other_failure() -> ApiFailure {
@@ -897,10 +1088,12 @@ mod tests {
     fn aborting_a_running_fetch_fails_it_and_reenables_input() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let job = FetchJob::start(session.validation.clone().unwrap().range);
-        session.on_job_started(&job);
-        session.on_progress(7);
+        session.on_job_started(&job, 1);
+        session.on_batch(job.job_id, batch(7, 1));
 
         assert!(session.abort_fetch_with_failure(other_failure()));
 
@@ -916,7 +1109,7 @@ mod tests {
         assert_eq!(failure.safe_detail(), "kind=Other; api=GetLogEvents");
         assert!(
             session
-                .update_input(InputField::LogStreamName, "stream-b".to_string())
+                .update_input(InputField::StartText, "2024-01-02 03:04:00".to_string())
                 .is_ok()
         );
     }
@@ -925,10 +1118,12 @@ mod tests {
     fn aborting_before_the_job_started_also_fails_the_fetch() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         assert!(session.abort_fetch_with_failure(other_failure()));
         assert_eq!(session.phase(), Phase::Failed);
-        assert_eq!(session.view().last_job.unwrap().job_id, "");
+        assert_eq!(session.view().last_job.unwrap().job_id, 0);
     }
 
     #[test]
@@ -939,7 +1134,9 @@ mod tests {
         assert!(session.view().last_job.is_none());
 
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let job = finished_job(&mut session, 5, None);
         session.finish_fetch(&job);
         let before = session.view();
@@ -951,7 +1148,9 @@ mod tests {
     fn done_session(events: u64) -> AppSession {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let job = finished_job(&mut session, events, None);
         session.finish_fetch(&job);
         session
@@ -977,12 +1176,15 @@ mod tests {
             "selection.profileRequired",
             "selection.regionRequired",
             "selection.logGroupRequired",
-            "validation.logStreamRequired",
             "validation.startFormat",
         ] {
             assert!(reasons.contains(&key.to_string()), "{key}: {reasons:?}");
         }
         assert!(!reasons.contains(&"validation.logGroupRequired".to_string()));
+        assert!(
+            !reasons.iter().any(|key| key.contains("logStream")),
+            "no stream name since U3:BR6.1"
+        );
     }
 
     #[test]
@@ -1007,17 +1209,18 @@ mod tests {
     fn fetch_request_carries_the_selected_profile_region_and_log_group() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        let validated = session.begin_fetch().unwrap();
+        let validated = session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         assert_eq!(validated.request.profile(), &dev());
         assert_eq!(validated.request.region(), Some("ap-northeast-1"));
         assert_eq!(validated.request.log_group_name(), "/aws/lambda/orders");
-        assert_eq!(validated.request.log_stream_name(), "stream-a");
     }
 
     #[test]
     fn applying_a_connection_change_returns_done_to_idle_and_clears_logs() {
         let mut session = done_session(0);
-        let generation = session.view().timeline_generation;
+        let generation = session.view().connection_generation;
         let effect = session
             .select_profile(ProfileSelector::Named("prod".to_string()))
             .unwrap();
@@ -1032,7 +1235,7 @@ mod tests {
         assert_eq!(view.event_count, 0);
         assert_eq!(view.last_job, None);
         assert_eq!(view.selected_log_group_name, None);
-        assert_eq!(view.timeline_generation, generation + 1);
+        assert_eq!(view.connection_generation, generation + 1);
         assert_eq!(
             view.log_groups.map(|l| l.status),
             Some(ListingStatus::Loading)
@@ -1050,15 +1253,18 @@ mod tests {
         assert!(!view.can_fetch && !view.can_reload && !view.can_change_connection);
         assert_eq!(view.connection.region.as_deref(), Some("ap-northeast-1"));
         assert_eq!(
-            session.select_log_group("/aws/lambda/MyFunction".to_string()),
+            session.select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation()
+            ),
             Err(SessionError::ConfirmationPending)
         );
         assert_eq!(
-            session.reload_log_groups(),
+            session.reload_log_groups(session.connection_generation()),
             Err(SessionError::ConfirmationPending)
         );
         assert_eq!(
-            session.begin_fetch(),
+            session.begin_fetch(session.connection_generation()),
             Err(SessionError::ConfirmationPending)
         );
         assert_eq!(
@@ -1089,7 +1295,7 @@ mod tests {
         session.select_region("eu-west-1".to_string()).unwrap();
         assert!(session.view().pending_change.is_some());
         assert_eq!(
-            session.update_input(InputField::LogStreamName, "other".to_string()),
+            session.update_input(InputField::EndText, "other".to_string()),
             Err(SessionError::ConfirmationPending)
         );
         assert_eq!(
@@ -1101,14 +1307,14 @@ mod tests {
             Err(SessionError::ConfirmationPending)
         );
         let view = session.view();
-        assert_eq!(view.input.log_stream_name, "stream-a");
+        assert_eq!(view.input.end_text, "2024-01-02 03:05:05");
         assert_eq!(view.log_group_filter, "orders");
         assert!(!view.can_change_connection && !view.can_fetch && !view.can_reload);
 
         session.cancel_connection_change().unwrap();
         assert!(
             session
-                .update_input(InputField::LogStreamName, "other".to_string())
+                .update_input(InputField::EndText, "other".to_string())
                 .is_ok()
         );
         assert!(session.update_log_group_filter("x".to_string()).is_ok());
@@ -1118,7 +1324,9 @@ mod tests {
     fn filtering_is_allowed_during_a_fetch_but_typing_is_not() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         assert!(
             session
                 .update_log_group_filter("lambda".to_string())
@@ -1134,7 +1342,9 @@ mod tests {
     fn confirming_a_change_after_failure_returns_to_idle() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         let failure = ApiFailure::new(FailureKind::Throttled, &SafeDetailFields::default());
         let job = finished_job(&mut session, 3, Some(failure));
         session.finish_fetch(&job);
@@ -1165,7 +1375,9 @@ mod tests {
     fn selections_and_reload_are_refused_while_fetching() {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
-        session.begin_fetch().unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
         assert_eq!(
             session.select_profile(ProfileSelector::SdkDefault),
             Err(SessionError::Busy)
@@ -1175,10 +1387,16 @@ mod tests {
             Err(SessionError::Busy)
         );
         assert_eq!(
-            session.select_log_group("/aws/lambda/MyFunction".to_string()),
+            session.select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation()
+            ),
             Err(SessionError::Busy)
         );
-        assert_eq!(session.reload_log_groups(), Err(SessionError::Busy));
+        assert_eq!(
+            session.reload_log_groups(session.connection_generation()),
+            Err(SessionError::Busy)
+        );
         assert!(!session.view().can_change_connection);
     }
 
@@ -1186,7 +1404,9 @@ mod tests {
     fn reload_keeps_the_selection_and_the_logs_and_drops_old_pages() {
         let mut session = done_session(4);
         let old_listing = session.listing().unwrap().listing_id().to_string();
-        let request = session.reload_log_groups().unwrap();
+        let request = session
+            .reload_log_groups(session.connection_generation())
+            .unwrap();
         assert_ne!(request.listing_id, old_listing);
         let view = session.view();
         assert_eq!(
@@ -1211,7 +1431,10 @@ mod tests {
     fn reselecting_a_log_group_keeps_the_logs() {
         let mut session = done_session(6);
         session
-            .select_log_group("/aws/lambda/MyFunction".to_string())
+            .select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation(),
+            )
             .unwrap();
         let view = session.view();
         assert_eq!(
@@ -1221,7 +1444,7 @@ mod tests {
         assert_eq!(view.event_count, 6);
         assert_eq!(view.phase, Phase::Done);
         assert_eq!(
-            session.select_log_group("/not/listed".to_string()),
+            session.select_log_group("/not/listed".to_string(), session.connection_generation()),
             Err(SessionError::UnknownLogGroup)
         );
     }
@@ -1256,7 +1479,10 @@ mod tests {
             session.select_region("moon-1".to_string()),
             Err(SessionError::UnknownRegion)
         );
-        assert_eq!(session.reload_log_groups(), Err(SessionError::NotConnected));
+        assert_eq!(
+            session.reload_log_groups(session.connection_generation()),
+            Err(SessionError::NotConnected)
+        );
         assert_eq!(
             SessionError::ConfirmationPending.message_key(),
             "session.confirmationPending"
@@ -1272,8 +1498,280 @@ mod tests {
         assert!(json["validationErrors"].is_array());
         assert_eq!(json["input"]["logGroupName"], "");
         assert!(json["lastJob"].is_null());
-        let field: InputField = serde_json::from_str("\"logStreamName\"").unwrap();
-        assert_eq!(field, InputField::LogStreamName);
+        let field: InputField = serde_json::from_str("\"startText\"").unwrap();
+        assert_eq!(field, InputField::StartText);
+        assert!(serde_json::from_str::<InputField>("\"logStreamName\"").is_err());
         assert_eq!(SessionError::Busy.message_key(), "session.busy");
+    }
+
+    // --- U3: connection generation (BR6.7, review R-02) ---
+
+    #[test]
+    fn each_applied_connection_change_increments_the_generation() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert_eq!(session.connection_generation(), 0);
+        session.select_profile(dev()).unwrap();
+        assert_eq!(session.connection_generation(), 1);
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert_eq!(session.connection_generation(), 2);
+        // Choosing the same region again changes nothing.
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert_eq!(session.connection_generation(), 2);
+    }
+
+    #[test]
+    fn a_change_awaiting_confirmation_increments_only_when_confirmed() {
+        let mut session = done_session(5);
+        let before = session.connection_generation();
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert_eq!(session.connection_generation(), before);
+        session.cancel_connection_change().unwrap();
+        assert_eq!(session.connection_generation(), before);
+        session.select_region("eu-west-1".to_string()).unwrap();
+        session.confirm_connection_change().unwrap();
+        assert_eq!(session.connection_generation(), before + 1);
+    }
+
+    #[test]
+    fn operations_of_an_older_generation_are_dropped_without_changing_state() {
+        let (mut session, _) = connected_session();
+        let old = session.connection_generation();
+        session
+            .select_log_group("/aws/lambda/orders".to_string(), old)
+            .unwrap();
+        // The user switches region; the list of the new region arrives.
+        let listing = session
+            .select_region("eu-west-1".to_string())
+            .unwrap()
+            .listing
+            .unwrap();
+        session.apply_listing_page(
+            &listing.listing_id,
+            vec![group("/aws/lambda/orders"), group("/eu/only")],
+            None,
+        );
+        let before = session.view();
+
+        assert_eq!(
+            session.select_log_group("/aws/lambda/orders".to_string(), old),
+            Err(SessionError::StaleGeneration)
+        );
+        assert_eq!(
+            session.reload_log_groups(old),
+            Err(SessionError::StaleGeneration)
+        );
+        assert_eq!(session.begin_fetch(old), Err(SessionError::StaleGeneration));
+        assert_eq!(session.view(), before);
+        assert_eq!(before.selected_log_group_name, None);
+        assert_eq!(before.connection.region.as_deref(), Some("eu-west-1"));
+    }
+
+    #[test]
+    fn operations_of_the_current_generation_apply_in_the_order_received() {
+        let (mut session, _) = connected_session();
+        let current = session.connection_generation();
+        session
+            .select_log_group("/aws/lambda/orders".to_string(), current)
+            .unwrap();
+        session
+            .select_log_group("/aws/lambda/MyFunction".to_string(), current)
+            .unwrap();
+        assert_eq!(
+            session.view().selected_log_group_name.as_deref(),
+            Some("/aws/lambda/MyFunction")
+        );
+        assert!(session.reload_log_groups(current).is_ok());
+        assert_eq!(session.view().connection_generation, current);
+        assert_eq!(
+            SessionError::StaleGeneration.message_key(),
+            "session.staleGeneration"
+        );
+    }
+
+    // --- U3: progress, failures, timeline version (BR5.6, BR6.1-BR6.3) ---
+
+    fn failed_stream(name: &str) -> FailedStream {
+        FailedStream {
+            log_stream_name: name.to_string(),
+            failure: ApiFailure::new(
+                FailureKind::Throttled,
+                &SafeDetailFields {
+                    api_name: Some("GetLogEvents".to_string()),
+                    log_stream_name: Some(name.to_string()),
+                    ..SafeDetailFields::default()
+                },
+            ),
+        }
+    }
+
+    /// A session in Done after a fetch where `failed` streams failed.
+    fn done_with_failures(events: u64, failed: &[&str]) -> AppSession {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let mut job = finished_job(&mut session, events, None);
+        job.planned_stream_count = 3;
+        job.finished_stream_count = 3;
+        job.failed_streams = failed.iter().map(|name| failed_stream(name)).collect();
+        job.status = JobStatus::CompletedWithFailures;
+        session.finish_fetch(&job);
+        session
+    }
+
+    #[test]
+    fn fetch_is_possible_without_a_stream_name_but_not_without_a_log_group() {
+        let (mut session, _) = connected_session();
+        for (field, value) in [
+            (InputField::StartText, "2024-01-02 03:04:05"),
+            (InputField::EndText, "2024-01-02 03:05:05"),
+        ] {
+            session.update_input(field, value.to_string()).unwrap();
+        }
+        assert!(!session.can_fetch());
+        assert_eq!(
+            session.view().validation_errors,
+            vec!["selection.logGroupRequired"]
+        );
+        session
+            .select_log_group(
+                "/aws/lambda/orders".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert!(session.can_fetch());
+        assert!(session.view().validation_errors.is_empty());
+    }
+
+    #[test]
+    fn starting_a_fetch_clears_the_previous_count_failures_and_result() {
+        let mut session = done_with_failures(9, &["s1"]);
+        session.set_failure_list_open(true).unwrap();
+        assert!(session.view().failure_list_open);
+
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Fetching);
+        assert_eq!(view.event_count, 0);
+        assert_eq!(view.last_job, None);
+        assert!(view.failed_streams.is_empty());
+        assert_eq!(view.listing_failure, None);
+        assert!(!view.failure_list_open, "the list closes and empties");
+        assert_eq!(view.progress, Some(FetchProgress::default()));
+    }
+
+    #[test]
+    fn progress_shows_listing_then_fetching_counts() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let validated = session.validation.clone().unwrap();
+        let mut job = FetchJob::start(validated.range);
+        session.on_job_started(&job, 4);
+        assert_eq!(
+            session.view().timeline_version,
+            4,
+            "the discard at the start is shown"
+        );
+        session.on_listing_progress(
+            job.job_id,
+            ListingProgress {
+                seen_stream_count: 50,
+                selected_stream_count: 7,
+            },
+        );
+        let progress = session.view().progress.unwrap();
+        assert_eq!(progress.planned_stream_count, None, "still listing");
+        assert_eq!(progress.selected_stream_count, 7);
+
+        job.planned_stream_count = 8;
+        session.on_planned(&job);
+        session.on_batch(job.job_id, batch(120, 5));
+        job.finished_stream_count = 1;
+        session.on_stream_finished(&job);
+        let view = session.view();
+        let progress = view.progress.unwrap();
+        assert_eq!(progress.planned_stream_count, Some(8));
+        assert_eq!(progress.finished_stream_count, 1);
+        assert_eq!(progress.event_count, 120);
+        assert_eq!(view.event_count, 120);
+        assert_eq!(view.timeline_version, 5);
+
+        // Progress of another job is ignored.
+        session.on_batch(job.job_id + 1, batch(999, 99));
+        assert_eq!(session.view().event_count, 120);
+    }
+
+    #[test]
+    fn completed_with_failures_is_done_with_the_failed_streams() {
+        let session = done_with_failures(9, &["s1", "s2"]);
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Done);
+        assert_eq!(view.event_count, 9);
+        assert_eq!(view.progress, None);
+        let names: Vec<_> = view
+            .failed_streams
+            .iter()
+            .map(|f| f.log_stream_name.as_str())
+            .collect();
+        assert_eq!(names, vec!["s1", "s2"]);
+        let summary = view.last_job.unwrap();
+        assert_eq!(summary.status, JobStatus::CompletedWithFailures);
+        assert_eq!(summary.failed_stream_count, 2);
+        assert!(session.can_fetch(), "the inputs are enabled again");
+    }
+
+    #[test]
+    fn the_failure_list_opens_only_with_failures_and_always_closes() {
+        let mut session = done_session(3);
+        assert_eq!(
+            session.set_failure_list_open(true),
+            Err(SessionError::NoFailures)
+        );
+        assert!(session.set_failure_list_open(false).is_ok());
+
+        let mut session = done_with_failures(3, &["s1"]);
+        session.set_failure_list_open(true).unwrap();
+        assert!(session.view().failure_list_open);
+        session.set_failure_list_open(false).unwrap();
+        assert!(!session.view().failure_list_open);
+        assert_eq!(SessionError::NoFailures.message_key(), "session.noFailures");
+    }
+
+    #[test]
+    fn an_aborted_job_returns_to_idle_with_nothing_shown() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let mut job = finished_job(&mut session, 4, None);
+        session.on_batch(job.job_id, batch(4, 2));
+        job.status = JobStatus::Aborted;
+        session.finish_fetch(&job);
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Idle);
+        assert_eq!(view.event_count, 0);
+        assert_eq!(view.progress, None);
+    }
+
+    #[test]
+    fn a_connection_change_clears_failures_and_takes_the_new_timeline_version() {
+        let mut session = done_with_failures(0, &["s1"]);
+        session.set_failure_list_open(true).unwrap();
+        let effect = session.select_region("eu-west-1".to_string()).unwrap();
+        assert!(effect.logs_cleared);
+        session.set_timeline_version(12);
+        let view = session.view();
+        assert!(view.failed_streams.is_empty());
+        assert!(!view.failure_list_open);
+        assert_eq!(view.timeline_version, 12);
+        session.set_timeline_version(3);
+        assert_eq!(session.view().timeline_version, 12, "never goes back");
     }
 }

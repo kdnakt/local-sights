@@ -5,8 +5,6 @@ import { detectLocale, isMessageKey, messages, translate } from "./messages";
 const CORE_KEYS = [
   "validation.logGroupRequired",
   "validation.logGroupTooLong",
-  "validation.logStreamRequired",
-  "validation.logStreamTooLong",
   "validation.startFormat",
   "validation.endFormat",
   "validation.rangeOrder",
@@ -26,6 +24,8 @@ const CORE_KEYS = [
   "session.unknownRegion",
   "session.unknownLogGroup",
   "session.nothingPending",
+  "session.staleGeneration",
+  "session.noFailures",
   "selection.profileRequired",
   "selection.regionRequired",
   "selection.logGroupRequired",
@@ -59,6 +59,28 @@ describe("message catalog", () => {
   it("fills placeholders in the chosen language", () => {
     expect(translate("en", "status.count", { count: 5 })).toBe("5 events");
     expect(translate("ja", "status.count", { count: 5 })).toBe("5 件");
+  });
+
+  it("has the U3 screen texts in both languages and no stream name keys", () => {
+    for (const key of [
+      "table.stream",
+      "table.scroll",
+      "status.listing",
+      "status.fetching",
+      "status.failedStreams",
+      "status.showFailures",
+      "status.listingPartial",
+      "failures.title",
+      "failures.listing",
+      "failures.close",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(Object.keys(messages).filter((key) => key.includes("logStream"))).toEqual([]);
+    expect(translate("ja", "status.failedStreams", { count: 3 })).toBe("3 ストリームで失敗");
+    expect(translate("en", "status.fetching", { finished: 1, planned: 4, count: 10 })).toBe(
+      "Fetching… 1/4 streams, 10 events so far",
+    );
   });
 
   it("returns an unknown key unchanged so the gap is visible", () => {

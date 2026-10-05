@@ -109,72 +109,72 @@ U3 の FR：FR4、FR4.1、FR4.2、FR4.5、FR4.7、FR4.8、FR4.10、FR4.11。NFR�
 
 ### Step 1: 骨組みと設定
 
-- [ ] `crates/local-sights-core/Cargo.toml` に `fastrand`（再試行の待ちのばらつき）を足し、dev-dependencies の `tokio` に `test-util` の機能を足す（待ちを実時間で待たないため）。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）
-- [ ] `src/lib.rs` に `streams`・`retry` のモジュールを宣言し、クレートの説明の「GetLogEvents だけ」を読み取り 3 API の記述に直す
+- [x] `crates/local-sights-core/Cargo.toml` に `fastrand`（再試行の待ちのばらつき）を足し、dev-dependencies の `tokio` に `test-util` の機能を足す（待ちを実時間で待たないため）。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）
+- [x] `src/lib.rs` に `streams`・`retry` のモジュールを宣言し、クレートの説明の「GetLogEvents だけ」を読み取り 3 API の記述に直す
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
 
-- [ ] U1・U2 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U3 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
+- [x] U1・U2 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U3 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
 
 ### Step 3: 純粋なロジックのテストを先に書く（失敗を確かめる）
 
 各テストを書いたら実行し、失敗の出力を記録してから Step 4 に進む。
 
-- [ ] `streams/mod.rs` のテスト：範囲と重なるストリームだけが対象になり、最初・最後のイベント時刻のどちらかを持たないストリームは対象になる（BR1.3）。lastEventTimestamp が「開始 − 1 時間」ちょうどは対象、1 ミリ秒古いと打ち切り（境界）。打ち切ったページでも、時刻を持たないストリームは位置にかかわらず対象に残り、それより後ろの時刻を持つストリームは対象にならない（BR1.2、R-01）。次のトークンがない・同じトークンで Complete（BR1.1）。エラーで Partial になり、それまでの対象が残る（BR1.5）。対象の並びは列挙で得た順
-- [ ] `retry.rs` のテスト：Throttled と Network は再試行し、それ以外の種類はすぐ失敗（BR2.1）。n 回目の待ちは 1・2・4・8・16 秒に（1 + ばらつき）を掛けた値で、ばらつきの値 −0.2・0・+0.2 のときの境界（BR2.1）。5 回で使い切り（BR2.1）。成功で回数を 0 から数え直す（BR2.2）。使い切りが続けて 3 ストリームで残りを打ち切り、途中の成功または使い切らない失敗で続けての数が 0 に戻る（BR2.1、R-03）
-- [ ] `timeline.rs` のテスト：並べ替えのキーは (timestamp, logStreamName, sequence)（BR4.1、U1:BR5.1 の置き換え）。複数のストリームのページを順に足しても、常に全体がキーの順（BR4.2）。同じ時刻は文字列の順のストリーム名、同じストリームは sequence の順。行の取り出しは offset から最大 limit 件で、offset が保持件数以上なら空、totalCount と timelineVersion が一緒に返る（BR4.3）。(logStreamName, sequence) の位置が返り、ないときはない（BR4.4、R-10）。追加と破棄で timelineVersion が増える（BR4.5、R-08）。100 万件を足して、1 回の取り出しと 1 回の位置の問い合わせがそれぞれ 10 ミリ秒以内（NFR2、BR4.4。リリースビルドで測る `#[ignore]` のテストとし、通常の `cargo test` では件数を減らして正しさだけを確かめる）
-- [ ] `coordinator.rs` の結果の状態のテスト：中断で Aborted、列挙が最初のページで失敗し対象 0 件で Failed、失敗したストリームか Partial で CompletedWithFailures、それ以外は Completed（対象 0 件も Completed）（BR5.2）。finishedStreamCount ≤ plannedStreamCount
-- [ ] `session.rs` の世代番号のテスト：接続先の変更を確定するたびに connectionGeneration が 1 増え、確認待ちのキャンセルでは増えない。古い世代を付けたロググループの選択・再読み込み・取得の開始は捨てられ（StaleGeneration）、状態が変わらない。同じ世代の操作は受け取った順に反映される（BR6.7）
-- [ ] `src/virtualScroll.test.ts`：スクロールの位置から表示する最初の行・行数・描く位置を求める。0 件、最後までのスクロール、行数がスクロールの高さの上限を超えるときに比例で縮めても最初と最後の行に届く。位置を保つ計算：一番上ならそのまま一番上、そうでなければ基準の行の新しい位置とずれから新しいスクロールの位置を求める（BR6.4、BR6.5）
+- [x] `streams/mod.rs` のテスト：範囲と重なるストリームだけが対象になり、最初・最後のイベント時刻のどちらかを持たないストリームは対象になる（BR1.3）。lastEventTimestamp が「開始 − 1 時間」ちょうどは対象、1 ミリ秒古いと打ち切り（境界）。打ち切ったページでも、時刻を持たないストリームは位置にかかわらず対象に残り、それより後ろの時刻を持つストリームは対象にならない（BR1.2、R-01）。次のトークンがない・同じトークンで Complete（BR1.1）。エラーで Partial になり、それまでの対象が残る（BR1.5）。対象の並びは列挙で得た順
+- [x] `retry.rs` のテスト：Throttled と Network は再試行し、それ以外の種類はすぐ失敗（BR2.1）。n 回目の待ちは 1・2・4・8・16 秒に（1 + ばらつき）を掛けた値で、ばらつきの値 −0.2・0・+0.2 のときの境界（BR2.1）。5 回で使い切り（BR2.1）。成功で回数を 0 から数え直す（BR2.2）。使い切りが続けて 3 ストリームで残りを打ち切り、途中の成功または使い切らない失敗で続けての数が 0 に戻る（BR2.1、R-03）
+- [x] `timeline.rs` のテスト：並べ替えのキーは (timestamp, logStreamName, sequence)（BR4.1、U1:BR5.1 の置き換え）。複数のストリームのページを順に足しても、常に全体がキーの順（BR4.2）。同じ時刻は文字列の順のストリーム名、同じストリームは sequence の順。行の取り出しは offset から最大 limit 件で、offset が保持件数以上なら空、totalCount と timelineVersion が一緒に返る（BR4.3）。(logStreamName, sequence) の位置が返り、ないときはない（BR4.4、R-10）。追加と破棄で timelineVersion が増える（BR4.5、R-08）。100 万件を足して、1 回の取り出しと 1 回の位置の問い合わせがそれぞれ 10 ミリ秒以内（NFR2、BR4.4。リリースビルドで測る `#[ignore]` のテストとし、通常の `cargo test` では件数を減らして正しさだけを確かめる）
+- [x] `coordinator.rs` の結果の状態のテスト：中断で Aborted、列挙が最初のページで失敗し対象 0 件で Failed、失敗したストリームか Partial で CompletedWithFailures、それ以外は Completed（対象 0 件も Completed）（BR5.2）。finishedStreamCount ≤ plannedStreamCount
+- [x] `session.rs` の世代番号のテスト：接続先の変更を確定するたびに connectionGeneration が 1 増え、確認待ちのキャンセルでは増えない。古い世代を付けたロググループの選択・再読み込み・取得の開始は捨てられ（StaleGeneration）、状態が変わらない。同じ世代の操作は受け取った順に反映される（BR6.7）
+- [x] `src/virtualScroll.test.ts`：スクロールの位置から表示する最初の行・行数・描く位置を求める。0 件、最後までのスクロール、行数がスクロールの高さの上限を超えるときに比例で縮めても最初と最後の行に届く。位置を保つ計算：一番上ならそのまま一番上、そうでなければ基準の行の新しい位置とずれから新しいスクロールの位置を求める（BR6.4、BR6.5）
 
 ### Step 4: 純粋なロジックを実装する（テストを通す）→ 整理する
 
-- [ ] `streams/mod.rs`・`retry.rs`・`timeline.rs`・`event.rs`・`coordinator.rs`（結果の状態の決め方）・`session.rs`（世代番号）・`src/virtualScroll.ts` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない
+- [x] `streams/mod.rs`・`retry.rs`・`timeline.rs`・`event.rs`・`coordinator.rs`（結果の状態の決め方）・`session.rs`（世代番号）・`src/virtualScroll.ts` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない
 
 ### Step 5: AWS 接続の層を実装する → テストする（BR1.4）
 
-- [ ] `gateway/mod.rs`：trait に `describe_log_streams`（ロググループ名と次のトークンだけを受け、LogStream の一覧と次のトークン、または ApiFailure を返す。並び順と降順は実装の中で固定する）を足す。`GetLogEventsRequest` の log_stream_name は残す（ストリームごとに呼ぶ）。読み取り 3 API 以外を呼ぶ手段は作らない
-- [ ] `gateway/aws.rs`：DescribeLogStreams の実装（`orderBy=LastEventTime`、`descending=true`）。接続先の解決とクライアントの使い回しは U2 と同じ。エラーは U1 の分類と安全な詳細を使う
-- [ ] テスト（実装の後）：DescribeLogStreams の SDK のエラーが U1 の種類（Throttled・Network を含む）に分類され、生のメッセージが捨てられること。LogStream の時刻がないときに None になること。いずれも AWS の API は呼ばない
+- [x] `gateway/mod.rs`：trait に `describe_log_streams`（ロググループ名と次のトークンだけを受け、LogStream の一覧と次のトークン、または ApiFailure を返す。並び順と降順は実装の中で固定する）を足す。`GetLogEventsRequest` の log_stream_name は残す（ストリームごとに呼ぶ）。読み取り 3 API 以外を呼ぶ手段は作らない
+- [x] `gateway/aws.rs`：DescribeLogStreams の実装（`orderBy=LastEventTime`、`descending=true`）。接続先の解決とクライアントの使い回しは U2 と同じ。エラーは U1 の分類と安全な詳細を使う
+- [x] テスト（実装の後）：DescribeLogStreams の SDK のエラーが U1 の種類（Throttled・Network を含む）に分類され、生のメッセージが捨てられること。LogStream の時刻がないときに None になること。いずれも AWS の API は呼ばない
 
 ### Step 6: 列挙と取得の流れを実装する → 偽物の gateway でテストする（BR1.1〜BR1.5、BR2.1〜BR2.3、BR3.1〜BR3.3、BR5.1〜BR5.5）
 
-- [ ] `streams/planner.rs`：DescribeLogStreams のページをたどって StreamPlan を作る。ページごとに受け口へ列挙の途中経過（見たストリーム数と対象の数）を届ける（BR5.4、R-06）。エラーは再試行し、それでも失敗したら Partial
-- [ ] `fetcher.rs`：U1 の `fetch_stream` を、ストリーム名を引数で受ける形にし、エラーを再試行し（BR2.1、BR2.2）、retryCount を数え、sequence をストリームごとに 0 から振る（BR3.2）。中断を受けたら待ちを打ち切り、次の API を呼ばない（BR2.3）
-- [ ] `coordinator.rs`：新しい FetchJob（jobId、Running）を作り、保持ログを破棄し（BR5.6、BR4.5）、列挙 → ストリームを 1 つずつ取得 → ページごとに保持ログへ追加（保持ログのロックはページごとに短く握る）→ 結果の状態を決める（BR5.1、BR5.2）。失敗したストリームを FailedStream にまとめ（BR5.3）、使い切りが続けて 3 ストリームで残りを呼ばずに失敗とする（BR2.1、R-03、R-09）。受け口に、開始 → 列挙の途中経過 → 計画したストリーム数 → ページごとの追加（追加件数・累計件数・timelineVersion）→ ストリームごとの終了 → 終了の順に届ける（BR5.4）。中断で Aborted にし、保持ログを破棄する（BR5.5）。FetchJob に listingStatus を写す（R-09）
-- [ ] 偽物の gateway（`tests/support/fake_gateway.rs`）に、DescribeLogStreams の決めた応答と、ストリームごとの GetLogEvents の応答（エラーの列を含む）を足す。呼ばれた API とストリーム名を記録する
-- [ ] 結合テスト `crates/local-sights-core/tests/u3_fetch_flow.rs`（実装の後）：複数ストリームが時刻順に混ざる、空ページ、列挙の打ち切り（次のページを呼ばない）、列挙の途中のエラー（最初のページで Failed、2 ページ目で CompletedWithFailures）、スロットリングから回復して Completed（受け入れ条件 1）、使い切りで 1 ストリーム失敗し取得できたページが残る（受け入れ条件 2）、使い切りが 3 ストリーム続いて残りを呼ばない（受け入れ条件 3）、中断で待ちを打ち切り Aborted と保持ログの破棄、受け口に届く順序。待ちは `start_paused` で実時間を待たない
-- [ ] U1 の結合テスト `tests/u1_fetch_flow.rs` を、ストリーム名のない取得の要求と新しい流れに合わせて直す（U1 のルールのうち U3 が置き換えたもの以外の観点は残す）
+- [x] `streams/planner.rs`：DescribeLogStreams のページをたどって StreamPlan を作る。ページごとに受け口へ列挙の途中経過（見たストリーム数と対象の数）を届ける（BR5.4、R-06）。エラーは再試行し、それでも失敗したら Partial
+- [x] `fetcher.rs`：U1 の `fetch_stream` を、ストリーム名を引数で受ける形にし、エラーを再試行し（BR2.1、BR2.2）、retryCount を数え、sequence をストリームごとに 0 から振る（BR3.2）。中断を受けたら待ちを打ち切り、次の API を呼ばない（BR2.3）
+- [x] `coordinator.rs`：新しい FetchJob（jobId、Running）を作り、保持ログを破棄し（BR5.6、BR4.5）、列挙 → ストリームを 1 つずつ取得 → ページごとに保持ログへ追加（保持ログのロックはページごとに短く握る）→ 結果の状態を決める（BR5.1、BR5.2）。失敗したストリームを FailedStream にまとめ（BR5.3）、使い切りが続けて 3 ストリームで残りを呼ばずに失敗とする（BR2.1、R-03、R-09）。受け口に、開始 → 列挙の途中経過 → 計画したストリーム数 → ページごとの追加（追加件数・累計件数・timelineVersion）→ ストリームごとの終了 → 終了の順に届ける（BR5.4）。中断で Aborted にし、保持ログを破棄する（BR5.5）。FetchJob に listingStatus を写す（R-09）
+- [x] 偽物の gateway（`tests/support/fake_gateway.rs`）に、DescribeLogStreams の決めた応答と、ストリームごとの GetLogEvents の応答（エラーの列を含む）を足す。呼ばれた API とストリーム名を記録する
+- [x] 結合テスト `crates/local-sights-core/tests/u3_fetch_flow.rs`（実装の後）：複数ストリームが時刻順に混ざる、空ページ、列挙の打ち切り（次のページを呼ばない）、列挙の途中のエラー（最初のページで Failed、2 ページ目で CompletedWithFailures）、スロットリングから回復して Completed（受け入れ条件 1）、使い切りで 1 ストリーム失敗し取得できたページが残る（受け入れ条件 2）、使い切りが 3 ストリーム続いて残りを呼ばない（受け入れ条件 3）、中断で待ちを打ち切り Aborted と保持ログの破棄、受け口に届く順序。待ちは `start_paused` で実時間を待たない
+- [x] U1 の結合テスト `tests/u1_fetch_flow.rs` を、ストリーム名のない取得の要求と新しい流れに合わせて直す（U1 のルールのうち U3 が置き換えたもの以外の観点は残す）
 
 ### Step 7: AppSession を広げる → テストする（BR5.6、BR6.1、BR6.2、BR6.3、BR6.6、BR6.7）
 
-- [ ] `request.rs`：取得の要求からストリーム名をなくし、共通の検証（U1:BR1.8）からストリーム名の確認を外す（ロググループ名の確認は残す）（BR6.1）
-- [ ] `session.rs`：取得の開始時に前回の件数・失敗の一覧・直近の結果を消し、0 件の取得中にする（BR5.6）。進み具合（列挙中の対象の数、計画したストリーム数、終えたストリーム数、累計件数、timelineVersion）と結果（CompletedWithFailures の失敗したストリームの一覧、列挙の失敗）を持ち、SessionView に出す（BR6.2）。失敗の一覧を開く・閉じる（failureListOpen。取得し直すと閉じて中身も消える）（BR6.3）。CompletedWithFailures は phase Done（functional-spec.md の 3 章）。接続先の世代番号を持ち、操作に付いた世代番号を確かめる（BR6.7）。取得中の操作の制限は U1・U2 のまま（BR6.6）
-- [ ] `session.rs` のテスト（実装の後）：取得の開始で前回の件数・失敗の一覧が消え、一覧が閉じる。進み具合が SessionView に出る。CompletedWithFailures で Done と失敗の数。失敗の一覧の開閉と、取得し直しで閉じる。ストリーム名がなくても [Fetch] が押せる、ロググループがないと押せない。U1・U2 のテストをストリーム名のない形に直す
+- [x] `request.rs`：取得の要求からストリーム名をなくし、共通の検証（U1:BR1.8）からストリーム名の確認を外す（ロググループ名の確認は残す）（BR6.1）
+- [x] `session.rs`：取得の開始時に前回の件数・失敗の一覧・直近の結果を消し、0 件の取得中にする（BR5.6）。進み具合（列挙中の対象の数、計画したストリーム数、終えたストリーム数、累計件数、timelineVersion）と結果（CompletedWithFailures の失敗したストリームの一覧、列挙の失敗）を持ち、SessionView に出す（BR6.2）。失敗の一覧を開く・閉じる（failureListOpen。取得し直すと閉じて中身も消える）（BR6.3）。CompletedWithFailures は phase Done（functional-spec.md の 3 章）。接続先の世代番号を持ち、操作に付いた世代番号を確かめる（BR6.7）。取得中の操作の制限は U1・U2 のまま（BR6.6）
+- [x] `session.rs` のテスト（実装の後）：取得の開始で前回の件数・失敗の一覧が消え、一覧が閉じる。進み具合が SessionView に出る。CompletedWithFailures で Done と失敗の数。失敗の一覧の開閉と、取得し直しで閉じる。ストリーム名がなくても [Fetch] が押せる、ロググループがないと押せない。U1・U2 のテストをストリーム名のない形に直す
 
 ### Step 8: Tauri のつなぎを実装する
 
-- [ ] `src-tauri/src/lib.rs`：保持ログを `std::sync::Mutex` にし、取得の流れにはページの追加のたびに短く握る受け口を渡す。`log-batch` イベントをやめ、コマンド `get_rows(offset, limit)`・`find_row_position(logStreamName, sequence)`・`set_failure_list_open(open)` を足す。`select_log_group`・`reload_log_groups`・`start_fetch` に世代番号の引数を足し、古い世代は何もせずに終える（BR6.7）。接続先の変更で保持ログを破棄するとき timelineVersion を増やす（BR4.5）。ウィンドウを閉じるときに取得を中断する（BR5.5。確認ダイアログは U7）。`update_input` からストリーム名の欄をなくす。`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
+- [x] `src-tauri/src/lib.rs`：保持ログを `std::sync::Mutex` にし、取得の流れにはページの追加のたびに短く握る受け口を渡す。`log-batch` イベントをやめ、コマンド `get_rows(offset, limit)`・`find_row_position(logStreamName, sequence)`・`set_failure_list_open(open)` を足す。`select_log_group`・`reload_log_groups`・`start_fetch` に世代番号の引数を足し、古い世代は何もせずに終える（BR6.7）。接続先の変更で保持ログを破棄するとき timelineVersion を増やす（BR4.5）。ウィンドウを閉じるときに取得を中断する（BR5.5。確認ダイアログは U7）。`update_input` からストリーム名の欄をなくす。`capabilities/default.json` に新しいコマンドの権限だけを足す
+- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
 
 ### Step 9: 画面を実装する → Vitest でテストする（BR6.1〜BR6.5、BR6.8）
 
-- [ ] `src/api.ts`（新しいコマンドと SessionView の型、`log-batch` の削除）、`src/hooks/useRowWindow.ts`（表示範囲の行を `get_rows` で取り寄せ、要求ごとの番号で古い応答を捨てる。timelineVersion が変わったら取り直し、位置を保つ）、`LogTable.tsx`（3 列・行の高さと列の幅は固定・メッセージは 1 行で省略・表示範囲だけを描く・矢印キー・Page Up・Page Down・Home・End）、`StatusLine.tsx`（列挙中・取得中の進み具合、件数、「N ストリームで失敗」のボタン、列挙が途中までの知らせ）、`FailureList.tsx`（失敗したストリームの名前と種類名・安全な詳細、列挙の失敗を先頭、[閉じる]・Escape、開いたときのフォーカスは [閉じる]。U1 の `useEscapeKey` を使う）、`FetchForm.tsx`（ストリーム名の欄をなくす）、`App.tsx`（世代番号を操作に付ける）、`src/i18n/messages.ts`（U3 の文言キーを英日で足す）。操作できる要素に `data-testid` を付ける
-- [ ] 画面のテスト（実装の後）：`LogTable.test.tsx`（表示範囲の行だけが描かれる、3 列、キーボードでのスクロール、行が増えても一番上の行が動かない）、`StatusLine.test.tsx`（列挙中・取得中・0 件・失敗の数・列挙が途中まで）、`FailureList.test.tsx`（一覧の中身、フォーカス、Escape と [閉じる]）、`FetchForm.test.tsx`・`App.test.tsx`・`messages.test.ts` の更新（ストリーム名の欄がない、世代番号が操作に付く、文言の英日のそろい）
+- [x] `src/api.ts`（新しいコマンドと SessionView の型、`log-batch` の削除）、`src/hooks/useRowWindow.ts`（表示範囲の行を `get_rows` で取り寄せ、要求ごとの番号で古い応答を捨てる。timelineVersion が変わったら取り直し、位置を保つ）、`LogTable.tsx`（3 列・行の高さと列の幅は固定・メッセージは 1 行で省略・表示範囲だけを描く・矢印キー・Page Up・Page Down・Home・End）、`StatusLine.tsx`（列挙中・取得中の進み具合、件数、「N ストリームで失敗」のボタン、列挙が途中までの知らせ）、`FailureList.tsx`（失敗したストリームの名前と種類名・安全な詳細、列挙の失敗を先頭、[閉じる]・Escape、開いたときのフォーカスは [閉じる]。U1 の `useEscapeKey` を使う）、`FetchForm.tsx`（ストリーム名の欄をなくす）、`App.tsx`（世代番号を操作に付ける）、`src/i18n/messages.ts`（U3 の文言キーを英日で足す）。操作できる要素に `data-testid` を付ける
+- [x] 画面のテスト（実装の後）：`LogTable.test.tsx`（表示範囲の行だけが描かれる、3 列、キーボードでのスクロール、行が増えても一番上の行が動かない）、`StatusLine.test.tsx`（列挙中・取得中・0 件・失敗の数・列挙が途中まで）、`FailureList.test.tsx`（一覧の中身、フォーカス、Escape と [閉じる]）、`FetchForm.test.tsx`・`App.test.tsx`・`messages.test.ts` の更新（ストリーム名の欄がない、世代番号が操作に付く、文言の英日のそろい）
 
 ### Step 10: 確認用プログラムを合わせる（BR6.9）
 
-- [ ] `examples/fetch_check.rs`：`--stream` をなくし、この単位の流れでロググループ全体を取得する。1 件 1 行で「UTC の時刻（ミリ秒まで）＋タブ＋ストリーム名＋タブ＋メッセージ」を時刻順に標準出力へ出し、最後に件数・ストリーム数・失敗の数を標準エラーへ出す。失敗したストリームがあれば名前と種類・安全な詳細を標準エラーへ出し、終了コード 1。引数の誤りは使い方を出して終了コード 2
+- [x] `examples/fetch_check.rs`：`--stream` をなくし、この単位の流れでロググループ全体を取得する。1 件 1 行で「UTC の時刻（ミリ秒まで）＋タブ＋ストリーム名＋タブ＋メッセージ」を時刻順に標準出力へ出し、最後に件数・ストリーム数・失敗の数を標準エラーへ出す。失敗したストリームがあれば名前と種類・安全な詳細を標準エラーへ出し、終了コード 1。引数の誤りは使い方を出して終了コード 2
 
 ### Step 11: ビルドと環境の設定
 
-- [ ] `README.md`：確認用プログラムの使い方から `--stream` をなくし、必要な IAM 権限に DescribeLogStreams を足す。手元の確認の項目に U3 の分（複数ストリームの時刻順、100 万件に近い件数でのスクロール、取得中に一番上の行が動かない、失敗の一覧、列挙中の表示、時刻を持たないストリームの並び（rules.md の「前提と手元の確認の項目」））を足す
-- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [x] `README.md`：確認用プログラムの使い方から `--stream` をなくし、必要な IAM 権限に DescribeLogStreams を足す。手元の確認の項目に U3 の分（複数ストリームの時刻順、100 万件に近い件数でのスクロール、取得中に一番上の行が動かない、失敗の一覧、列挙中の表示、時刻を持たないストリームの並び（rules.md の「前提と手元の確認の項目」））を足す
+- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 12: ドキュメントとトレーサビリティ
 
-- [ ] 公開関数に doc コメントを付ける
-- [ ] `code-summary.md`・`source-manifest.json`・`traceability.json`（U3 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
+- [x] 公開関数に doc コメントを付ける
+- [x] `code-summary.md`・`source-manifest.json`・`traceability.json`（U3 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
 
 ## 4. 要件・ルールと手順の対応
 

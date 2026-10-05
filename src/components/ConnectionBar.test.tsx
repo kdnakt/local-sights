@@ -7,15 +7,17 @@ import { connectedView, sessionView, t } from "../test/fixtures";
 function renderBar(view = sessionView()) {
   const onSelectProfile = vi.fn();
   const onSelectRegion = vi.fn();
+  const onSelectTimeZone = vi.fn();
   render(
     <ConnectionBar
       session={view}
       t={t}
       onSelectProfile={onSelectProfile}
       onSelectRegion={onSelectRegion}
+      onSelectTimeZone={onSelectTimeZone}
     />,
   );
-  return { onSelectProfile, onSelectRegion };
+  return { onSelectProfile, onSelectRegion, onSelectTimeZone };
 }
 
 describe("ConnectionBar", () => {
@@ -57,5 +59,16 @@ describe("ConnectionBar", () => {
     expect(screen.getByTestId("connection-bar-notice")).toHaveTextContent(
       "The AWS credentials file could not be read; its profiles are not listed.",
     );
+  });
+
+  it("holds the time zone switch, usable while the connection is locked", async () => {
+    const { onSelectTimeZone } = renderBar(
+      connectedView({ phase: "Fetching", canChangeConnection: false }),
+    );
+    expect(screen.getByTestId("connection-bar-profile-select")).toBeDisabled();
+    const utc = screen.getByTestId("time-zone-toggle-utc-radio");
+    expect(utc).toBeEnabled();
+    await userEvent.click(utc);
+    expect(onSelectTimeZone).toHaveBeenCalledWith("Utc");
   });
 });

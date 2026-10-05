@@ -1,4 +1,4 @@
-import type { LogEvent, RowWindow, SessionView } from "../api";
+import type { DisplayRow, RowWindow, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 
 /** English translator used by component tests. */
@@ -8,12 +8,9 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
   return {
     sessionId: "session-1",
     phase: "Idle",
-    input: {
-      profileName: "",
-      logGroupName: "",
-      startText: "",
-      endText: "",
-    },
+    timeZone: "Local",
+    startInput: { text: "", instant: null, error: null },
+    endInput: { text: "", instant: null, error: null },
     validationErrors: [],
     canFetch: true,
     currentJobId: null,
@@ -44,23 +41,29 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
   };
 }
 
+/**
+ * A row as `get_rows` gives it. `displayTime` stands for the text the core
+ * wrote in the chosen zone; the screen must show it unchanged (U4:BR3.4).
+ */
 export function logEvent(
   sequence: number,
   message = `message ${sequence}`,
   logStreamName = "stream-a",
-): LogEvent {
+  displayTime = `core time ${sequence}`,
+): DisplayRow {
   return {
     timestamp: 1_704_164_645_000 + sequence,
     ingestionTime: null,
     message,
     logStreamName,
     sequence,
+    displayTime,
   };
 }
 
 /** A `get_rows` answer cut from `events`, as the core would give it. */
 export function rowWindow(
-  events: readonly LogEvent[],
+  events: readonly DisplayRow[],
   offset: number,
   limit: number,
   timelineVersion = 1,

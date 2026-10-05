@@ -12,6 +12,10 @@ aws-config.workspace = true
 aws-sdk-cloudwatchlogs.workspace = true
 aws-credential-types.workspace = true
 chrono.workspace = true
+# U4: time zone conversion owned by TimeRangeModel (BR3.4, Q1). Both are
+# MIT OR Apache-2.0 and send nothing anywhere.
+chrono-tz.workspace = true
+iana-time-zone.workspace = true
 fastrand.workspace = true
 home.workspace = true
 regex.workspace = true

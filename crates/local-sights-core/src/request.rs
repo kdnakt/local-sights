@@ -4,11 +4,19 @@
 //! call [`validate_fetch_input`], so neither depends on the other (BR1.8).
 //! Validation failures are reported as message-catalog keys. Since U3 the
 //! fetch covers the whole log group, so there is no stream name (U3:BR6.1).
+//!
+//! Since U4 the screen's start and end are [`DateTimeInput`]s read in the
+//! chosen time zone; AppSession validates them with
+//! [`validate_session_input`], which builds the range and checks the order
+//! on their instants (U4:BR1.6). The `fetch_check` example still passes UTC
+//! text through [`validate_fetch_input`] (U4:BR3.5). Both share one check.
 
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::ProfileSelector;
-use crate::time_range::{TimeRange, parse_utc_seconds};
+use crate::date_input::{DateTimeInput, DateTimeInputError};
+use crate::time_range::TimeRange;
 
 /// Maximum length (characters) of a log group name.
 pub const MAX_NAME_LEN: usize = 512;
@@ -22,9 +30,9 @@ pub struct FetchInput {
     pub profile_name: String,
     /// Log group name (required).
     pub log_group_name: String,
-    /// Start date and time, `yyyy-mm-dd hh:mm:ss` in UTC.
+    /// Start date and time, `yyyy-mm-dd hh:mm:ss` in UTC (U4:BR3.5).
     pub start_text: String,
-    /// End date and time, `yyyy-mm-dd hh:mm:ss` in UTC.
+    /// End date and time, `yyyy-mm-dd hh:mm:ss` in UTC (U4:BR3.5).
     pub end_text: String,
 }
 
@@ -37,8 +45,14 @@ pub enum ValidationError {
     LogGroupTooLong,
     /// BR1.2: the start is not a valid `yyyy-mm-dd hh:mm:ss`.
     StartFormat,
+    /// U4:BR2.2: the start is skipped by a daylight saving change in the
+    /// local time zone.
+    StartNonexistentLocalTime,
     /// BR1.2: the end is not a valid `yyyy-mm-dd hh:mm:ss`.
     EndFormat,
+    /// U4:BR2.2: the end is skipped by a daylight saving change in the
+    /// local time zone.
+    EndNonexistentLocalTime,
     /// BR1.3: the start is not before the end.
     RangeOrder,
 }
@@ -61,12 +75,14 @@ pub struct ValidatedFetch {
 }
 
 impl ValidationError {
-    /// Every variant, in display order.
-    pub const ALL: [ValidationError; 5] = [
+    /// Every variant, in the order of the conditions (U4:BR2.1).
+    pub const ALL: [ValidationError; 7] = [
         ValidationError::LogGroupRequired,
         ValidationError::LogGroupTooLong,
         ValidationError::StartFormat,
+        ValidationError::StartNonexistentLocalTime,
         ValidationError::EndFormat,
+        ValidationError::EndNonexistentLocalTime,
         ValidationError::RangeOrder,
     ];
 
@@ -76,7 +92,9 @@ impl ValidationError {
             ValidationError::LogGroupRequired => "validation.logGroupRequired",
             ValidationError::LogGroupTooLong => "validation.logGroupTooLong",
             ValidationError::StartFormat => "validation.startFormat",
+            ValidationError::StartNonexistentLocalTime => "validation.startNonexistentLocalTime",
             ValidationError::EndFormat => "validation.endFormat",
+            ValidationError::EndNonexistentLocalTime => "validation.endNonexistentLocalTime",
             ValidationError::RangeOrder => "validation.rangeOrder",
         }
     }
@@ -122,25 +140,57 @@ impl FetchRequest {
     }
 }
 
-/// Validates the raw input (BR1.1-BR1.3; no stream name since U3:BR6.1)
-/// and derives the time range
-/// (BR2.1, BR2.2). On failure, returns every reason found.
+/// Validates the raw input of the `fetch_check` example (BR1.1-BR1.3; no
+/// stream name since U3:BR6.1) and derives the time range (BR2.1, BR2.2).
+/// The times are UTC (U4:BR3.5). On failure, returns every reason found.
 pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<ValidationError>> {
+    validate_inputs(
+        &input.profile_name,
+        &input.log_group_name,
+        &DateTimeInput::parse(input.start_text.as_str(), Tz::UTC),
+        &DateTimeInput::parse(input.end_text.as_str(), Tz::UTC),
+    )
+}
+
+/// Validates the screen's conditions (U4:BR2.1): the log group name and the
+/// start and end inputs, already read in the chosen time zone. The order
+/// is checked and the range built from the instants (U4:BR1.6); the
+/// time zone plays no further part. An empty input is a format error. When
+/// either input has an error, the order is not checked. On failure,
+/// returns every reason found, in the order of the conditions. The profile
+/// is left to the caller ([`FetchRequest::with_connection`], U2:BR2.8).
+pub fn validate_session_input(
+    log_group_name: &str,
+    start: &DateTimeInput,
+    end: &DateTimeInput,
+) -> Result<ValidatedFetch, Vec<ValidationError>> {
+    validate_inputs("", log_group_name, start, end)
+}
+
+/// The shared check of both entry points (U1:BR1.8).
+fn validate_inputs(
+    profile_name: &str,
+    log_group_name: &str,
+    start: &DateTimeInput,
+    end: &DateTimeInput,
+) -> Result<ValidatedFetch, Vec<ValidationError>> {
     let mut errors = Vec::new();
     let log_group = check_name(
-        &input.log_group_name,
+        log_group_name,
         ValidationError::LogGroupRequired,
         ValidationError::LogGroupTooLong,
         &mut errors,
     );
-    let start = record_error(
-        parse_utc_seconds(&input.start_text),
+    let start = check_instant(
+        start,
         ValidationError::StartFormat,
+        ValidationError::StartNonexistentLocalTime,
         &mut errors,
     );
-    let end = record_error(
-        parse_utc_seconds(&input.end_text),
+    let end = check_instant(
+        end,
         ValidationError::EndFormat,
+        ValidationError::EndNonexistentLocalTime,
         &mut errors,
     );
     let range = match (start, end) {
@@ -154,7 +204,7 @@ pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<Va
     match (log_group, range) {
         (Some(log_group), Some(range)) if errors.is_empty() => Ok(ValidatedFetch {
             request: FetchRequest::new(
-                ProfileSelector::from_optional_name(Some(&input.profile_name)),
+                ProfileSelector::from_optional_name(Some(profile_name)),
                 None,
                 log_group,
             ),
@@ -162,6 +212,25 @@ pub fn validate_fetch_input(input: &FetchInput) -> Result<ValidatedFetch, Vec<Va
         }),
         _ => Err(errors),
     }
+}
+
+/// The instant of an input, or records why it has none: a nonexistent
+/// local time has its own reason (U4:BR2.2); an empty or malformed text is
+/// a format error.
+fn check_instant(
+    input: &DateTimeInput,
+    format: ValidationError,
+    nonexistent: ValidationError,
+    errors: &mut Vec<ValidationError>,
+) -> Option<i64> {
+    if let Some(instant) = input.instant() {
+        return Some(instant);
+    }
+    errors.push(match input.error() {
+        Some(DateTimeInputError::NonexistentLocalTime) => nonexistent,
+        Some(DateTimeInputError::Format) | None => format,
+    });
+    None
 }
 
 /// Keeps the value of `result`, or records `error` when it failed.
@@ -352,5 +421,106 @@ mod tests {
             .collect();
         assert_eq!(keys.len(), ValidationError::ALL.len());
         assert!(keys.iter().all(|k| k.starts_with("validation.")));
+    }
+
+    // ---- U4: the screen's inputs hold instants (BR1.6, BR2.1, BR2.2) ----
+
+    use crate::date_input::DateTimeInput;
+    use chrono_tz::Tz;
+
+    const NEW_YORK: Tz = chrono_tz::America::New_York;
+    const TOKYO: Tz = chrono_tz::Asia::Tokyo;
+    const GROUP: &str = "/aws/lambda/orders";
+
+    fn utc(text: &str) -> i64 {
+        crate::time_range::parse_utc_seconds(text).unwrap()
+    }
+
+    #[test]
+    fn the_range_comes_from_the_instants_whatever_the_zone() {
+        // As text the start sorts after the end; as instants it is earlier.
+        let start = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
+        let end = DateTimeInput::parse("2024-03-01 01:00:01", Tz::UTC);
+        let validated = validate_session_input(GROUP, &start, &end).unwrap();
+        assert_eq!(validated.request.log_group_name(), GROUP);
+        assert_eq!(validated.range.start_instant(), utc("2024-03-01 01:00:00"));
+        assert_eq!(
+            validated.range.end_instant(),
+            utc("2024-03-01 01:00:01") + 999
+        );
+    }
+
+    #[test]
+    fn the_order_is_checked_on_instants() {
+        // The same instant written in two zones is not "before".
+        let start = DateTimeInput::parse("2024-03-01 01:00:00", Tz::UTC);
+        let end = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
+        assert_eq!(
+            validate_session_input(GROUP, &start, &end),
+            Err(vec![ValidationError::RangeOrder])
+        );
+    }
+
+    #[test]
+    fn nonexistent_local_times_are_reasons_of_their_own() {
+        let skipped_start = DateTimeInput::parse("2024-03-10 02:30:00", NEW_YORK);
+        let skipped_end = DateTimeInput::parse("2024-03-10 02:45:00", NEW_YORK);
+        assert_eq!(
+            validate_session_input(GROUP, &skipped_start, &skipped_end),
+            Err(vec![
+                ValidationError::StartNonexistentLocalTime,
+                ValidationError::EndNonexistentLocalTime
+            ])
+        );
+        let malformed = DateTimeInput::parse("2024-13-01 00:00:00", NEW_YORK);
+        assert_eq!(
+            validate_session_input(GROUP, &malformed, &skipped_end),
+            Err(vec![
+                ValidationError::StartFormat,
+                ValidationError::EndNonexistentLocalTime
+            ])
+        );
+    }
+
+    #[test]
+    fn an_input_error_hides_the_order_reason_and_empty_inputs_are_format_errors() {
+        let later = DateTimeInput::parse("2024-03-01 10:00:00", Tz::UTC);
+        let malformed = DateTimeInput::parse("tomorrow", Tz::UTC);
+        assert_eq!(
+            validate_session_input(GROUP, &later, &malformed),
+            Err(vec![ValidationError::EndFormat])
+        );
+        assert_eq!(
+            validate_session_input("", &DateTimeInput::default(), &DateTimeInput::default()),
+            Err(vec![
+                ValidationError::LogGroupRequired,
+                ValidationError::StartFormat,
+                ValidationError::EndFormat
+            ])
+        );
+    }
+
+    #[test]
+    fn nonexistent_reasons_have_their_own_keys_in_condition_order() {
+        assert_eq!(
+            ValidationError::StartNonexistentLocalTime.message_key(),
+            "validation.startNonexistentLocalTime"
+        );
+        assert_eq!(
+            ValidationError::EndNonexistentLocalTime.message_key(),
+            "validation.endNonexistentLocalTime"
+        );
+        assert_eq!(
+            ValidationError::ALL,
+            [
+                ValidationError::LogGroupRequired,
+                ValidationError::LogGroupTooLong,
+                ValidationError::StartFormat,
+                ValidationError::StartNonexistentLocalTime,
+                ValidationError::EndFormat,
+                ValidationError::EndNonexistentLocalTime,
+                ValidationError::RangeOrder,
+            ]
+        );
     }
 }

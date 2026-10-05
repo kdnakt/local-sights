@@ -1,0 +1,35 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-time-range",
+  "upstream_ids": [
+    "BR1.1", "BR1.2", "BR1.3", "BR1.4", "BR1.5", "BR1.6",
+    "BR2.1", "BR2.2",
+    "BR3.1", "BR3.2", "BR3.3", "BR3.4", "BR3.5",
+    "FR3", "FR3.1", "FR3.2", "FR3.3", "FR3.4", "FR3.5", "FR3.6",
+    "NFR12", "NFR13"
+  ],
+  "coverage": [
+    { "id": "BR1.1", "status": "OK", "target": "crates/local-sights-core/src/time_zone.rs" },
+    { "id": "BR1.2", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "BR1.3", "status": "OK", "target": "crates/local-sights-core/src/date_input.rs" },
+    { "id": "BR1.4", "status": "OK", "target": "crates/local-sights-core/src/date_input.rs" },
+    { "id": "BR1.5", "status": "OK", "target": "crates/local-sights-core/src/date_input.rs" },
+    { "id": "BR1.6", "status": "OK", "target": "crates/local-sights-core/src/request.rs" },
+    { "id": "BR2.1", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "BR2.2", "status": "OK", "target": "crates/local-sights-core/src/request.rs" },
+    { "id": "BR3.1", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "BR3.2", "status": "OK", "target": "src/i18n/messages.ts" },
+    { "id": "BR3.3", "status": "OK", "target": "src/components/TimeZoneToggle.tsx" },
+    { "id": "BR3.4", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "BR3.5", "status": "OK", "target": "crates/local-sights-core/examples/fetch_check.rs" },
+    { "id": "FR3", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "FR3.1", "status": "OK", "target": "crates/local-sights-core/src/date_input.rs" },
+    { "id": "FR3.2", "status": "OK", "target": "src/components/TimeZoneToggle.tsx" },
+    { "id": "FR3.3", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "FR3.4", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "FR3.5", "status": "OK", "target": "crates/local-sights-core/src/request.rs" },
+    { "id": "FR3.6", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "NFR12", "status": "OK", "target": "src/i18n/messages.ts" },
+    { "id": "NFR13", "status": "OK", "target": "src/components/TimeZoneToggle.tsx" }
+  ]
+}

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { detectLocale, isMessageKey, messages, translate } from "./messages";
+import { detectLocale, isMessageKey, messages, timeZoneLabelKey, translate } from "./messages";
 
 // Keys produced by the Rust core (request.rs, failure.rs, session.rs, catalog).
 const CORE_KEYS = [
   "validation.logGroupRequired",
   "validation.logGroupTooLong",
   "validation.startFormat",
+  "validation.startNonexistentLocalTime",
   "validation.endFormat",
+  "validation.endNonexistentLocalTime",
   "validation.rangeOrder",
   "failure.kind.AuthRequired",
   "failure.kind.AccessDenied",
@@ -81,6 +83,46 @@ describe("message catalog", () => {
     expect(translate("en", "status.fetching", { finished: 1, planned: 4, count: 10 })).toBe(
       "Fetching… 1/4 streams, 10 events so far",
     );
+  });
+
+  it("names the chosen time zone instead of a fixed UTC in the U4 texts", () => {
+    const zoned = [
+      "form.start.label",
+      "form.end.label",
+      "validation.startFormat",
+      "validation.endFormat",
+      "table.time",
+    ] as const;
+    for (const key of zoned) {
+      for (const locale of ["en", "ja"] as const) {
+        expect(messages[key][locale], `${key} (${locale})`).toContain("{zone}");
+        expect(messages[key][locale], `${key} (${locale})`).not.toContain("UTC");
+      }
+    }
+    const local = translate("ja", timeZoneLabelKey("Local"));
+    expect(translate("ja", "form.start.label", { zone: local })).toBe("開始日時（ローカル）");
+    expect(translate("ja", "table.time", { zone: local })).toBe("時刻（ローカル）");
+    expect(translate("en", "table.time", { zone: translate("en", timeZoneLabelKey("Utc")) })).toBe(
+      "Time (UTC)",
+    );
+    expect(translate("ja", "validation.startFormat", { zone: local })).toBe(
+      "開始日時は yyyy-mm-dd hh:mm:ss の形で入力してください（ローカル）。",
+    );
+  });
+
+  it("has distinct daylight saving reasons in both languages", () => {
+    expect(translate("ja", "validation.startNonexistentLocalTime")).toBe(
+      "開始日時は夏時間の切り替えで存在しない日時です。",
+    );
+    expect(translate("ja", "validation.endNonexistentLocalTime")).toBe(
+      "終了日時は夏時間の切り替えで存在しない日時です。",
+    );
+    expect(translate("en", "validation.startNonexistentLocalTime")).not.toBe(
+      translate("en", "validation.startFormat"),
+    );
+    for (const key of ["timeZone.label", "timeZone.local", "timeZone.utc"]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
   });
 
   it("returns an unknown key unchanged so the gap is visible", () => {

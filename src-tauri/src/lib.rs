@@ -3,7 +3,8 @@
 //! This crate stays thin: every decision lives in `local-sights-core`.
 //! Operations arrive as Tauri commands (`get_session`, `update_input`,
 //! `start_fetch`, since U2 the connection and log group commands, and since
-//! U3 `get_rows`, `find_row_position` and `set_failure_list_open`); state
+//! U3 `get_rows`, `find_row_position` and `set_failure_list_open`, and since
+//! U4 `select_time_zone`); state
 //! changes are pushed to the screen with the `session-changed` event; while
 //! a fetch runs, each listing page and each added page sends only the light
 //! `fetch-progress` event (progress, event count, timeline version). Commands that
@@ -19,6 +20,11 @@
 //! Operations that depend on the connection carry the connection generation
 //! the screen last saw; an operation for an older connection is dropped
 //! without an answer (U3:BR6.7).
+//!
+//! Since U4 the local time zone is read from the OS once at startup and
+//! given to AppSession (U4:BR1.1, BR3.4). `get_rows` returns each row with
+//! its time already written in the chosen zone by the core (review R-08);
+//! the screen converts nothing.
 //!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown.
@@ -37,10 +43,11 @@ use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::paging::PageDecision;
 use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
-    AppSession, ConnectionEffect, InputField, SessionError, SessionView,
+    AppSession, ConnectionEffect, DisplayRowWindow, InputField, SessionError, SessionView,
 };
 use local_sights_core::streams::planner::ListingProgress;
-use local_sights_core::timeline::{EventTimeline, RowWindow};
+use local_sights_core::time_zone::{TimeZoneChoice, TimeZoneContext};
+use local_sights_core::timeline::EventTimeline;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
@@ -66,10 +73,17 @@ struct AppState {
 }
 
 impl AppState {
-    /// Reads the shared AWS config files once at startup (U2:BR1.1-BR1.3).
+    /// Reads the shared AWS config files (U2:BR1.1-BR1.3) and the OS time
+    /// zone (U4:BR1.1) once at startup. When the OS zone cannot be used,
+    /// Local falls back to UTC and only the zone name is logged.
     fn load() -> Self {
+        let time_zones = TimeZoneContext::detect();
+        if let Some(fallback) = &time_zones.fallback {
+            eprintln!("local-sights: {}", fallback.diagnostic());
+        }
+        let session = AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context);
         Self {
-            session: Arc::new(Mutex::new(AppSession::with_catalog(load_catalog()))),
+            session: Arc::new(Mutex::new(session)),
             timeline: Arc::default(),
             gateway: Arc::default(),
             abort: Arc::default(),
@@ -148,14 +162,32 @@ fn update_input(
     Ok(session.view())
 }
 
-/// Returns at most `limit` rows of the timeline from `offset` (U3:BR4.3).
+/// Returns at most `limit` rows of the timeline from `offset` (U3:BR4.3),
+/// each with its time written in the chosen zone by AppSession (U4:BR3.4,
+/// review R-08). Locks the session, then the timeline (the lock order).
 #[tauri::command]
-fn get_rows(offset: u64, limit: u64, state: State<'_, AppState>) -> RowWindow {
+fn get_rows(offset: u64, limit: u64, state: State<'_, AppState>) -> DisplayRowWindow {
     let offset = usize::try_from(offset).unwrap_or(usize::MAX);
     let limit = usize::try_from(limit)
         .unwrap_or(usize::MAX)
         .min(MAX_ROWS_PER_REQUEST);
-    lock(&state.timeline).rows(offset, limit)
+    let session = lock(&state.session);
+    let window = lock(&state.timeline).rows(offset, limit);
+    session.display_rows(window)
+}
+
+/// Switches the time zone of the inputs and the log list (U4:BR1.4).
+/// Accepted while fetching and while a change awaits confirmation; calls no
+/// API. The new state arrives through `session-changed`, and the screen
+/// re-reads its rows when the time zone in it changes.
+#[tauri::command]
+fn select_time_zone(time_zone: TimeZoneChoice, app: AppHandle, state: State<'_, AppState>) {
+    let view = {
+        let mut session = lock(&state.session);
+        session.select_time_zone(time_zone);
+        session.view()
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
 }
 
 /// Returns the current position of one event (U3:BR4.4).
@@ -593,7 +625,8 @@ pub fn run() -> Result<(), tauri::Error> {
             select_log_group,
             get_rows,
             find_row_position,
-            set_failure_list_open
+            set_failure_list_open,
+            select_time_zone
         ])
         .run(tauri::generate_context!())
 }

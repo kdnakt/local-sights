@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FetchForm } from "./FetchForm";
+import { createTranslator } from "../i18n/messages";
 import { sessionView, t } from "../test/fixtures";
 
 function renderForm(overrides: Parameters<typeof sessionView>[0] = {}) {
@@ -99,5 +100,55 @@ describe("FetchForm", () => {
       expect(input).toBeDisabled();
     }
     expect(screen.getByTestId("fetch-form-submit-button")).toBeDisabled();
+  });
+
+  it("names the chosen time zone in the labels and the format reasons", () => {
+    renderForm({
+      timeZone: "Utc",
+      canFetch: false,
+      validationErrors: ["validation.startFormat"],
+    });
+    expect(screen.getByText("Start (UTC)")).toBeInTheDocument();
+    expect(screen.getByText("End (UTC)")).toBeInTheDocument();
+    expect(screen.getByTestId("fetch-form-reasons")).toHaveTextContent(
+      "Enter the start as a valid yyyy-mm-dd hh:mm:ss (UTC).",
+    );
+  });
+
+  it("shows a time skipped by daylight saving as its own reason", () => {
+    renderForm({
+      timeZone: "Local",
+      canFetch: false,
+      validationErrors: ["validation.startNonexistentLocalTime", "validation.endFormat"],
+    });
+    expect(screen.getByText("Start (Local)")).toBeInTheDocument();
+    const reasons = screen.getByTestId("fetch-form-reasons");
+    expect(reasons).toHaveTextContent(
+      "The start does not exist because of the daylight saving time change.",
+    );
+    expect(reasons).toHaveTextContent("Enter the end as a valid yyyy-mm-dd hh:mm:ss (Local).");
+  });
+
+  it("shows the texts the core holds in the chosen zone, in Japanese too", () => {
+    render(
+      <FetchForm
+        session={sessionView({
+          timeZone: "Local",
+          startInput: { text: "2024-03-01 10:00:00", instant: 1_709_254_800_000, error: null },
+          endInput: { text: "2024-03-10 02:30:00", instant: null, error: "NonexistentLocalTime" },
+          canFetch: false,
+          validationErrors: ["validation.endNonexistentLocalTime"],
+        })}
+        t={createTranslator("ja")}
+        onChange={vi.fn()}
+        onFetch={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 10:00:00");
+    expect(screen.getByTestId("fetch-form-end-input")).toHaveValue("2024-03-10 02:30:00");
+    expect(screen.getByText("開始日時（ローカル）")).toBeInTheDocument();
+    expect(screen.getByTestId("fetch-form-reasons")).toHaveTextContent(
+      "終了日時は夏時間の切り替えで存在しない日時です。",
+    );
   });
 });

@@ -25,6 +25,7 @@ vi.mock("./api", async (importOriginal) => {
     updateLogGroupFilter: vi.fn(),
     selectLogGroup: vi.fn(),
     setFailureListOpen: vi.fn(),
+    selectTimeZone: vi.fn(),
     getRows: vi.fn(),
     findRowPosition: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
@@ -66,6 +67,7 @@ describe("App", () => {
       api.updateLogGroupFilter,
       api.selectLogGroup,
       api.setFailureListOpen,
+      api.selectTimeZone,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -171,7 +173,7 @@ describe("App", () => {
   it("renders the screen in Japanese for the ja locale", async () => {
     render(<App locale="ja" />);
     expect(await screen.findByTestId("fetch-form-submit-button")).toHaveTextContent("取得");
-    expect(screen.getByRole("columnheader", { name: "時刻（UTC）" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "時刻（ローカル）" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "ストリーム名" })).toBeInTheDocument();
   });
 
@@ -207,5 +209,47 @@ describe("App", () => {
     expect(api.selectRegion).toHaveBeenCalledWith("us-east-1");
     await user.type(screen.getByTestId("log-group-pane-filter-input"), "w");
     expect(api.updateLogGroupFilter).toHaveBeenCalledWith("w");
+  });
+
+  it("switches the time zone through the core and re-reads the rows without fetching", async () => {
+    const user = userEvent.setup();
+    const startInput = { text: "2024-03-01 10:00:00", instant: 1_709_254_800_000, error: null };
+    vi.mocked(api.getSession).mockResolvedValue(
+      connectedView({ phase: "Done", eventCount: 3, timelineVersion: 1, startInput }),
+    );
+    render(<App locale="en" />);
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    expect(screen.getAllByRole("cell")[0]).toHaveTextContent("core time 0");
+    expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 10:00:00");
+    const readsBefore = vi.mocked(api.getRows).mock.calls.length;
+
+    await user.click(screen.getByTestId("time-zone-toggle-utc-radio"));
+    expect(api.selectTimeZone).toHaveBeenCalledWith("Utc");
+
+    // The core answers with the new zone, the rewritten input and the same
+    // timeline version; the rows come back with times in UTC.
+    vi.mocked(api.getRows).mockImplementation(async (offset, limit) =>
+      rowWindow(
+        events.map((event) => ({ ...event, displayTime: `utc ${event.sequence}` })),
+        offset,
+        limit,
+      ),
+    );
+    push(
+      connectedView({
+        phase: "Done",
+        eventCount: 3,
+        timelineVersion: 1,
+        timeZone: "Utc",
+        startInput: { ...startInput, text: "2024-03-01 01:00:00" },
+      }),
+    );
+    await waitFor(() => expect(screen.getAllByRole("cell")[0]).toHaveTextContent("utc 0"));
+    expect(vi.mocked(api.getRows).mock.calls.length).toBeGreaterThan(readsBefore);
+    expect(screen.getByRole("columnheader", { name: "Time (UTC)" })).toBeInTheDocument();
+    expect(screen.getByTestId("time-zone-toggle-utc-radio")).toBeChecked();
+    expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 01:00:00");
+    expect(screen.getByText("Start (UTC)")).toBeInTheDocument();
+    expect(api.startFetch).not.toHaveBeenCalled();
   });
 });

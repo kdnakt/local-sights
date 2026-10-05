@@ -1,8 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LogEvent, RowPosition, RowWindow } from "../api";
-import { formatUtcMillis } from "../format";
+import type { DisplayRow, RowPosition, RowWindow, TimeZoneChoice } from "../api";
 import { logEvent, t } from "../test/fixtures";
 import { LogTable } from "./LogTable";
 
@@ -15,7 +14,7 @@ const api = await import("../api");
 
 /** Rows of a timeline of `total` events, made on demand. */
 function answer(total: number, offset: number, limit: number, version = 1): RowWindow {
-  const rows: LogEvent[] = [];
+  const rows: DisplayRow[] = [];
   for (let row = offset; row < Math.min(total, offset + limit); row += 1) {
     rows.push(logEvent(row));
   }
@@ -29,12 +28,13 @@ function serveRows(total: number) {
 /** Viewport of 110 px: five 22 px rows, six drawn. */
 const VIEWPORT = 110;
 
-function renderTable(totalCount: number, timelineVersion = 1) {
+function renderTable(totalCount: number, timelineVersion = 1, timeZone: TimeZoneChoice = "Local") {
   const onError = vi.fn();
   const view = render(
     <LogTable
       totalCount={totalCount}
       timelineVersion={timelineVersion}
+      timeZone={timeZone}
       t={t}
       onError={onError}
       viewportHeight={VIEWPORT}
@@ -71,8 +71,15 @@ describe("LogTable", () => {
     expect(screen.getByTestId("log-table")).toHaveAttribute("aria-rowcount", "1000000");
   });
 
-  it("shows time, stream and the message on one line in three columns", async () => {
-    const event = logEvent(7, "first line\nsecond line\r\nthird", "stream-b");
+  it("shows the core's time, stream and the message on one line in three columns", async () => {
+    // The time is the core's text, unrelated to what the timestamp would give
+    // in any zone: the screen converts nothing (U4:BR3.4).
+    const event = logEvent(
+      7,
+      "first line\nsecond line\r\nthird",
+      "stream-b",
+      "2030-12-31 23:59:59.999",
+    );
     vi.mocked(api.getRows).mockResolvedValue({
       offset: 0,
       rows: [event],
@@ -83,15 +90,66 @@ describe("LogTable", () => {
     const row = await screen.findByTestId("log-table-row");
     const cells = within(row).getAllByRole("cell");
     expect(cells.map((cell) => cell.textContent)).toEqual([
-      "2024-01-02 03:04:05.007",
+      "2030-12-31 23:59:59.999",
       "stream-b",
       "first line second line third",
     ]);
     expect(event.message).toBe("first line\nsecond line\r\nthird");
-    for (const name of ["Time (UTC)", "Stream", "Message"]) {
+    for (const name of ["Time (Local)", "Stream", "Message"]) {
       expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
     }
-    expect(formatUtcMillis(0)).toBe("1970-01-01 00:00:00.000");
+  });
+
+  it("shows a raw number when the core could not write the time", async () => {
+    vi.mocked(api.getRows).mockResolvedValue({
+      offset: 0,
+      rows: [logEvent(0, "far future", "stream-a", "253402300800000")],
+      totalCount: 1,
+      timelineVersion: 1,
+    });
+    renderTable(1, 1, "Utc");
+    const row = await screen.findByTestId("log-table-row");
+    expect(within(row).getAllByRole("cell")[0]).toHaveTextContent("253402300800000");
+    expect(screen.getByRole("columnheader", { name: "Time (UTC)" })).toBeInTheDocument();
+  });
+
+  it("re-reads the rows in place when the time zone is switched", async () => {
+    vi.mocked(api.getRows).mockImplementation(async (offset, limit) => {
+      const rows: DisplayRow[] = [];
+      for (let row = offset; row < Math.min(3, offset + limit); row += 1) {
+        rows.push(logEvent(row, `message ${row}`, "stream-a", `local ${row}`));
+      }
+      return { offset, rows, totalCount: 3, timelineVersion: 1 };
+    });
+    const view = renderTable(3, 1, "Local");
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    expect(screen.getAllByRole("cell")[0]).toHaveTextContent("local 0");
+
+    vi.mocked(api.getRows).mockImplementation(async (offset, limit) => {
+      const rows: DisplayRow[] = [];
+      for (let row = offset; row < Math.min(3, offset + limit); row += 1) {
+        rows.push(logEvent(row, `message ${row}`, "stream-a", `utc ${row}`));
+      }
+      return { offset, rows, totalCount: 3, timelineVersion: 1 };
+    });
+    view.rerender(
+      <LogTable
+        totalCount={3}
+        timelineVersion={1}
+        timeZone="Utc"
+        t={t}
+        onError={view.onError}
+        viewportHeight={VIEWPORT}
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByRole("cell")[0]).toHaveTextContent("utc 0"));
+    expect(screen.getByRole("columnheader", { name: "Time (UTC)" })).toBeInTheDocument();
+    expect(vi.mocked(api.getRows).mock.calls).toEqual([
+      [0, 3],
+      [0, 3],
+    ]);
+    expect(messages()).toEqual(["message 0", "message 1", "message 2"]);
+    expect(api.findRowPosition).not.toHaveBeenCalled();
   });
 
   it("scrolls by row, by page and to either end with the keyboard", async () => {
@@ -127,6 +185,7 @@ describe("LogTable", () => {
       <LogTable
         totalCount={1_050}
         timelineVersion={2}
+        timeZone="Local"
         t={t}
         onError={view.onError}
         viewportHeight={VIEWPORT}
@@ -154,7 +213,7 @@ describe("LogTable", () => {
     // position 10 is a different event, so taking the anchor again from the
     // shown rows would pick the wrong one.
     vi.mocked(api.getRows).mockImplementation(async (offset, limit) => {
-      const rows: LogEvent[] = [];
+      const rows: DisplayRow[] = [];
       for (let row = offset; row < offset + limit; row += 1) {
         rows.push(row < 50 ? logEvent(row, `other ${row}`, "stream-x") : logEvent(row - 50));
       }
@@ -165,6 +224,7 @@ describe("LogTable", () => {
         <LogTable
           totalCount={totalCount}
           timelineVersion={timelineVersion}
+          timeZone="Local"
           t={t}
           onError={view.onError}
           viewportHeight={VIEWPORT}
@@ -198,6 +258,7 @@ describe("LogTable", () => {
       <LogTable
         totalCount={1_200}
         timelineVersion={2}
+        timeZone="Local"
         t={t}
         onError={view.onError}
         viewportHeight={VIEWPORT}
@@ -217,6 +278,7 @@ describe("LogTable", () => {
       <LogTable
         totalCount={0}
         timelineVersion={2}
+        timeZone="Local"
         t={t}
         onError={view.onError}
         viewportHeight={VIEWPORT}

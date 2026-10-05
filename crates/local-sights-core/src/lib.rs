@@ -12,6 +12,7 @@
 pub mod catalog;
 pub mod connection;
 pub mod coordinator;
+pub mod date_input;
 pub mod event;
 pub mod failure;
 pub mod fetcher;
@@ -23,6 +24,7 @@ pub mod retry;
 pub mod session;
 pub mod streams;
 pub mod time_range;
+pub mod time_zone;
 pub mod timeline;
 
 /// Test-only helpers shared across modules.

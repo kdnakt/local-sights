@@ -10,6 +10,7 @@ import {
   selectLogGroup,
   selectProfile,
   selectRegion,
+  selectTimeZone,
   setFailureListOpen,
   startFetch,
   updateInput,
@@ -18,6 +19,7 @@ import {
   type InputField,
   type ProfileSelector,
   type SessionView,
+  type TimeZoneChoice,
 } from "./api";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionBar } from "./components/ConnectionBar";
@@ -106,6 +108,11 @@ export function App({ locale }: AppProps) {
     (region: string) => run(() => selectRegion(region)),
     [run],
   );
+  // U4:BR1.4: accepted at any time; the new view comes as `session-changed`.
+  const handleSelectTimeZone = useCallback(
+    (timeZone: TimeZoneChoice) => run(() => selectTimeZone(timeZone)),
+    [run],
+  );
   const handleFilter = useCallback((text: string) => run(() => updateLogGroupFilter(text)), [run]);
   const handleReload = useCallback(() => run(() => reloadLogGroups(generation)), [run, generation]);
   const handleSelectLogGroup = useCallback(
@@ -132,6 +139,7 @@ export function App({ locale }: AppProps) {
           t={t}
           onSelectProfile={handleSelectProfile}
           onSelectRegion={handleSelectRegion}
+          onSelectTimeZone={handleSelectTimeZone}
         />
       )}
       <div className="app-body">
@@ -148,7 +156,7 @@ export function App({ locale }: AppProps) {
         <section className="app-main">
           {session && (
             <FetchForm
-              key={session.sessionId}
+              key={`${session.sessionId}:${session.timeZone}`}
               session={session}
               t={t}
               onChange={handleChange}
@@ -179,6 +187,7 @@ export function App({ locale }: AppProps) {
           <LogTable
             totalCount={session?.eventCount ?? 0}
             timelineVersion={session?.timelineVersion ?? 0}
+            timeZone={session?.timeZone ?? "Local"}
             t={t}
             onError={reportError}
           />

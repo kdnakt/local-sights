@@ -1,6 +1,7 @@
 import type { ChangeEvent } from "react";
-import { selectorOf, type ProfileSelector, type SessionView } from "../api";
+import { selectorOf, type ProfileSelector, type SessionView, type TimeZoneChoice } from "../api";
 import type { Translate } from "../i18n/messages";
+import { TimeZoneToggle } from "./TimeZoneToggle";
 
 const SDK_DEFAULT_VALUE = "sdk-default";
 const NAMED_PREFIX = "named:";
@@ -25,15 +26,23 @@ export interface ConnectionBarProps {
   t: Translate;
   onSelectProfile: (profile: ProfileSelector) => void;
   onSelectRegion: (region: string) => void;
+  onSelectTimeZone: (timeZone: TimeZoneChoice) => void;
 }
 
 /**
  * Top bar: profile (the SDK default first, U2:BR1.1) and region (U2:BR1.4)
  * selectors, both unselected at startup (U2:BR2.1), and the notices for
  * config files that could not be read (file kind only, U2:BR1.3). Disabled
- * while fetching or while a change awaits confirmation (U2:BR2.6).
+ * while fetching or while a change awaits confirmation (U2:BR2.6). Since U4
+ * it also holds the time zone switch, which stays usable then (U4:BR3.3).
  */
-export function ConnectionBar({ session, t, onSelectProfile, onSelectRegion }: ConnectionBarProps) {
+export function ConnectionBar({
+  session,
+  t,
+  onSelectProfile,
+  onSelectRegion,
+  onSelectTimeZone,
+}: ConnectionBarProps) {
   const disabled = !session.canChangeConnection;
   const profileValue = session.connection.profile ? encodeSelector(session.connection.profile) : "";
 
@@ -93,6 +102,7 @@ export function ConnectionBar({ session, t, onSelectProfile, onSelectRegion }: C
           ))}
         </select>
       </label>
+      <TimeZoneToggle timeZone={session.timeZone} t={t} onSelect={onSelectTimeZone} />
       {session.catalogNotices.map((key) => (
         <p
           key={key}

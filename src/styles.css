@@ -51,6 +51,14 @@ body {
   margin: 0;
 }
 
+/* U4:BR3.3: standard radio buttons, laid out in the top bar only. */
+.time-zone-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
 .log-group-pane {
   display: flex;
   flex-direction: column;

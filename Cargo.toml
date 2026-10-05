@@ -19,6 +19,9 @@ aws-smithy-types = "1"
 home = "0.5"
 fastrand = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# U4: IANA time zone data (DST rules) and the OS time zone name.
+chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
+iana-time-zone = "0.1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

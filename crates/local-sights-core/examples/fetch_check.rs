@@ -147,6 +147,10 @@ fn describe(error: ValidationError) -> &'static str {
         ValidationError::LogGroupTooLong => "--log-group must be 512 characters or fewer",
         ValidationError::StartFormat => "--start must be a valid yyyy-mm-dd hh:mm:ss (UTC)",
         ValidationError::EndFormat => "--end must be a valid yyyy-mm-dd hh:mm:ss (UTC)",
+        // The arguments are always UTC (U4:BR3.5), which skips no local
+        // time; these reasons only arise for the screen's local zone.
+        ValidationError::StartNonexistentLocalTime => "--start does not exist in local time",
+        ValidationError::EndNonexistentLocalTime => "--end does not exist in local time",
         ValidationError::RangeOrder => "--start must be before --end",
     }
 }

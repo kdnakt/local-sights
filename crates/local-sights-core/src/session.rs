@@ -10,6 +10,11 @@
 //! Since U3 it also holds the progress of a fetch, the failed streams and
 //! whether their list is open, and the generation of the connection, which
 //! drops operations made for an older connection (U3:BR6.2, BR6.3, BR6.7).
+//! Since U4 it holds the chosen time zone and the start and end inputs as
+//! [`DateTimeInput`]s read in that zone; switching the zone is accepted at
+//! any time and rewrites the inputs without touching the phase (U4:BR1.4).
+//! It also composes the rows the screen shows with their times formatted
+//! in the chosen zone (U4:BR3.4, review R-08).
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +23,8 @@ use crate::connection::{
     ChangeOutcome, ConnectionSelection, ConnectionState, ListingCommand, PendingConnectionChange,
 };
 use crate::coordinator::{BatchProgress, FailedStream, FetchJob, JobStatus};
+use crate::date_input::DateTimeInput;
+use crate::event::LogEvent;
 use crate::failure::ApiFailure;
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -25,11 +32,12 @@ use crate::log_groups::{
     apply_page_if_current, empty_state, filter_groups,
 };
 use crate::paging::PageDecision;
-use crate::request::{
-    FetchInput, ValidatedFetch, ValidationError, message_keys, validate_fetch_input,
-};
+use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
 use crate::streams::StreamListingStatus;
 use crate::streams::planner::ListingProgress;
+use crate::time_range::format_display_in_zone;
+use crate::time_zone::{TimeZoneChoice, TimeZoneContext};
+use crate::timeline::RowWindow;
 
 /// Phase of the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -216,8 +224,12 @@ pub struct SessionView {
     pub session_id: String,
     /// Current phase.
     pub phase: Phase,
-    /// Typed input (the times; profile and log group are empty).
-    pub input: FetchInput,
+    /// The chosen time zone of the inputs and the log list (U4:BR1.1).
+    pub time_zone: TimeZoneChoice,
+    /// The start input: its text in the chosen zone, and its error.
+    pub start_input: DateTimeInput,
+    /// The end input: its text in the chosen zone, and its error.
+    pub end_input: DateTimeInput,
     /// Reasons why Fetch cannot be pressed (message-catalog keys).
     pub validation_errors: Vec<String>,
     /// Whether Fetch can be pressed now.
@@ -266,12 +278,43 @@ pub struct SessionView {
     pub failure_list_open: bool,
 }
 
+/// One log row as the screen shows it: the event and its time written in
+/// the chosen time zone by TimeRangeModel (U4:BR3.1, BR3.4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplayRow {
+    /// The event as held by the EventTimeline.
+    #[serde(flatten)]
+    pub event: LogEvent,
+    /// `yyyy-mm-dd hh:mm:ss.mmm` in the chosen zone, or the raw number when
+    /// that cannot be written; the screen shows it as is.
+    pub display_time: String,
+}
+
+/// The rows of one viewport request with their display times (U3's
+/// RowWindow plus `rows[].displayTime`, entities.md RowWindow).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplayRowWindow {
+    /// Position of the first row.
+    pub offset: u64,
+    /// The rows, in timeline order.
+    pub rows: Vec<DisplayRow>,
+    /// Number of held events when the rows were taken.
+    pub total_count: u64,
+    /// Version of the timeline when the rows were taken.
+    pub timeline_version: u64,
+}
+
 /// State of one app session.
 #[derive(Debug, Clone)]
 pub struct AppSession {
     session_id: String,
     phase: Phase,
-    input: FetchInput,
+    time_zones: TimeZoneContext,
+    time_zone: TimeZoneChoice,
+    start_input: DateTimeInput,
+    end_input: DateTimeInput,
     validation: Result<ValidatedFetch, Vec<ValidationError>>,
     current_job_id: Option<u64>,
     event_count: u64,
@@ -309,12 +352,27 @@ impl AppSession {
         Self::with_catalog(ConnectionCatalog::new(vec![sdk_default], Vec::new()))
     }
 
-    /// A new session in phase Idle with nothing selected (U2:BR2.1).
+    /// A new session in phase Idle with nothing selected (U2:BR2.1) whose
+    /// local time zone is UTC. The app passes the OS time zone with
+    /// [`AppSession::with_catalog_and_time_zones`].
     pub fn with_catalog(catalog: ConnectionCatalog) -> Self {
+        Self::with_catalog_and_time_zones(catalog, TimeZoneContext::utc())
+    }
+
+    /// A new session in phase Idle with nothing selected (U2:BR2.1), the
+    /// time zone Local (U4:BR1.1) and `time_zones` saying which zone that is
+    /// (U4:BR3.4).
+    pub fn with_catalog_and_time_zones(
+        catalog: ConnectionCatalog,
+        time_zones: TimeZoneContext,
+    ) -> Self {
         let mut session = Self {
             session_id: uuid::Uuid::new_v4().to_string(),
             phase: Phase::Idle,
-            input: FetchInput::default(),
+            time_zones,
+            time_zone: TimeZoneChoice::Local,
+            start_input: DateTimeInput::default(),
+            end_input: DateTimeInput::default(),
             validation: Err(Vec::new()),
             current_job_id: None,
             event_count: 0,
@@ -353,9 +411,19 @@ impl AppSession {
         self.phase
     }
 
-    /// Typed input.
-    pub fn input(&self) -> &FetchInput {
-        &self.input
+    /// The start input (U4:BR1.3).
+    pub fn start_input(&self) -> &DateTimeInput {
+        &self.start_input
+    }
+
+    /// The end input (U4:BR1.3).
+    pub fn end_input(&self) -> &DateTimeInput {
+        &self.end_input
+    }
+
+    /// The chosen time zone (U4:BR1.1).
+    pub fn time_zone(&self) -> TimeZoneChoice {
+        self.time_zone
     }
 
     /// Reasons from the shared validation (U1:BR1.8).
@@ -410,17 +478,20 @@ impl AppSession {
         self.listing.as_ref()
     }
 
-    /// Changes one typed field and re-validates. Refused while a fetch is
-    /// running (U1:BR1.4) and while a connection change awaits confirmation
-    /// (U2:BR2.6).
+    /// Changes one typed field: a changed text is read in the chosen time
+    /// zone and the conditions are checked again; the same text again keeps
+    /// the instant (U4:BR1.5). Refused while a fetch is running (U1:BR1.4)
+    /// and while a connection change awaits confirmation (U2:BR2.6).
     pub fn update_input(&mut self, field: InputField, value: String) -> Result<(), SessionError> {
         self.ensure_can_change()?;
-        let slot = match field {
-            InputField::StartText => &mut self.input.start_text,
-            InputField::EndText => &mut self.input.end_text,
+        let zone = self.time_zones.zone(self.time_zone);
+        let input = match field {
+            InputField::StartText => &mut self.start_input,
+            InputField::EndText => &mut self.end_input,
         };
-        *slot = value;
-        self.revalidate();
+        if input.edit(value, zone) {
+            self.revalidate();
+        }
         Ok(())
     }
 
@@ -722,6 +793,46 @@ impl AppSession {
         self.progress.as_mut()
     }
 
+    /// Switches the time zone of the inputs and the log list (U4:BR1.4).
+    ///
+    /// Accepted at any time, also while fetching and while a connection
+    /// change awaits confirmation, because it changes no fetch condition;
+    /// the phase stays as it is. Each input keeps its instant and gets its
+    /// text rewritten, or keeps its text and is read again in the new zone
+    /// (see [`DateTimeInput::switch_zone`]); then the conditions are checked
+    /// again (U4:BR2.1). No API is called and the timeline is untouched: the
+    /// screen re-reads its rows when the view's `time_zone` changes (R-08).
+    pub fn select_time_zone(&mut self, choice: TimeZoneChoice) {
+        if choice == self.time_zone {
+            return;
+        }
+        self.time_zone = choice;
+        let zone = self.time_zones.zone(choice);
+        self.start_input.switch_zone(zone);
+        self.end_input.switch_zone(zone);
+        self.revalidate();
+    }
+
+    /// Adds to rows read from the EventTimeline their times written in the
+    /// chosen zone (U4:BR3.1, BR3.4). AppSession composes them so that the
+    /// EventTimeline needs no time zone (review R-08).
+    pub fn display_rows(&self, window: RowWindow) -> DisplayRowWindow {
+        let zone = self.time_zones.zone(self.time_zone);
+        DisplayRowWindow {
+            offset: window.offset,
+            rows: window
+                .rows
+                .into_iter()
+                .map(|event| DisplayRow {
+                    display_time: format_display_in_zone(event.timestamp, zone),
+                    event,
+                })
+                .collect(),
+            total_count: window.total_count,
+            timeline_version: window.timeline_version,
+        }
+    }
+
     /// Snapshot for the screen.
     pub fn view(&self) -> SessionView {
         let selection_errors = self.selection_errors();
@@ -743,7 +854,9 @@ impl AppSession {
         SessionView {
             session_id: self.session_id.clone(),
             phase: self.phase,
-            input: self.input.clone(),
+            time_zone: self.time_zone,
+            start_input: self.start_input.clone(),
+            end_input: self.end_input.clone(),
             validation_errors,
             can_fetch: self.can_fetch(),
             current_job_id: self.current_job_id,
@@ -868,14 +981,14 @@ impl AppSession {
         }
     }
 
-    /// Runs the shared validation with the selected log group (U1:BR1.8).
+    /// Runs the shared validation with the selected log group and the
+    /// instants of the inputs (U1:BR1.8, U4:BR1.6, BR2.1).
     fn revalidate(&mut self) {
-        let input = FetchInput {
-            profile_name: String::new(),
-            log_group_name: self.selected_log_group.clone().unwrap_or_default(),
-            ..self.input.clone()
-        };
-        self.validation = validate_fetch_input(&input);
+        self.validation = validate_session_input(
+            self.selected_log_group.as_deref().unwrap_or_default(),
+            &self.start_input,
+            &self.end_input,
+        );
     }
 }
 
@@ -1033,7 +1146,7 @@ mod tests {
             session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
             Err(SessionError::Busy)
         );
-        assert_eq!(session.input().start_text, "2024-01-02 03:04:05");
+        assert_eq!(session.start_input().text(), "2024-01-02 03:04:05");
         assert_eq!(
             session.begin_fetch(session.connection_generation()),
             Err(SessionError::Busy)
@@ -1351,7 +1464,7 @@ mod tests {
             Err(SessionError::ConfirmationPending)
         );
         let view = session.view();
-        assert_eq!(view.input.end_text, "2024-01-02 03:05:05");
+        assert_eq!(view.end_input.text(), "2024-01-02 03:05:05");
         assert_eq!(view.log_group_filter, "orders");
         assert!(!view.can_change_connection && !view.can_fetch && !view.can_reload);
 
@@ -1540,7 +1653,9 @@ mod tests {
         assert_eq!(json["phase"], "Idle");
         assert_eq!(json["canFetch"], false);
         assert!(json["validationErrors"].is_array());
-        assert_eq!(json["input"]["logGroupName"], "");
+        assert_eq!(json["timeZone"], "Local");
+        assert_eq!(json["startInput"]["text"], "");
+        assert!(json["endInput"]["error"].is_null());
         assert!(json["lastJob"].is_null());
         let field: InputField = serde_json::from_str("\"startText\"").unwrap();
         assert_eq!(field, InputField::StartText);
@@ -1879,5 +1994,251 @@ mod tests {
         let json = serde_json::to_value(&update).unwrap();
         assert_eq!(json["timelineVersion"], 3);
         assert!(json.get("profiles").is_none(), "no full session view");
+    }
+
+    // ---- U4: the [Fetch] conditions and their reasons (BR2.1, R-04) ----
+
+    use crate::time_zone::TimeZoneContext;
+
+    /// A session whose local time zone is New York (BR3.4: tests never read
+    /// the OS setting).
+    fn new_york_session() -> AppSession {
+        AppSession::with_catalog_and_time_zones(
+            catalog(),
+            TimeZoneContext::new(chrono_tz::America::New_York),
+        )
+    }
+
+    #[test]
+    fn every_reason_is_listed_in_the_order_of_the_conditions() {
+        let mut session = new_york_session();
+        session
+            .update_input(InputField::StartText, "2024-03-10 02:30:00".to_string())
+            .unwrap();
+        session
+            .update_input(InputField::EndText, "bad".to_string())
+            .unwrap();
+        let view = session.view();
+        assert_eq!(
+            view.validation_errors,
+            vec![
+                "selection.profileRequired",
+                "selection.regionRequired",
+                "selection.logGroupRequired",
+                "validation.startNonexistentLocalTime",
+                "validation.endFormat",
+            ]
+        );
+        assert!(!view.can_fetch);
+    }
+
+    #[test]
+    fn the_order_reason_appears_only_when_both_inputs_hold_instants() {
+        let mut session = new_york_session();
+        fill_valid(&mut session);
+        session
+            .update_input(InputField::StartText, "2024-01-02 03:05:05".to_string())
+            .unwrap();
+        session
+            .update_input(InputField::EndText, "2024-01-02 03:04:05".to_string())
+            .unwrap();
+        assert_eq!(
+            session.view().validation_errors,
+            vec!["validation.rangeOrder"]
+        );
+        session
+            .update_input(InputField::EndText, "2024-03-10 02:30:00".to_string())
+            .unwrap();
+        assert_eq!(
+            session.view().validation_errors,
+            vec!["validation.endNonexistentLocalTime"]
+        );
+    }
+
+    #[test]
+    fn valid_new_york_input_can_fetch_with_the_instants_as_range() {
+        let mut session = new_york_session();
+        fill_valid(&mut session);
+        // 2024-01-02 03:04:05 EST is 08:04:05 UTC.
+        assert!(session.can_fetch());
+        let validated = session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(
+            validated.range.start_instant(),
+            1_704_164_645_000 + 5 * 3_600_000
+        );
+    }
+
+    #[test]
+    fn fetch_is_disabled_while_fetching_without_a_new_reason() {
+        let mut session = new_york_session();
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let view = session.view();
+        assert!(!view.can_fetch);
+        assert!(view.validation_errors.is_empty(), "the status line says it");
+    }
+
+    #[test]
+    fn fetch_is_disabled_while_a_change_awaits_confirmation_without_a_new_reason() {
+        let mut session = done_session(5);
+        session.select_region("eu-west-1".to_string()).unwrap();
+        let view = session.view();
+        assert!(view.pending_change.is_some());
+        assert!(!view.can_fetch);
+        assert!(view.validation_errors.is_empty(), "the dialog says it");
+    }
+
+    // ---- U4: the time zone switch and the display rows (BR1.4, R-08) ----
+
+    fn tokyo_session() -> AppSession {
+        AppSession::with_catalog_and_time_zones(
+            catalog(),
+            TimeZoneContext::new(chrono_tz::Asia::Tokyo),
+        )
+    }
+
+    fn held_row(timestamp: i64, sequence: u64) -> LogEvent {
+        LogEvent {
+            timestamp,
+            ingestion_time: None,
+            message: format!("m{sequence}"),
+            log_stream_name: "stream-a".to_string(),
+            sequence,
+        }
+    }
+
+    #[test]
+    fn the_session_starts_with_local_time() {
+        let session = tokyo_session();
+        assert_eq!(session.time_zone(), TimeZoneChoice::Local);
+        assert_eq!(session.view().time_zone, TimeZoneChoice::Local);
+        assert_eq!(AppSession::new().time_zone(), TimeZoneChoice::Local);
+    }
+
+    #[test]
+    fn switching_rewrites_the_inputs_and_keeps_the_fetch_range() {
+        let mut session = tokyo_session();
+        fill_valid(&mut session);
+        session
+            .update_input(InputField::StartText, "2024-03-01 10:00:00".to_string())
+            .unwrap();
+        session
+            .update_input(InputField::EndText, "2024-03-01 11:00:00".to_string())
+            .unwrap();
+        let range = session.validation.clone().unwrap().range;
+        session.select_time_zone(TimeZoneChoice::Utc);
+        let view = session.view();
+        assert_eq!(view.time_zone, TimeZoneChoice::Utc);
+        assert_eq!(view.start_input.text(), "2024-03-01 01:00:00");
+        assert_eq!(view.end_input.text(), "2024-03-01 02:00:00");
+        assert!(view.can_fetch);
+        let validated = session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(validated.range, range, "the zone does not change the range");
+    }
+
+    #[test]
+    fn switching_to_utc_clears_the_nonexistent_local_time_reason() {
+        let mut session = new_york_session();
+        fill_valid(&mut session);
+        session
+            .update_input(InputField::StartText, "2024-03-10 02:30:00".to_string())
+            .unwrap();
+        session
+            .update_input(InputField::EndText, "2024-03-10 04:00:00".to_string())
+            .unwrap();
+        assert_eq!(
+            session.view().validation_errors,
+            vec!["validation.startNonexistentLocalTime"]
+        );
+        session.select_time_zone(TimeZoneChoice::Utc);
+        let view = session.view();
+        assert_eq!(view.start_input.text(), "2024-03-10 02:30:00");
+        assert!(view.validation_errors.is_empty());
+        assert!(view.can_fetch);
+    }
+
+    #[test]
+    fn switching_works_while_fetching_and_keeps_the_phase_but_typing_does_not() {
+        let mut session = tokyo_session();
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        session.select_time_zone(TimeZoneChoice::Utc);
+        assert_eq!(session.phase(), Phase::Fetching);
+        assert_eq!(session.time_zone(), TimeZoneChoice::Utc);
+        // 2024-01-02 03:04:05 in Tokyo is 2024-01-01 18:04:05 UTC.
+        assert_eq!(session.start_input().text(), "2024-01-01 18:04:05");
+        assert_eq!(
+            session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
+            Err(SessionError::Busy)
+        );
+        assert_eq!(session.start_input().text(), "2024-01-01 18:04:05");
+    }
+
+    #[test]
+    fn switching_works_while_a_change_awaits_confirmation() {
+        let mut session = done_session(5);
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert!(session.view().pending_change.is_some());
+        session.select_time_zone(TimeZoneChoice::Utc);
+        let view = session.view();
+        assert_eq!(view.time_zone, TimeZoneChoice::Utc);
+        assert_eq!(view.phase, Phase::Done);
+        assert!(view.pending_change.is_some(), "the dialog stays open");
+    }
+
+    #[test]
+    fn display_rows_carry_times_in_the_chosen_zone() {
+        let mut session = new_york_session();
+        // 2024-01-02 03:04:05.007 UTC: 22:04:05.007 the day before in New York.
+        let window = RowWindow {
+            offset: 4,
+            rows: vec![held_row(1_704_164_645_007, 0), held_row(i64::MAX, 1)],
+            total_count: 9,
+            timeline_version: 3,
+        };
+        let local = session.display_rows(window.clone());
+        assert_eq!(local.offset, 4);
+        assert_eq!(local.total_count, 9);
+        assert_eq!(local.timeline_version, 3);
+        assert_eq!(local.rows[0].display_time, "2024-01-01 22:04:05.007");
+        assert_eq!(local.rows[1].display_time, i64::MAX.to_string());
+        assert_eq!(local.rows[0].event, window.rows[0]);
+
+        session.select_time_zone(TimeZoneChoice::Utc);
+        let utc = session.display_rows(window);
+        assert_eq!(utc.rows[0].display_time, "2024-01-02 03:04:05.007");
+        assert_eq!(utc.timeline_version, 3, "switching keeps the version");
+        let json = serde_json::to_value(&utc).unwrap();
+        assert_eq!(json["rows"][0]["displayTime"], "2024-01-02 03:04:05.007");
+        assert_eq!(json["rows"][0]["timestamp"], 1_704_164_645_007_i64);
+        assert_eq!(json["rows"][0]["logStreamName"], "stream-a");
+        assert_eq!(json["totalCount"], 9);
+    }
+
+    #[test]
+    fn selecting_the_current_zone_changes_nothing() {
+        let mut session = new_york_session();
+        // The later 01:30 of 2024-11-03, typed in UTC, shown in New York.
+        session.select_time_zone(TimeZoneChoice::Utc);
+        session
+            .update_input(InputField::StartText, "2024-11-03 06:30:00".to_string())
+            .unwrap();
+        session.select_time_zone(TimeZoneChoice::Local);
+        assert_eq!(session.start_input().text(), "2024-11-03 01:30:00");
+        session.select_time_zone(TimeZoneChoice::Local);
+        // The screen re-sends the unchanged text: the instant is kept (R-06).
+        session
+            .update_input(InputField::StartText, "2024-11-03 01:30:00".to_string())
+            .unwrap();
+        session.select_time_zone(TimeZoneChoice::Utc);
+        assert_eq!(session.start_input().text(), "2024-11-03 06:30:00");
     }
 }

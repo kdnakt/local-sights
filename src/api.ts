@@ -2,8 +2,9 @@
  * Thin wrapper around the Tauri commands and events of the desktop app
  * (commands for operations, the `session-changed` event for pushed state).
  * Since U3 the screen holds no log events: it reads the rows of its viewport
- * with `getRows` (U3:BR4.3). Tests replace this module with `vi.mock`, so
- * Tauri is never started.
+ * with `getRows` (U3:BR4.3). Since U4 every time comes from the core already
+ * written in the chosen time zone (U4:BR3.4): the screen converts nothing.
+ * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -49,11 +50,19 @@ export type FailureKind =
   | "RegionMissing"
   | "Other";
 
-export interface FetchInput {
-  profileName: string;
-  logGroupName: string;
-  startText: string;
-  endText: string;
+/** The time zone of the inputs and the log list; Local at every launch (U4:BR1.1). */
+export type TimeZoneChoice = "Local" | "Utc";
+
+/** Why a non-empty input has no instant (U4:BR1.2, BR2.2). */
+export type DateTimeInputError = "Format" | "NonexistentLocalTime";
+
+/** One start or end input as the core holds it (U4:BR1.3). */
+export interface DateTimeInput {
+  /** The text in the chosen time zone, as shown in the field. */
+  text: string;
+  /** Epoch milliseconds when the text could be read. */
+  instant: number | null;
+  error: DateTimeInputError | null;
 }
 
 export interface ApiFailure {
@@ -105,7 +114,9 @@ export interface LogGroupListView {
 export interface SessionView {
   sessionId: string;
   phase: Phase;
-  input: FetchInput;
+  timeZone: TimeZoneChoice;
+  startInput: DateTimeInput;
+  endInput: DateTimeInput;
   /** Message-catalog keys of the reasons why Fetch cannot be pressed. */
   validationErrors: string[];
   canFetch: boolean;
@@ -143,10 +154,18 @@ export interface LogEvent {
   sequence: number;
 }
 
-/** The rows of one viewport request (U3:BR4.3). */
+/**
+ * One row as the core gives it: the event and its time already written in the
+ * chosen time zone, or the raw number when that cannot be written (U4:BR3.1).
+ */
+export interface DisplayRow extends LogEvent {
+  displayTime: string;
+}
+
+/** The rows of one viewport request (U3:BR4.3, U4:BR3.4). */
 export interface RowWindow {
   offset: number;
-  rows: LogEvent[];
+  rows: DisplayRow[];
   totalCount: number;
   timelineVersion: number;
 }
@@ -227,6 +246,14 @@ export function getRows(offset: number, limit: number): Promise<RowWindow> {
 /** Finds the current position of one event. */
 export function findRowPosition(logStreamName: string, sequence: number): Promise<RowPosition> {
   return invoke<RowPosition>("find_row_position", { logStreamName, sequence });
+}
+
+/**
+ * Switches the time zone (U4:BR1.4); accepted while fetching too. The new
+ * state arrives through `session-changed`.
+ */
+export function selectTimeZone(timeZone: TimeZoneChoice): Promise<void> {
+  return invoke<void>("select_time_zone", { timeZone });
 }
 
 /** Opens or closes the list of failed streams. */

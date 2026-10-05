@@ -2,8 +2,11 @@
  * Message catalog (BR6.1). Every string shown on screen is looked up here by
  * key, in English or Japanese. Keys starting with `validation.`,
  * `failure.kind.` and `session.` are produced by the Rust core and must stay
- * in sync with it.
+ * in sync with it. Since U4 the time labels take a `{zone}` placeholder filled
+ * with `timeZone.local` or `timeZone.utc` (U4:BR3.2).
  */
+
+import type { TimeZoneChoice } from "../api";
 
 export type Locale = "en" | "ja";
 
@@ -12,8 +15,8 @@ export const messages = {
   "form.label": { en: "Fetch conditions", ja: "取得条件" },
   "form.selectedLogGroup.label": { en: "Log group", ja: "ロググループ" },
   "form.selectedLogGroup.none": { en: "Not selected", ja: "未選択" },
-  "form.start.label": { en: "Start (UTC)", ja: "開始（UTC）" },
-  "form.end.label": { en: "End (UTC)", ja: "終了（UTC）" },
+  "form.start.label": { en: "Start ({zone})", ja: "開始日時（{zone}）" },
+  "form.end.label": { en: "End ({zone})", ja: "終了日時（{zone}）" },
   "form.dateTime.placeholder": { en: "yyyy-mm-dd hh:mm:ss", ja: "yyyy-mm-dd hh:mm:ss" },
   "form.fetch": { en: "Fetch", ja: "取得" },
   "form.reasons.title": { en: "Fetch is unavailable because:", ja: "取得できない理由：" },
@@ -26,12 +29,20 @@ export const messages = {
     ja: "ロググループ名は 512 文字以内にしてください。",
   },
   "validation.startFormat": {
-    en: "Enter the start as a valid yyyy-mm-dd hh:mm:ss (UTC).",
-    ja: "開始日時を正しい yyyy-mm-dd hh:mm:ss（UTC）で入力してください。",
+    en: "Enter the start as a valid yyyy-mm-dd hh:mm:ss ({zone}).",
+    ja: "開始日時は yyyy-mm-dd hh:mm:ss の形で入力してください（{zone}）。",
+  },
+  "validation.startNonexistentLocalTime": {
+    en: "The start does not exist because of the daylight saving time change.",
+    ja: "開始日時は夏時間の切り替えで存在しない日時です。",
   },
   "validation.endFormat": {
-    en: "Enter the end as a valid yyyy-mm-dd hh:mm:ss (UTC).",
-    ja: "終了日時を正しい yyyy-mm-dd hh:mm:ss（UTC）で入力してください。",
+    en: "Enter the end as a valid yyyy-mm-dd hh:mm:ss ({zone}).",
+    ja: "終了日時は yyyy-mm-dd hh:mm:ss の形で入力してください（{zone}）。",
+  },
+  "validation.endNonexistentLocalTime": {
+    en: "The end does not exist because of the daylight saving time change.",
+    ja: "終了日時は夏時間の切り替えで存在しない日時です。",
   },
   "validation.rangeOrder": {
     en: "The start must be before the end.",
@@ -85,6 +96,9 @@ export const messages = {
   },
   "connection.region.label": { en: "Region", ja: "リージョン" },
   "connection.region.placeholder": { en: "Choose a region", ja: "リージョンを選択" },
+  "timeZone.label": { en: "Time zone", ja: "タイムゾーン" },
+  "timeZone.local": { en: "Local", ja: "ローカル" },
+  "timeZone.utc": { en: "UTC", ja: "UTC" },
   "catalog.unreadable.config": {
     en: "The AWS config file could not be read; its profiles are not listed.",
     ja: "AWS の config ファイルを読めませんでした。そのプロファイルは一覧にありません。",
@@ -163,7 +177,7 @@ export const messages = {
   },
   "failure.kind.Other": { en: "Other error", ja: "その他のエラー" },
   "table.label": { en: "Log events", ja: "ログ" },
-  "table.time": { en: "Time (UTC)", ja: "時刻（UTC）" },
+  "table.time": { en: "Time ({zone})", ja: "時刻（{zone}）" },
   "table.stream": { en: "Stream", ja: "ストリーム名" },
   "table.message": { en: "Message", ja: "メッセージ" },
   "table.scroll": {
@@ -183,6 +197,11 @@ export const messages = {
 export type MessageKey = keyof typeof messages;
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+/** The message key naming a time zone choice (U4:BR3.2). */
+export function timeZoneLabelKey(timeZone: TimeZoneChoice): MessageKey {
+  return timeZone === "Local" ? "timeZone.local" : "timeZone.utc";
+}
 
 /** Whether `key` exists in the catalog. */
 export function isMessageKey(key: string): key is MessageKey {

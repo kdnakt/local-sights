@@ -7,10 +7,10 @@ import {
   type KeyboardEvent,
   type UIEvent,
 } from "react";
-import { findRowPosition, type LogEvent, type RowWindow } from "../api";
-import { formatUtcMillis, toSingleLine } from "../format";
+import { findRowPosition, type DisplayRow, type RowWindow, type TimeZoneChoice } from "../api";
+import { toSingleLine } from "../format";
 import { useRowWindow } from "../hooks/useRowWindow";
-import type { Translate } from "../i18n/messages";
+import { timeZoneLabelKey, type Translate } from "../i18n/messages";
 import {
   MAX_SCROLL_HEIGHT,
   ROW_HEIGHT,
@@ -30,6 +30,8 @@ export interface LogTableProps {
   totalCount: number;
   /** Version of the core's timeline; a change means rows moved or went away. */
   timelineVersion: number;
+  /** The chosen time zone: names the time column and re-reads the rows. */
+  timeZone: TimeZoneChoice;
   t: Translate;
   onError: (error: unknown) => void;
   /** Fixed viewport height in pixels; measured from the element when absent. */
@@ -49,12 +51,12 @@ interface PendingAnchor {
   pixelOffset: number;
 }
 
-function rowKey(event: LogEvent): string {
+function rowKey(event: DisplayRow): string {
   return `${event.logStreamName}\u0000${event.sequence}`;
 }
 
 /** The held row at `row`, if the last window contains it. */
-function rowAt(rowWindow: RowWindow | null, row: number): LogEvent | undefined {
+function rowAt(rowWindow: RowWindow | null, row: number): DisplayRow | undefined {
   if (rowWindow === null) {
     return undefined;
   }
@@ -67,11 +69,15 @@ function rowAt(rowWindow: RowWindow | null, row: number): LogEvent | undefined {
  * rows of the viewport are fetched and drawn; the core holds the events.
  * When the timeline changes while scrolled down, the row at the top stays
  * where it was (BR6.5); at the very top the list stays at the top. The
- * arrow keys, Page Up, Page Down, Home and End scroll it (BR6.8).
+ * arrow keys, Page Up, Page Down, Home and End scroll it (BR6.8). The time
+ * column shows the core's `displayTime` as is and its header names the chosen
+ * zone; switching the zone re-reads the rows without moving them (U4:BR3.1,
+ * BR3.2, BR3.4).
  */
 export function LogTable({
   totalCount,
   timelineVersion,
+  timeZone,
   t,
   onError,
   viewportHeight: fixedViewportHeight,
@@ -96,6 +102,7 @@ export function LogTable({
     range.rowCount,
     timelineVersion,
     totalCount,
+    timeZone,
     onError,
   );
 
@@ -210,7 +217,7 @@ export function LogTable({
     applyScrollTop(top, geometry);
   };
 
-  const rows: Array<{ event: LogEvent; top: number }> = [];
+  const rows: Array<{ event: DisplayRow; top: number }> = [];
   if (rowWindow !== null) {
     rowWindow.rows.forEach((event, index) => {
       const row = rowWindow.offset + index;
@@ -231,7 +238,7 @@ export function LogTable({
       <div className="log-table-header" role="rowgroup">
         <div className="log-table-row" role="row">
           <div className="log-table-time" role="columnheader">
-            {t("table.time")}
+            {t("table.time", { zone: t(timeZoneLabelKey(timeZone)) })}
           </div>
           <div className="log-table-stream" role="columnheader">
             {t("table.stream")}
@@ -265,7 +272,7 @@ export function LogTable({
               data-testid="log-table-row"
             >
               <div className="log-table-time" role="cell">
-                {formatUtcMillis(event.timestamp)}
+                {event.displayTime}
               </div>
               <div className="log-table-stream" role="cell" title={event.logStreamName}>
                 {event.logStreamName}

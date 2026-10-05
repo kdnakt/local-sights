@@ -163,6 +163,35 @@ export interface CommandError {
 }
 
 export const SESSION_CHANGED = "session-changed";
+export const FETCH_PROGRESS = "fetch-progress";
+
+/**
+ * The light message sent for every listing page and every added page while a
+ * fetch runs, instead of the whole session view.
+ */
+export interface FetchProgressUpdate {
+  jobId: number;
+  progress: FetchProgress;
+  eventCount: number;
+  timelineVersion: number;
+}
+
+/**
+ * Applies a progress message to the last session view. It applies only to
+ * the running job; anything else (e.g. a message overtaken by the end of the
+ * fetch) leaves the view as it is.
+ */
+export function withProgress(view: SessionView | null, update: FetchProgressUpdate) {
+  if (view === null || view.phase !== "Fetching" || view.currentJobId !== update.jobId) {
+    return view;
+  }
+  return {
+    ...view,
+    progress: update.progress,
+    eventCount: update.eventCount,
+    timelineVersion: Math.max(view.timelineVersion, update.timelineVersion),
+  };
+}
 
 export function isCommandError(value: unknown): value is CommandError {
   return (
@@ -249,4 +278,10 @@ export function selectorOf(profile: ConnectionProfile): ProfileSelector {
 
 export function onSessionChanged(handler: (view: SessionView) => void): Promise<UnlistenFn> {
   return listen<SessionView>(SESSION_CHANGED, (event) => handler(event.payload));
+}
+
+export function onFetchProgress(
+  handler: (update: FetchProgressUpdate) => void,
+): Promise<UnlistenFn> {
+  return listen<FetchProgressUpdate>(FETCH_PROGRESS, (event) => handler(event.payload));
 }

@@ -161,6 +161,21 @@ pub struct JobSummary {
     pub failure: Option<ApiFailure>,
 }
 
+/// The light progress message sent to the screen for every page while a
+/// fetch runs, instead of the whole [`SessionView`] (review R-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchProgressUpdate {
+    /// The running job.
+    pub job_id: u64,
+    /// Its progress.
+    pub progress: FetchProgress,
+    /// Events added so far.
+    pub event_count: u64,
+    /// Version of the timeline.
+    pub timeline_version: u64,
+}
+
 /// Progress of the running fetch, for the status line (BR6.2).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -273,6 +288,8 @@ pub struct AppSession {
     listing_status: Option<StreamListingStatus>,
     listing_failure: Option<ApiFailure>,
     failure_list_open: bool,
+    /// Number of the latest fetch started by [`AppSession::begin_fetch`].
+    fetch_number: u64,
 }
 
 impl Default for AppSession {
@@ -314,6 +331,7 @@ impl AppSession {
             listing_status: None,
             listing_failure: None,
             failure_list_open: false,
+            fetch_number: 0,
         };
         session.revalidate();
         session
@@ -537,6 +555,7 @@ impl AppSession {
             return Err(SessionError::Invalid);
         };
         self.phase = Phase::Fetching;
+        self.fetch_number += 1;
         // BR5.6: the previous rows, count, failures and result go away.
         self.current_job_id = None;
         self.event_count = 0;
@@ -597,15 +616,38 @@ impl AppSession {
         }
     }
 
-    /// Records the finished job: Completed and CompletedWithFailures move to
-    /// Done, Failed to Failed. Aborted (only when the window closes) returns
-    /// to Idle with nothing shown. A job that is still Running, or not the
-    /// current one, leaves the session as it is.
-    pub fn finish_fetch(&mut self, job: &FetchJob) {
+    /// Number of the latest fetch started by [`AppSession::begin_fetch`]; the
+    /// caller keeps it to recognise its own fetch later (review R-03).
+    pub fn fetch_number(&self) -> u64 {
+        self.fetch_number
+    }
+
+    /// The progress of the running job, for the light per-page message
+    /// (review R-05); `None` outside a fetch or before the job started.
+    pub fn progress_update(&self) -> Option<FetchProgressUpdate> {
+        if self.phase != Phase::Fetching {
+            return None;
+        }
+        Some(FetchProgressUpdate {
+            job_id: self.current_job_id?,
+            progress: self.progress.clone()?,
+            event_count: self.event_count,
+            timeline_version: self.timeline_version,
+        })
+    }
+
+    /// Records the finished job and the timeline version after it:
+    /// Completed and CompletedWithFailures move to Done, Failed to Failed.
+    /// Aborted (only when the window closes) returns to Idle with nothing
+    /// shown and takes the version of the discard (BR4.5, review R-02). A
+    /// job that is still Running, or not the current one, leaves the
+    /// session as it is.
+    pub fn finish_fetch(&mut self, job: &FetchJob, timeline_version: u64) {
         let current = self.current_job_id.is_none_or(|id| id == job.job_id);
         if self.phase != Phase::Fetching || !current || job.status == JobStatus::Running {
             return;
         }
+        self.set_timeline_version(timeline_version);
         self.current_job_id = Some(job.job_id);
         self.progress = None;
         if job.status == JobStatus::Aborted {
@@ -652,9 +694,11 @@ impl AppSession {
     /// Ends a fetch that stopped abnormally (for example, its task panicked
     /// before reporting a result) so the session never stays in Fetching:
     /// moves to Failed with `failure` and re-enables the inputs. Returns
-    /// whether the session changed; outside Fetching it does nothing.
-    pub fn abort_fetch_with_failure(&mut self, failure: ApiFailure) -> bool {
-        if self.phase != Phase::Fetching {
+    /// whether the session changed. It does nothing outside Fetching, and
+    /// nothing when `fetch_number` is not the running fetch (a newer fetch
+    /// has started meanwhile, review R-03).
+    pub fn abort_fetch_with_failure(&mut self, fetch_number: u64, failure: ApiFailure) -> bool {
+        if self.phase != Phase::Fetching || fetch_number != self.fetch_number {
             return false;
         }
         self.phase = Phase::Failed;
@@ -1006,7 +1050,7 @@ mod tests {
         let job = finished_job(&mut session, 42, None);
         session.on_batch(job.job_id, batch(40, 1));
         assert_eq!(session.view().event_count, 40);
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         let view = session.view();
         assert_eq!(view.phase, Phase::Done);
         assert_eq!(view.event_count, 42);
@@ -1024,7 +1068,7 @@ mod tests {
             .begin_fetch(session.connection_generation())
             .unwrap();
         let job = finished_job(&mut session, 0, None);
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         assert_eq!(session.phase(), Phase::Done);
         assert_eq!(session.view().event_count, 0);
     }
@@ -1044,7 +1088,7 @@ mod tests {
             },
         );
         let job = finished_job(&mut session, 3, Some(failure));
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         let view = session.view();
         assert_eq!(view.phase, Phase::Failed);
         assert_eq!(view.event_count, 3);
@@ -1061,7 +1105,7 @@ mod tests {
             .begin_fetch(session.connection_generation())
             .unwrap();
         let job = finished_job(&mut session, 1, None);
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         session
             .update_input(InputField::StartText, "2024-01-02 03:04:00".to_string())
             .unwrap();
@@ -1069,7 +1113,7 @@ mod tests {
         assert_eq!(session.view().event_count, 0);
         let failure = ApiFailure::new(FailureKind::Network, &SafeDetailFields::default());
         let job = finished_job(&mut session, 0, Some(failure));
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         assert_eq!(session.phase(), Phase::Failed);
         assert!(session.begin_fetch(session.connection_generation()).is_ok());
     }
@@ -1095,7 +1139,7 @@ mod tests {
         session.on_job_started(&job, 1);
         session.on_batch(job.job_id, batch(7, 1));
 
-        assert!(session.abort_fetch_with_failure(other_failure()));
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
 
         let view = session.view();
         assert_eq!(view.phase, Phase::Failed);
@@ -1121,7 +1165,7 @@ mod tests {
         session
             .begin_fetch(session.connection_generation())
             .unwrap();
-        assert!(session.abort_fetch_with_failure(other_failure()));
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
         assert_eq!(session.phase(), Phase::Failed);
         assert_eq!(session.view().last_job.unwrap().job_id, 0);
     }
@@ -1129,7 +1173,7 @@ mod tests {
     #[test]
     fn aborting_outside_fetching_changes_nothing() {
         let mut session = AppSession::with_catalog(catalog());
-        assert!(!session.abort_fetch_with_failure(other_failure()));
+        assert!(!session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
         assert_eq!(session.phase(), Phase::Idle);
         assert!(session.view().last_job.is_none());
 
@@ -1138,9 +1182,9 @@ mod tests {
             .begin_fetch(session.connection_generation())
             .unwrap();
         let job = finished_job(&mut session, 5, None);
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         let before = session.view();
-        assert!(!session.abort_fetch_with_failure(other_failure()));
+        assert!(!session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
         assert_eq!(session.view(), before);
     }
 
@@ -1152,7 +1196,7 @@ mod tests {
             .begin_fetch(session.connection_generation())
             .unwrap();
         let job = finished_job(&mut session, events, None);
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         session
     }
 
@@ -1347,7 +1391,7 @@ mod tests {
             .unwrap();
         let failure = ApiFailure::new(FailureKind::Throttled, &SafeDetailFields::default());
         let job = finished_job(&mut session, 3, Some(failure));
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         assert!(
             session
                 .select_profile(ProfileSelector::SdkDefault)
@@ -1616,7 +1660,7 @@ mod tests {
         job.finished_stream_count = 3;
         job.failed_streams = failed.iter().map(|name| failed_stream(name)).collect();
         job.status = JobStatus::CompletedWithFailures;
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         session
     }
 
@@ -1753,7 +1797,7 @@ mod tests {
         let mut job = finished_job(&mut session, 4, None);
         session.on_batch(job.job_id, batch(4, 2));
         job.status = JobStatus::Aborted;
-        session.finish_fetch(&job);
+        session.finish_fetch(&job, 0);
         let view = session.view();
         assert_eq!(view.phase, Phase::Idle);
         assert_eq!(view.event_count, 0);
@@ -1773,5 +1817,67 @@ mod tests {
         assert_eq!(view.timeline_version, 12);
         session.set_timeline_version(3);
         assert_eq!(session.view().timeline_version, 12, "never goes back");
+    }
+
+    // --- U3 review-1 fixes (R-02, R-03, R-05) ---
+
+    #[test]
+    fn an_aborted_finish_takes_the_version_of_the_discard() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let mut job = finished_job(&mut session, 4, None);
+        session.on_batch(job.job_id, batch(4, 2));
+        job.status = JobStatus::Aborted;
+        session.finish_fetch(&job, 3);
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Idle);
+        assert_eq!(view.timeline_version, 3, "BR4.5: the discard is shown");
+    }
+
+    #[test]
+    fn recovery_only_fails_the_fetch_it_belongs_to() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let first = session.fetch_number();
+        let job = finished_job(&mut session, 1, None);
+        session.finish_fetch(&job, 1);
+        // A second fetch starts before the first fetch's recovery runs.
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.fetch_number(), first + 1);
+        assert!(!session.abort_fetch_with_failure(first, other_failure()));
+        assert_eq!(session.phase(), Phase::Fetching);
+        assert!(session.abort_fetch_with_failure(first + 1, other_failure()));
+        assert_eq!(session.phase(), Phase::Failed);
+    }
+
+    #[test]
+    fn the_progress_update_carries_only_the_running_job_progress() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert_eq!(session.progress_update(), None);
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.progress_update(), None, "no job yet");
+        let validated = session.validation.clone().unwrap();
+        let job = FetchJob::start(validated.range);
+        session.on_job_started(&job, 2);
+        session.on_batch(job.job_id, batch(30, 3));
+        let update = session.progress_update().unwrap();
+        assert_eq!(update.job_id, job.job_id);
+        assert_eq!(update.event_count, 30);
+        assert_eq!(update.timeline_version, 3);
+        assert_eq!(update.progress.event_count, 30);
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["timelineVersion"], 3);
+        assert!(json.get("profiles").is_none(), "no full session view");
     }
 }

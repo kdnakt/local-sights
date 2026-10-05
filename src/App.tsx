@@ -4,6 +4,7 @@ import {
   confirmConnectionChange,
   getSession,
   isCommandError,
+  onFetchProgress,
   onSessionChanged,
   reloadLogGroups,
   selectLogGroup,
@@ -13,6 +14,7 @@ import {
   startFetch,
   updateInput,
   updateLogGroupFilter,
+  withProgress,
   type InputField,
   type ProfileSelector,
   type SessionView,
@@ -53,14 +55,19 @@ export function App({ locale }: AppProps) {
 
   useEffect(() => {
     let disposed = false;
-    let unlisten: (() => void) | null = null;
-    onSessionChanged(setSession).then((stop) => {
+    const unlisteners: Array<() => void> = [];
+    const keep = (stop: () => void) => {
       if (disposed) {
         stop();
       } else {
-        unlisten = stop;
+        unlisteners.push(stop);
       }
-    }, reportError);
+    };
+    onSessionChanged(setSession).then(keep, reportError);
+    onFetchProgress((update) => setSession((view) => withProgress(view, update))).then(
+      keep,
+      reportError,
+    );
     getSession().then((view) => {
       if (!disposed) {
         setSession(view);
@@ -68,7 +75,7 @@ export function App({ locale }: AppProps) {
     }, reportError);
     return () => {
       disposed = true;
-      unlisten?.();
+      unlisteners.forEach((stop) => stop());
     };
   }, [reportError]);
 

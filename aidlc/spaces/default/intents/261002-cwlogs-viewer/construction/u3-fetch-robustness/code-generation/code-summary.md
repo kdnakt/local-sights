@@ -43,7 +43,7 @@
 
 | コマンド | 結果 |
 |----------|------|
-| `cargo test --workspace` | 成功（lib 162 件成功・1 件 ignored、u1_fetch_flow 11、u2_log_group_listing 9、u3_fetch_flow 14） |
+| `cargo test --workspace` | 成功（lib 162 件成功・1 件 ignored、u1_fetch_flow 11、u2_log_group_listing 9、u3_fetch_flow 14）。レビュー 1 の修正後は下の表 |
 | `cargo test -p local-sights-core --release --lib -- timeline:: --ignored` | 成功（100 万件：rows 約 20.5 µs、position 約 10.9 µs） |
 | `npx vitest run` | 11 ファイル 75 件成功 |
 | `cargo fmt --check`・`cargo clippy --workspace --all-targets` | 成功・警告 0 |
@@ -79,5 +79,31 @@ AWS 接続の層（DescribeLogStreams の SDK の実装、偽物を使った列�
 - 実際の AWS での動作と GUI の目視（複数ストリームの時刻順、100 万件に近い件数でのスクロール、取得中に一番上の行が動かない、失敗の一覧、列挙中の表示）は、開発者本人の手元で行う（`README.md` の「Whole-group fetch (U3)」）。
 - BR1.2 の仮定（時刻を持たないストリームが列挙のどこに並ぶか）は、手元で確認用プログラムを使って確かめる（rules.md の「前提と手元の確認の項目」）。
 - NFR2 のうち「絞り込みの結果が 100 秒以内」と NFR3 の「行の展開」は、この単位の範囲外（後の単位）。U3 で確かめたのは、ライブラリ側の 100 万件での行の取り出しと位置の問い合わせの速さ（自動テスト）で、画面のスクロールの体感は手元の目視で確かめる。
-- 取得中は追加のたびに SessionView 全体（プロファイル一覧・ロググループ一覧を含む）を画面に送る。ロググループが非常に多いときの負荷は手元で確かめ、必要なら後の単位で間引く。
-- Tauri の同期コマンドはメインスレッドで動く。`get_rows` は、取得の流れが大きなページをマージしている間（100 万件の保持で数十ミリ秒程度）だけ待つことがある。
+- 取得中のページごとの送信は、レビュー 1 の R-05 で軽い `fetch-progress` イベントに分けた（下の「レビュー 1 の指摘への対応」）。
+- Tauri の同期コマンドはメインスレッドで動く。`get_rows` は、取得の流れが大きなページをマージしている間だけ待つことがある。レビュー 1 の R-04 で測ったところ、100 万件を保持した状態で時刻の重なる約 1 万件のページを 1 つ足すのに約 163 ms かかった（リリースビルド）。NFR2 の「スクロールに 1 秒以内に反応」には収まるが、取得中の引っかかりは手元の目視で確かめる。
+
+## レビュー 1 の指摘への対応
+
+レビュー 1（READY、Minor 6 件）の指摘は、project.md の決まりでは次の作業単位に回してよいものだったが、人間の判断で 6 件ともこの単位で直した。
+
+| ID | 対応 | 主な変更 |
+|----|------|----------|
+| R-01 | 位置を保つ基準の行（logStreamName・sequence・pixelOffset）を `anchorRef` に持ち、`find_row_position` の返答を適用するまで取り直さない。返答の前に次の timelineVersion が来たら、同じ基準で問い合わせ直し、古い返答は捨てる。利用者がスクロール・キー操作をしたら保留中の基準を捨てる（こちらで設定したスクロール位置の反響は無視する） | `src/components/LogTable.tsx`、テスト `LogTable.test.tsx`「keeps the same anchor row when a second version arrives before the reply」（修正前の LogTable では失敗し、修正後に通ることを確かめた） |
+| R-02 | `FetchSink::on_finished` に終了後の timelineVersion を渡す（中断のときは破棄の後の版）。`AppSession::finish_fetch(job, timeline_version)` が受け付けた終了で版を書く（Aborted の分岐でも書く） | `coordinator.rs`、`session.rs`、`src-tauri/src/lib.rs`、`examples/fetch_check.rs`、`tests/support/recording_sink.rs`。テスト `session::tests::an_aborted_finish_takes_the_version_of_the_discard`、`u3_fetch_flow` の中断のテストに版の確認を追加 |
+| R-03 | AppSession に取得の番号（`begin_fetch` のたびに増える、`fetch_number()`）を持たせ、`abort_fetch_with_failure(fetch_number, failure)` は番号が今の取得と一致するときだけ失敗に移す。Tauri の監視タスクは自分の番号を渡す。中断のハンドルの番号もセッションの番号を使い、アプリ側の独自のカウンタはなくした | `session.rs`、`src-tauri/src/lib.rs`。テスト `session::tests::recovery_only_fails_the_fetch_it_belongs_to` |
+| R-04 | `index()` で既存のストリームは `get_mut` で引き、ストリーム名の複製を新しいストリームのときだけにした。リリースビルドの `#[ignore]` テストで、100 万件を保持した状態に時刻の重なる 1 万件のページを足す時間を測った：約 163 ms（同じ実行で rows 約 23 µs、position 約 11 µs）。設計に上限がないため、アサーションはおおまかな上限（1 秒）だけにした | `timeline.rs`、テスト `timeline::tests::one_overlapping_page_is_merged_into_one_million_events` |
+| R-05 | 取得中の列挙のページごと・追加のページごとには、SessionView 全体ではなく軽い `fetch-progress` イベント（jobId・進み具合・eventCount・timelineVersion）を送る。開始・計画・ストリームの終了・終了では、これまでどおり `session-changed` で全体を送る。画面は実行中の取得の jobId と一致するときだけ反映する（終了の後に届いた古い進み具合は無視する） | `session.rs`（`FetchProgressUpdate`・`progress_update()`）、`src-tauri/src/lib.rs`、`src/api.ts`（`onFetchProgress`・`withProgress`）、`src/App.tsx`。テスト `session::tests::the_progress_update_carries_only_the_running_job_progress`、`App.test.tsx`「applies the light progress messages of the running job only」 |
+| R-06 | 対応先を実装のファイルに変えた：BR5.5・FR4.10・BR4.5 → `crates/local-sights-core/src/coordinator.rs`、BR6.5・BR6.8 → `src/components/LogTable.tsx`（1 つの ID に 1 つの既存ファイル） | `traceability.json` |
+
+修正後の結果：
+
+| コマンド | 結果 |
+|----------|------|
+| `cargo test --workspace` | 成功（lib 165 件成功・2 件 ignored、u1_fetch_flow 11、u2_log_group_listing 9、u3_fetch_flow 14） |
+| `cargo test -p local-sights-core --release --lib -- timeline:: --ignored` | 2 件成功（rows 約 23 µs、position 約 11 µs、重なる 1 万件の append 約 163 ms） |
+| `npx vitest run` | 11 ファイル 77 件成功 |
+| `cargo fmt --check`・`cargo clippy --workspace --all-targets` | 成功・警告 0 |
+| `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
+| `cargo build -p local-sights` | 成功 |
+
+ファイルの集合は変わらないため、`source-manifest.json` は変えていない。計画と `unit-test-instructions.md` も変えていない。

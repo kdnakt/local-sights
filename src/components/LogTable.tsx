@@ -42,6 +42,13 @@ interface ScrollState {
   geometry: Geometry;
 }
 
+/** The row to keep in place, identified until the next fetch (BR4.4). */
+interface PendingAnchor {
+  logStreamName: string;
+  sequence: number;
+  pixelOffset: number;
+}
+
 function rowKey(event: LogEvent): string {
   return `${event.logStreamName}\u0000${event.sequence}`;
 }
@@ -97,6 +104,7 @@ export function LogTable({
   const windowRef = useRef<RowWindow | null>(null);
   const geometryRef = useRef(geometry);
   const positionRequest = useRef(0);
+  const anchorRef = useRef<PendingAnchor | null>(null);
 
   useEffect(() => {
     windowRef.current = rowWindow;
@@ -126,40 +134,68 @@ export function LogTable({
     setScrollTop(top);
   }, []);
 
-  // BR6.5: keep the top row in place when the timeline changes.
+  // BR6.5: keep the top row in place when the timeline changes. The anchor
+  // row is taken once, from the scroll position the user left, and kept in
+  // `anchorRef` until a reply to `find_row_position` has been applied. When
+  // another version arrives before that reply, the same anchor is asked for
+  // again, so the anchor never drifts to a row that moved in meanwhile
+  // (review R-01).
   useEffect(() => {
-    const { top, geometry: scrolledGeometry } = scrollRef.current;
     positionRequest.current += 1;
     if (geometryRef.current.totalCount === 0) {
       // BR4.5: the logs were discarded; start again from the top.
-      if (top !== 0) {
+      anchorRef.current = null;
+      if (scrollRef.current.top !== 0) {
         applyScrollTop(0, geometryRef.current);
       }
       return;
     }
-    const anchor = anchorAt(top, scrolledGeometry);
-    if (anchor === null) {
-      return;
+    if (anchorRef.current === null) {
+      const { top, geometry: scrolledGeometry } = scrollRef.current;
+      const anchor = anchorAt(top, scrolledGeometry);
+      const anchored = anchor === null ? undefined : rowAt(windowRef.current, anchor.row);
+      if (anchor === null || anchored === undefined) {
+        return;
+      }
+      anchorRef.current = {
+        logStreamName: anchored.logStreamName,
+        sequence: anchored.sequence,
+        pixelOffset: anchor.pixelOffset,
+      };
     }
+    const anchor = anchorRef.current;
     const request = positionRequest.current;
-    const anchored = rowAt(windowRef.current, anchor.row);
-    if (anchored === undefined) {
-      return;
-    }
-    findRowPosition(anchored.logStreamName, anchored.sequence).then(
+    findRowPosition(anchor.logStreamName, anchor.sequence).then(
       (answer) => {
         if (request !== positionRequest.current) {
           return;
         }
+        anchorRef.current = null;
         const current = geometryRef.current;
         applyScrollTop(preservedScrollTop(answer.position, anchor.pixelOffset, current), current);
       },
-      (error: unknown) => onError(error),
+      (error: unknown) => {
+        if (request === positionRequest.current) {
+          anchorRef.current = null;
+        }
+        onError(error);
+      },
     );
   }, [timelineVersion, applyScrollTop, onError]);
 
+  /** The user moved the list: a pending anchor no longer applies. */
+  const dropPendingAnchor = () => {
+    anchorRef.current = null;
+    positionRequest.current += 1;
+  };
+
   const handleScroll = (event: UIEvent<HTMLDivElement>) => {
     const top = event.currentTarget.scrollTop;
+    if (top === scrollRef.current.top) {
+      // The echo of a scroll position set here; nothing changed.
+      return;
+    }
+    dropPendingAnchor();
     scrollRef.current = { top, geometry };
     setScrollTop(top);
   };
@@ -170,6 +206,7 @@ export function LogTable({
       return;
     }
     event.preventDefault();
+    dropPendingAnchor();
     applyScrollTop(top, geometry);
   };
 

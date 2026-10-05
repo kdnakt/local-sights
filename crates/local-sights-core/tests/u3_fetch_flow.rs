@@ -412,6 +412,11 @@ async fn an_abort_during_a_wait_stops_at_once_and_discards_the_logs() {
         "BR5.5 discards the logs"
     );
     assert_eq!(
+        sink.finished_timeline_version,
+        Some(timeline.lock().unwrap().version()),
+        "the version after the discard is reported (review R-02)"
+    );
+    assert_eq!(
         gateway.api_log().len(),
         3,
         "listing, page 1, the throttled call"

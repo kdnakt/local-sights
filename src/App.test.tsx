@@ -1,12 +1,13 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionView } from "./api";
+import type { FetchProgressUpdate, SessionView } from "./api";
 import { App } from "./App";
 import { connectedView, logEvent, rowWindow, sessionView } from "./test/fixtures";
 
 const handlers: {
   session?: (view: SessionView) => void;
+  progress?: (update: FetchProgressUpdate) => void;
 } = {};
 
 vi.mock("./api", async (importOriginal) => {
@@ -28,6 +29,10 @@ vi.mock("./api", async (importOriginal) => {
     findRowPosition: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
       handlers.session = handler;
+      return () => undefined;
+    }),
+    onFetchProgress: vi.fn(async (handler: (update: FetchProgressUpdate) => void) => {
+      handlers.progress = handler;
       return () => undefined;
     }),
   };
@@ -78,6 +83,39 @@ describe("App", () => {
     // A connection change discards the logs: count 0, new version.
     push(connectedView({ phase: "Idle", eventCount: 0, timelineVersion: 2 }));
     await waitFor(() => expect(screen.queryAllByTestId("log-table-row")).toHaveLength(0));
+  });
+
+  it("applies the light progress messages of the running job only", async () => {
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 7, timelineVersion: 1 }));
+    const update = (jobId: number, eventCount: number, timelineVersion: number) =>
+      act(() => {
+        handlers.progress?.({
+          jobId,
+          progress: {
+            seenStreamCount: 2,
+            selectedStreamCount: 2,
+            plannedStreamCount: 2,
+            finishedStreamCount: 1,
+            eventCount,
+          },
+          eventCount,
+          timelineVersion,
+        });
+      });
+    update(7, 3, 2);
+    expect(screen.getByTestId("status-line-fetching")).toHaveTextContent(
+      "Fetching… 1/2 streams, 3 events so far",
+    );
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+
+    update(8, 99, 9);
+    expect(screen.getByTestId("status-line-fetching")).toHaveTextContent("3 events so far");
+
+    push(sessionView({ phase: "Done", currentJobId: 7, eventCount: 3, timelineVersion: 2 }));
+    update(7, 50, 5);
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("3 events");
   });
 
   it("sends the connection generation with fetch, reload and log group selection", async () => {

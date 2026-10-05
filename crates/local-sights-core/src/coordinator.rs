@@ -178,8 +178,10 @@ pub trait FetchSink {
     fn on_batch(&mut self, job_id: u64, progress: BatchProgress);
     /// One stream finished (successfully or not); `job` has the counts.
     fn on_stream_finished(&mut self, job: &FetchJob, outcome: &StreamFetchOutcome);
-    /// The fetch finished with its final status.
-    fn on_finished(&mut self, job: &FetchJob);
+    /// The fetch finished with its final status; `timeline_version` is the
+    /// version of the timeline after it (after the discard when Aborted,
+    /// BR4.5, review R-02).
+    fn on_finished(&mut self, job: &FetchJob, timeline_version: u64);
 }
 
 /// Where the fetch keeps its events. Each call is short: the store is not
@@ -228,8 +230,8 @@ where
 {
     let mut job = FetchJob::start(fetch.range);
     let job_id = job.job_id;
-    let timeline_version = timeline.discard();
-    sink.on_started(&job, timeline_version);
+    let mut latest_version = timeline.discard();
+    sink.on_started(&job, latest_version);
 
     let plan = match plan_streams(gateway, &fetch.request, &fetch.range, retrier, |progress| {
         sink.on_listing_progress(job_id, progress);
@@ -262,6 +264,7 @@ where
                     |events| {
                         let added = events.len() as u64;
                         let timeline_version = timeline.add(events);
+                        latest_version = timeline_version;
                         total += added;
                         sink.on_batch(
                             job_id,
@@ -292,7 +295,7 @@ where
     }
 
     job.status = decide_job_status(false, Some(&plan), job.failed_stream_count());
-    sink.on_finished(&job);
+    sink.on_finished(&job, latest_version);
     job
 }
 
@@ -302,10 +305,10 @@ where
     T: TimelineStore,
     S: FetchSink,
 {
-    timeline.discard();
+    let timeline_version = timeline.discard();
     job.status = JobStatus::Aborted;
     job.event_count = 0;
-    sink.on_finished(&job);
+    sink.on_finished(&job, timeline_version);
     job
 }
 

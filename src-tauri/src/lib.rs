@@ -4,8 +4,9 @@
 //! Operations arrive as Tauri commands (`get_session`, `update_input`,
 //! `start_fetch`, since U2 the connection and log group commands, and since
 //! U3 `get_rows`, `find_row_position` and `set_failure_list_open`); state
-//! changes, including the fetch progress and the timeline version, are
-//! pushed to the screen with the `session-changed` event. Commands that
+//! changes are pushed to the screen with the `session-changed` event; while
+//! a fetch runs, each listing page and each added page sends only the light
+//! `fetch-progress` event (progress, event count, timeline version). Commands that
 //! change state return nothing: their result arrives as an event, so a late
 //! response never overwrites newer state.
 //!
@@ -22,7 +23,6 @@
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use local_sights_core::catalog::ProfileSelector;
@@ -46,6 +46,10 @@ use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 /// Event carrying the latest [`SessionView`].
 pub const SESSION_CHANGED: &str = "session-changed";
+/// Light event carrying only the progress of the running fetch, sent for
+/// every listing page and every added page instead of the whole view
+/// (review R-05).
+pub const FETCH_PROGRESS: &str = "fetch-progress";
 
 /// Most rows one `get_rows` call returns; a viewport needs far fewer.
 const MAX_ROWS_PER_REQUEST: usize = 1_000;
@@ -56,11 +60,9 @@ struct AppState {
     session: Arc<Mutex<AppSession>>,
     timeline: Arc<Mutex<EventTimeline>>,
     gateway: Arc<AwsCloudWatchLogsGateway>,
-    /// Abort handle of the running fetch with its fetch number (BR5.5).
+    /// Abort handle of the running fetch with its fetch number from the
+    /// session (BR5.5), so a finished fetch only forgets its own handle.
     abort: Arc<Mutex<Option<(u64, AbortHandle)>>>,
-    /// Number of the next fetch, so a finished fetch only forgets its own
-    /// abort handle.
-    next_fetch: AtomicU64,
 }
 
 impl AppState {
@@ -71,7 +73,6 @@ impl AppState {
             timeline: Arc::default(),
             gateway: Arc::default(),
             abort: Arc::default(),
-            next_fetch: AtomicU64::new(1),
         }
     }
 
@@ -207,15 +208,14 @@ fn begin_and_spawn_fetch(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<(), CommandError> {
-    let (validated, view) = {
+    let (validated, fetch_number, view) = {
         let mut session = lock(&state.session);
         let validated = session.begin_fetch(generation)?;
-        (validated, session.view())
+        (validated, session.fetch_number(), session.view())
     };
     emit_or_log(app, SESSION_CHANGED, view);
 
     let (handle, signal) = abort_pair();
-    let fetch_number = state.next_fetch.fetch_add(1, Ordering::Relaxed);
     *lock(&state.abort) = Some((fetch_number, handle));
     let session = Arc::clone(&state.session);
     let timeline = Arc::clone(&state.timeline);
@@ -250,16 +250,23 @@ fn begin_and_spawn_fetch(
                 running.take();
             }
         }
-        recover_if_still_fetching(&app, &session, ended_normally);
+        recover_if_still_fetching(&app, &session, fetch_number, ended_normally);
     });
     Ok(())
 }
 
 /// Runs after the fetch task ends. If it ended (normally or not) without
 /// reporting a result, the session would stay in Fetching forever; move it
-/// to Failed (kind Other) and tell the screen. The panic message is not
-/// logged: only a safe detail is.
-fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended_normally: bool) {
+/// to Failed (kind Other) and tell the screen. Only the fetch numbered
+/// `fetch_number` is touched: a newer fetch that started meanwhile is left
+/// alone (review R-03). The panic message is not logged: only a safe
+/// detail is.
+fn recover_if_still_fetching(
+    app: &AppHandle,
+    session: &Mutex<AppSession>,
+    fetch_number: u64,
+    ended_normally: bool,
+) {
     let failure = ApiFailure::new(
         FailureKind::Other,
         &SafeDetailFields {
@@ -269,7 +276,7 @@ fn recover_if_still_fetching(app: &AppHandle, session: &Mutex<AppSession>, ended
     );
     let view = {
         let mut session = lock(session);
-        if !session.abort_fetch_with_failure(failure) {
+        if !session.abort_fetch_with_failure(fetch_number, failure) {
             return;
         }
         session.view()
@@ -485,8 +492,11 @@ impl ListingSink for TauriListingSink {
     }
 }
 
-/// Forwards fetch progress to AppSession and pushes the new state. The
-/// timeline is never locked here; the coordinator adds each page itself.
+/// Forwards fetch progress to AppSession and pushes the new state: the whole
+/// view at the start, the plan, each finished stream and the end, and only
+/// the light `fetch-progress` message for each listing page and each added
+/// page (review R-05). The timeline is never locked here; the coordinator
+/// adds each page itself.
 struct TauriSink {
     app: AppHandle,
     session: Arc<Mutex<AppSession>>,
@@ -501,6 +511,17 @@ impl TauriSink {
         };
         emit_or_log(&self.app, SESSION_CHANGED, view);
     }
+
+    fn update_progress(&self, change: impl FnOnce(&mut AppSession)) {
+        let update = {
+            let mut session = lock(&self.session);
+            change(&mut session);
+            session.progress_update()
+        };
+        if let Some(update) = update {
+            emit_or_log(&self.app, FETCH_PROGRESS, update);
+        }
+    }
 }
 
 impl FetchSink for TauriSink {
@@ -509,7 +530,7 @@ impl FetchSink for TauriSink {
     }
 
     fn on_listing_progress(&mut self, job_id: u64, progress: ListingProgress) {
-        self.update(|session| session.on_listing_progress(job_id, progress));
+        self.update_progress(|session| session.on_listing_progress(job_id, progress));
     }
 
     fn on_planned(&mut self, job: &FetchJob) {
@@ -517,7 +538,7 @@ impl FetchSink for TauriSink {
     }
 
     fn on_batch(&mut self, job_id: u64, progress: BatchProgress) {
-        self.update(|session| session.on_batch(job_id, progress));
+        self.update_progress(|session| session.on_batch(job_id, progress));
     }
 
     fn on_stream_finished(&mut self, job: &FetchJob, outcome: &StreamFetchOutcome) {
@@ -532,13 +553,13 @@ impl FetchSink for TauriSink {
         self.update(|session| session.on_stream_finished(job));
     }
 
-    fn on_finished(&mut self, job: &FetchJob) {
+    fn on_finished(&mut self, job: &FetchJob, timeline_version: u64) {
         if job.status == JobStatus::Failed {
             // Safe detail only: built from allow-listed fields and redacted.
             let detail = job.failure().map_or("", |failure| failure.safe_detail());
             eprintln!("local-sights: fetch {} failed: {detail}", job.job_id);
         }
-        self.update(|session| session.finish_fetch(job));
+        self.update(|session| session.finish_fetch(job, timeline_version));
     }
 }
 

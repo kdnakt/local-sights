@@ -33,6 +33,8 @@ pub enum Delivered {
 #[derive(Debug, Default)]
 pub struct RecordingSink {
     pub delivered: Vec<Delivered>,
+    /// The timeline version given with `on_finished`.
+    pub finished_timeline_version: Option<u64>,
 }
 
 impl RecordingSink {
@@ -91,7 +93,8 @@ impl FetchSink for RecordingSink {
         });
     }
 
-    fn on_finished(&mut self, job: &FetchJob) {
+    fn on_finished(&mut self, job: &FetchJob, timeline_version: u64) {
+        self.finished_timeline_version = Some(timeline_version);
         self.delivered
             .push(Delivered::Finished(Box::new(job.clone())));
     }

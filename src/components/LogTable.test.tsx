@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LogEvent, RowWindow } from "../api";
+import type { LogEvent, RowPosition, RowWindow } from "../api";
 import { formatUtcMillis } from "../format";
 import { logEvent, t } from "../test/fixtures";
 import { LogTable } from "./LogTable";
@@ -135,6 +135,58 @@ describe("LogTable", () => {
 
     await waitFor(() => expect(screen.getByTestId("log-table-viewport").scrollTop).toBe(1_325));
     expect(api.findRowPosition).toHaveBeenCalledWith("stream-a", 10);
+  });
+
+  it("keeps the same anchor row when a second version arrives before the reply", async () => {
+    serveRows(1_000);
+    const view = renderTable(1_000, 1);
+    await scrollTo(225);
+    await waitFor(() => expect(messages()[0]).toBe("message 10"));
+
+    const replies: Array<(position: RowPosition) => void> = [];
+    vi.mocked(api.findRowPosition).mockImplementation(
+      () =>
+        new Promise<RowPosition>((resolve) => {
+          replies.push(resolve);
+        }),
+    );
+    // 50 events of another stream were inserted at the top: the row now at
+    // position 10 is a different event, so taking the anchor again from the
+    // shown rows would pick the wrong one.
+    vi.mocked(api.getRows).mockImplementation(async (offset, limit) => {
+      const rows: LogEvent[] = [];
+      for (let row = offset; row < offset + limit; row += 1) {
+        rows.push(row < 50 ? logEvent(row, `other ${row}`, "stream-x") : logEvent(row - 50));
+      }
+      return { offset, rows, totalCount: 1_050, timelineVersion: 2 };
+    });
+    const rerender = (totalCount: number, timelineVersion: number) =>
+      view.rerender(
+        <LogTable
+          totalCount={totalCount}
+          timelineVersion={timelineVersion}
+          t={t}
+          onError={view.onError}
+          viewportHeight={VIEWPORT}
+        />,
+      );
+    rerender(1_050, 2);
+    await waitFor(() => expect(messages()[0]).toBe("other 10"));
+    rerender(1_100, 3);
+    await waitFor(() => expect(api.findRowPosition).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.findRowPosition).mock.calls).toEqual([
+      ["stream-a", 10],
+      ["stream-a", 10],
+    ]);
+
+    await act(async () => {
+      replies[1]!({ position: 110, timelineVersion: 3 });
+    });
+    expect(screen.getByTestId("log-table-viewport").scrollTop).toBe(2_425);
+    await act(async () => {
+      replies[0]!({ position: 60, timelineVersion: 2 });
+    });
+    expect(screen.getByTestId("log-table-viewport").scrollTop).toBe(2_425);
   });
 
   it("stays at the top when scrolled to the top", async () => {

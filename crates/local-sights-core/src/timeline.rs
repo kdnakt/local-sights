@@ -141,10 +141,15 @@ impl EventTimeline {
         let Ok(index) = usize::try_from(event.sequence) else {
             return;
         };
-        let timestamps = self
-            .timestamps
-            .entry(event.log_stream_name.clone())
-            .or_default();
+        // Look the stream up first, so its name is copied only once, when
+        // the stream is new (review R-04).
+        if !self.timestamps.contains_key(&event.log_stream_name) {
+            self.timestamps
+                .insert(event.log_stream_name.clone(), Vec::new());
+        }
+        let Some(timestamps) = self.timestamps.get_mut(&event.log_stream_name) else {
+            return;
+        };
         if timestamps.len() <= index {
             timestamps.resize(index + 1, MISSING);
         }
@@ -348,5 +353,30 @@ mod tests {
         println!("rows: {rows_time:?}, position: {position_time:?}");
         assert!(rows_time <= limit, "rows took {rows_time:?}");
         assert!(position_time <= limit, "position took {position_time:?}");
+    }
+
+    /// Review R-04: one page of about 10,000 events whose times overlap a
+    /// timeline that already holds one million events, so the whole tail is
+    /// merged. Prints the time; the design defines no bound for it, so the
+    /// assertion is only a generous sanity bound (1 second).
+    /// `cargo test -p local-sights-core --release --lib -- timeline:: --ignored --nocapture`
+    #[test]
+    #[ignore = "measures speed; run with --release --ignored"]
+    fn one_overlapping_page_is_merged_into_one_million_events() {
+        let mut timeline = filled(1_000_000, 10, 10_000);
+        let max_time = timeline.events().last().map_or(0, |e| e.timestamp);
+        // A new stream spread over the whole range: the page starts near
+        // the beginning, so almost every held event moves.
+        let times: Vec<i64> = (0..10_000i64).map(|i| i * max_time / 10_000).collect();
+        let started = Instant::now();
+        timeline.append(page("stream-new", 0, &times));
+        let append_time = started.elapsed();
+        assert_eq!(timeline.len(), 1_010_000);
+        assert!(is_sorted(&timeline));
+        println!("append of 10,000 overlapping events into 1,000,000: {append_time:?}");
+        assert!(
+            append_time <= Duration::from_secs(1),
+            "append took {append_time:?}"
+        );
     }
 }

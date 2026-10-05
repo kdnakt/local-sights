@@ -188,5 +188,5 @@ impl FetchSink for ProgressSink {
 
     fn on_stream_finished(&mut self, _job: &FetchJob, _outcome: &StreamFetchOutcome) {}
 
-    fn on_finished(&mut self, _job: &FetchJob) {}
+    fn on_finished(&mut self, _job: &FetchJob, _timeline_version: u64) {}
 }

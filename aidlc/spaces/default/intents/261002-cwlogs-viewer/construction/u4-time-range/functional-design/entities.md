@@ -31,7 +31,7 @@ entities:
         type: text
         required: true
         default: ""
-        constraints: 画面に表示する文字列。利用者が入力した文字列か、タイムゾーンの切り替えで瞬間から作り直した文字列（BR1.4）
+        constraints: 画面に表示する文字列。利用者が入力した文字列か、タイムゾーンの切り替えで瞬間から作り直した文字列（BR1.4）。瞬間を持たない入力は、切り替えても文字列を残し、新しいタイムゾーンで解釈し直す（BR1.4、レビュー R-02）
       - name: instant
         type: instant-millis
         required: false
@@ -40,10 +40,24 @@ entities:
         type: enum
         allowed_values: [Format, NonexistentLocalTime]
         required: false
-        constraints: 空でない text を解釈できなかったときだけ持つ。instant とは同時に持たない（BR1.2、BR2.2、Q3）。空の text はどちらも持たない
+        constraints: 空でない text を、いまのタイムゾーンで解釈できなかったときだけ持つ。instant とは同時に持たない（BR1.2、BR2.2、Q3）。空の text はどちらも持たない。NonexistentLocalTime は timeZone が Local のときだけ取り得る（UTC に切り替えると解釈し直される。BR1.4）
     constraints:
       - instant と error は同時に持たない
-      - タイムゾーンを切り替えても instant は変わらない（BR1.4、FR3.3）
+      - タイムゾーンを切り替えても、instant を持つ入力の instant は変わらない（BR1.4、FR3.3）。ただし新しいタイムゾーンで 4 桁の年に表せない瞬間は、文字列を残して解釈し直す
+      - 利用者が書き換えない限り、instant は解釈し直さない（BR1.5、レビュー R-06）
+    relationships: []
+
+  - name: RowWindow
+    owner: EventTimeline
+    components_md: U3 の補助 RowWindow に属性を足す
+    description: 画面が表示範囲だけを描くために取り寄せる行のまとまり
+    attributes:
+      - name: rows[].displayTime
+        type: text
+        required: true
+        constraints: 各行の timestamp を、取り寄せた時点の timeZone で yyyy-mm-dd hh:mm:ss.mmm に文字列化したもの。表せないときは数値の文字列（BR3.1、BR3.4、レビュー R-01・R-05）。画面は変換をせずにこの文字列を表示する
+    constraints:
+      - U3 の属性（offset・rows・totalCount・timelineVersion）はそのまま
     relationships: []
 
   - name: TimeRange
@@ -105,5 +119,6 @@ entities:
 | TimeZoneChoice | TimeRangeModel | タイムゾーンの補助 | Local と Utc。起動のたびに Local（Q2） |
 | DateTimeInput | TimeRangeModel | 入力欄の補助 | 文字列と瞬間。切り替えで瞬間は変わらない |
 | TimeRange | TimeRangeModel | U1 の補助（変えない） | 瞬間から作る |
+| RowWindow | EventTimeline | U3 の補助（属性を足す） | 行の時刻をライブラリが文字列化して渡す（R-01） |
 | ValidationError | AppSession | U1 の補助（種類を足す） | 夏時間で存在しない日時（Q3） |
 | SessionState | AppSession | 同名（属性を足す） | タイムゾーン、開始・終了の入力 |

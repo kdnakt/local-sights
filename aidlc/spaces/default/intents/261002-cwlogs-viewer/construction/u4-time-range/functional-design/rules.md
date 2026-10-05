@@ -37,17 +37,17 @@ rules:
     category: policy
     applies_to: DateTimeInput
     trigger: タイムゾーンを切り替えたとき
-    logic: 開始・終了のそれぞれについて、IF instant を持つ THEN text を、instant を新しいタイムゾーンで表した yyyy-mm-dd hh:mm:ss に作り直し、instant は変えない（作り直した文字列を解釈し直さない。そのため、夏時間の終わりで 2 回現れる時刻の遅い方の瞬間でも、瞬間は保たれる）。ELSE（形式の誤り・存在しない日時・空）THEN text と error をそのまま残す（Q1）。そのあと [Fetch] を押せる条件を確かめ直す（BR2.1）。タイムゾーンの切り替えは取得条件を変えないため、取得中（phase Fetching）と接続の変更の確認待ちでも受け付ける
+    logic: 開始・終了のそれぞれについて、IF instant を持ち、かつ instant を新しいタイムゾーンで 4 桁の年（0000〜9999）の yyyy-mm-dd hh:mm:ss に表せる THEN text をその文字列に作り直し、instant は変えない（作り直した文字列を解釈し直さない。そのため、夏時間の終わりで 2 回現れる時刻の遅い方の瞬間でも、瞬間は保たれる）。ELSE IF text が空でない（形式の誤り・存在しない日時、または新しいタイムゾーンで 4 桁の年に表せない瞬間）THEN text はそのまま残し、新しいタイムゾーンで BR1.2 のとおり解釈し直して instant と error を置き換える（例：ローカルで存在しない日時は、UTC に切り替えると正しい日時になり、その瞬間を持つ）。ELSE（空）何もしない。そのあと [Fetch] を押せる条件を確かめ直す（BR2.1）。タイムゾーンの切り替えは取得条件を変えないため、取得中（phase Fetching）と接続の変更の確認待ちでも受け付ける
     violation: なし
-    source: FR3.3、Q1
+    source: FR3.3、Q1（変換できない入力の文字列は残す）、U4 の機能設計のレビュー R-02（文字列を残したうえで新しいタイムゾーンで解釈し直す）、R-05（4 桁の年に表せない場合）
   - id: BR1.5
     statement: 入力欄を書き換えたら、いまのタイムゾーンで解釈し直す
     category: policy
     applies_to: DateTimeInput
     trigger: 入力欄の文字列が利用者の入力で変わったとき
-    logic: BR1.2 で解釈し、instant と error を置き換える。取得中は U1:BR1.4 のとおり書き換えを受け付けない
+    logic: BR1.2 で解釈し、instant と error を置き換える。取得中は U1:BR1.4 のとおり書き換えを受け付けない。解釈し直すのは、利用者の入力で text が変わったときと、タイムゾーンの切り替え（BR1.4）のときだけとする。画面から同じ文字列が届いたとき（text が変わらないとき）や、画面の再描画・状態の送り直しでは解釈し直さず、instant をそのまま保つ（夏時間の終わりで 2 回現れる時刻の遅い方の瞬間が、黙って早い方に変わらないようにする）
     violation: なし
-    source: FR3.1、FR3.6
+    source: FR3.1、FR3.6、U4 の機能設計のレビュー R-06
   - id: BR1.6
     statement: 取得の範囲と開始・終了の順序は、瞬間から決める
     category: calculation
@@ -62,9 +62,9 @@ rules:
     category: validation
     applies_to: AppSession
     trigger: 選択・入力・タイムゾーン・phase が変わったとき
-    logic: 条件は、プロファイルとリージョンが選ばれている（U2:BR2.7）、ロググループが 1 つ選ばれている（U2:BR2.7）、開始・終了が空でなく error を持たない（BR1.2）、開始が終了より前（BR1.6）、取得中でない（U1:BR1.4）。満たさない理由は、画面だけの選択の理由と共通の検証の理由（U1:BR1.8）を合わせ、条件の並びの順にすべて出す。開始または終了が error を持つときは、順序の確認（RangeOrder）は出さない
+    logic: 条件は、プロファイルとリージョンが選ばれている（U2:BR2.7）、ロググループが 1 つ選ばれている（U2:BR2.7）、開始・終了が空でなく error を持たない（BR1.2）、開始が終了より前（BR1.6）、取得中でない（U1:BR1.4）、接続の変更の確認待ちでない（U2:BR2.5）。満たさない理由は、画面だけの選択の理由と共通の検証の理由（U1:BR1.8）を合わせ、条件の並びの順にすべて出す。開始または終了が error を持つときは、順序の確認（RangeOrder）は出さない。取得中と確認待ちには新しい理由の文言を足さない。取得中はステータス行の「取得中」の表示（U3:BR6.2、U1:BR1.4）を、確認待ちは開いている確認ダイアログ（U2:BR2.5）を、それぞれ理由の表示とする
     violation: "[Fetch] を無効にし、理由の文言キーを並べて示す"
-    source: FR3.4
+    source: FR3.4、U4 の機能設計のレビュー R-04
   - id: BR2.2
     statement: 夏時間で存在しない日時は、形式の誤りとは別の理由として示す
     category: validation
@@ -79,17 +79,17 @@ rules:
     category: calculation
     applies_to: DesktopUi
     trigger: ログ一覧を描くとき、タイムゾーンを切り替えたとき
-    logic: 各行の timestamp を、選んだタイムゾーンで yyyy-mm-dd hh:mm:ss.mmm に表す。Local では、その行の瞬間でのオフセット（夏時間を含む）を使う。タイムゾーンを切り替えたら、取得し直さずに表示だけを描き直す。並び順（U3:BR4.1）は瞬間で決まるため変わらない（U1:BR5.3 の「UTC で表示」を置き換える）
+    logic: 各行の timestamp を、選んだタイムゾーンで yyyy-mm-dd hh:mm:ss.mmm に表す。Local では、その行の瞬間でのオフセット（夏時間を含む）を使う。選んだタイムゾーンで暦の範囲に表せない timestamp は、U1 と同じく数値のまま出す。タイムゾーンを切り替えたら、取得し直さずに表示だけを描き直す。並び順（U3:BR4.1）は瞬間で決まるため変わらない（U1:BR5.3 の「UTC で表示」を置き換える）
     violation: なし
-    source: FR3.3
+    source: FR3.3、U4 の機能設計のレビュー R-05
   - id: BR3.2
-    statement: ログ一覧の時刻の列の見出しに、いまのタイムゾーンを出す
+    statement: ログ一覧の時刻の列の見出しと日時の入力欄に、いまのタイムゾーンを出す
     category: policy
     applies_to: DesktopUi
-    trigger: ログ一覧を描くとき
-    logic: 見出しを「時刻（ローカル）」「時刻（UTC）」（英語は「Time (Local)」「Time (UTC)」）にする。各行の時刻にはオフセットを付けない
+    trigger: ログ一覧と入力欄を描くとき、タイムゾーンを切り替えたとき
+    logic: ログ一覧の時刻の列の見出しを「時刻（ローカル）」「時刻（UTC）」（英語は「Time (Local)」「Time (UTC)」）にする。各行の時刻にはオフセットを付けない。開始・終了の入力欄のラベルと形式の誤りの文言も、U1 の「(UTC)」固定をやめ、いまのタイムゾーン（「ローカル」または「UTC」）を出す（例：「開始日時（ローカル）」「開始日時は yyyy-mm-dd hh:mm:ss の形で入力してください（ローカル）」）。英日の文言キーで持つ（U1:BR6.1）
     violation: なし
-    source: FR3.3、Q4
+    source: FR3.3、Q4、U4 の機能設計のレビュー R-03
   - id: BR3.3
     statement: 上部バーにタイムゾーンの切替を置き、キーボードでも操作できる
     category: policy
@@ -99,13 +99,13 @@ rules:
     violation: なし
     source: FR3.2、NFR12、NFR13
   - id: BR3.4
-    statement: 画面とライブラリは同じローカルのタイムゾーンを使う
+    statement: タイムゾーンの変換は、すべてライブラリ（TimeRangeModel）が持つ
     category: constraint
     applies_to: TimeRangeModel
     trigger: 常に
-    logic: 入力の解釈（BR1.2）・入力の作り直し（BR1.4）・ログ一覧の時刻表示（BR3.1）は、すべて OS のタイムゾーンの設定を使い、同じ瞬間には同じ壁時計の時刻を出す。自動テストでは、タイムゾーンを決めた値（夏時間のある地域と UTC）に差し替えて確かめる
+    logic: 入力の解釈（BR1.2）・入力の作り直し（BR1.4）・ログ一覧の時刻の文字列化（BR3.1）は、すべてライブラリの TimeRangeModel で行う。画面は変換をせず、ライブラリが作った文字列を表示する（ログ一覧の行は、表示範囲の取り寄せ（U3:BR4.3 の RowWindow）で、選んだタイムゾーンに文字列化した時刻を一緒に受け取る。入力欄は SessionState の text を表示する）。ローカルのタイムゾーンは、ライブラリが OS の設定から得る。ライブラリには、ローカルのタイムゾーンを差し替えられる境界を置き、自動テストでは決めた値（夏時間のある地域と UTC）に差し替えて確かめる。これにより、画面とライブラリでローカルの解釈が食い違わない
     violation: なし
-    source: FR3.3、FR3.6
+    source: FR3.3、FR3.6、U4 の機能設計のレビュー R-01（案 a）
   - id: BR3.5
     statement: 確認用プログラムの日時の引数は、UTC のまま変えない
     category: constraint
@@ -123,13 +123,13 @@ rules:
 | BR1.1 | ローカルと UTC、起動のたびにローカル | policy | FR3.2、Q2 |
 | BR1.2 | 入力は選んだタイムゾーンで解釈。存在しない日時は誤り、2 回は早い方 | calculation | FR3.1、FR3.6 |
 | BR1.3 | 入力欄は文字列と瞬間を持つ | constraint | FR3.3 |
-| BR1.4 | 切り替えても同じ瞬間、変換できない入力はそのまま | policy | FR3.3、Q1 |
-| BR1.5 | 書き換えたら解釈し直す | policy | FR3.1 |
+| BR1.4 | 切り替えても同じ瞬間、変換できない入力は文字列を残して解釈し直す | policy | FR3.3、Q1、R-02、R-05 |
+| BR1.5 | 書き換えたら解釈し直す（書き換えない限り瞬間を保つ） | policy | FR3.1、R-06 |
 | BR1.6 | 範囲と順序は瞬間から | calculation | FR3.4、FR3.5 |
-| BR2.1 | [Fetch] の条件と理由 | validation | FR3.4 |
+| BR2.1 | [Fetch] の条件と理由（確認待ちを含む） | validation | FR3.4、R-04 |
 | BR2.2 | 存在しない日時は別の理由 | validation | FR3.6、Q3 |
-| BR3.1 | 一覧の時刻は選んだタイムゾーンで | calculation | FR3.3 |
-| BR3.2 | 時刻の列の見出しにタイムゾーン | policy | Q4 |
+| BR3.1 | 一覧の時刻は選んだタイムゾーンで（表せなければ数値） | calculation | FR3.3、R-05 |
+| BR3.2 | 時刻の列の見出しと入力欄にタイムゾーン | policy | Q4、R-03 |
 | BR3.3 | 上部バーの切替、キーボード | policy | FR3.2、NFR12、NFR13 |
-| BR3.4 | 画面とライブラリは同じローカル | constraint | FR3.3 |
+| BR3.4 | 変換はすべてライブラリが持つ | constraint | FR3.3、R-01 |
 | BR3.5 | 確認用プログラムは UTC のまま | constraint | U1:BR7.1 |

@@ -23,46 +23,63 @@ entities:
         type: text
         required: true
         default: ""
-        constraints: 前後の空白を除いた文字列。空なら絞り込まない（BR1.1）
+        constraints: 前後の空白を除いた文字列。空なら「条件なし」と同じに扱い、絞り込まない（BR1.1）
     constraints:
       - アプリを終了すると残らない（保存しない）
+      - filterText が空の FilterCondition は、components.md の「セッションは絞り込み条件を 0 個参照する」と同じ意味（レビュー R-05）
     relationships: []
 
   - name: FilterResult
     owner: FilterEngine
-    components_md: FilterResult（同名）
+    components_md: FilterResult（同名）。components.md の matchedPositions を、ずれない行のキーの並び（matchedKeys）として持つ（レビュー R-01）
     description: 保持ログのうち、条件に合う行の並び
-    identifier: [filterId]
+    identifier: [filterId, timelineEpoch]
     attributes:
       - name: filterId
         type: integer
         required: true
         constraints: どの FilterCondition の結果か
-      - name: matchedPositions
+      - name: timelineEpoch
+        type: integer
+        required: true
+        min: 0
+        constraints: どの保持ログに対する結果か。保持ログを破棄するたびに 1 増える番号（取得の開始・中断・接続先の変更、BR2.2）。いまの番号と違う結果は捨てる（BR2.4）
+      - name: matchedKeys
         type: list
         required: true
-        constraints: 条件に合う行の、保持ログの中での位置の並び。保持ログの並び（U3:BR4.1）と同じ順（BR2.3）
+        constraints: 条件に合う行の並べ替えのキー（timestamp、logStreamName、sequence。U3:BR4.1）の並び。キーの昇順（保持ログと同じ順、BR2.3）。キーは行の追加で変わらないため、途中に行が差し込まれても値がずれない
+      - name: scanCursor
+        type: reference
+        references: LogEvent のキー
+        required: false
+        constraints: 保持ログ全体への絞り込みで、どのキーまで条件をかけ終えたか。status = Filtering の間だけ持つ（BR1.5、BR2.1）
       - name: matchedCount
         type: integer
         required: true
         min: 0
-      - name: totalCount
+        constraints: matchedKeys の数
+      - name: allCount
         type: integer
         required: true
         min: 0
-        constraints: 結果を作った時点の保持件数
+        constraints: 結果を最後に更新した時点の保持ログの全件数（レビュー R-05 で totalCount から名前を変えた）
       - name: status
         type: enum
         allowed_values: [Filtering, Ready]
         required: true
-        constraints: Filtering は保持ログ全体の絞り込みの途中（BR1.5）。Ready は保持ログのすべてに条件をかけ終えた状態（逐次の追加の分も含む、BR2.1）
+        constraints: Filtering は保持ログ全体の絞り込みの途中で、matchedKeys は「ここまでに見つかった行」（BR1.5）。Ready は保持ログのすべてに条件をかけ終えた状態
+      - name: resultVersion
+        type: integer
+        required: true
+        min: 0
+        constraints: 結果の中身が変わる（行が増える、入れ替わる、空に戻る）たびに 1 増える番号。画面が行を取り寄せ直す合図に使う（BR3.6、レビュー R-03）
     constraints:
-      - matchedCount <= totalCount
-      - 保持ログを破棄したら空（matchedCount = 0、totalCount = 0）に戻り、filterText は残る（BR2.2）
+      - matchedCount <= allCount
+      - 保持ログを破棄したら、新しい timelineEpoch の空の結果（matchedCount = 0、allCount = 0）に置き換え、filterText は残す（BR2.2）
     relationships:
       - target: LogEvent
         cardinality: 0..*
-        direction: FilterResult が位置で参照する
+        direction: FilterResult がキーで参照する
 
   - name: RowWindow
     owner: EventTimeline
@@ -77,9 +94,13 @@ entities:
         type: integer
         required: true
         min: 0
-        constraints: 保持ログの全件数（「絞り込み後 / 全件」の全件、FR6.3）
+        constraints: 保持ログの全件数（「絞り込み後 / 全件」の全件、FR6.3）。絞り込んでいないときは totalCount と同じ
+      - name: resultVersion
+        type: integer
+        required: false
+        constraints: filtered のとき、どの結果の版から取り出したか（BR3.6）
     constraints:
-      - U3・U4 の属性（offset・rows・rows[].displayTime・totalCount・timelineVersion）はそのまま
+      - U3・U4 の属性（offset・rows・rows[].displayTime・totalCount・timelineVersion）はそのまま。totalCount は「この取り出しの母数」（絞り込み中は matchedCount、そうでなければ保持件数）
     relationships: []
 
   - name: SessionState
@@ -91,15 +112,16 @@ entities:
         type: reference
         references: FilterCondition
         required: true
+        constraints: filterText が空なら「条件なし」と同じ（components.md の 0..1 の 0 に当たる、レビュー R-05）
       - name: filterSummary
-        type: text
+        type: object
         required: false
-        constraints: 画面に出す絞り込みの状態（matchedCount・totalCount・status）。filterText が空なら持たない（BR3.3）
+        constraints: 画面に出す絞り込みの状態（filterId・matchedCount・allCount・status・resultVersion）。filterText が空なら持たない。session-changed と fetch-progress の両方に入れる（BR3.3、BR3.6）
     constraints: []
     relationships:
       - target: FilterCondition
         cardinality: 1..1
-        direction: SessionState が持つ
+        direction: SessionState が持つ（空の文字列は条件なしと同じ）
       - target: FilterResult
         cardinality: 0..1
         direction: SessionState が直近の結果を参照する
@@ -109,7 +131,7 @@ entities:
 
 | エンティティ | 持ち主 | components.md との対応 | 備考 |
 |--------------|--------|------------------------|------|
-| FilterCondition | FilterEngine | 同名 | filterId を足す。空なら絞り込まない |
-| FilterResult | FilterEngine | 同名 | 合う行の位置の並び、Filtering と Ready |
+| FilterCondition | FilterEngine | 同名 | filterId を足す。空なら条件なしと同じ |
+| FilterResult | FilterEngine | 同名（位置をキーの並びで持つ） | 保持ログの世代、走査の位置、結果の版（R-01、R-03） |
 | RowWindow | EventTimeline | U3・U4 の補助（属性を足す） | 絞り込み中は絞り込み結果の中の行 |
 | SessionState | AppSession | 同名（属性を足す） | 絞り込みの条件と状態 |

@@ -250,12 +250,12 @@
     {
       "id": "FR6.3",
       "status": "OK",
-      "target": "BR3.3"
+      "target": "BR3.3, BR3.6"
     },
     {
       "id": "FR6.4",
       "status": "OK",
-      "target": "BR2.1, BR2.2"
+      "target": "BR2.1, BR2.2, BR2.4"
     },
     {
       "id": "FR6.5",
@@ -373,6 +373,16 @@
       "id": "BR3.5",
       "status": "N/A",
       "target": "確認用プログラムは変えない（U1:BR7.1）"
+    },
+    {
+      "id": "BR2.4",
+      "status": "N/A",
+      "target": "古い結果の破棄（Q4、レビュー R-01）"
+    },
+    {
+      "id": "BR2.5",
+      "status": "N/A",
+      "target": "ロックの順（レビュー R-02）"
     }
   ]
 }

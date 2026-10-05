@@ -58,6 +58,10 @@
 
 
 
+- **Active Unit**: u4-time-range
+
+- **Unit State**: in-progress
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -119,7 +123,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-05T15:01:33Z
+- **Last Updated**: 2026-10-05T15:25:08Z
 
 - **Construction Autonomy Mode**: autonomous
 

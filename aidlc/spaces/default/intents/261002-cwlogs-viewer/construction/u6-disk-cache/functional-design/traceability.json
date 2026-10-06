@@ -1,0 +1,400 @@
+{
+  "stage": "functional-design",
+  "unit": "u6-disk-cache",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR4",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR4.6",
+    "FR4.7",
+    "FR4.8",
+    "FR4.9",
+    "FR4.10",
+    "FR4.11",
+    "FR5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR6",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR6.4",
+    "FR6.5",
+    "FR7",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3",
+    "FR7.4",
+    "FR7.5",
+    "FR7.6",
+    "FR7.7",
+    "FR7.8",
+    "FR7.9",
+    "FR8",
+    "FR8.1",
+    "FR8.2",
+    "FR8.3",
+    "NFR2",
+    "NFR5",
+    "NFR8",
+    "NFR12",
+    "NFR13",
+    "NFR15"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR1.1",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR1.2",
+      "status": "N/A",
+      "target": "U1 で実装済み"
+    },
+    {
+      "id": "FR1.3",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR1.4",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR1.5",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR2",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR2.1",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR2.2",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR2.3",
+      "status": "N/A",
+      "target": "U2 で実装済み"
+    },
+    {
+      "id": "FR3",
+      "status": "N/A",
+      "target": "U4 で実装済み"
+    },
+    {
+      "id": "FR3.1",
+      "status": "N/A",
+      "target": "U1・U4 で実装済み"
+    },
+    {
+      "id": "FR3.2",
+      "status": "N/A",
+      "target": "U4 で実装済み"
+    },
+    {
+      "id": "FR3.3",
+      "status": "N/A",
+      "target": "U4 で実装済み"
+    },
+    {
+      "id": "FR3.4",
+      "status": "N/A",
+      "target": "U4 で実装済み"
+    },
+    {
+      "id": "FR3.5",
+      "status": "N/A",
+      "target": "U1・U4 で実装済み"
+    },
+    {
+      "id": "FR3.6",
+      "status": "N/A",
+      "target": "U4 で実装済み"
+    },
+    {
+      "id": "FR4",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.1",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.2",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.3",
+      "status": "N/A",
+      "target": "U1 で実装済み"
+    },
+    {
+      "id": "FR4.4",
+      "status": "N/A",
+      "target": "U1 で実装済み"
+    },
+    {
+      "id": "FR4.5",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.6",
+      "status": "N/A",
+      "target": "U1 で実装済み"
+    },
+    {
+      "id": "FR4.7",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.8",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.9",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR4.10",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR4.11",
+      "status": "N/A",
+      "target": "U3 で実装済み"
+    },
+    {
+      "id": "FR5",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR5.1",
+      "status": "N/A",
+      "target": "U1 で実装済み"
+    },
+    {
+      "id": "FR5.2",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR5.3",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR5.4",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR6",
+      "status": "N/A",
+      "target": "U5 で実装済み"
+    },
+    {
+      "id": "FR6.1",
+      "status": "N/A",
+      "target": "U5 で実装済み（FR6.1 の Enter の扱いは BR5.4 で足す）"
+    },
+    {
+      "id": "FR6.2",
+      "status": "N/A",
+      "target": "U5 で実装済み"
+    },
+    {
+      "id": "FR6.3",
+      "status": "N/A",
+      "target": "U5 で実装済み"
+    },
+    {
+      "id": "FR6.4",
+      "status": "N/A",
+      "target": "U5 で実装済み"
+    },
+    {
+      "id": "FR6.5",
+      "status": "N/A",
+      "target": "U5 で実装済み"
+    },
+    {
+      "id": "FR7",
+      "status": "OK",
+      "target": "BR1.1, BR1.5, BR2.3, BR3.2"
+    },
+    {
+      "id": "FR7.1",
+      "status": "OK",
+      "target": "BR1.1, BR1.2, BR5.1"
+    },
+    {
+      "id": "FR7.2",
+      "status": "OK",
+      "target": "BR3.6, BR5.1"
+    },
+    {
+      "id": "FR7.3",
+      "status": "OK",
+      "target": "BR2.2, BR5.1"
+    },
+    {
+      "id": "FR7.4",
+      "status": "OK",
+      "target": "BR2.1, BR2.3, BR2.4, BR5.3"
+    },
+    {
+      "id": "FR7.5",
+      "status": "OK",
+      "target": "BR3.3"
+    },
+    {
+      "id": "FR7.6",
+      "status": "OK",
+      "target": "BR1.3, BR1.4"
+    },
+    {
+      "id": "FR7.7",
+      "status": "OK",
+      "target": "BR1.5"
+    },
+    {
+      "id": "FR7.8",
+      "status": "N/A",
+      "target": "U6 ごと外せる構成（計画上の選択肢。機能のルールはない）"
+    },
+    {
+      "id": "FR7.9",
+      "status": "OK",
+      "target": "BR3.2"
+    },
+    {
+      "id": "FR8",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR8.1",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR8.2",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR8.3",
+      "status": "N/A",
+      "target": "U1 で実装済み"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "BR4.2"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "BR1.1, BR3.6"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "BR1.2, BR1.5"
+    },
+    {
+      "id": "NFR12",
+      "status": "OK",
+      "target": "BR5.2, BR5.3"
+    },
+    {
+      "id": "NFR13",
+      "status": "OK",
+      "target": "BR5.2, BR5.4"
+    },
+    {
+      "id": "NFR15",
+      "status": "OK",
+      "target": "BR2.3"
+    }
+  ],
+  "reverse": [
+    {
+      "id": "BR1.2",
+      "status": "N/A",
+      "target": "設定が読めないときの扱い（Q1 から導いた安全側の既定）"
+    },
+    {
+      "id": "BR3.4",
+      "status": "N/A",
+      "target": "書き込みの入れ替え（Q5 の壊れたキャッシュを作らないため）"
+    },
+    {
+      "id": "BR3.5",
+      "status": "N/A",
+      "target": "書き込みの時期と失敗時の扱い（設計上の選択）"
+    },
+    {
+      "id": "BR4.3",
+      "status": "N/A",
+      "target": "sequence の振り直し（U3:BR4.4 との整合）"
+    },
+    {
+      "id": "BR5.4",
+      "status": "N/A",
+      "target": "U5 のコード生成のレビュー R-01（人間の判断）"
+    },
+    {
+      "id": "BR5.5",
+      "status": "N/A",
+      "target": "確認用プログラムは変えない（U1:BR7.1）"
+    }
+  ]
+}

@@ -134,4 +134,55 @@ describe("StatusLine", () => {
       "Details: kind=AccessDenied; api=DescribeLogStreams; profile=dev",
     );
   });
+
+  it("shows filtered / all and the filtering notice next to the fetch progress", () => {
+    renderStatus(
+      sessionView({
+        phase: "Fetching",
+        progress: {
+          seenStreamCount: 2,
+          selectedStreamCount: 2,
+          plannedStreamCount: 2,
+          finishedStreamCount: 1,
+          eventCount: 120,
+        },
+        filterSummary: {
+          filterId: 3,
+          matchedCount: 7,
+          allCount: 120,
+          status: "Filtering",
+          resultVersion: 9,
+        },
+      }),
+    );
+    expect(screen.getByTestId("status-line-fetching")).toBeInTheDocument();
+    expect(screen.getByTestId("status-line-filter")).toHaveTextContent("Filtered: 7 of 120 events");
+    expect(screen.getByTestId("status-line-filtering")).toHaveTextContent("Filtering…");
+  });
+
+  it("says in words when nothing matches and drops the notice when ready", () => {
+    renderStatus(
+      sessionView({
+        phase: "Done",
+        eventCount: 50,
+        filterSummary: {
+          filterId: 1,
+          matchedCount: 0,
+          allCount: 50,
+          status: "Ready",
+          resultVersion: 4,
+        },
+      }),
+    );
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("50 events");
+    expect(screen.getByTestId("status-line-filter")).toHaveTextContent(
+      "Filtered: 0 of 50 events, no logs match.",
+    );
+    expect(screen.queryByTestId("status-line-filtering")).not.toBeInTheDocument();
+  });
+
+  it("shows nothing about the filter without one", () => {
+    renderStatus(sessionView({ phase: "Done", eventCount: 5, filterSummary: null }));
+    expect(screen.queryByTestId("status-line-filter")).not.toBeInTheDocument();
+  });
 });

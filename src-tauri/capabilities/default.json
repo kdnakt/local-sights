@@ -18,6 +18,7 @@
     "allow-get-rows",
     "allow-find-row-position",
     "allow-set-failure-list-open",
-    "allow-select-time-zone"
+    "allow-select-time-zone",
+    "allow-set-log-filter"
   ]
 }

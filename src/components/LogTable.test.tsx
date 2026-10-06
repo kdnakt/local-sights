@@ -18,7 +18,15 @@ function answer(total: number, offset: number, limit: number, version = 1): RowW
   for (let row = offset; row < Math.min(total, offset + limit); row += 1) {
     rows.push(logEvent(row));
   }
-  return { offset, rows, totalCount: total, timelineVersion: version };
+  return {
+    offset,
+    rows,
+    totalCount: total,
+    timelineVersion: version,
+    filtered: false,
+    allCount: total,
+    resultVersion: null,
+  };
 }
 
 function serveRows(total: number) {
@@ -85,6 +93,9 @@ describe("LogTable", () => {
       rows: [event],
       totalCount: 1,
       timelineVersion: 1,
+      filtered: false,
+      allCount: 1,
+      resultVersion: null,
     });
     renderTable(1);
     const row = await screen.findByTestId("log-table-row");
@@ -106,6 +117,9 @@ describe("LogTable", () => {
       rows: [logEvent(0, "far future", "stream-a", "253402300800000")],
       totalCount: 1,
       timelineVersion: 1,
+      filtered: false,
+      allCount: 1,
+      resultVersion: null,
     });
     renderTable(1, 1, "Utc");
     const row = await screen.findByTestId("log-table-row");
@@ -119,7 +133,15 @@ describe("LogTable", () => {
       for (let row = offset; row < Math.min(3, offset + limit); row += 1) {
         rows.push(logEvent(row, `message ${row}`, "stream-a", `local ${row}`));
       }
-      return { offset, rows, totalCount: 3, timelineVersion: 1 };
+      return {
+        offset,
+        rows,
+        totalCount: 3,
+        timelineVersion: 1,
+        filtered: false,
+        allCount: 3,
+        resultVersion: null,
+      };
     });
     const view = renderTable(3, 1, "Local");
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
@@ -130,7 +152,15 @@ describe("LogTable", () => {
       for (let row = offset; row < Math.min(3, offset + limit); row += 1) {
         rows.push(logEvent(row, `message ${row}`, "stream-a", `utc ${row}`));
       }
-      return { offset, rows, totalCount: 3, timelineVersion: 1 };
+      return {
+        offset,
+        rows,
+        totalCount: 3,
+        timelineVersion: 1,
+        filtered: false,
+        allCount: 3,
+        resultVersion: null,
+      };
     });
     view.rerender(
       <LogTable
@@ -217,7 +247,15 @@ describe("LogTable", () => {
       for (let row = offset; row < offset + limit; row += 1) {
         rows.push(row < 50 ? logEvent(row, `other ${row}`, "stream-x") : logEvent(row - 50));
       }
-      return { offset, rows, totalCount: 1_050, timelineVersion: 2 };
+      return {
+        offset,
+        rows,
+        totalCount: 1_050,
+        timelineVersion: 2,
+        filtered: false,
+        allCount: 1_050,
+        resultVersion: null,
+      };
     });
     const rerender = (totalCount: number, timelineVersion: number) =>
       view.rerender(
@@ -305,5 +343,37 @@ describe("LogTable", () => {
       answerFirst(answer(1_000, 0, 6));
     });
     expect(messages()[0]).toBe("message 10");
+  });
+
+  it("keeps the top row for a new filter result and goes to the top for a new filter", async () => {
+    serveRows(1_000);
+    const view = renderTable(1_000, 1);
+    await scrollTo(440);
+    await waitFor(() => expect(messages()[0]).toBe("message 20"));
+    vi.mocked(api.findRowPosition).mockResolvedValue({ position: 30, timelineVersion: 1 });
+    const rerender = (filterId: number | null, resultVersion: number) =>
+      view.rerender(
+        <LogTable
+          totalCount={1_000}
+          timelineVersion={1}
+          timeZone="Local"
+          filterId={filterId}
+          resultVersion={resultVersion}
+          t={t}
+          onError={view.onError}
+          viewportHeight={VIEWPORT}
+        />,
+      );
+    // Same filter, a new result version: the anchor row is looked up again.
+    rerender(null, 4);
+    await waitFor(() => expect(api.findRowPosition).toHaveBeenCalledWith("stream-a", 20));
+    await waitFor(() => expect(screen.getByTestId("log-table-viewport").scrollTop).toBe(30 * 22));
+    const reads = vi.mocked(api.getRows).mock.calls.length;
+    const lookups = vi.mocked(api.findRowPosition).mock.calls.length;
+    // A new filter: back to the top, no anchor, the rows are read again.
+    rerender(7, 5);
+    await waitFor(() => expect(screen.getByTestId("log-table-viewport").scrollTop).toBe(0));
+    expect(api.findRowPosition).toHaveBeenCalledTimes(lookups);
+    await waitFor(() => expect(vi.mocked(api.getRows).mock.calls.length).toBeGreaterThan(reads));
   });
 });

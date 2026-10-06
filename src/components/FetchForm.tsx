@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { InputField, SessionView } from "../api";
 import { timeZoneLabelKey, type MessageKey, type Translate } from "../i18n/messages";
+import { LogFilterInput } from "./LogFilterInput";
 
 interface FieldSpec {
   field: InputField;
@@ -29,6 +30,11 @@ export interface FetchFormProps {
   t: Translate;
   onChange: (field: InputField, value: string) => void;
   onFetch: () => void;
+  /** The log filter text in the field, kept by the parent (U5:BR3.4). */
+  filterText: string;
+  onFilterTextChange: (value: string) => void;
+  /** The log filter text after the typing pause (U5:BR1.3). */
+  onLogFilterChange: (text: string) => void;
 }
 
 /**
@@ -42,8 +48,20 @@ export interface FetchFormProps {
  * zone (U4:BR3.2); the texts are the core's, already in that zone (U4:BR3.4).
  * The parent remounts the form (`key`) when the time zone changes, so the
  * drafts take the texts the core rewrote (U4:BR1.4).
+ * Since U5 the condition area also holds the log filter field, which stays
+ * usable while fetching and is disabled only while a connection change
+ * awaits confirmation (U5:BR3.4); its text lives in the parent, so the remount
+ * loses nothing.
  */
-export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
+export function FetchForm({
+  session,
+  t,
+  onChange,
+  onFetch,
+  filterText,
+  onFilterTextChange,
+  onLogFilterChange,
+}: FetchFormProps) {
   // Local drafts keep typing responsive; every change is forwarded to the
   // core, which owns the state. Mount with a `key` to reset from a session.
   const [drafts, setDrafts] = useState<Record<InputField, string>>({
@@ -103,6 +121,16 @@ export function FetchForm({ session, t, onChange, onFetch }: FetchFormProps) {
         <button type="submit" disabled={!canSubmit} data-testid="fetch-form-submit-button">
           {t("form.fetch")}
         </button>
+      </div>
+      <div className="fetch-form-fields">
+        <LogFilterInput
+          value={filterText}
+          appliedText={session.logFilter}
+          disabled={session.pendingChange !== null}
+          t={t}
+          onChange={onFilterTextChange}
+          onFilterChange={onLogFilterChange}
+        />
       </div>
       {!fetching && session.validationErrors.length > 0 && (
         <div className="fetch-form-reasons" data-testid="fetch-form-reasons">

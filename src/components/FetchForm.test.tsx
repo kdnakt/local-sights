@@ -9,7 +9,15 @@ function renderForm(overrides: Parameters<typeof sessionView>[0] = {}) {
   const onChange = vi.fn();
   const onFetch = vi.fn();
   render(
-    <FetchForm session={sessionView(overrides)} t={t} onChange={onChange} onFetch={onFetch} />,
+    <FetchForm
+      session={sessionView(overrides)}
+      t={t}
+      onChange={onChange}
+      onFetch={onFetch}
+      filterText=""
+      onFilterTextChange={vi.fn()}
+      onLogFilterChange={vi.fn()}
+    />,
   );
   return { onChange, onFetch };
 }
@@ -142,6 +150,9 @@ describe("FetchForm", () => {
         t={createTranslator("ja")}
         onChange={vi.fn()}
         onFetch={vi.fn()}
+        filterText=""
+        onFilterTextChange={vi.fn()}
+        onLogFilterChange={vi.fn()}
       />,
     );
     expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 10:00:00");
@@ -150,5 +161,25 @@ describe("FetchForm", () => {
     expect(screen.getByTestId("fetch-form-reasons")).toHaveTextContent(
       "終了日時は夏時間の切り替えで存在しない日時です。",
     );
+  });
+
+  it("keeps the log filter usable while fetching but not while a change awaits confirmation", () => {
+    const { unmount } = render(
+      <FetchForm
+        session={sessionView({ phase: "Fetching", canFetch: false, logFilter: "err" })}
+        t={t}
+        onChange={vi.fn()}
+        onFetch={vi.fn()}
+        filterText="error"
+        onFilterTextChange={vi.fn()}
+        onLogFilterChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("fetch-form-start-input")).toBeDisabled();
+    expect(screen.getByTestId("log-filter-input")).toBeEnabled();
+    expect(screen.getByTestId("log-filter-input")).toHaveValue("error");
+    unmount();
+    renderForm({ pendingChange: { proposedProfile: null, proposedRegion: "eu-west-1" } });
+    expect(screen.getByTestId("log-filter-input")).toBeDisabled();
   });
 });

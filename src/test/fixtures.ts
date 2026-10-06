@@ -37,6 +37,9 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     listingStatus: null,
     listingFailure: null,
     failureListOpen: false,
+    logFilter: "",
+    filterSummary: null,
+    filterResultVersion: 0,
     ...overrides,
   };
 }
@@ -73,6 +76,9 @@ export function rowWindow(
     rows: events.slice(offset, offset + limit),
     totalCount: events.length,
     timelineVersion,
+    filtered: false,
+    allCount: events.length,
+    resultVersion: null,
   };
 }
 

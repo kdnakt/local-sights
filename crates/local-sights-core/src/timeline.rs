@@ -23,10 +23,20 @@ pub struct RowWindow {
     pub offset: u64,
     /// At most `limit` events from `offset`, in order.
     pub rows: Vec<LogEvent>,
-    /// Number of held events when the rows were taken.
+    /// Number of rows the offset counts in: the held events, or the
+    /// matching events while a log filter is in force (U5:BR3.1).
     pub total_count: u64,
     /// Version of the timeline when the rows were taken.
     pub timeline_version: u64,
+    /// Whether the rows, offset and count are those of the filter result
+    /// (U5:BR3.1).
+    pub filtered: bool,
+    /// Number of held events; equals `total_count` when not filtered
+    /// (U5 FR6.3).
+    pub all_count: u64,
+    /// The result version the rows were taken from, when filtered
+    /// (U5:BR3.6).
+    pub result_version: Option<u64>,
 }
 
 /// In-memory, ordered list of every event of the current fetch.
@@ -116,18 +126,25 @@ impl EventTimeline {
             rows: self.events[start..end].to_vec(),
             total_count: self.events.len() as u64,
             timeline_version: self.version,
+            filtered: false,
+            all_count: self.events.len() as u64,
+            result_version: None,
         }
+    }
+
+    /// Timestamp of the event `(log_stream_name, sequence)` from the
+    /// per-stream index, without scanning the events (U5 review R-08).
+    pub fn timestamp_of(&self, log_stream_name: &str, sequence: u64) -> Option<i64> {
+        let index = usize::try_from(sequence).ok()?;
+        let timestamp = *self.timestamps.get(log_stream_name)?.get(index)?;
+        (timestamp != MISSING).then_some(timestamp)
     }
 
     /// Current position of the event `(log_stream_name, sequence)` (BR4.4):
     /// its timestamp comes from the per-stream index, then the full key is
     /// found by binary search, without scanning the events.
     pub fn position_of(&self, log_stream_name: &str, sequence: u64) -> Option<usize> {
-        let index = usize::try_from(sequence).ok()?;
-        let timestamp = *self.timestamps.get(log_stream_name)?.get(index)?;
-        if timestamp == MISSING {
-            return None;
-        }
+        let timestamp = self.timestamp_of(log_stream_name, sequence)?;
         let key = (timestamp, log_stream_name, sequence);
         self.events
             .binary_search_by(|held| held.sort_key().cmp(&key))
@@ -280,6 +297,24 @@ mod tests {
         assert_eq!(timeline.position_of("a", 2), Some(3));
         assert_eq!(timeline.position_of("b", 3), None, "no such sequence");
         assert_eq!(timeline.position_of("c", 0), None, "no such stream");
+    }
+
+    #[test]
+    fn the_timestamp_of_an_event_comes_from_the_stream_index() {
+        let mut timeline = EventTimeline::new();
+        timeline.append(page("b", 0, &[10, 20]));
+        timeline.append(page("b", 3, &[40]));
+        assert_eq!(timeline.timestamp_of("b", 1), Some(20));
+        assert_eq!(timeline.timestamp_of("b", 3), Some(40));
+        assert_eq!(timeline.timestamp_of("b", 2), None, "a gap");
+        assert_eq!(timeline.timestamp_of("b", 9), None, "no such sequence");
+        assert_eq!(timeline.timestamp_of("a", 0), None, "no such stream");
+        let window = timeline.rows(0, 1);
+        assert!(!window.filtered);
+        assert_eq!(window.all_count, 3);
+        assert_eq!(window.result_version, None);
+        timeline.clear();
+        assert_eq!(timeline.timestamp_of("b", 1), None);
     }
 
     #[test]

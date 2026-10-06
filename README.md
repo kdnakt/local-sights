@@ -5,7 +5,7 @@ with a React + TypeScript screen. It calls only the read-only
 `DescribeLogGroups`, `DescribeLogStreams` and `GetLogEvents` APIs and sends
 no telemetry or crash reports anywhere.
 
-> Status: units U1 to U4. You choose a profile and a region, pick a log
+> Status: units U1 to U5. You choose a profile and a region, pick a log
 > group from the list (with a filter), enter a time range in local time or
 > UTC (switch in the top bar) and press
 > **Fetch**: every stream of the group that matters for the range is read,
@@ -13,7 +13,9 @@ no telemetry or crash reports anywhere.
 > ("time / stream / message"). Throttling and network errors are retried;
 > streams that still fail are listed separately while the rest is shown.
 > The list draws only the visible rows, so a million events scroll smoothly.
-> Event filtering and caching come in later units.
+> The log filter narrows the fetched events to those whose message contains
+> a text (ignoring case), on your machine, without calling AWS again.
+> Caching comes in a later unit.
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -123,11 +125,22 @@ Time zones (U4):
 - [ ] The switch stays usable while fetching and while the connection-change dialog is open; switching then changes neither the fetch nor the dialog.
 - [ ] In a time zone with daylight saving time (for example set the OS zone to America/New_York and restart the app), entering a skipped local time (`2024-03-10 02:30:00`) disables **Fetch** with "The start does not exist because of the daylight saving time change."; switching to UTC makes it a valid UTC time and the reason disappears. Rows on both sides of a daylight saving change show the offset in force at their own time.
 
+Log filter (U5):
+
+- [ ] The condition area has a "Filter logs" field (Tab reaches it). Typing `error` and pausing for about 0.3 s shows only the rows whose message contains it in any case (for example `Error: timeout`), including a match on the second line of a message; a stream name that contains the text does not make a row match.
+- [ ] The status line shows "Filtered: N of M events"; a text that matches nothing shows "Filtered: 0 of M events, no logs match."; clearing the field shows every row again and removes the filtered count. Changing the text, or clearing it, goes back to the top of the list.
+- [ ] Pressing Enter in the filter field does not start a fetch.
+- [ ] While fetching, the filter field stays usable; with a text in it, only the matching rows of the arriving pages are added and both numbers of "Filtered: N of M events" grow. A list scrolled down keeps its top row in place while rows are added.
+- [ ] With a text in the field, pressing **Fetch** again keeps the text; the new rows are filtered with it from the start.
+- [ ] While the connection-change dialog is open, the filter field cannot be used.
+- [ ] With close to a million events held, changing the filter shows "Filtering…" next to the count while matching rows appear little by little; scrolling and typing keep responding within about a second, and the result is complete ("Filtering…" disappears) within 100 seconds.
+
 ## Check against real AWS from the terminal
 
 `fetch_check` uses the same validation and fetch flow as the app and reads
 the whole log group. Its `--start` and `--end` are always UTC and it prints
-UTC times; the time zone switch belongs to the screen only (U4:BR3.5). Run it only on your own machine with your own
+UTC times; the time zone switch belongs to the screen only (U4:BR3.5), and
+so does the log filter (U5:BR3.5). Run it only on your own machine with your own
 credentials; tests and CI never run it.
 
 ```bash
@@ -152,6 +165,7 @@ the OS time zone either: the local zone is passed in as a fixed IANA zone
 ```bash
 cargo test --workspace          # Rust library and integration tests
 cargo test -p local-sights-core --release --lib -- timeline:: --ignored  # 1M-event speed check
+cargo test -p local-sights-core --release --lib -- filter:: log_view:: --ignored  # filter speed (NFR1, NFR2)
 npm test                        # screen tests (Vitest + React Testing Library)
 cargo fmt --check
 cargo clippy --workspace

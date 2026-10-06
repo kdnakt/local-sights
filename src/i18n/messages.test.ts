@@ -125,6 +125,28 @@ describe("message catalog", () => {
     }
   });
 
+  it("has the U5 log filter texts in both languages", () => {
+    for (const key of [
+      "logFilter.label",
+      "logFilter.placeholder",
+      "status.filter.count",
+      "status.filter.zero",
+      "status.filter.filtering",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(translate("ja", "status.filter.count", { matched: 3, all: 10 })).toBe(
+      "絞り込み後 3 件 / 全 10 件",
+    );
+    expect(translate("en", "status.filter.count", { matched: 3, all: 10 })).toBe(
+      "Filtered: 3 of 10 events",
+    );
+    expect(translate("ja", "status.filter.zero", { all: 10 })).toBe(
+      "絞り込み後 0 件 / 全 10 件：一致するログはありません。",
+    );
+    expect(translate("ja", "status.filter.filtering")).toBe("絞り込み中…");
+  });
+
   it("returns an unknown key unchanged so the gap is visible", () => {
     expect(translate("en", "no.such.key")).toBe("no.such.key");
   });

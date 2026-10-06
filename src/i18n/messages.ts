@@ -3,7 +3,8 @@
  * key, in English or Japanese. Keys starting with `validation.`,
  * `failure.kind.` and `session.` are produced by the Rust core and must stay
  * in sync with it. Since U4 the time labels take a `{zone}` placeholder filled
- * with `timeZone.local` or `timeZone.utc` (U4:BR3.2).
+ * with `timeZone.local` or `timeZone.utc` (U4:BR3.2). Since U5 the log
+ * filter field and its status texts (`logFilter.*`, `status.filter.*`).
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -192,6 +193,20 @@ export const messages = {
     ja: "操作に失敗しました：{detail}",
   },
   "error.dismiss": { en: "Dismiss (Esc)", ja: "閉じる（Esc）" },
+  "logFilter.label": { en: "Filter logs", ja: "ログの絞り込み" },
+  "logFilter.placeholder": {
+    en: "Part of a message (case-insensitive)",
+    ja: "メッセージの一部（大文字・小文字を区別しない）",
+  },
+  "status.filter.count": {
+    en: "Filtered: {matched} of {all} events",
+    ja: "絞り込み後 {matched} 件 / 全 {all} 件",
+  },
+  "status.filter.zero": {
+    en: "Filtered: 0 of {all} events, no logs match.",
+    ja: "絞り込み後 0 件 / 全 {all} 件：一致するログはありません。",
+  },
+  "status.filter.filtering": { en: "Filtering…", ja: "絞り込み中…" },
 } as const satisfies Record<string, Record<Locale, string>>;
 
 export type MessageKey = keyof typeof messages;

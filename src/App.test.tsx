@@ -1,13 +1,20 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FetchProgressUpdate, SessionView } from "./api";
+import type {
+  FetchProgressUpdate,
+  FilterProgressUpdate,
+  FilterSummary,
+  RowWindow,
+  SessionView,
+} from "./api";
 import { App } from "./App";
 import { connectedView, logEvent, rowWindow, sessionView } from "./test/fixtures";
 
 const handlers: {
   session?: (view: SessionView) => void;
   progress?: (update: FetchProgressUpdate) => void;
+  filter?: (update: FilterProgressUpdate) => void;
 } = {};
 
 vi.mock("./api", async (importOriginal) => {
@@ -26,6 +33,7 @@ vi.mock("./api", async (importOriginal) => {
     selectLogGroup: vi.fn(),
     setFailureListOpen: vi.fn(),
     selectTimeZone: vi.fn(),
+    setLogFilter: vi.fn(),
     getRows: vi.fn(),
     findRowPosition: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
@@ -34,6 +42,10 @@ vi.mock("./api", async (importOriginal) => {
     }),
     onFetchProgress: vi.fn(async (handler: (update: FetchProgressUpdate) => void) => {
       handlers.progress = handler;
+      return () => undefined;
+    }),
+    onFilterProgress: vi.fn(async (handler: (update: FilterProgressUpdate) => void) => {
+      handlers.filter = handler;
       return () => undefined;
     }),
   };
@@ -68,6 +80,7 @@ describe("App", () => {
       api.selectLogGroup,
       api.setFailureListOpen,
       api.selectTimeZone,
+      api.setLogFilter,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -104,6 +117,8 @@ describe("App", () => {
           },
           eventCount,
           timelineVersion,
+          filterSummary: null,
+          filterResultVersion: 0,
         });
       });
     update(7, 3, 2);
@@ -250,6 +265,112 @@ describe("App", () => {
     expect(screen.getByTestId("time-zone-toggle-utc-radio")).toBeChecked();
     expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 01:00:00");
     expect(screen.getByText("Start (UTC)")).toBeInTheDocument();
+    expect(api.startFetch).not.toHaveBeenCalled();
+  });
+
+  // ---- U5: the log filter (BR1.3, BR3.1, BR3.3, BR3.6) ----
+
+  function filterSummary(overrides: Partial<FilterSummary> = {}): FilterSummary {
+    return {
+      filterId: 1,
+      matchedCount: 2,
+      allCount: 3,
+      status: "Ready",
+      resultVersion: 5,
+      ...overrides,
+    };
+  }
+
+  /** A filtered `get_rows` answer from result version `version`. */
+  function filteredRows(messages: string[], version: number): RowWindow {
+    return {
+      offset: 0,
+      rows: messages.map((message, index) => logEvent(index, message)),
+      totalCount: messages.length,
+      timelineVersion: 1,
+      filtered: true,
+      allCount: 3,
+      resultVersion: version,
+    };
+  }
+
+  function sendFilter(summary: FilterSummary | null, version: number) {
+    act(() => {
+      handlers.filter?.({ filterSummary: summary, filterResultVersion: version });
+    });
+  }
+
+  it("re-reads the rows when the result version changes, even with the same count", async () => {
+    vi.mocked(api.getRows).mockResolvedValue(filteredRows(["first error", "second error"], 5));
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({
+        phase: "Done",
+        eventCount: 3,
+        timelineVersion: 1,
+        logFilter: "error",
+        filterSummary: filterSummary(),
+        filterResultVersion: 5,
+      }),
+    );
+    render(<App locale="en" />);
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(2));
+    expect(screen.getByTestId("status-line-filter")).toHaveTextContent("Filtered: 2 of 3 events");
+    expect(screen.getByTestId("log-filter-input")).toHaveValue("error");
+    const reads = vi.mocked(api.getRows).mock.calls.length;
+
+    vi.mocked(api.getRows).mockResolvedValue(filteredRows(["other error", "second error"], 6));
+    sendFilter(filterSummary({ resultVersion: 6 }), 6);
+    await waitFor(() => expect(screen.getByText("other error")).toBeInTheDocument());
+    expect(vi.mocked(api.getRows).mock.calls.length).toBeGreaterThan(reads);
+  });
+
+  it("drops rows of an older result version and filter messages older than the view", async () => {
+    vi.mocked(api.getRows).mockResolvedValue(filteredRows(["stale row"], 6));
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({
+        phase: "Done",
+        eventCount: 3,
+        timelineVersion: 1,
+        filterSummary: filterSummary({ matchedCount: 1, resultVersion: 7 }),
+        filterResultVersion: 7,
+      }),
+    );
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    await waitFor(() => expect(api.getRows).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(screen.queryByText("stale row")).not.toBeInTheDocument();
+
+    sendFilter(filterSummary({ matchedCount: 9, status: "Filtering", resultVersion: 3 }), 3);
+    expect(screen.getByTestId("status-line-filter")).toHaveTextContent("Filtered: 1 of 3 events");
+    expect(screen.queryByTestId("status-line-filtering")).not.toBeInTheDocument();
+
+    vi.mocked(api.getRows).mockResolvedValue(filteredRows(["fresh row"], 8));
+    sendFilter(filterSummary({ matchedCount: 1, resultVersion: 8 }), 8);
+    await waitFor(() => expect(screen.getByText("fresh row")).toBeInTheDocument());
+  });
+
+  it("hands the log filter text to the core after the typing pause", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(sessionView({ phase: "Fetching" }));
+    render(<App locale="en" />);
+    const input = await screen.findByTestId("log-filter-input");
+    expect(input).toBeEnabled();
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(input, { target: { value: "time" } });
+      fireEvent.change(input, { target: { value: "timeout" } });
+      act(() => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(api.setLogFilter).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(api.setLogFilter).toHaveBeenCalledTimes(1);
+      expect(api.setLogFilter).toHaveBeenCalledWith("timeout");
+    } finally {
+      vi.useRealTimers();
+    }
     expect(api.startFetch).not.toHaveBeenCalled();
   });
 });

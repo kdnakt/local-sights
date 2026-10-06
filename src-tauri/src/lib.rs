@@ -4,7 +4,7 @@
 //! Operations arrive as Tauri commands (`get_session`, `update_input`,
 //! `start_fetch`, since U2 the connection and log group commands, and since
 //! U3 `get_rows`, `find_row_position` and `set_failure_list_open`, and since
-//! U4 `select_time_zone`); state
+//! U4 `select_time_zone`, and since U5 `set_log_filter`); state
 //! changes are pushed to the screen with the `session-changed` event; while
 //! a fetch runs, each listing page and each added page sends only the light
 //! `fetch-progress` event (progress, event count, timeline version). Commands that
@@ -26,20 +26,37 @@
 //! its time already written in the chosen zone by the core (review R-08);
 //! the screen converts nothing.
 //!
+//! Since U5 the held events sit in a `LogView` (EventTimeline and the log
+//! filter behind one `Mutex`, U5 review R-02): the fetch reaches it as its
+//! `TimelineStore`, so adding a page also judges it against the filter and
+//! a discard also empties the result (U5:BR2.1, BR2.2, BR2.5). The command
+//! `set_log_filter` changes the filter text (U5:BR1.1, BR1.4) and starts a
+//! scan of the held events on a blocking thread, which locks the LogView
+//! for one chunk at a time and stops as soon as its ticket is stale
+//! (U5:BR1.5, BR2.4). The scan pushes the light `filter-progress` event;
+//! `session-changed` and `fetch-progress` carry the filter summary too
+//! (U5:BR3.6). `get_rows` and `find_row_position` read with the filter in
+//! mind (U5:BR3.1, BR3.2). Lock order is session, then LogView; the filter
+//! summary is copied into the session while both are held. Filtering calls
+//! no AWS API (U5 FR6.2).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
 
 use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::catalog::files::load_catalog;
 use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch};
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use local_sights_core::fetcher::StreamFetchOutcome;
+use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket};
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
+use local_sights_core::log_view::LogView;
 use local_sights_core::paging::PageDecision;
 use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
@@ -47,7 +64,6 @@ use local_sights_core::session::{
 };
 use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_zone::{TimeZoneChoice, TimeZoneContext};
-use local_sights_core::timeline::EventTimeline;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
@@ -57,6 +73,16 @@ pub const SESSION_CHANGED: &str = "session-changed";
 /// every listing page and every added page instead of the whole view
 /// (review R-05).
 pub const FETCH_PROGRESS: &str = "fetch-progress";
+/// Light event carrying only the log filter summary, sent while the scan
+/// runs and when it becomes Ready (U5:BR3.6).
+pub const FILTER_PROGRESS: &str = "filter-progress";
+
+/// Held events the filter scan judges per lock (U5:BR1.5): small enough
+/// that a viewport read waits for at most one chunk.
+const SCAN_CHUNK_ROWS: usize = 4_096;
+/// Least time between two `filter-progress` events of one scan; the last
+/// chunk is always reported.
+const FILTER_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Most rows one `get_rows` call returns; a viewport needs far fewer.
 const MAX_ROWS_PER_REQUEST: usize = 1_000;
@@ -65,7 +91,8 @@ const MAX_ROWS_PER_REQUEST: usize = 1_000;
 #[derive(Debug)]
 struct AppState {
     session: Arc<Mutex<AppSession>>,
-    timeline: Arc<Mutex<EventTimeline>>,
+    /// The held events and the log filter (U5 review R-02).
+    log_view: Arc<Mutex<LogView>>,
     gateway: Arc<AwsCloudWatchLogsGateway>,
     /// Abort handle of the running fetch with its fetch number from the
     /// session (BR5.5), so a finished fetch only forgets its own handle.
@@ -84,7 +111,7 @@ impl AppState {
         let session = AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context);
         Self {
             session: Arc::new(Mutex::new(session)),
-            timeline: Arc::default(),
+            log_view: Arc::default(),
             gateway: Arc::default(),
             abort: Arc::default(),
         }
@@ -135,6 +162,13 @@ fn emit_or_log<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     }
 }
 
+/// Copies the log filter summary into the session (U5:BR3.6). Called with
+/// the session locked; locks the LogView second (the lock order).
+fn sync_filter(session: &mut AppSession, log_view: &Mutex<LogView>) {
+    let state = lock(log_view).filter_state();
+    session.set_filter_state(state);
+}
+
 /// Maps a stale operation (an older connection generation, BR6.7) to a
 /// silent success: it is dropped and nothing is answered.
 fn drop_if_stale(result: Result<(), CommandError>) -> Result<(), CommandError> {
@@ -164,7 +198,9 @@ fn update_input(
 
 /// Returns at most `limit` rows of the timeline from `offset` (U3:BR4.3),
 /// each with its time written in the chosen zone by AppSession (U4:BR3.4,
-/// review R-08). Locks the session, then the timeline (the lock order).
+/// review R-08). With a log filter in force the offset counts in the
+/// filter result and the window says so (U5:BR3.1). Locks the session,
+/// then the LogView (the lock order).
 #[tauri::command]
 fn get_rows(offset: u64, limit: u64, state: State<'_, AppState>) -> DisplayRowWindow {
     let offset = usize::try_from(offset).unwrap_or(usize::MAX);
@@ -172,7 +208,7 @@ fn get_rows(offset: u64, limit: u64, state: State<'_, AppState>) -> DisplayRowWi
         .unwrap_or(usize::MAX)
         .min(MAX_ROWS_PER_REQUEST);
     let session = lock(&state.session);
-    let window = lock(&state.timeline).rows(offset, limit);
+    let window = lock(&state.log_view).rows(offset, limit);
     session.display_rows(window)
 }
 
@@ -190,20 +226,109 @@ fn select_time_zone(time_zone: TimeZoneChoice, app: AppHandle, state: State<'_, 
     emit_or_log(&app, SESSION_CHANGED, view);
 }
 
-/// Returns the current position of one event (U3:BR4.4).
+/// Returns the current position of one event (U3:BR4.4); with a log filter
+/// in force, its position in the filter result, or none when it is not in
+/// it (U5:BR3.2, review R-08).
 #[tauri::command]
 fn find_row_position(
     log_stream_name: String,
     sequence: u64,
     state: State<'_, AppState>,
 ) -> RowPosition {
-    let timeline = lock(&state.timeline);
+    let log_view = lock(&state.log_view);
     RowPosition {
-        position: timeline
+        position: log_view
             .position_of(&log_stream_name, sequence)
             .map(|position| position as u64),
-        timeline_version: timeline.version(),
+        timeline_version: log_view.version(),
     }
+}
+
+/// Changes the log filter text (U5:BR1.1, BR1.4). Accepted while fetching;
+/// refused while a connection change awaits confirmation. When the trimmed
+/// text changed, the LogView gets the new condition under the session lock
+/// and, for a non-empty text, a scan of the held events starts (U5:BR1.5);
+/// a running scan of the previous text stops by itself (U5:BR2.4). The new
+/// state arrives through `session-changed`. Calls no AWS API.
+#[tauri::command]
+fn set_log_filter(
+    text: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    let (scan, view) = {
+        let mut session = lock(&state.session);
+        let change = session.update_log_filter(text)?;
+        let mut log_view = lock(&state.log_view);
+        let scan = match change.map(|text| log_view.set_filter(&text)) {
+            Some(FilterChange::Started(ticket)) => Some(ticket),
+            _ => None,
+        };
+        session.set_filter_state(log_view.filter_state());
+        (scan, session.view())
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+    if let Some(ticket) = scan {
+        spawn_filter_scan(&app, &state, ticket);
+    }
+    Ok(())
+}
+
+/// Scans the held events for the filter of `ticket` on a blocking thread
+/// (U5:BR1.5), so the screen and the fetch keep working.
+fn spawn_filter_scan(app: &AppHandle, state: &AppState, ticket: ScanTicket) {
+    let session = Arc::clone(&state.session);
+    let log_view = Arc::clone(&state.log_view);
+    let task_app = app.clone();
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        run_filter_scan(&task_app, &session, &log_view, ticket);
+    });
+    tauri::async_runtime::spawn(async move {
+        if task.await.is_err() {
+            // Nothing secret can be in a scan; only the fact is logged.
+            eprintln!("local-sights: the log filter scan ended abnormally");
+        }
+    });
+}
+
+/// Judges the held events one chunk per lock until the end, or until the
+/// ticket is stale because the text changed or the timeline was discarded
+/// (U5:BR1.5, BR2.4). Reports the rows found so far at most every
+/// [`FILTER_PROGRESS_INTERVAL`] and always when Ready (U5:BR3.6).
+fn run_filter_scan(
+    app: &AppHandle,
+    session: &Mutex<AppSession>,
+    log_view: &Mutex<LogView>,
+    ticket: ScanTicket,
+) {
+    let mut last_report: Option<Instant> = None;
+    loop {
+        let step = lock(log_view).scan_chunk(ticket, SCAN_CHUNK_ROWS);
+        match step {
+            ScanStep::Stale => return,
+            ScanStep::Finished => {
+                report_filter(app, session, log_view);
+                return;
+            }
+            ScanStep::Progressed => {
+                if last_report.is_none_or(|at| at.elapsed() >= FILTER_PROGRESS_INTERVAL) {
+                    report_filter(app, session, log_view);
+                    last_report = Some(Instant::now());
+                }
+                std::thread::yield_now();
+            }
+        }
+    }
+}
+
+/// Copies the filter summary into the session and pushes `filter-progress`.
+fn report_filter(app: &AppHandle, session: &Mutex<AppSession>, log_view: &Mutex<LogView>) {
+    let update = {
+        let mut session = lock(session);
+        sync_filter(&mut session, log_view);
+        session.filter_update()
+    };
+    emit_or_log(app, FILTER_PROGRESS, update);
 }
 
 /// Opens or closes the list of failed streams (U3:BR6.3).
@@ -250,11 +375,12 @@ fn begin_and_spawn_fetch(
     let (handle, signal) = abort_pair();
     *lock(&state.abort) = Some((fetch_number, handle));
     let session = Arc::clone(&state.session);
-    let timeline = Arc::clone(&state.timeline);
+    let log_view = Arc::clone(&state.log_view);
     let gateway = Arc::clone(&state.gateway);
     let mut sink = TauriSink {
         app: app.clone(),
         session: Arc::clone(&session),
+        log_view: Arc::clone(&log_view),
     };
     let task = tauri::async_runtime::spawn(async move {
         let policy = RetryPolicy::default();
@@ -263,7 +389,7 @@ fn begin_and_spawn_fetch(
         run_fetch(
             gateway.as_ref(),
             &validated,
-            timeline.as_ref(),
+            log_view.as_ref(),
             &retrier,
             &mut sink,
         )
@@ -325,9 +451,11 @@ fn recover_if_still_fetching(
 /// Runs a session operation that may change the connection, then pushes the
 /// new state and starts a log group listing when needed (U2:BR2.3, BR3.5).
 ///
-/// When the operation discards the shown logs (U2:BR2.4), the EventTimeline
-/// is cleared while the session lock is still held, and its new version is
-/// recorded in the session (U3:BR4.5), before `session-changed` is emitted.
+/// When the operation discards the shown logs (U2:BR2.4), the LogView is
+/// cleared while the session lock is still held (which also empties the
+/// filter result and keeps its text, U5:BR2.2), and its new version and
+/// filter summary are recorded in the session (U3:BR4.5), before
+/// `session-changed` is emitted.
 /// A new fetch can only start under the same session lock, so a late clear
 /// can never wipe the logs of a newer fetch. During a fetch the operations
 /// that discard logs are refused.
@@ -340,8 +468,10 @@ fn change_connection(
         let mut session = lock(&state.session);
         let effect = operation(&mut session)?;
         if effect.logs_cleared {
-            let version = lock(&state.timeline).clear();
+            let mut log_view = lock(&state.log_view);
+            let version = log_view.clear();
             session.set_timeline_version(version);
+            session.set_filter_state(log_view.filter_state());
         }
         (effect, session.view())
     };
@@ -527,11 +657,13 @@ impl ListingSink for TauriListingSink {
 /// Forwards fetch progress to AppSession and pushes the new state: the whole
 /// view at the start, the plan, each finished stream and the end, and only
 /// the light `fetch-progress` message for each listing page and each added
-/// page (review R-05). The timeline is never locked here; the coordinator
-/// adds each page itself.
+/// page (review R-05). The coordinator adds each page to the LogView
+/// itself; here the LogView is only read, after the session lock, to copy
+/// the filter summary that the page or the discard changed (U5:BR3.6).
 struct TauriSink {
     app: AppHandle,
     session: Arc<Mutex<AppSession>>,
+    log_view: Arc<Mutex<LogView>>,
 }
 
 impl TauriSink {
@@ -539,6 +671,7 @@ impl TauriSink {
         let view = {
             let mut session = lock(&self.session);
             change(&mut session);
+            sync_filter(&mut session, &self.log_view);
             session.view()
         };
         emit_or_log(&self.app, SESSION_CHANGED, view);
@@ -548,6 +681,7 @@ impl TauriSink {
         let update = {
             let mut session = lock(&self.session);
             change(&mut session);
+            sync_filter(&mut session, &self.log_view);
             session.progress_update()
         };
         if let Some(update) = update {
@@ -626,7 +760,8 @@ pub fn run() -> Result<(), tauri::Error> {
             get_rows,
             find_row_position,
             set_failure_list_open,
-            select_time_zone
+            select_time_zone,
+            set_log_filter
         ])
         .run(tauri::generate_context!())
 }

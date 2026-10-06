@@ -19,6 +19,7 @@ fn main() {
             "find_row_position",
             "set_failure_list_open",
             "select_time_zone",
+            "set_log_filter",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

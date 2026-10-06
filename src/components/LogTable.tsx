@@ -26,12 +26,19 @@ import {
 const DEFAULT_VIEWPORT_HEIGHT = 400;
 
 export interface LogTableProps {
-  /** Number of held events (the core's count). */
+  /**
+   * Number of rows: the held events, or the matching events while a log
+   * filter is in force (U5:BR3.1).
+   */
   totalCount: number;
   /** Version of the core's timeline; a change means rows moved or went away. */
   timelineVersion: number;
   /** The chosen time zone: names the time column and re-reads the rows. */
   timeZone: TimeZoneChoice;
+  /** The log filter in force, `null` without one; a change goes to the top (U5:BR3.2). */
+  filterId?: number | null;
+  /** The filter result version; a change re-reads the rows (U5:BR3.6). */
+  resultVersion?: number;
   t: Translate;
   onError: (error: unknown) => void;
   /** Fixed viewport height in pixels; measured from the element when absent. */
@@ -72,12 +79,17 @@ function rowAt(rowWindow: RowWindow | null, row: number): DisplayRow | undefined
  * arrow keys, Page Up, Page Down, Home and End scroll it (BR6.8). The time
  * column shows the core's `displayTime` as is and its header names the chosen
  * zone; switching the zone re-reads the rows without moving them (U4:BR3.1,
- * BR3.2, BR3.4).
+ * BR3.2, BR3.4). Since U5 the rows are those of the log filter result while
+ * one is in force: a new result version keeps the top row in place like a
+ * new timeline version, and a new filter (or none) goes back to the top
+ * (U5:BR3.1, BR3.2, BR3.6).
  */
 export function LogTable({
   totalCount,
   timelineVersion,
   timeZone,
+  filterId = null,
+  resultVersion = 0,
   t,
   onError,
   viewportHeight: fixedViewportHeight,
@@ -97,14 +109,16 @@ export function LogTable({
     [totalCount, viewportHeight],
   );
   const range = visibleRows(scrollTop, geometry);
-  const rowWindow = useRowWindow(
-    range.firstRow,
-    range.rowCount,
+  const rowWindow = useRowWindow({
+    firstRow: range.firstRow,
+    rowCount: range.rowCount,
     timelineVersion,
     totalCount,
     timeZone,
+    filterId,
+    resultVersion,
     onError,
-  );
+  });
 
   // Kept for the effects and handlers below; never read while rendering.
   const scrollRef = useRef<ScrollState>({ top: 0, geometry });
@@ -112,6 +126,7 @@ export function LogTable({
   const geometryRef = useRef(geometry);
   const positionRequest = useRef(0);
   const anchorRef = useRef<PendingAnchor | null>(null);
+  const filterRef = useRef(filterId);
 
   useEffect(() => {
     windowRef.current = rowWindow;
@@ -146,10 +161,13 @@ export function LogTable({
   // `anchorRef` until a reply to `find_row_position` has been applied. When
   // another version arrives before that reply, the same anchor is asked for
   // again, so the anchor never drifts to a row that moved in meanwhile
-  // (review R-01).
+  // (review R-01). A new filter result version is handled the same way;
+  // a new filter, or none, starts again from the top (U5:BR3.2).
   useEffect(() => {
     positionRequest.current += 1;
-    if (geometryRef.current.totalCount === 0) {
+    const filterChanged = filterRef.current !== filterId;
+    filterRef.current = filterId;
+    if (filterChanged || geometryRef.current.totalCount === 0) {
       // BR4.5: the logs were discarded; start again from the top.
       anchorRef.current = null;
       if (scrollRef.current.top !== 0) {
@@ -188,7 +206,7 @@ export function LogTable({
         onError(error);
       },
     );
-  }, [timelineVersion, applyScrollTop, onError]);
+  }, [timelineVersion, resultVersion, filterId, applyScrollTop, onError]);
 
   /** The user moved the list: a pending anchor no longer applies. */
   const dropPendingAnchor = () => {

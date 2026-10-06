@@ -4,6 +4,9 @@
  * Since U3 the screen holds no log events: it reads the rows of its viewport
  * with `getRows` (U3:BR4.3). Since U4 every time comes from the core already
  * written in the chosen time zone (U4:BR3.4): the screen converts nothing.
+ * Since U5 the core also filters the held events by message (U5:BR1.2):
+ * `setLogFilter` hands it the text, and `session-changed`, `fetch-progress`
+ * and `filter-progress` carry the filter summary with its result version.
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -95,6 +98,20 @@ export interface FetchProgress {
   eventCount: number;
 }
 
+/** Whether the whole timeline has been filtered yet (U5:BR1.5). */
+export type FilterStatus = "Filtering" | "Ready";
+
+/** What the screen shows of the log filter (U5:BR3.3, BR3.6). */
+export interface FilterSummary {
+  filterId: number;
+  /** Matching events found so far. */
+  matchedCount: number;
+  /** Held events when the result was last updated. */
+  allCount: number;
+  status: FilterStatus;
+  resultVersion: number;
+}
+
 export interface FailedStream {
   logStreamName: string;
   failure: ApiFailure;
@@ -143,6 +160,12 @@ export interface SessionView {
   listingStatus: StreamListingStatus | null;
   listingFailure: ApiFailure | null;
   failureListOpen: boolean;
+  /** The log filter text as typed (U5:BR3.4). */
+  logFilter: string;
+  /** `null` when no log filter is in force (U5:BR1.1). */
+  filterSummary: FilterSummary | null;
+  /** Never decreases; orders the filter messages (U5:BR3.6). */
+  filterResultVersion: number;
 }
 
 export interface LogEvent {
@@ -162,12 +185,21 @@ export interface DisplayRow extends LogEvent {
   displayTime: string;
 }
 
-/** The rows of one viewport request (U3:BR4.3, U4:BR3.4). */
+/**
+ * The rows of one viewport request (U3:BR4.3, U4:BR3.4). While a log filter is
+ * in force, `offset`, `rows` and `totalCount` are those of the filter result
+ * (U5:BR3.1).
+ */
 export interface RowWindow {
   offset: number;
   rows: DisplayRow[];
   totalCount: number;
   timelineVersion: number;
+  filtered: boolean;
+  /** Number of held events. */
+  allCount: number;
+  /** The filter result version the rows come from, when filtered. */
+  resultVersion: number | null;
 }
 
 /** The current position of one event (U3:BR4.4). */
@@ -183,6 +215,7 @@ export interface CommandError {
 
 export const SESSION_CHANGED = "session-changed";
 export const FETCH_PROGRESS = "fetch-progress";
+export const FILTER_PROGRESS = "filter-progress";
 
 /**
  * The light message sent for every listing page and every added page while a
@@ -193,23 +226,69 @@ export interface FetchProgressUpdate {
   progress: FetchProgress;
   eventCount: number;
   timelineVersion: number;
+  filterSummary: FilterSummary | null;
+  filterResultVersion: number;
+}
+
+/**
+ * The light message sent while the log filter scan runs and when it becomes
+ * Ready (U5:BR3.6).
+ */
+export interface FilterProgressUpdate {
+  filterSummary: FilterSummary | null;
+  filterResultVersion: number;
+}
+
+/**
+ * Applies the filter part of a message to the last session view, unless the
+ * view already shows a newer filter result (U5:BR3.6): messages may arrive
+ * out of order.
+ */
+export function withFilter(view: SessionView | null, update: FilterProgressUpdate) {
+  if (view === null || update.filterResultVersion < view.filterResultVersion) {
+    return view;
+  }
+  return {
+    ...view,
+    filterSummary: update.filterSummary,
+    filterResultVersion: update.filterResultVersion,
+  };
+}
+
+/**
+ * Takes a new session view, keeping the filter part of the previous one when
+ * that is newer (U5:BR3.6).
+ */
+export function mergeSessionView(previous: SessionView | null, next: SessionView) {
+  if (previous === null || next.filterResultVersion >= previous.filterResultVersion) {
+    return next;
+  }
+  return {
+    ...next,
+    filterSummary: previous.filterSummary,
+    filterResultVersion: previous.filterResultVersion,
+  };
 }
 
 /**
  * Applies a progress message to the last session view. It applies only to
  * the running job; anything else (e.g. a message overtaken by the end of the
- * fetch) leaves the view as it is.
+ * fetch) leaves the view as it is. Its filter part is applied like a
+ * `filter-progress` message (U5:BR3.6).
  */
 export function withProgress(view: SessionView | null, update: FetchProgressUpdate) {
   if (view === null || view.phase !== "Fetching" || view.currentJobId !== update.jobId) {
-    return view;
+    return withFilter(view, update);
   }
-  return {
-    ...view,
-    progress: update.progress,
-    eventCount: update.eventCount,
-    timelineVersion: Math.max(view.timelineVersion, update.timelineVersion),
-  };
+  return withFilter(
+    {
+      ...view,
+      progress: update.progress,
+      eventCount: update.eventCount,
+      timelineVersion: Math.max(view.timelineVersion, update.timelineVersion),
+    },
+    update,
+  );
 }
 
 export function isCommandError(value: unknown): value is CommandError {
@@ -254,6 +333,14 @@ export function findRowPosition(logStreamName: string, sequence: number): Promis
  */
 export function selectTimeZone(timeZone: TimeZoneChoice): Promise<void> {
   return invoke<void>("select_time_zone", { timeZone });
+}
+
+/**
+ * Hands the log filter text to the core (U5:BR1.1); accepted while fetching
+ * too. The new state arrives through `session-changed` and `filter-progress`.
+ */
+export function setLogFilter(text: string): Promise<void> {
+  return invoke<void>("set_log_filter", { text });
 }
 
 /** Opens or closes the list of failed streams. */
@@ -311,4 +398,10 @@ export function onFetchProgress(
   handler: (update: FetchProgressUpdate) => void,
 ): Promise<UnlistenFn> {
   return listen<FetchProgressUpdate>(FETCH_PROGRESS, (event) => handler(event.payload));
+}
+
+export function onFilterProgress(
+  handler: (update: FilterProgressUpdate) => void,
+): Promise<UnlistenFn> {
+  return listen<FilterProgressUpdate>(FILTER_PROGRESS, (event) => handler(event.payload));
 }

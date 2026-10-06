@@ -1,4 +1,4 @@
-import type { SessionView } from "../api";
+import type { FilterSummary, SessionView } from "../api";
 import type { Translate } from "../i18n/messages";
 
 export interface StatusLineProps {
@@ -14,13 +14,35 @@ export interface StatusLineProps {
  * fetch: the event count including the explicit zero case (U1:BR5.4), a
  * button with the number of failed streams, the notice that the stream
  * listing is incomplete, and on failure the kind name and the safe detail
- * (U1:BR4.4, provisional wording until U7).
+ * (U1:BR4.4, provisional wording until U7). Since U5, while a log filter
+ * is in force: "filtered N of M events" (with the zero case in words) and,
+ * while the scan runs, "filtering", next to the rest (U5:BR3.3).
  */
 export function StatusLine({ session, t, onOpenFailures }: StatusLineProps) {
+  const filter = session?.filterSummary ?? null;
   return (
     <div className="status-line" role="status" aria-live="polite" data-testid="status-line">
       {renderStatus(session, t, onOpenFailures)}
+      {filter && <> {renderFilter(filter, t)}</>}
     </div>
+  );
+}
+
+function renderFilter(filter: FilterSummary, t: Translate) {
+  return (
+    <>
+      <span className="status-line-filter" data-testid="status-line-filter">
+        {filter.matchedCount === 0
+          ? t("status.filter.zero", { all: filter.allCount })
+          : t("status.filter.count", { matched: filter.matchedCount, all: filter.allCount })}
+      </span>
+      {filter.status === "Filtering" && (
+        <>
+          {" "}
+          <span data-testid="status-line-filtering">{t("status.filter.filtering")}</span>
+        </>
+      )}
+    </>
   );
 }
 

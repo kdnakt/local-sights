@@ -4,7 +4,9 @@ import {
   confirmConnectionChange,
   getSession,
   isCommandError,
+  mergeSessionView,
   onFetchProgress,
+  onFilterProgress,
   onSessionChanged,
   reloadLogGroups,
   selectLogGroup,
@@ -12,9 +14,11 @@ import {
   selectRegion,
   selectTimeZone,
   setFailureListOpen,
+  setLogFilter,
   startFetch,
   updateInput,
   updateLogGroupFilter,
+  withFilter,
   withProgress,
   type InputField,
   type ProfileSelector,
@@ -40,11 +44,16 @@ export interface AppProps {
  * session view the core pushes (ADR-001); the log rows are read from the
  * core by the table itself (U3:BR4.3). Operations that depend on the
  * connection carry the connection generation of the last view (U3:BR6.7).
+ * Since U5 it keeps the log filter field's text (so a remount of the form
+ * loses nothing), forwards the text after the typing pause, and shows the
+ * filter result: the table counts the matching rows while a filter is in
+ * force. Filter messages older than the shown result are ignored (U5:BR3.6).
  */
 export function App({ locale }: AppProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [session, setSession] = useState<SessionView | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
+  const [filterDraft, setFilterDraft] = useState<string | null>(null);
 
   const reportError = useCallback(
     (error: unknown) => {
@@ -65,8 +74,15 @@ export function App({ locale }: AppProps) {
         unlisteners.push(stop);
       }
     };
-    onSessionChanged(setSession).then(keep, reportError);
+    onSessionChanged((view) => setSession((previous) => mergeSessionView(previous, view))).then(
+      keep,
+      reportError,
+    );
     onFetchProgress((update) => setSession((view) => withProgress(view, update))).then(
+      keep,
+      reportError,
+    );
+    onFilterProgress((update) => setSession((view) => withFilter(view, update))).then(
       keep,
       reportError,
     );
@@ -121,6 +137,8 @@ export function App({ locale }: AppProps) {
   );
   const handleConfirm = useCallback(() => run(confirmConnectionChange), [run]);
   const handleCancel = useCallback(() => run(cancelConnectionChange), [run]);
+  // U5:BR1.3: called once typing paused; the core trims and compares.
+  const handleLogFilter = useCallback((text: string) => run(() => setLogFilter(text)), [run]);
   const handleOpenFailures = useCallback(() => run(() => setFailureListOpen(true)), [run]);
   const handleCloseFailures = useCallback(() => run(() => setFailureListOpen(false)), [run]);
 
@@ -161,6 +179,9 @@ export function App({ locale }: AppProps) {
               t={t}
               onChange={handleChange}
               onFetch={handleFetch}
+              filterText={filterDraft ?? session.logFilter}
+              onFilterTextChange={setFilterDraft}
+              onLogFilterChange={handleLogFilter}
             />
           )}
           <StatusLine session={session} t={t} onOpenFailures={handleOpenFailures} />
@@ -185,9 +206,11 @@ export function App({ locale }: AppProps) {
             </div>
           )}
           <LogTable
-            totalCount={session?.eventCount ?? 0}
+            totalCount={session?.filterSummary?.matchedCount ?? session?.eventCount ?? 0}
             timelineVersion={session?.timelineVersion ?? 0}
             timeZone={session?.timeZone ?? "Local"}
+            filterId={session?.filterSummary?.filterId ?? null}
+            resultVersion={session?.filterResultVersion ?? 0}
             t={t}
             onError={reportError}
           />

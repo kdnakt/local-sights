@@ -15,6 +15,12 @@
 //! any time and rewrites the inputs without touching the phase (U4:BR1.4).
 //! It also composes the rows the screen shows with their times formatted
 //! in the chosen zone (U4:BR3.4, review R-08).
+//! Since U5 it holds the log filter text as typed and the latest filter
+//! summary copied from the LogView: it trims the text and says whether the
+//! filter must change (U5:BR1.1, BR1.4), accepts it during a fetch and
+//! keeps it across fetches, and refuses it while a connection change
+//! awaits confirmation. The summary goes into [`SessionView`],
+//! [`FetchProgressUpdate`] and [`FilterProgressUpdate`] (U5:BR3.3, BR3.6).
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +32,7 @@ use crate::coordinator::{BatchProgress, FailedStream, FetchJob, JobStatus};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
 use crate::failure::ApiFailure;
+use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
     EmptyState, ListingStatus, LogGroup, LogGroupListing, apply_failure_if_current,
@@ -182,6 +189,23 @@ pub struct FetchProgressUpdate {
     pub event_count: u64,
     /// Version of the timeline.
     pub timeline_version: u64,
+    /// The log filter summary, `None` without a filter (U5:BR3.6).
+    pub filter_summary: Option<FilterSummary>,
+    /// Result version of the log filter, for ordering (U5:BR3.6).
+    pub filter_result_version: u64,
+}
+
+/// The light message sent when the log filter result changes without a
+/// fetch page, for example while the scan runs or when it becomes Ready
+/// (U5:BR3.6). Same weight as [`FetchProgressUpdate`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterProgressUpdate {
+    /// The log filter summary, `None` without a filter.
+    pub filter_summary: Option<FilterSummary>,
+    /// Result version of the log filter; the screen ignores a message older
+    /// than the one it shows.
+    pub filter_result_version: u64,
 }
 
 /// Progress of the running fetch, for the status line (BR6.2).
@@ -276,6 +300,12 @@ pub struct SessionView {
     pub listing_failure: Option<ApiFailure>,
     /// Whether the list of failures is open (BR6.3).
     pub failure_list_open: bool,
+    /// The log filter text as typed (U5:BR3.4).
+    pub log_filter: String,
+    /// The log filter summary, `None` without a filter (U5:BR3.3, BR3.6).
+    pub filter_summary: Option<FilterSummary>,
+    /// Result version of the log filter, for ordering (U5:BR3.6).
+    pub filter_result_version: u64,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -300,10 +330,17 @@ pub struct DisplayRowWindow {
     pub offset: u64,
     /// The rows, in timeline order.
     pub rows: Vec<DisplayRow>,
-    /// Number of held events when the rows were taken.
+    /// Number of rows the offset counts in (the matching events while a
+    /// log filter is in force, U5:BR3.1).
     pub total_count: u64,
     /// Version of the timeline when the rows were taken.
     pub timeline_version: u64,
+    /// Whether the rows are those of the filter result (U5:BR3.1).
+    pub filtered: bool,
+    /// Number of held events (U5 FR6.3).
+    pub all_count: u64,
+    /// The filter result version, when filtered (U5:BR3.6).
+    pub result_version: Option<u64>,
 }
 
 /// State of one app session.
@@ -333,6 +370,12 @@ pub struct AppSession {
     failure_list_open: bool,
     /// Number of the latest fetch started by [`AppSession::begin_fetch`].
     fetch_number: u64,
+    /// The log filter text as typed (U5).
+    log_filter: String,
+    /// The trimmed text last handed to the filter (U5:BR1.1, BR1.4).
+    applied_log_filter: String,
+    /// Latest filter summary copied from the LogView (U5:BR3.6).
+    filter: FilterState,
 }
 
 impl Default for AppSession {
@@ -390,6 +433,9 @@ impl AppSession {
             listing_failure: None,
             failure_list_open: false,
             fetch_number: 0,
+            log_filter: String::new(),
+            applied_log_filter: String::new(),
+            filter: FilterState::default(),
         };
         session.revalidate();
         session
@@ -704,7 +750,53 @@ impl AppSession {
             progress: self.progress.clone()?,
             event_count: self.event_count,
             timeline_version: self.timeline_version,
+            filter_summary: self.filter.summary.clone(),
+            filter_result_version: self.filter.result_version,
         })
+    }
+
+    /// Takes the log filter text as typed (U5:BR1.1, BR1.4, BR3.4).
+    ///
+    /// Accepted while fetching, since filtering is not a fetch condition and
+    /// calls no API; refused while a connection change awaits confirmation
+    /// (U2:BR2.6). The text is kept across fetches and connection changes.
+    /// Returns the trimmed text the LogView must apply, or `None` when the
+    /// trimmed text is the one already applied (nothing to redo).
+    pub fn update_log_filter(&mut self, text: String) -> Result<Option<String>, SessionError> {
+        if self.connection.pending().is_some() {
+            return Err(SessionError::ConfirmationPending);
+        }
+        let trimmed = normalize_filter_text(&text);
+        self.log_filter = text;
+        if trimmed == self.applied_log_filter {
+            return Ok(None);
+        }
+        self.applied_log_filter = trimmed.clone();
+        Ok(Some(trimmed))
+    }
+
+    /// The log filter text as typed.
+    pub fn log_filter(&self) -> &str {
+        &self.log_filter
+    }
+
+    /// Records the filter summary the caller read from the LogView, under
+    /// the session lock and then the LogView lock (U5:BR2.5, BR3.6).
+    pub fn set_filter_state(&mut self, state: FilterState) {
+        self.filter = state;
+    }
+
+    /// The last recorded filter summary.
+    pub fn filter_state(&self) -> &FilterState {
+        &self.filter
+    }
+
+    /// The light message for a filter change without a fetch page (U5:BR3.6).
+    pub fn filter_update(&self) -> FilterProgressUpdate {
+        FilterProgressUpdate {
+            filter_summary: self.filter.summary.clone(),
+            filter_result_version: self.filter.result_version,
+        }
     }
 
     /// Records the finished job and the timeline version after it:
@@ -830,6 +922,9 @@ impl AppSession {
                 .collect(),
             total_count: window.total_count,
             timeline_version: window.timeline_version,
+            filtered: window.filtered,
+            all_count: window.all_count,
+            result_version: window.result_version,
         }
     }
 
@@ -884,6 +979,9 @@ impl AppSession {
             listing_status: self.listing_status,
             listing_failure: self.listing_failure.clone(),
             failure_list_open: self.failure_list_open,
+            log_filter: self.log_filter.clone(),
+            filter_summary: self.filter.summary.clone(),
+            filter_result_version: self.filter.result_version,
         }
     }
 
@@ -2203,6 +2301,9 @@ mod tests {
             rows: vec![held_row(1_704_164_645_007, 0), held_row(i64::MAX, 1)],
             total_count: 9,
             timeline_version: 3,
+            filtered: false,
+            all_count: 9,
+            result_version: None,
         };
         let local = session.display_rows(window.clone());
         assert_eq!(local.offset, 4);
@@ -2240,5 +2341,156 @@ mod tests {
             .unwrap();
         session.select_time_zone(TimeZoneChoice::Utc);
         assert_eq!(session.start_input().text(), "2024-11-03 06:30:00");
+    }
+
+    // ---- U5: the log filter (BR1.1, BR1.4, BR3.3, BR3.6) ----
+
+    use crate::filter::{FilterStatus, FilterSummary};
+
+    fn summary(matched: u64, all: u64, status: FilterStatus, version: u64) -> FilterState {
+        FilterState {
+            result_version: version,
+            summary: Some(FilterSummary {
+                filter_id: 1,
+                matched_count: matched,
+                all_count: all,
+                status,
+                result_version: version,
+            }),
+        }
+    }
+
+    #[test]
+    fn the_log_filter_is_trimmed_and_only_a_changed_text_is_handed_on() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert_eq!(
+            session.update_log_filter("  error ".to_string()),
+            Ok(Some("error".to_string()))
+        );
+        assert_eq!(session.log_filter(), "  error ", "kept as typed");
+        assert_eq!(session.view().log_filter, "  error ");
+        assert_eq!(session.update_log_filter("error".to_string()), Ok(None));
+        assert_eq!(session.log_filter(), "error");
+        assert_eq!(
+            session.update_log_filter("   ".to_string()),
+            Ok(Some(String::new())),
+            "an empty text clears the filter"
+        );
+        assert_eq!(session.update_log_filter(String::new()), Ok(None));
+        assert_eq!(
+            session.phase(),
+            Phase::Idle,
+            "filtering never moves the phase"
+        );
+    }
+
+    #[test]
+    fn the_log_filter_is_accepted_while_fetching_and_kept_across_fetches() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session.update_log_filter("ERROR".to_string()).unwrap();
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.log_filter(), "ERROR", "a new fetch keeps the text");
+        assert_eq!(
+            session.update_log_filter("timeout".to_string()),
+            Ok(Some("timeout".to_string())),
+            "accepted while fetching"
+        );
+        let job = finished_job(&mut session, 3, None);
+        session.finish_fetch(&job, 2);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.view().log_filter, "timeout");
+    }
+
+    #[test]
+    fn the_log_filter_is_refused_while_a_connection_change_awaits_confirmation() {
+        let mut session = done_session(5);
+        session.update_log_filter("error".to_string()).unwrap();
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert_eq!(
+            session.update_log_filter("other".to_string()),
+            Err(SessionError::ConfirmationPending)
+        );
+        assert_eq!(session.log_filter(), "error", "unchanged");
+        session.confirm_connection_change().unwrap();
+        assert_eq!(
+            session.log_filter(),
+            "error",
+            "a connection change keeps it"
+        );
+        assert_eq!(session.update_log_filter("error".to_string()), Ok(None));
+    }
+
+    #[test]
+    fn the_view_and_both_light_messages_carry_the_filter_summary() {
+        let mut session = AppSession::with_catalog(catalog());
+        let view = session.view();
+        assert_eq!(view.filter_summary, None);
+        assert_eq!(view.filter_result_version, 0);
+
+        session.set_filter_state(summary(2, 10, FilterStatus::Filtering, 7));
+        let view = session.view();
+        assert_eq!(
+            view.filter_summary.as_ref().map(|s| s.matched_count),
+            Some(2)
+        );
+        assert_eq!(view.filter_result_version, 7);
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["filterSummary"]["matchedCount"], 2);
+        assert_eq!(json["filterSummary"]["allCount"], 10);
+        assert_eq!(json["filterSummary"]["status"], "Filtering");
+        assert_eq!(json["filterSummary"]["resultVersion"], 7);
+        assert_eq!(json["filterResultVersion"], 7);
+        assert_eq!(json["logFilter"], "");
+
+        let update = session.filter_update();
+        assert_eq!(update.filter_result_version, 7);
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["filterSummary"]["filterId"], 1);
+        assert!(json.get("profiles").is_none(), "no full session view");
+
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let validated = session.validation.clone().unwrap();
+        let job = FetchJob::start(validated.range);
+        session.on_job_started(&job, 2);
+        session.on_batch(job.job_id, batch(10, 3));
+        session.set_filter_state(summary(4, 10, FilterStatus::Ready, 9));
+        let progress = session.progress_update().unwrap();
+        assert_eq!(progress.filter_result_version, 9);
+        assert_eq!(
+            progress.filter_summary.map(|s| (s.matched_count, s.status)),
+            Some((4, FilterStatus::Ready))
+        );
+        assert_eq!(session.filter_state().result_version, 9);
+    }
+
+    #[test]
+    fn display_rows_keep_the_filtered_window_fields() {
+        let session = AppSession::with_catalog(catalog());
+        let window = RowWindow {
+            offset: 1,
+            rows: vec![held_row(1_704_164_645_007, 0)],
+            total_count: 2,
+            timeline_version: 5,
+            filtered: true,
+            all_count: 40,
+            result_version: Some(8),
+        };
+        let shown = session.display_rows(window);
+        assert!(shown.filtered);
+        assert_eq!((shown.total_count, shown.all_count), (2, 40));
+        assert_eq!(shown.result_version, Some(8));
+        assert_eq!(shown.rows[0].display_time, "2024-01-02 03:04:05.007");
+        let json = serde_json::to_value(&shown).unwrap();
+        assert_eq!(json["filtered"], true);
+        assert_eq!(json["allCount"], 40);
+        assert_eq!(json["resultVersion"], 8);
     }
 }

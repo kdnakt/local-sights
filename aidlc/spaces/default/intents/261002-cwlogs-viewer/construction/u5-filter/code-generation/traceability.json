@@ -1,0 +1,39 @@
+{
+  "stage": "code-generation",
+  "unit": "u5-filter",
+  "upstream_ids": [
+    "BR1.1", "BR1.2", "BR1.3", "BR1.4", "BR1.5",
+    "BR2.1", "BR2.2", "BR2.3", "BR2.4", "BR2.5",
+    "BR3.1", "BR3.2", "BR3.3", "BR3.4", "BR3.5", "BR3.6",
+    "FR6", "FR6.1", "FR6.2", "FR6.3", "FR6.4", "FR6.5",
+    "NFR1", "NFR2", "NFR12", "NFR13"
+  ],
+  "coverage": [
+    { "id": "BR1.1", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR1.2", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR1.3", "status": "OK", "target": "src/components/LogFilterInput.tsx" },
+    { "id": "BR1.4", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR1.5", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR2.1", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR2.2", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "BR2.3", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR2.4", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "BR2.5", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "BR3.1", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "BR3.2", "status": "OK", "target": "src/components/LogTable.tsx" },
+    { "id": "BR3.3", "status": "OK", "target": "src/components/StatusLine.tsx" },
+    { "id": "BR3.4", "status": "OK", "target": "src/components/LogFilterInput.tsx" },
+    { "id": "BR3.5", "status": "OK", "target": "crates/local-sights-core/examples/fetch_check.rs" },
+    { "id": "BR3.6", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "FR6", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "FR6.1", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "FR6.2", "status": "OK", "target": "src-tauri/src/lib.rs" },
+    { "id": "FR6.3", "status": "OK", "target": "src/components/StatusLine.tsx" },
+    { "id": "FR6.4", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "FR6.5", "status": "OK", "target": "crates/local-sights-core/src/filter.rs" },
+    { "id": "NFR1", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "NFR2", "status": "OK", "target": "crates/local-sights-core/src/log_view.rs" },
+    { "id": "NFR12", "status": "OK", "target": "src/i18n/messages.ts" },
+    { "id": "NFR13", "status": "OK", "target": "src/components/LogFilterInput.tsx" }
+  ]
+}

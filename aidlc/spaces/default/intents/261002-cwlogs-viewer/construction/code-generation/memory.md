@@ -27,3 +27,4 @@
 - 2026-10-05T16:30:00Z — [u4-time-range] レビュー 1 回目（READY、Minor 3 件）は人間の判断で直さない：R-01（切替直後の一瞬、行が前のタイムゾーンの文字列のまま）は許容、R-02（Tauri のコマンド層の実機確認）は README の U4 の手元確認に回す、R-03（OS のタイムゾーン名が読めず UTC に落ちたときの見え方、chrono-tz の同梱データの古さ）は MVP では許容。
 - 2026-10-05T16:30:00Z — [u4-time-range] ローカルのタイムゾーンは iana-time-zone と chrono-tz（Q1）。作業中にディスクが一杯になり、target/debug/incremental と target/release を消した。以降のビルドは CARGO_INCREMENTAL=0 で行う。
 - 2026-10-05T01:00:00Z — [u3-fetch-robustness] 仮想スクロールは自前で作った（Q1）。行の高さ 22 px 固定、スクロールの高さの上限 1,000 万 px を超えると位置を比例で縮める。
+- 2026-10-06T00:30:00Z — [u5-filter] レビュー 1 回目（READY、Minor 4 件）の扱いは人間が決めた。project.md の「レビュー後の修正は次の作業単位に回す」に従い、U5 では直さず U6 で直す。R-01：U1:BR6.2（どの入力欄でも Enter で取得）の例外として、絞り込み欄の Enter は取得ではなく絞り込みとし、0.3 秒待たずにすぐ反映する。R-02：set_log_filter が失敗したとき、または確認ダイアログが閉じたときに、SessionView.logFilter と比べて送り直す。R-03：走査中の知らせの間引きと「最後の Ready は必ず送る」の判断を、ライブラリ側の純粋な関数に移してテストする。R-04：traceability.json にテストファイルと lib.rs（BR1.5・BR2.5）を足し、code-summary の「計画との違い」の誤り 1 件を正す。

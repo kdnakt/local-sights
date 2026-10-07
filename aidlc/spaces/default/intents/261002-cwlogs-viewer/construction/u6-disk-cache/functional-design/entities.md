@@ -10,7 +10,7 @@ U6 で新しく扱うエンティティと、U1〜U5 のエンティティに足
 entities:
   - name: CacheSettings
     owner: LogCache
-    components_md: LogCache の責務「キャッシュの有効・無効と保存場所の管理」を表す補助（components.md には名前がない）
+    components_md: CacheSettings（components.md の settingsKey・enabled・location）。enabled を cacheEnabled、location を cacheDirectory と呼び直し、設定を覚える（Q1）ための settingsPath を足した。設定は 1 件だけのため settingsKey は持たない
     description: キャッシュの有効・無効の設定。アプリを閉じても覚えておく（Q1）
     identifier: []
     attributes:
@@ -22,24 +22,30 @@ entities:
       - name: settingsPath
         type: text
         required: true
-        constraints: OS のアプリ設定用フォルダの中のアプリ専用の設定ファイル（macOS では `~/Library/Application Support/` 配下）。保存するのは cacheEnabled の 1 項目と書式の版だけ（BR1.1）
+        constraints: OS のアプリ設定用フォルダの中のアプリ専用の設定ファイル（macOS では `~/Library/Application Support/` 配下）。保存するのは cacheEnabled の 1 項目と書式の版だけ（BR1.1）。権限は 0600（BR3.6）。起動時に外から渡す（BR1.6）
       - name: cacheDirectory
         type: text
         required: true
-        constraints: OS のキャッシュ用フォルダの中のアプリ専用フォルダ（macOS では `~/Library/Caches/` 配下）。設定ダイアログに表示する（FR7.3）
+        constraints: OS のキャッシュ用フォルダの中のアプリ専用フォルダ（macOS では `~/Library/Caches/` 配下）。設定ダイアログに表示する（FR7.3）。権限は 0700（BR3.6）。起動時に外から渡す（BR1.6）
     constraints:
       - 秘密の認証情報・アクセスキー ID・プロファイル名は設定ファイルに書かない（project.md Forbidden、BR1.1）
+      - 場所を渡さない既定の作り方では、cacheEnabled = false で始まり、設定ファイルもキャッシュも読み書きしない（BR1.6）
 
   - name: CacheKey
     owner: LogCache
     components_md: CacheEntry の cacheKey
     description: キャッシュを引くための組み合わせ
-    identifier: [profileKey, region, logGroupName]
+    identifier: [profileKind, profileName, region, logGroupName]
     attributes:
-      - name: profileKey
-        type: enum-or-text
+      - name: profileKind
+        type: enum
         required: true
-        constraints: U2 の ConnectionProfile をそのまま写す。kind が SdkDefault なら「SDK の既定」という印だけ、Named ならプロファイル名（BR2.1）
+        allowed_values: [SdkDefault, Named]
+        constraints: U2 の ConnectionProfile.kind をそのまま写す（BR2.1）
+      - name: profileName
+        type: text
+        required: false
+        constraints: profileKind が Named のときだけ持つプロファイル名。SdkDefault のときは持たない。kind が違えば名前が同じでも別のキー（BR2.1）
       - name: region
         type: text
         required: true
@@ -50,7 +56,7 @@ entities:
         constraints: 選択中のロググループの名前
     constraints:
       - 3 つすべてが一致したときだけ同じキーとみなす（FR7.4）
-      - キャッシュのファイル名にはキーをそのまま使わず、キーから求めたハッシュを使う（BR2.2）。キー自体はファイルの中に持つ
+      - キャッシュのファイル名にはキーをそのまま使わず、キーから求めた SHA-256 の 16 進 64 文字に `.cache` を付けたものを使う（BR2.2）。キー自体はファイルの中に持つ
 
   - name: CacheEntry
     owner: LogCache
@@ -76,9 +82,9 @@ entities:
       - name: storagePath
         type: text
         required: true
-        constraints: cacheDirectory の直下のファイル。アプリ専用フォルダの外には書かない
+        constraints: cacheDirectory の直下のファイル（名前は BR2.2）。アプリ専用フォルダの外には書かない
     constraints:
-      - 秘密の認証情報とアクセスキー ID は持たない（project.md Forbidden、NFR5）
+      - アプリ自身が扱う認証情報（SDK の資格情報・トークン・アクセスキー ID）は持たない（project.md Forbidden、NFR5、BR3.6）。ログの本文は利用者のデータとして保存し、機密情報が含まれうることは設定ダイアログの注意で示す（FR7.2）
       - ファイルは本人だけが読み書きできる権限で作る（BR3.6）
 
   - name: CoveredRange
@@ -134,9 +140,14 @@ entities:
       - name: cacheOutcome
         type: enum
         required: true
-        allowed_values: [NotUsed, Hit, Saved, NotSaved, SaveFailed, ReadFailed]
+        allowed_values: [NotUsed, Hit, Saved, NotSaved, SaveFailed]
         default: NotUsed
-        constraints: ステータス行の知らせに使う（BR5.3）。NotUsed は無効のとき、Hit はキャッシュから出したとき、Saved は書き込んだとき、NotSaved は失敗したストリームがあった・途中で終わった・記録できる範囲がなかったとき、SaveFailed は書き込みに失敗したとき、ReadFailed は読めずに AWS から取り直したとき（Q5）
+        constraints: ステータス行の知らせに使う（BR5.3）。NotUsed は無効のとき、Hit はキャッシュから出したとき、Saved は書き込んだとき、NotSaved は失敗したストリームがあった・途中で終わった・記録できる範囲がなかったとき、SaveFailed は書き込みに失敗したとき。読めずに取り直したときも、取り直した結果の書き込みの成否がここに入る（BR4.1）
+      - name: readFailed
+        type: boolean
+        required: true
+        default: false
+        constraints: キャッシュが読めず、捨てて AWS から取り直したとき true（Q5、BR4.1）。cacheOutcome とは別に持ち、両方を知らせられるようにする（BR5.3）
 
   - name: SessionState
     owner: AppSession
@@ -149,21 +160,27 @@ entities:
         required: true
         allowed_values: [Closed, Open]
         default: Closed
-        constraints: 取得中は開けない（BR5.1）
+        constraints: 取得中と接続変更の確認待ちは開けない。Open のあいだ、AppSession は取得の開始・接続とロググループの変更・入力の変更を拒む（BR5.1）
       - name: cacheEnabled
         type: boolean
         required: true
         constraints: CacheSettings.cacheEnabled を写したもの。画面に出すために持つ
-      - name: cacheNotice
-        type: enum
-        required: false
+      - name: cacheSaving
+        type: boolean
+        required: true
+        default: false
+        constraints: キャッシュへの書き込み中（on_saving から on_finished まで）は true。ステータス行に「保存中」を出すために使い、取得の進み具合の知らせにも入れる（BR3.7、BR5.3）
+      - name: cacheNotices
+        type: list of enum
+        required: true
+        default: []
         allowed_values: [Hit, ReadFailed, SaveFailed]
-        constraints: 直近の取得の FetchJob.cacheOutcome のうち、ステータス行に出すもの。次の取得の開始で消える（BR5.3）
+        constraints: 直近の取得の FetchJob の servedFromCache・readFailed・cacheOutcome から作る、ステータス行に出す知らせ。ReadFailed と SaveFailed は両方入りうる。次の取得の開始で空になる（BR3.7、BR5.3）
 ```
 
 ## まとめ
 
 - **CacheSettings** はアプリを閉じても覚える有効・無効の 1 項目（Q1）。読めなければ無効（BR1.2）。
-- **CacheEntry** は（プロファイル・リージョン・ロググループ）ごとに 1 つ。範囲とイベントを 1 つにまとめる（Q3）。
+- **CacheEntry** は（プロファイルの kind と名前・リージョン・ロググループ）ごとに 1 つ。範囲とイベントを 1 つにまとめる（Q3）。
 - **CoveredRange** の終わりは、取得を始めた時刻の 5 分前より新しくしない（Q2）。
-- **FetchJob** に servedFromCache と cacheOutcome を、**SessionState** に設定ダイアログとキャッシュの知らせを足す。
+- **FetchJob** に servedFromCache・cacheOutcome・readFailed を、**SessionState** に設定ダイアログ・保存中・キャッシュの知らせを足す。

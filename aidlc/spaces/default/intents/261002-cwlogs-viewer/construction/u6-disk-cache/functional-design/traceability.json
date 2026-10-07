@@ -287,7 +287,7 @@
     {
       "id": "FR7.4",
       "status": "OK",
-      "target": "BR2.1, BR2.3, BR2.4, BR5.3"
+      "target": "BR2.1, BR2.3, BR2.4, BR3.7, BR5.3"
     },
     {
       "id": "FR7.5",
@@ -337,7 +337,7 @@
     {
       "id": "NFR2",
       "status": "OK",
-      "target": "BR4.2"
+      "target": "BR3.5, BR4.2"
     },
     {
       "id": "NFR5",
@@ -347,7 +347,7 @@
     {
       "id": "NFR8",
       "status": "OK",
-      "target": "BR1.2, BR1.5"
+      "target": "BR1.2, BR1.5, BR1.6"
     },
     {
       "id": "NFR12",
@@ -395,6 +395,16 @@
       "id": "BR5.5",
       "status": "N/A",
       "target": "確認用プログラムは変えない（U1:BR7.1）"
+    },
+    {
+      "id": "BR1.6",
+      "status": "N/A",
+      "target": "場所を外から渡す（レビュー R-09、テストで実フォルダに触れないため）"
+    },
+    {
+      "id": "BR3.7",
+      "status": "N/A",
+      "target": "知らせの順（レビュー R-01、U3:BR5.4 の例外）"
     }
   ]
 }

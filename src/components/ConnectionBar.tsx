@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, Ref } from "react";
 import { selectorOf, type ProfileSelector, type SessionView, type TimeZoneChoice } from "../api";
 import type { Translate } from "../i18n/messages";
 import { TimeZoneToggle } from "./TimeZoneToggle";
@@ -27,6 +27,10 @@ export interface ConnectionBarProps {
   onSelectProfile: (profile: ProfileSelector) => void;
   onSelectRegion: (region: string) => void;
   onSelectTimeZone: (timeZone: TimeZoneChoice) => void;
+  /** Opens the settings dialog (U6:BR5.1). */
+  onOpenSettings?: () => void;
+  /** The [*] button, to which focus returns when the dialog closes (U6:BR5.2). */
+  settingsButtonRef?: Ref<HTMLButtonElement>;
 }
 
 /**
@@ -35,6 +39,9 @@ export interface ConnectionBarProps {
  * config files that could not be read (file kind only, U2:BR1.3). Disabled
  * while fetching or while a change awaits confirmation (U2:BR2.6). Since U4
  * it also holds the time zone switch, which stays usable then (U4:BR3.3).
+ * Since U6 it holds the [*] settings button, which cannot be pressed while
+ * fetching (also while writing the cache) or while a change awaits
+ * confirmation (U6:BR5.1).
  */
 export function ConnectionBar({
   session,
@@ -42,6 +49,8 @@ export function ConnectionBar({
   onSelectProfile,
   onSelectRegion,
   onSelectTimeZone,
+  onOpenSettings,
+  settingsButtonRef,
 }: ConnectionBarProps) {
   const disabled = !session.canChangeConnection;
   const profileValue = session.connection.profile ? encodeSelector(session.connection.profile) : "";
@@ -103,6 +112,18 @@ export function ConnectionBar({
         </select>
       </label>
       <TimeZoneToggle timeZone={session.timeZone} t={t} onSelect={onSelectTimeZone} />
+      <button
+        type="button"
+        ref={settingsButtonRef}
+        className="connection-bar-settings"
+        aria-label={t("settings.open")}
+        title={t("settings.open")}
+        disabled={!session.canOpenSettings || onOpenSettings === undefined}
+        onClick={onOpenSettings}
+        data-testid="connection-bar-settings-button"
+      >
+        *
+      </button>
       {session.catalogNotices.map((key) => (
         <p
           key={key}

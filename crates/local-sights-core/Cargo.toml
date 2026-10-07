@@ -20,6 +20,11 @@ fastrand.workspace = true
 home.workspace = true
 regex.workspace = true
 serde.workspace = true
+# U6: the disk cache file is JSON Lines (code-generation Q1) and its name is
+# the SHA-256 of the key (BR2.2). serde_json moved here from the dev
+# dependencies; sha2 is MIT OR Apache-2.0. Neither sends anything anywhere.
+serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 # Retry waits (BR2.1) and the abort signal (BR2.3, BR5.5). The AWS SDK
 # already depends on tokio, so this adds no new crate to the build.
@@ -29,7 +34,6 @@ uuid.workspace = true
 [dev-dependencies]
 aws-smithy-runtime-api.workspace = true
 aws-smithy-types.workspace = true
-serde_json.workspace = true
 tempfile.workspace = true
 # `test-util` lets retry tests advance a paused clock instead of waiting.
 tokio = { workspace = true, features = ["test-util"] }

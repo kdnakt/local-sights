@@ -21,6 +21,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::Serialize;
 
@@ -30,6 +31,18 @@ use crate::event::LogEvent;
 /// means "no filter". There is no length limit.
 pub fn normalize_filter_text(raw: &str) -> String {
     raw.trim().to_string()
+}
+
+/// Least time between two progress reports of one scan (U5 review R-03).
+pub const FILTER_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Whether a scan reports its progress now (U5:BR3.6, U5 review R-03): the
+/// first report always goes, the last one (the scan is Ready) always goes,
+/// and in between at most one per [`FILTER_PROGRESS_INTERVAL`].
+/// `since_last_report` is the time since the previous report, `None` when
+/// none was sent yet.
+pub fn should_report_progress(since_last_report: Option<Duration>, ready: bool) -> bool {
+    ready || since_last_report.is_none_or(|elapsed| elapsed >= FILTER_PROGRESS_INTERVAL)
 }
 
 /// The condition in force (entities.md FilterCondition).
@@ -773,5 +786,43 @@ mod tests {
         grew(&engine, "cleared");
         assert_eq!(engine.state().result_version, engine.result_version());
         assert_eq!(engine.state().summary, None);
+    }
+}
+
+#[cfg(test)]
+mod should_report_progress_tests {
+    use std::time::Duration;
+
+    use super::{FILTER_PROGRESS_INTERVAL, should_report_progress};
+
+    #[test]
+    fn the_first_report_always_goes() {
+        assert!(should_report_progress(None, false));
+        assert!(should_report_progress(None, true));
+    }
+
+    #[test]
+    fn reports_closer_than_the_interval_are_skipped() {
+        assert!(!should_report_progress(Some(Duration::ZERO), false));
+        assert!(!should_report_progress(
+            Some(FILTER_PROGRESS_INTERVAL - Duration::from_millis(1)),
+            false
+        ));
+    }
+
+    #[test]
+    fn a_report_goes_once_the_interval_has_passed() {
+        assert_eq!(FILTER_PROGRESS_INTERVAL, Duration::from_millis(100));
+        assert!(should_report_progress(
+            Some(FILTER_PROGRESS_INTERVAL),
+            false
+        ));
+        assert!(should_report_progress(Some(Duration::from_secs(5)), false));
+    }
+
+    #[test]
+    fn the_ready_report_always_goes_whatever_the_interval() {
+        assert!(should_report_progress(Some(Duration::ZERO), true));
+        assert!(should_report_progress(Some(Duration::from_millis(1)), true));
     }
 }

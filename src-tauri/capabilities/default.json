@@ -19,6 +19,10 @@
     "allow-find-row-position",
     "allow-set-failure-list-open",
     "allow-select-time-zone",
-    "allow-set-log-filter"
+    "allow-set-log-filter",
+    "allow-open-settings",
+    "allow-cancel-settings",
+    "allow-save-settings",
+    "allow-clear-cache"
   ]
 }

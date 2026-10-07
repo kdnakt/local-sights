@@ -35,6 +35,8 @@ export interface FetchFormProps {
   onFilterTextChange: (value: string) => void;
   /** The log filter text after the typing pause (U5:BR1.3). */
   onLogFilterChange: (text: string) => void;
+  /** Failed log filter hand-overs so far (U5 review R-02). */
+  filterFailureCount?: number;
 }
 
 /**
@@ -51,7 +53,8 @@ export interface FetchFormProps {
  * Since U5 the condition area also holds the log filter field, which stays
  * usable while fetching and is disabled only while a connection change
  * awaits confirmation (U5:BR3.4); its text lives in the parent, so the remount
- * loses nothing.
+ * loses nothing. Since U6 the settings dialog disables every control too,
+ * the log filter field included (U6:BR5.1).
  */
 export function FetchForm({
   session,
@@ -61,6 +64,7 @@ export function FetchForm({
   filterText,
   onFilterTextChange,
   onLogFilterChange,
+  filterFailureCount = 0,
 }: FetchFormProps) {
   // Local drafts keep typing responsive; every change is forwarded to the
   // core, which owns the state. Mount with a `key` to reset from a session.
@@ -70,7 +74,8 @@ export function FetchForm({
   });
   const zone = t(timeZoneLabelKey(session.timeZone));
   const fetching = session.phase === "Fetching";
-  const locked = fetching || session.pendingChange !== null;
+  const dialogOpen = session.pendingChange !== null || session.settingsDialog === "Open";
+  const locked = fetching || dialogOpen;
   const canSubmit = session.canFetch && !locked;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -126,7 +131,8 @@ export function FetchForm({
         <LogFilterInput
           value={filterText}
           appliedText={session.logFilter}
-          disabled={session.pendingChange !== null}
+          disabled={dialogOpen}
+          failureCount={filterFailureCount}
           t={t}
           onChange={onFilterTextChange}
           onFilterChange={onLogFilterChange}

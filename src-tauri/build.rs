@@ -20,6 +20,10 @@ fn main() {
             "set_failure_list_open",
             "select_time_zone",
             "set_log_filter",
+            "open_settings",
+            "cancel_settings",
+            "save_settings",
+            "clear_cache",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

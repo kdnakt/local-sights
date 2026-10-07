@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiFailure, SessionView } from "../api";
 import { StatusLine } from "./StatusLine";
+import { createTranslator } from "../i18n/messages";
 import { sessionView, t } from "../test/fixtures";
 
 function renderStatus(session: SessionView | null) {
@@ -184,5 +185,82 @@ describe("StatusLine", () => {
   it("shows nothing about the filter without one", () => {
     renderStatus(sessionView({ phase: "Done", eventCount: 5, filterSummary: null }));
     expect(screen.queryByTestId("status-line-filter")).not.toBeInTheDocument();
+  });
+
+  it("says the logs are being saved to the cache while a fetch writes them", () => {
+    renderStatus(
+      sessionView({
+        phase: "Fetching",
+        cacheSaving: true,
+        progress: {
+          seenStreamCount: 2,
+          selectedStreamCount: 2,
+          plannedStreamCount: 2,
+          finishedStreamCount: 2,
+          eventCount: 9,
+        },
+      }),
+    );
+    expect(screen.getByTestId("status-line-fetching")).toBeInTheDocument();
+    expect(screen.getByTestId("status-line-cache-saving")).toHaveTextContent("Saving to cache");
+  });
+
+  it("shows a fetch from the cache with its count and no stream numbers", () => {
+    renderStatus(
+      sessionView({
+        phase: "Done",
+        eventCount: 12,
+        cacheNotices: ["Hit"],
+        lastJob: {
+          jobId: 1,
+          status: "Completed",
+          eventCount: 12,
+          plannedStreamCount: 0,
+          finishedStreamCount: 0,
+          failedStreamCount: 0,
+          failure: null,
+        },
+      }),
+    );
+    expect(screen.getByTestId("status-line")).toHaveTextContent(
+      "12 events Shown from cache (AWS was not called)",
+    );
+    expect(screen.getByTestId("status-line").textContent).not.toMatch(/stream/i);
+  });
+
+  it("shows both the read failure and the save failure in words", () => {
+    renderStatus(
+      sessionView({ phase: "Done", eventCount: 3, cacheNotices: ["ReadFailed", "SaveFailed"] }),
+    );
+    expect(screen.getByTestId("status-line-cache-ReadFailed")).toHaveTextContent(
+      "The cache could not be read, so the logs were fetched again",
+    );
+    expect(screen.getByTestId("status-line-cache-SaveFailed")).toHaveTextContent(
+      "Could not save to the cache",
+    );
+    expect(screen.queryByTestId("status-line-cache-saving")).not.toBeInTheDocument();
+  });
+
+  it("shows no cache notice when there is none, also in Japanese", () => {
+    const { unmount } = render(
+      <StatusLine
+        session={sessionView({ phase: "Done", eventCount: 3, cacheNotices: [] })}
+        t={t}
+        onOpenFailures={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("status-line")).toHaveTextContent("3 events");
+    expect(screen.getByTestId("status-line").textContent).not.toMatch(/cache/i);
+    unmount();
+    render(
+      <StatusLine
+        session={sessionView({ phase: "Done", eventCount: 3, cacheNotices: ["Hit"] })}
+        t={createTranslator("ja")}
+        onOpenFailures={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("status-line-cache-Hit")).toHaveTextContent(
+      "キャッシュから表示（AWS は呼んでいない）",
+    );
   });
 });

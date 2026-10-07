@@ -25,6 +25,9 @@ iana-time-zone = "0.1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# U6: SHA-256 of the cache key for the cache file name (BR2.2). MIT OR
+# Apache-2.0; the same version the AWS SDK already uses, so no new crate.
+sha2 = "0.11"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 uuid = { version = "1", features = ["v4"] }

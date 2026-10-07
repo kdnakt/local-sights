@@ -10,11 +10,13 @@ function Harness({
   onFilterChange,
   disabled = false,
   appliedText = "",
+  failureCount = 0,
   locale = "en",
 }: {
   onFilterChange: (text: string) => void;
   disabled?: boolean;
   appliedText?: string;
+  failureCount?: number;
   locale?: "en" | "ja";
 }) {
   const [value, setValue] = useState(appliedText);
@@ -23,6 +25,7 @@ function Harness({
       value={value}
       appliedText={appliedText}
       disabled={disabled}
+      failureCount={failureCount}
       t={locale === "en" ? t : createTranslator("ja")}
       onChange={setValue}
       onFilterChange={onFilterChange}
@@ -111,5 +114,45 @@ describe("LogFilterInput", () => {
       "placeholder",
       "メッセージの一部（大文字・小文字を区別しない）",
     );
+  });
+
+  it("hands the text on at once with Enter, and only once", () => {
+    const onFilterChange = vi.fn();
+    render(<Harness onFilterChange={onFilterChange} />);
+    type("timeout");
+    fireEvent.keyDown(screen.getByTestId("log-filter-input"), { key: "Enter" });
+    expect(onFilterChange).toHaveBeenCalledTimes(1);
+    expect(onFilterChange).toHaveBeenCalledWith("timeout");
+    wait(FILTER_DELAY_MS);
+    fireEvent.keyDown(screen.getByTestId("log-filter-input"), { key: "Enter" });
+    expect(onFilterChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the text again after a refused hand-over", () => {
+    const onFilterChange = vi.fn();
+    const { rerender } = render(<Harness onFilterChange={onFilterChange} />);
+    type("error");
+    wait(FILTER_DELAY_MS);
+    expect(onFilterChange).toHaveBeenCalledTimes(1);
+    // The core refused it: it still holds "" while the field shows "error".
+    rerender(<Harness onFilterChange={onFilterChange} failureCount={1} />);
+    expect(onFilterChange).toHaveBeenCalledTimes(2);
+    expect(onFilterChange).toHaveBeenLastCalledWith("error");
+  });
+
+  it("sends the text again when a dialog that disabled the field closes", () => {
+    const onFilterChange = vi.fn();
+    const { rerender } = render(<Harness onFilterChange={onFilterChange} appliedText="" />);
+    type("warn");
+    wait(FILTER_DELAY_MS);
+    rerender(<Harness onFilterChange={onFilterChange} appliedText="" disabled />);
+    expect(onFilterChange).toHaveBeenCalledTimes(1);
+    rerender(<Harness onFilterChange={onFilterChange} appliedText="" />);
+    expect(onFilterChange).toHaveBeenCalledTimes(2);
+    expect(onFilterChange).toHaveBeenLastCalledWith("warn");
+    // When the core already holds the text, nothing is sent.
+    rerender(<Harness onFilterChange={onFilterChange} appliedText="warn" disabled />);
+    rerender(<Harness onFilterChange={onFilterChange} appliedText="warn" />);
+    expect(onFilterChange).toHaveBeenCalledTimes(2);
   });
 });

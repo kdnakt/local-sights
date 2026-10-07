@@ -9,6 +9,7 @@
 
 #![warn(missing_docs)]
 
+pub mod cache;
 pub mod catalog;
 pub mod connection;
 pub mod coordinator;

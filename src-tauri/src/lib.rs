@@ -40,18 +40,31 @@
 //! summary is copied into the session while both are held. Filtering calls
 //! no AWS API (U5 FR6.2).
 //!
+//! Since U6 the app decides at startup where the settings file (the OS app
+//! settings folder) and the disk cache (a folder in the OS cache folder)
+//! live and gives both to AppSession (U6:BR1.6). A fetch runs through
+//! `run_fetch_with_cache` with the cache AppSession hands out, `None` when
+//! the cache is disabled (U6:BR1.5); `on_saving` sends the light
+//! `fetch-progress` event so the status line can say "saving to the cache"
+//! (U6:BR3.7). The settings dialog commands are `open_settings`,
+//! `cancel_settings`, `save_settings` and `clear_cache`; each pushes
+//! `session-changed` (U6:BR5.1). The filter scan asks the core whether to
+//! report its progress (`filter::should_report_progress`, U5 review R-03).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::catalog::files::load_catalog;
-use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch};
+use local_sights_core::coordinator::{
+    BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch_with_cache,
+};
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use local_sights_core::fetcher::StreamFetchOutcome;
-use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket};
+use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_report_progress};
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
@@ -60,7 +73,8 @@ use local_sights_core::log_view::LogView;
 use local_sights_core::paging::PageDecision;
 use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
-    AppSession, ConnectionEffect, DisplayRowWindow, InputField, SessionError, SessionView,
+    AppSession, CacheLocation, ConnectionEffect, DisplayRowWindow, InputField, SessionError,
+    SessionView,
 };
 use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_zone::{TimeZoneChoice, TimeZoneContext};
@@ -80,9 +94,12 @@ pub const FILTER_PROGRESS: &str = "filter-progress";
 /// Held events the filter scan judges per lock (U5:BR1.5): small enough
 /// that a viewport read waits for at most one chunk.
 const SCAN_CHUNK_ROWS: usize = 4_096;
-/// Least time between two `filter-progress` events of one scan; the last
-/// chunk is always reported.
-const FILTER_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Name of the settings file in the OS app settings folder (U6:BR1.1).
+const SETTINGS_FILE_NAME: &str = "settings.json";
+/// Name of the disk cache folder inside the OS cache folder of the app
+/// (U6:BR1.6); a folder of its own, so nothing else shares it.
+const CACHE_FOLDER_NAME: &str = "log-cache";
 
 /// Most rows one `get_rows` call returns; a viewport needs far fewer.
 const MAX_ROWS_PER_REQUEST: usize = 1_000;
@@ -102,13 +119,19 @@ struct AppState {
 impl AppState {
     /// Reads the shared AWS config files (U2:BR1.1-BR1.3) and the OS time
     /// zone (U4:BR1.1) once at startup. When the OS zone cannot be used,
-    /// Local falls back to UTC and only the zone name is logged.
-    fn load() -> Self {
+    /// Local falls back to UTC and only the zone name is logged. Since U6 it
+    /// also takes the cache location and reads the cache setting from it;
+    /// without a location the cache stays disabled (U6:BR1.6).
+    fn load(cache_location: Option<CacheLocation>) -> Self {
         let time_zones = TimeZoneContext::detect();
         if let Some(fallback) = &time_zones.fallback {
             eprintln!("local-sights: {}", fallback.diagnostic());
         }
-        let session = AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context);
+        let mut session =
+            AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context);
+        if let Some(location) = cache_location {
+            session = session.with_cache_location(location);
+        }
         Self {
             session: Arc::new(Mutex::new(session)),
             log_view: Arc::default(),
@@ -121,6 +144,26 @@ impl AppState {
     fn abort_fetch(&self) {
         if let Some((_, handle)) = lock(&self.abort).as_ref() {
             handle.abort();
+        }
+    }
+}
+
+/// U6:BR1.6: the settings file in the OS app settings folder and the cache
+/// folder inside the OS cache folder (on macOS `~/Library/Application
+/// Support/<id>/` and `~/Library/Caches/<id>/`). `None`, with a diagnostic,
+/// when the OS gives no folder; the cache then stays disabled.
+fn cache_location(app: &AppHandle) -> Option<CacheLocation> {
+    let paths = app.path();
+    match (paths.app_config_dir(), paths.app_cache_dir()) {
+        (Ok(config), Ok(cache)) => Some(CacheLocation {
+            settings_path: config.join(SETTINGS_FILE_NAME),
+            cache_directory: cache.join(CACHE_FOLDER_NAME),
+        }),
+        _ => {
+            eprintln!(
+                "local-sights: the OS folders could not be found; the disk cache stays disabled"
+            );
+            None
         }
     }
 }
@@ -293,8 +336,9 @@ fn spawn_filter_scan(app: &AppHandle, state: &AppState, ticket: ScanTicket) {
 
 /// Judges the held events one chunk per lock until the end, or until the
 /// ticket is stale because the text changed or the timeline was discarded
-/// (U5:BR1.5, BR2.4). Reports the rows found so far at most every
-/// [`FILTER_PROGRESS_INTERVAL`] and always when Ready (U5:BR3.6).
+/// (U5:BR1.5, BR2.4). Reports the rows found so far as the core's
+/// `should_report_progress` decides: at most every 100 ms and always when
+/// Ready (U5:BR3.6, U5 review R-03).
 fn run_filter_scan(
     app: &AppHandle,
     session: &Mutex<AppSession>,
@@ -307,11 +351,13 @@ fn run_filter_scan(
         match step {
             ScanStep::Stale => return,
             ScanStep::Finished => {
-                report_filter(app, session, log_view);
+                if should_report_progress(last_report.map(|at| at.elapsed()), true) {
+                    report_filter(app, session, log_view);
+                }
                 return;
             }
             ScanStep::Progressed => {
-                if last_report.is_none_or(|at| at.elapsed() >= FILTER_PROGRESS_INTERVAL) {
+                if should_report_progress(last_report.map(|at| at.elapsed()), false) {
                     report_filter(app, session, log_view);
                     last_report = Some(Instant::now());
                 }
@@ -365,11 +411,14 @@ fn begin_and_spawn_fetch(
     app: &AppHandle,
     state: &AppState,
 ) -> Result<(), CommandError> {
-    let (validated, fetch_number, view) = {
+    let (validated, fetch_number, cache, view) = {
         let mut session = lock(&state.session);
         let validated = session.begin_fetch(generation)?;
-        (validated, session.fetch_number(), session.view())
+        // U6:BR1.5: `None` when the cache is disabled.
+        let cache = session.fetch_cache();
+        (validated, session.fetch_number(), cache, session.view())
     };
+    let fetch_started_at_ms = now_epoch_ms();
     emit_or_log(app, SESSION_CHANGED, view);
 
     let (handle, signal) = abort_pair();
@@ -386,11 +435,13 @@ fn begin_and_spawn_fetch(
         let policy = RetryPolicy::default();
         let jitter = RandomJitter;
         let retrier = Retrier::new(&policy, &jitter, &signal);
-        run_fetch(
+        run_fetch_with_cache(
             gateway.as_ref(),
             &validated,
             log_view.as_ref(),
             &retrier,
+            cache.as_ref(),
+            fetch_started_at_ms,
             &mut sink,
         )
         .await;
@@ -410,6 +461,66 @@ fn begin_and_spawn_fetch(
         }
         recover_if_still_fetching(&app, &session, fetch_number, ended_normally);
     });
+    Ok(())
+}
+
+/// The current time in epoch milliseconds, the base of the five-minute
+/// margin of the cache (U6:BR3.1). A clock before 1970 counts as 0, which
+/// only makes less recordable.
+fn now_epoch_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
+        })
+}
+
+/// Opens the settings dialog (U6:BR5.1); refused while fetching or while a
+/// connection change awaits confirmation.
+#[tauri::command]
+fn open_settings(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    change_settings(&app, &state, AppSession::open_settings)
+}
+
+/// Closes the settings dialog without saving ([Cancel], Escape, U6:BR5.2).
+#[tauri::command]
+fn cancel_settings(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    change_settings(&app, &state, |session| {
+        session.cancel_settings();
+        Ok(())
+    })
+}
+
+/// Saves the cache setting; switching it off removes the cached files
+/// (U6:BR1.1, BR1.3). A failure is told in the dialog, which stays open.
+#[tauri::command]
+fn save_settings(
+    enabled: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    change_settings(&app, &state, |session| session.save_settings(enabled))
+}
+
+/// Removes every cached file at once ([Clear cache], U6:BR1.4).
+#[tauri::command]
+fn clear_cache(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    change_settings(&app, &state, AppSession::clear_cache)
+}
+
+/// Runs one settings dialog operation and pushes the new state. The dialog
+/// cannot be open while a fetch runs, so no cache write is under way.
+fn change_settings(
+    app: &AppHandle,
+    state: &AppState,
+    operation: impl FnOnce(&mut AppSession) -> Result<(), SessionError>,
+) -> Result<(), CommandError> {
+    let view = {
+        let mut session = lock(&state.session);
+        operation(&mut session)?;
+        session.view()
+    };
+    emit_or_log(app, SESSION_CHANGED, view);
     Ok(())
 }
 
@@ -719,6 +830,10 @@ impl FetchSink for TauriSink {
         self.update(|session| session.on_stream_finished(job));
     }
 
+    fn on_saving(&mut self, job_id: u64) {
+        self.update_progress(|session| session.on_saving(job_id));
+    }
+
     fn on_finished(&mut self, job: &FetchJob, timeline_version: u64) {
         if job.status == JobStatus::Failed {
             // Safe detail only: built from allow-listed fields and redacted.
@@ -735,7 +850,13 @@ impl FetchSink for TauriSink {
 /// Returns the Tauri error when the app cannot be built or run.
 pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
-        .manage(AppState::load())
+        .setup(|app| {
+            // U6:BR1.6: the folders come from the OS, so the state is made
+            // here, where the app's paths are known.
+            let location = cache_location(app.handle());
+            app.manage(AppState::load(location));
+            Ok(())
+        })
         .on_window_event(|window, event| {
             // Closing the window stops a running fetch (BR5.5); the
             // confirmation dialog comes with U7.
@@ -761,7 +882,11 @@ pub fn run() -> Result<(), tauri::Error> {
             find_row_position,
             set_failure_list_open,
             select_time_zone,
-            set_log_filter
+            set_log_filter,
+            open_settings,
+            cancel_settings,
+            save_settings,
+            clear_cache
         ])
         .run(tauri::generate_context!())
 }

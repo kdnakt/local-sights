@@ -10,8 +10,14 @@ export interface LogFilterInputProps {
   value: string;
   /** The text the core last received (`SessionView.logFilter`). */
   appliedText: string;
-  /** True only while the connection change dialog is open (U5:BR3.4). */
+  /** True only while the connection change or settings dialog is open (U5:BR3.4). */
   disabled: boolean;
+  /**
+   * Counts the failed hand-overs (`set_log_filter` refused); each increase
+   * makes the field compare its text with `appliedText` and send it again
+   * (U5 review R-02).
+   */
+  failureCount?: number;
   t: Translate;
   /** Every keystroke. */
   onChange: (value: string) => void;
@@ -26,18 +32,23 @@ export interface LogFilterInputProps {
  * The text goes to the core about 0.3 s after typing stops (U5:BR1.3); the
  * core trims it and decides whether anything changed (U5:BR1.1, BR1.4).
  * Enter does not submit the fetch form, so typing a filter never starts a
- * fetch.
+ * fetch; since U6 it hands the text on at once instead of waiting (U6:BR5.4).
+ * When a hand-over failed, or when a dialog that disabled the field closes,
+ * the field compares its text with the one the core holds and sends it again
+ * when they differ (U5 review R-02).
  */
 export function LogFilterInput({
   value,
   appliedText,
   disabled,
+  failureCount = 0,
   t,
   onChange,
   onFilterChange,
 }: LogFilterInputProps) {
   const debounced = useDebouncedValue(value, FILTER_DELAY_MS);
   const lastSent = useRef(appliedText);
+  const seen = useRef({ disabled, failureCount });
 
   useEffect(() => {
     if (debounced !== lastSent.current) {
@@ -46,9 +57,28 @@ export function LogFilterInput({
     }
   }, [debounced, onFilterChange]);
 
+  // U5 review R-02: after a refused hand-over, or once a dialog closed, the
+  // core may hold another text than the field; send the field's text again.
+  useEffect(() => {
+    const previous = seen.current;
+    seen.current = { disabled, failureCount };
+    const reopened = previous.disabled && !disabled;
+    const failed = failureCount !== previous.failureCount;
+    if (!disabled && (reopened || failed) && value !== appliedText) {
+      lastSent.current = value;
+      onFilterChange(value);
+    }
+  }, [disabled, failureCount, value, appliedText, onFilterChange]);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    // U6:BR5.4: hand the text on at once; the same text again does nothing.
+    if (value !== lastSent.current) {
+      lastSent.current = value;
+      onFilterChange(value);
     }
   };
 

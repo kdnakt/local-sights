@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelConnectionChange,
+  cancelSettings,
+  clearCache,
   confirmConnectionChange,
   getSession,
   isCommandError,
@@ -8,7 +10,9 @@ import {
   onFetchProgress,
   onFilterProgress,
   onSessionChanged,
+  openSettings,
   reloadLogGroups,
+  saveSettings,
   selectLogGroup,
   selectProfile,
   selectRegion,
@@ -31,6 +35,7 @@ import { FailureList } from "./components/FailureList";
 import { FetchForm } from "./components/FetchForm";
 import { LogGroupPane } from "./components/LogGroupPane";
 import { LogTable } from "./components/LogTable";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { StatusLine } from "./components/StatusLine";
 import { useEscapeKey } from "./hooks/useEscapeKey";
 import { createTranslator, type Locale } from "./i18n/messages";
@@ -48,12 +53,17 @@ export interface AppProps {
  * loses nothing), forwards the text after the typing pause, and shows the
  * filter result: the table counts the matching rows while a filter is in
  * force. Filter messages older than the shown result are ignored (U5:BR3.6).
+ * Since U6 it opens the settings dialog from the [*] button and returns the
+ * focus to it when the dialog closes (U6:BR5.1, BR5.2), and counts refused
+ * log filter hand-overs so the field can send its text again (U5 review R-02).
  */
 export function App({ locale }: AppProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [session, setSession] = useState<SessionView | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [filterDraft, setFilterDraft] = useState<string | null>(null);
+  const [filterFailures, setFilterFailures] = useState(0);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
   const reportError = useCallback(
     (error: unknown) => {
@@ -138,7 +148,22 @@ export function App({ locale }: AppProps) {
   const handleConfirm = useCallback(() => run(confirmConnectionChange), [run]);
   const handleCancel = useCallback(() => run(cancelConnectionChange), [run]);
   // U5:BR1.3: called once typing paused; the core trims and compares.
-  const handleLogFilter = useCallback((text: string) => run(() => setLogFilter(text)), [run]);
+  const handleLogFilter = useCallback(
+    (text: string) => {
+      setLogFilter(text).catch((error: unknown) => {
+        setFilterFailures((count) => count + 1);
+        reportError(error);
+      });
+    },
+    [reportError],
+  );
+  const handleOpenSettings = useCallback(() => run(openSettings), [run]);
+  const handleCancelSettings = useCallback(() => run(cancelSettings), [run]);
+  const handleSaveSettings = useCallback(
+    (enabled: boolean) => run(() => saveSettings(enabled)),
+    [run],
+  );
+  const handleClearCache = useCallback(() => run(clearCache), [run]);
   const handleOpenFailures = useCallback(() => run(() => setFailureListOpen(true)), [run]);
   const handleCloseFailures = useCallback(() => run(() => setFailureListOpen(false)), [run]);
 
@@ -158,6 +183,8 @@ export function App({ locale }: AppProps) {
           onSelectProfile={handleSelectProfile}
           onSelectRegion={handleSelectRegion}
           onSelectTimeZone={handleSelectTimeZone}
+          onOpenSettings={handleOpenSettings}
+          settingsButtonRef={settingsButtonRef}
         />
       )}
       <div className="app-body">
@@ -182,6 +209,7 @@ export function App({ locale }: AppProps) {
               filterText={filterDraft ?? session.logFilter}
               onFilterTextChange={setFilterDraft}
               onLogFilterChange={handleLogFilter}
+              filterFailureCount={filterFailures}
             />
           )}
           <StatusLine session={session} t={t} onOpenFailures={handleOpenFailures} />
@@ -218,6 +246,16 @@ export function App({ locale }: AppProps) {
       </div>
       {session?.pendingChange && (
         <ConfirmDialog t={t} onConfirm={handleConfirm} onCancel={handleCancel} />
+      )}
+      {session?.settingsDialog === "Open" && (
+        <SettingsDialog
+          session={session}
+          t={t}
+          returnFocusRef={settingsButtonRef}
+          onSave={handleSaveSettings}
+          onCancel={handleCancelSettings}
+          onClear={handleClearCache}
+        />
       )}
     </main>
   );

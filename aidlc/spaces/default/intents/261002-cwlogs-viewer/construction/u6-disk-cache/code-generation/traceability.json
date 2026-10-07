@@ -1,0 +1,254 @@
+{
+  "stage": "code-generation",
+  "unit": "u6-disk-cache",
+  "upstream_ids": [
+    "BR1.1",
+    "BR1.2",
+    "BR1.3",
+    "BR1.4",
+    "BR1.5",
+    "BR1.6",
+    "BR2.1",
+    "BR2.2",
+    "BR2.3",
+    "BR2.4",
+    "BR3.1",
+    "BR3.2",
+    "BR3.3",
+    "BR3.4",
+    "BR3.5",
+    "BR3.6",
+    "BR3.7",
+    "BR4.1",
+    "BR4.2",
+    "BR4.3",
+    "BR5.1",
+    "BR5.2",
+    "BR5.3",
+    "BR5.4",
+    "BR5.5",
+    "FR7",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3",
+    "FR7.4",
+    "FR7.5",
+    "FR7.6",
+    "FR7.7",
+    "FR7.8",
+    "FR7.9",
+    "NFR2",
+    "NFR5",
+    "NFR8",
+    "NFR12",
+    "NFR13",
+    "NFR15"
+  ],
+  "coverage": [
+    {
+      "id": "BR1.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/settings.rs"
+    },
+    {
+      "id": "BR1.2",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/settings.rs"
+    },
+    {
+      "id": "BR1.3",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs"
+    },
+    {
+      "id": "BR1.4",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "BR1.5",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "BR1.6",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs"
+    },
+    {
+      "id": "BR2.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "BR2.2",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "BR2.3",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "BR2.4",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "BR3.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "BR3.2",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "BR3.3",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "BR3.4",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "BR3.5",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "BR3.6",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "BR3.7",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "BR4.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "BR4.2",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "BR4.3",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "BR5.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs"
+    },
+    {
+      "id": "BR5.2",
+      "status": "OK",
+      "target": "src/components/SettingsDialog.tsx"
+    },
+    {
+      "id": "BR5.3",
+      "status": "OK",
+      "target": "src/components/StatusLine.tsx"
+    },
+    {
+      "id": "BR5.4",
+      "status": "OK",
+      "target": "src/components/LogFilterInput.tsx"
+    },
+    {
+      "id": "BR5.5",
+      "status": "OK",
+      "target": "crates/local-sights-core/examples/fetch_check.rs"
+    },
+    {
+      "id": "FR7",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "FR7.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/settings.rs"
+    },
+    {
+      "id": "FR7.2",
+      "status": "OK",
+      "target": "src/components/SettingsDialog.tsx"
+    },
+    {
+      "id": "FR7.3",
+      "status": "OK",
+      "target": "src/components/SettingsDialog.tsx"
+    },
+    {
+      "id": "FR7.4",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "FR7.5",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "FR7.6",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "FR7.7",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "FR7.8",
+      "status": "N/A",
+      "target": "FR7 全体を MVP から外してよいという選択肢。U6 はライブラリの cache モジュールと run_fetch_with_cache、画面の設定ダイアログにまとまっており、U6 ごと外せる構成で満たす（機能のルールはない）"
+    },
+    {
+      "id": "FR7.9",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/plan.rs"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/cache/mod.rs"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs"
+    },
+    {
+      "id": "NFR12",
+      "status": "OK",
+      "target": "src/i18n/messages.ts"
+    },
+    {
+      "id": "NFR13",
+      "status": "OK",
+      "target": "src/components/SettingsDialog.tsx"
+    },
+    {
+      "id": "NFR15",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/coordinator.rs"
+    }
+  ]
+}

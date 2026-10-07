@@ -71,4 +71,34 @@ describe("ConnectionBar", () => {
     await userEvent.click(utc);
     expect(onSelectTimeZone).toHaveBeenCalledWith("Utc");
   });
+
+  it("opens the settings with [*] unless fetching or confirming", async () => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+    const { rerender } = render(
+      <ConnectionBar
+        session={sessionView()}
+        t={t}
+        onSelectProfile={vi.fn()}
+        onSelectRegion={vi.fn()}
+        onSelectTimeZone={vi.fn()}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Settings" });
+    expect(button).toHaveTextContent("*");
+    await user.click(button);
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    rerender(
+      <ConnectionBar
+        session={sessionView({ phase: "Fetching", canOpenSettings: false })}
+        t={t}
+        onSelectProfile={vi.fn()}
+        onSelectRegion={vi.fn()}
+        onSelectTimeZone={vi.fn()}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    expect(screen.getByTestId("connection-bar-settings-button")).toBeDisabled();
+  });
 });

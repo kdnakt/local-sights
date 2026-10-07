@@ -11,7 +11,8 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use crate::coordinator::TimelineStore;
+use crate::cache::plan::CoveredRange;
+use crate::coordinator::{HeldEvents, TimelineStore, copy_chunk_in_range};
 use crate::event::LogEvent;
 use crate::filter::{FilterChange, FilterEngine, FilterState, ScanStep, ScanTicket};
 use crate::timeline::{EventTimeline, RowWindow};
@@ -147,6 +148,19 @@ impl TimelineStore for Mutex<LogView> {
         self.lock()
             .unwrap_or_else(PoisonError::into_inner)
             .append(events)
+    }
+}
+
+/// The cache write copies the held events one chunk per lock (U6:BR3.5).
+impl HeldEvents for Mutex<LogView> {
+    fn copy_events_in_range(
+        &self,
+        range: CoveredRange,
+        cursor: Option<usize>,
+        max: usize,
+    ) -> (Vec<LogEvent>, Option<usize>) {
+        let view = self.lock().unwrap_or_else(PoisonError::into_inner);
+        copy_chunk_in_range(view.timeline.events(), range, cursor, max)
     }
 }
 

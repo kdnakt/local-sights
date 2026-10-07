@@ -5,7 +5,7 @@ with a React + TypeScript screen. It calls only the read-only
 `DescribeLogGroups`, `DescribeLogStreams` and `GetLogEvents` APIs and sends
 no telemetry or crash reports anywhere.
 
-> Status: units U1 to U5. You choose a profile and a region, pick a log
+> Status: units U1 to U6. You choose a profile and a region, pick a log
 > group from the list (with a filter), enter a time range in local time or
 > UTC (switch in the top bar) and press
 > **Fetch**: every stream of the group that matters for the range is read,
@@ -15,7 +15,9 @@ no telemetry or crash reports anywhere.
 > The list draws only the visible rows, so a million events scroll smoothly.
 > The log filter narrows the fetched events to those whose message contains
 > a text (ignoring case), on your machine, without calling AWS again.
-> Caching comes in a later unit.
+> An optional disk cache (off by default, **[\*]** in the top bar) keeps
+> fully successful fetches on your machine and shows a range it already
+> holds without calling AWS.
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -134,6 +136,18 @@ Log filter (U5):
 - [ ] With a text in the field, pressing **Fetch** again keeps the text; the new rows are filtered with it from the start.
 - [ ] While the connection-change dialog is open, the filter field cannot be used.
 - [ ] With close to a million events held, changing the filter shows "Filtering…" next to the count while matching rows appear little by little; scrolling and typing keep responding within about a second, and the result is complete ("Filtering…" disappears) within 100 seconds.
+- [ ] Pressing Enter in the filter field filters at once, without waiting 0.3 s (U6:BR5.4).
+
+Disk cache (U6):
+
+- [ ] **[\*]** in the top bar opens the settings dialog with focus on the checkbox; it shows the cache location (on macOS under `~/Library/Caches/dev.local-sights.app/log-cache`) and the warning that logs may contain confidential information, checked or not. Tab cycles inside the dialog, Space toggles the checkbox, Escape or **Cancel** closes it without saving and focus returns to **[\*]**. **[\*]** cannot be pressed while fetching or while the connection-change dialog is open.
+- [ ] Enable the cache and **Save**; restart the app and open the dialog again: it is still enabled (the settings file is under `~/Library/Application Support/dev.local-sights.app/`, owner-only, holding only the setting). The cache folder and its files are owner-only (`ls -ld` shows `drwx------`, files `-rw-------`).
+- [ ] Fetch a range that ended more than five minutes ago: the status line says "Saving to cache" before the fetch ends. Fetch the same profile, region, log group and range again: the rows appear with "Shown from cache (AWS was not called)" and no stream counts, and no AWS call is made (for example, CloudTrail or a proxy shows none). The log filter works on these rows too.
+- [ ] Fetch a range whose end is within five minutes of now: fetching it again goes to AWS (the newest five minutes are never cached); a part of it older than five minutes is served from the cache.
+- [ ] Widen a cached range: it goes to AWS, and afterwards the wider range is served from the cache.
+- [ ] Damage a cache file (for example cut its last line with `truncate -s -10 <file>`): the next fetch of that range says "The cache could not be read, so the logs were fetched again" and the file is replaced by a good one.
+- [ ] **Clear cache** removes the cache files at once ("The cache was cleared.") and **Cancel** does not bring them back; unchecking the box and **Save** also removes them and closes the dialog.
+- [ ] With close to a million events, note how long "Saving to cache" lasts (the fetch ends only after the write; the design sets no bound, NFR2), and that the screen keeps scrolling meanwhile.
 
 ## Check against real AWS from the terminal
 

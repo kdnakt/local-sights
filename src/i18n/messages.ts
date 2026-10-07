@@ -5,6 +5,8 @@
  * in sync with it. Since U4 the time labels take a `{zone}` placeholder filled
  * with `timeZone.local` or `timeZone.utc` (U4:BR3.2). Since U5 the log
  * filter field and its status texts (`logFilter.*`, `status.filter.*`).
+ * Since U6 the settings dialog (`settings.*`) and the cache notices of the
+ * status line (`cache.*`), whose wording is U6:BR5.3 word for word.
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -207,6 +209,44 @@ export const messages = {
     ja: "絞り込み後 0 件 / 全 {all} 件：一致するログはありません。",
   },
   "status.filter.filtering": { en: "Filtering…", ja: "絞り込み中…" },
+  "session.settingsClosed": {
+    en: "The settings dialog is not open.",
+    ja: "設定ダイアログは開いていません。",
+  },
+  "settings.open": { en: "Settings", ja: "設定" },
+  "settings.title": { en: "Settings", ja: "設定" },
+  "settings.cacheEnabled": {
+    en: "Keep fetched logs in a disk cache",
+    ja: "取得したログをディスクにキャッシュする",
+  },
+  "settings.location": { en: "Cache location: {path}", ja: "保存場所：{path}" },
+  "settings.locationUnknown": { en: "not available", ja: "なし" },
+  "settings.warning": {
+    en: "Logs may contain confidential information. Cached logs stay on this computer until you clear them.",
+    ja: "ログには機密情報が含まれることがあります。キャッシュしたログは消すまでこのコンピューターに残ります。",
+  },
+  "settings.clear": { en: "Clear cache", ja: "キャッシュを消す" },
+  "settings.cancel": { en: "Cancel", ja: "キャンセル" },
+  "settings.save": { en: "Save", ja: "保存" },
+  "settings.notice.Cleared": { en: "The cache was cleared.", ja: "キャッシュを消しました。" },
+  "settings.notice.ClearFailed": {
+    en: "The cache could not be cleared.",
+    ja: "キャッシュを消せませんでした。",
+  },
+  "settings.notice.SaveFailed": {
+    en: "The setting could not be saved.",
+    ja: "設定を保存できませんでした。",
+  },
+  "cache.saving": { en: "Saving to cache", ja: "キャッシュに保存中" },
+  "cache.hit": {
+    en: "Shown from cache (AWS was not called)",
+    ja: "キャッシュから表示（AWS は呼んでいない）",
+  },
+  "cache.readFailed": {
+    en: "The cache could not be read, so the logs were fetched again",
+    ja: "キャッシュが読めなかったので取り直した",
+  },
+  "cache.saveFailed": { en: "Could not save to the cache", ja: "キャッシュに保存できなかった" },
 } as const satisfies Record<string, Record<Locale, string>>;
 
 export type MessageKey = keyof typeof messages;

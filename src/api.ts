@@ -7,6 +7,9 @@
  * Since U5 the core also filters the held events by message (U5:BR1.2):
  * `setLogFilter` hands it the text, and `session-changed`, `fetch-progress`
  * and `filter-progress` carry the filter summary with its result version.
+ * Since U6 the settings dialog commands (`openSettings`, `cancelSettings`,
+ * `saveSettings`, `clearCache`) and the cache fields of the session view and
+ * of the progress message (U6:BR5.1, BR5.3).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -112,6 +115,15 @@ export interface FilterSummary {
   resultVersion: number;
 }
 
+/** Whether the settings dialog is open (U6:BR5.1). */
+export type SettingsDialog = "Closed" | "Open";
+
+/** What the settings dialog tells after an operation (U6:BR1.3, BR1.4). */
+export type SettingsNotice = "Cleared" | "ClearFailed" | "SaveFailed";
+
+/** One cache notice of the status line; wording in U6:BR5.3. */
+export type CacheNotice = "Hit" | "ReadFailed" | "SaveFailed";
+
 export interface FailedStream {
   logStreamName: string;
   failure: ApiFailure;
@@ -166,6 +178,18 @@ export interface SessionView {
   filterSummary: FilterSummary | null;
   /** Never decreases; orders the filter messages (U5:BR3.6). */
   filterResultVersion: number;
+  /** Whether the disk cache is enabled (U6:BR1.1). */
+  cacheEnabled: boolean;
+  /** The cache folder shown in the settings dialog (FR7.3). */
+  cacheDirectory: string | null;
+  settingsDialog: SettingsDialog;
+  settingsNotice: SettingsNotice | null;
+  /** False while fetching or while a connection change awaits confirmation. */
+  canOpenSettings: boolean;
+  /** While the fetched logs are written to the cache (U6:BR3.7). */
+  cacheSaving: boolean;
+  /** Cache notices of the last fetch (U6:BR5.3). */
+  cacheNotices: CacheNotice[];
 }
 
 export interface LogEvent {
@@ -228,6 +252,8 @@ export interface FetchProgressUpdate {
   timelineVersion: number;
   filterSummary: FilterSummary | null;
   filterResultVersion: number;
+  /** While the fetched logs are written to the cache (U6:BR3.7). */
+  cacheSaving: boolean;
 }
 
 /**
@@ -286,6 +312,7 @@ export function withProgress(view: SessionView | null, update: FetchProgressUpda
       progress: update.progress,
       eventCount: update.eventCount,
       timelineVersion: Math.max(view.timelineVersion, update.timelineVersion),
+      cacheSaving: update.cacheSaving,
     },
     update,
   );
@@ -341,6 +368,32 @@ export function selectTimeZone(timeZone: TimeZoneChoice): Promise<void> {
  */
 export function setLogFilter(text: string): Promise<void> {
   return invoke<void>("set_log_filter", { text });
+}
+
+/**
+ * Opens the settings dialog (U6:BR5.1). The new state arrives through
+ * `session-changed`.
+ */
+export function openSettings(): Promise<void> {
+  return invoke<void>("open_settings");
+}
+
+/** Closes the settings dialog without saving ([Cancel], Escape, U6:BR5.2). */
+export function cancelSettings(): Promise<void> {
+  return invoke<void>("cancel_settings");
+}
+
+/**
+ * Saves the cache setting; switching it off removes the cached files
+ * (U6:BR1.3). A failure is told in the dialog through `session-changed`.
+ */
+export function saveSettings(enabled: boolean): Promise<void> {
+  return invoke<void>("save_settings", { enabled });
+}
+
+/** Removes every cached file at once ([Clear cache], U6:BR1.4). */
+export function clearCache(): Promise<void> {
+  return invoke<void>("clear_cache");
 }
 
 /** Opens or closes the list of failed streams. */

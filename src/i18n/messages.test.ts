@@ -28,6 +28,7 @@ const CORE_KEYS = [
   "session.nothingPending",
   "session.staleGeneration",
   "session.noFailures",
+  "session.settingsClosed",
   "selection.profileRequired",
   "selection.regionRequired",
   "selection.logGroupRequired",
@@ -149,5 +150,37 @@ describe("message catalog", () => {
 
   it("returns an unknown key unchanged so the gap is visible", () => {
     expect(translate("en", "no.such.key")).toBe("no.such.key");
+  });
+
+  it("has the U6 cache notices word for word as U6:BR5.3 and the settings texts", () => {
+    expect(messages["cache.saving"]).toEqual({ en: "Saving to cache", ja: "キャッシュに保存中" });
+    expect(messages["cache.hit"]).toEqual({
+      en: "Shown from cache (AWS was not called)",
+      ja: "キャッシュから表示（AWS は呼んでいない）",
+    });
+    expect(messages["cache.readFailed"]).toEqual({
+      en: "The cache could not be read, so the logs were fetched again",
+      ja: "キャッシュが読めなかったので取り直した",
+    });
+    expect(messages["cache.saveFailed"]).toEqual({
+      en: "Could not save to the cache",
+      ja: "キャッシュに保存できなかった",
+    });
+    for (const key of [
+      "settings.open",
+      "settings.title",
+      "settings.cacheEnabled",
+      "settings.location",
+      "settings.warning",
+      "settings.clear",
+      "settings.cancel",
+      "settings.save",
+      "settings.notice.Cleared",
+      "settings.notice.ClearFailed",
+      "settings.notice.SaveFailed",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(translate("ja", "settings.location", { path: "/c" })).toBe("保存場所：/c");
   });
 });

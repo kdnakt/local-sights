@@ -34,6 +34,10 @@ vi.mock("./api", async (importOriginal) => {
     setFailureListOpen: vi.fn(),
     selectTimeZone: vi.fn(),
     setLogFilter: vi.fn(),
+    openSettings: vi.fn(),
+    cancelSettings: vi.fn(),
+    saveSettings: vi.fn(),
+    clearCache: vi.fn(),
     getRows: vi.fn(),
     findRowPosition: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
@@ -81,6 +85,10 @@ describe("App", () => {
       api.setFailureListOpen,
       api.selectTimeZone,
       api.setLogFilter,
+      api.openSettings,
+      api.cancelSettings,
+      api.saveSettings,
+      api.clearCache,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -119,6 +127,7 @@ describe("App", () => {
           timelineVersion,
           filterSummary: null,
           filterResultVersion: 0,
+          cacheSaving: false,
         });
       });
     update(7, 3, 2);
@@ -372,5 +381,53 @@ describe("App", () => {
       vi.useRealTimers();
     }
     expect(api.startFetch).not.toHaveBeenCalled();
+  });
+
+  it("opens the settings dialog from [*], saves through the core and returns the focus", async () => {
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    const settingsButton = screen.getByTestId("connection-bar-settings-button");
+    await user.click(settingsButton);
+    expect(api.openSettings).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
+
+    push(sessionView({ settingsDialog: "Open" }));
+    expect(screen.getByTestId("settings-dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("fetch-form-submit-button")).toBeDisabled();
+    expect(screen.getByTestId("log-filter-input")).toBeDisabled();
+    await user.click(screen.getByTestId("settings-dialog-cache-checkbox"));
+    await user.click(screen.getByTestId("settings-dialog-save-button"));
+    expect(api.saveSettings).toHaveBeenCalledWith(true);
+
+    push(sessionView({ settingsDialog: "Closed", cacheEnabled: true }));
+    expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
+    expect(settingsButton).toHaveFocus();
+  });
+
+  it("forwards Escape and [Clear cache] of the settings dialog", async () => {
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ settingsDialog: "Open" }));
+    await user.click(screen.getByTestId("settings-dialog-clear-button"));
+    expect(api.clearCache).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Escape}");
+    expect(api.cancelSettings).toHaveBeenCalledTimes(1);
+    expect(api.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("sends the log filter text again after the core refused it", async () => {
+    vi.mocked(api.setLogFilter)
+      .mockRejectedValueOnce({ key: "session.confirmationPending" })
+      .mockResolvedValue(undefined);
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    const input = screen.getByTestId("log-filter-input");
+    fireEvent.change(input, { target: { value: "error" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(api.setLogFilter).toHaveBeenCalledWith("error");
+    await waitFor(() => expect(api.setLogFilter).toHaveBeenCalledTimes(2));
+    expect(api.setLogFilter).toHaveBeenLastCalledWith("error");
   });
 });

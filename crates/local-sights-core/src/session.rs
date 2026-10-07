@@ -21,9 +21,23 @@
 //! keeps it across fetches, and refuses it while a connection change
 //! awaits confirmation. The summary goes into [`SessionView`],
 //! [`FetchProgressUpdate`] and [`FilterProgressUpdate`] (U5:BR3.3, BR3.6).
+//! Since U6 it holds the disk cache setting and the settings dialog: the
+//! app passes the settings file and the cache folder with
+//! [`AppSession::with_cache_location`] (a session made without them never
+//! touches the disk, U6:BR1.6); the setting is read at startup (U6:BR1.1,
+//! BR1.2), saved from the dialog, and switching it off removes every cached
+//! file (U6:BR1.3, review R-10). While the dialog is open, everything that
+//! a pending connection change refuses is refused too (U6:BR5.1). The
+//! session also shows "saving to the cache" while a fetch writes and the
+//! cache notices of the last fetch (U6:BR3.7, BR5.3, review R-11).
+
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::cache::LogCache;
+use crate::cache::plan::{CacheNotice, cache_notices};
+use crate::cache::settings::{load_settings, save_settings};
 use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileSelector};
 use crate::connection::{
     ChangeOutcome, ConnectionSelection, ConnectionState, ListingCommand, PendingConnectionChange,
@@ -103,6 +117,9 @@ pub enum SessionError {
     /// There is no failed stream or listing failure to show (BR6.3).
     #[error("there are no failures to show")]
     NoFailures,
+    /// The settings dialog is not open (U6:BR5.1).
+    #[error("the settings dialog is not open")]
+    SettingsClosed,
 }
 
 impl SessionError {
@@ -119,6 +136,7 @@ impl SessionError {
             SessionError::NothingPending => "session.nothingPending",
             SessionError::StaleGeneration => "session.staleGeneration",
             SessionError::NoFailures => "session.noFailures",
+            SessionError::SettingsClosed => "session.settingsClosed",
         }
     }
 }
@@ -154,6 +172,37 @@ pub struct ConnectionEffect {
     pub logs_cleared: bool,
     /// The change waits for the user's confirmation (U2:BR2.5).
     pub awaiting_confirmation: bool,
+}
+
+/// Where the settings file and the cache folder are, decided by the app at
+/// startup from the OS folders (U6:BR1.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheLocation {
+    /// The settings file (in the OS app settings folder).
+    pub settings_path: PathBuf,
+    /// The cache folder (in the OS cache folder).
+    pub cache_directory: PathBuf,
+}
+
+/// Whether the settings dialog is open (entities.md SessionState).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum SettingsDialog {
+    /// Closed.
+    #[default]
+    Closed,
+    /// Open: other operations are refused (U6:BR5.1).
+    Open,
+}
+
+/// What the settings dialog tells after an operation (U6:BR1.3, BR1.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SettingsNotice {
+    /// The cached files were removed.
+    Cleared,
+    /// The cached files could not all be removed.
+    ClearFailed,
+    /// The setting could not be written; it is unchanged.
+    SaveFailed,
 }
 
 /// Summary of the most recent finished fetch.
@@ -193,6 +242,8 @@ pub struct FetchProgressUpdate {
     pub filter_summary: Option<FilterSummary>,
     /// Result version of the log filter, for ordering (U5:BR3.6).
     pub filter_result_version: u64,
+    /// Whether the fetched logs are being written to the cache (U6:BR3.7).
+    pub cache_saving: bool,
 }
 
 /// The light message sent when the log filter result changes without a
@@ -306,6 +357,21 @@ pub struct SessionView {
     pub filter_summary: Option<FilterSummary>,
     /// Result version of the log filter, for ordering (U5:BR3.6).
     pub filter_result_version: u64,
+    /// Whether the disk cache is enabled (U6:BR1.1).
+    pub cache_enabled: bool,
+    /// The cache folder shown in the settings dialog (FR7.3); `None` when
+    /// the app gave no location.
+    pub cache_directory: Option<String>,
+    /// Whether the settings dialog is open (U6:BR5.1).
+    pub settings_dialog: SettingsDialog,
+    /// What the dialog tells after its last operation.
+    pub settings_notice: Option<SettingsNotice>,
+    /// Whether the settings dialog may be opened now (U6:BR5.1).
+    pub can_open_settings: bool,
+    /// Whether the fetched logs are being written to the cache (U6:BR3.7).
+    pub cache_saving: bool,
+    /// Cache notices of the last fetch (U6:BR5.3).
+    pub cache_notices: Vec<CacheNotice>,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -376,6 +442,15 @@ pub struct AppSession {
     applied_log_filter: String,
     /// Latest filter summary copied from the LogView (U5:BR3.6).
     filter: FilterState,
+    /// The settings file and cache folder; `None`: no disk (U6:BR1.6).
+    cache_location: Option<CacheLocation>,
+    /// Whether the disk cache is enabled (U6:BR1.1).
+    cache_enabled: bool,
+    settings_dialog: SettingsDialog,
+    settings_notice: Option<SettingsNotice>,
+    /// From `on_saving` to the end of the fetch (U6:BR3.7).
+    cache_saving: bool,
+    cache_notices: Vec<CacheNotice>,
 }
 
 impl Default for AppSession {
@@ -436,9 +511,152 @@ impl AppSession {
             log_filter: String::new(),
             applied_log_filter: String::new(),
             filter: FilterState::default(),
+            cache_location: None,
+            cache_enabled: false,
+            settings_dialog: SettingsDialog::Closed,
+            settings_notice: None,
+            cache_saving: false,
+            cache_notices: Vec::new(),
         };
         session.revalidate();
         session
+    }
+
+    /// The same session with the settings file and the cache folder the app
+    /// decided at startup (U6:BR1.6). Reads the setting: enabled only when
+    /// the file says so (U6:BR1.1, BR1.2).
+    pub fn with_cache_location(mut self, location: CacheLocation) -> Self {
+        self.cache_enabled = load_settings(&location.settings_path).cache_enabled();
+        self.cache_location = Some(location);
+        self
+    }
+
+    /// Whether the disk cache is enabled (U6:BR1.1).
+    pub fn cache_enabled(&self) -> bool {
+        self.cache_enabled
+    }
+
+    /// The settings file and cache folder, when the app gave them.
+    pub fn cache_location(&self) -> Option<&CacheLocation> {
+        self.cache_location.as_ref()
+    }
+
+    /// The cache a fetch starting now uses: `None` when disabled, so the
+    /// fetch neither reads nor writes the disk (U6:BR1.5).
+    pub fn fetch_cache(&self) -> Option<LogCache> {
+        let location = self.cache_location.as_ref()?;
+        self.cache_enabled
+            .then(|| LogCache::new(location.cache_directory.clone()))
+    }
+
+    /// Whether the settings dialog is open.
+    pub fn settings_dialog(&self) -> SettingsDialog {
+        self.settings_dialog
+    }
+
+    /// Whether the settings dialog may be opened: not while fetching (also
+    /// while writing the cache) and not while a connection change awaits
+    /// confirmation (U6:BR5.1).
+    pub fn can_open_settings(&self) -> bool {
+        self.phase != Phase::Fetching && self.connection.pending().is_none()
+    }
+
+    /// Opens the settings dialog (U6:BR5.1); opening it again keeps it open.
+    pub fn open_settings(&mut self) -> Result<(), SessionError> {
+        if self.phase == Phase::Fetching {
+            return Err(SessionError::Busy);
+        }
+        if self.connection.pending().is_some() {
+            return Err(SessionError::ConfirmationPending);
+        }
+        if self.settings_dialog == SettingsDialog::Closed {
+            self.settings_dialog = SettingsDialog::Open;
+            self.settings_notice = None;
+        }
+        Ok(())
+    }
+
+    /// Closes the dialog without saving ([Cancel] and Escape, U6:BR5.2);
+    /// files already removed by [Clear cache] stay removed.
+    pub fn cancel_settings(&mut self) {
+        self.settings_dialog = SettingsDialog::Closed;
+        self.settings_notice = None;
+    }
+
+    /// [Save] (U6:BR1.1, BR1.3, review R-10): writes the setting first. When
+    /// it cannot be written, the dialog stays open with the notice and the
+    /// setting is unchanged. When written, the setting is taken; switching
+    /// from enabled to disabled then removes every cached file, and the
+    /// dialog closes only when that worked too (otherwise it stays open,
+    /// disabled, with the notice).
+    pub fn save_settings(&mut self, enabled: bool) -> Result<(), SessionError> {
+        if self.settings_dialog != SettingsDialog::Open {
+            return Err(SessionError::SettingsClosed);
+        }
+        let Some(location) = self.cache_location.clone() else {
+            self.settings_notice = Some(SettingsNotice::SaveFailed);
+            return Ok(());
+        };
+        if let Err(error) = save_settings(&location.settings_path, enabled) {
+            eprintln!("local-sights: settings: the setting could not be saved: {error}");
+            self.settings_notice = Some(SettingsNotice::SaveFailed);
+            return Ok(());
+        }
+        let was_enabled = self.cache_enabled;
+        self.cache_enabled = enabled;
+        if was_enabled && !enabled && !self.clear_cache_files(&location) {
+            self.settings_notice = Some(SettingsNotice::ClearFailed);
+            return Ok(());
+        }
+        self.cancel_settings();
+        Ok(())
+    }
+
+    /// [Clear cache] (U6:BR1.4): removes every cached file at once and tells
+    /// the result in the dialog; the setting is unchanged and [Cancel] does
+    /// not bring the files back.
+    pub fn clear_cache(&mut self) -> Result<(), SessionError> {
+        if self.settings_dialog != SettingsDialog::Open {
+            return Err(SessionError::SettingsClosed);
+        }
+        let cleared = match self.cache_location.clone() {
+            Some(location) => self.clear_cache_files(&location),
+            None => true,
+        };
+        self.settings_notice = Some(if cleared {
+            SettingsNotice::Cleared
+        } else {
+            SettingsNotice::ClearFailed
+        });
+        Ok(())
+    }
+
+    fn clear_cache_files(&self, location: &CacheLocation) -> bool {
+        match LogCache::new(location.cache_directory.clone()).clear_all() {
+            Ok(_) => true,
+            Err(error) => {
+                eprintln!("local-sights: cache: the cache could not be cleared: {error}");
+                false
+            }
+        }
+    }
+
+    /// Records that the running job writes to the cache (U6:BR3.7); only
+    /// for the current job.
+    pub fn on_saving(&mut self, job_id: u64) {
+        if self.progress_of(job_id).is_some() {
+            self.cache_saving = true;
+        }
+    }
+
+    /// Whether the running fetch writes to the cache.
+    pub fn cache_saving(&self) -> bool {
+        self.cache_saving
+    }
+
+    /// Cache notices of the last fetch (U6:BR5.3).
+    pub fn cache_notices(&self) -> &[CacheNotice] {
+        &self.cache_notices
     }
 
     /// Generation of the connection: incremented whenever a connection
@@ -506,7 +724,9 @@ impl AppSession {
 
     /// Whether profile, region and log group may be changed (U2:BR2.6).
     pub fn can_change_connection(&self) -> bool {
-        self.phase != Phase::Fetching && self.connection.pending().is_none()
+        self.phase != Phase::Fetching
+            && self.connection.pending().is_none()
+            && self.settings_dialog == SettingsDialog::Closed
     }
 
     /// The chosen connection.
@@ -608,7 +828,7 @@ impl AppSession {
     /// Refused while a connection change awaits confirmation (U2:BR2.6);
     /// allowed during a fetch, since filtering calls no API.
     pub fn update_log_group_filter(&mut self, text: String) -> Result<(), SessionError> {
-        if self.connection.pending().is_some() {
+        if self.connection.pending().is_some() || self.settings_dialog == SettingsDialog::Open {
             return Err(SessionError::ConfirmationPending);
         }
         self.log_group_filter = text;
@@ -659,7 +879,7 @@ impl AppSession {
         if self.phase == Phase::Fetching {
             return Err(SessionError::Busy);
         }
-        if self.connection.pending().is_some() {
+        if self.connection.pending().is_some() || self.settings_dialog == SettingsDialog::Open {
             return Err(SessionError::ConfirmationPending);
         }
         let selection = self.connection.selection().clone();
@@ -682,6 +902,9 @@ impl AppSession {
         self.listing_failure = None;
         self.failure_list_open = false;
         self.progress = Some(FetchProgress::default());
+        // U6:BR5.3: the cache notices go with the next Fetch.
+        self.cache_saving = false;
+        self.cache_notices.clear();
         Ok(ValidatedFetch {
             request: validated.request.with_connection(profile, region),
             range: validated.range,
@@ -752,6 +975,7 @@ impl AppSession {
             timeline_version: self.timeline_version,
             filter_summary: self.filter.summary.clone(),
             filter_result_version: self.filter.result_version,
+            cache_saving: self.cache_saving,
         })
     }
 
@@ -763,7 +987,7 @@ impl AppSession {
     /// Returns the trimmed text the LogView must apply, or `None` when the
     /// trimmed text is the one already applied (nothing to redo).
     pub fn update_log_filter(&mut self, text: String) -> Result<Option<String>, SessionError> {
-        if self.connection.pending().is_some() {
+        if self.connection.pending().is_some() || self.settings_dialog == SettingsDialog::Open {
             return Err(SessionError::ConfirmationPending);
         }
         let trimmed = normalize_filter_text(&text);
@@ -813,6 +1037,13 @@ impl AppSession {
         self.set_timeline_version(timeline_version);
         self.current_job_id = Some(job.job_id);
         self.progress = None;
+        // U6:BR3.7, BR5.3: the write is over; keep the notices of this job.
+        self.cache_saving = false;
+        self.cache_notices = if job.status == JobStatus::Aborted {
+            Vec::new()
+        } else {
+            cache_notices(job.served_from_cache, job.read_failed, job.cache_outcome)
+        };
         if job.status == JobStatus::Aborted {
             self.phase = Phase::Idle;
             self.event_count = 0;
@@ -865,6 +1096,9 @@ impl AppSession {
             return false;
         }
         self.phase = Phase::Failed;
+        // U6 review R-11: as at a normal finish, the write is over.
+        self.cache_saving = false;
+        self.cache_notices.clear();
         let progress = self.progress.take().unwrap_or_default();
         self.last_job = Some(JobSummary {
             job_id: self.current_job_id.unwrap_or_default(),
@@ -982,6 +1216,16 @@ impl AppSession {
             log_filter: self.log_filter.clone(),
             filter_summary: self.filter.summary.clone(),
             filter_result_version: self.filter.result_version,
+            cache_enabled: self.cache_enabled,
+            cache_directory: self
+                .cache_location
+                .as_ref()
+                .map(|location| location.cache_directory.display().to_string()),
+            settings_dialog: self.settings_dialog,
+            settings_notice: self.settings_notice,
+            can_open_settings: self.can_open_settings(),
+            cache_saving: self.cache_saving,
+            cache_notices: self.cache_notices.clone(),
         }
     }
 
@@ -1010,7 +1254,9 @@ impl AppSession {
     fn ensure_can_change(&self) -> Result<(), SessionError> {
         if self.phase == Phase::Fetching {
             Err(SessionError::Busy)
-        } else if self.connection.pending().is_some() {
+        } else if self.connection.pending().is_some()
+            || self.settings_dialog == SettingsDialog::Open
+        {
             Err(SessionError::ConfirmationPending)
         } else {
             Ok(())
@@ -1045,6 +1291,7 @@ impl AppSession {
         self.listing_status = None;
         self.listing_failure = None;
         self.failure_list_open = false;
+        self.cache_notices.clear();
         if matches!(self.phase, Phase::Done | Phase::Failed) {
             self.phase = Phase::Idle;
         }
@@ -2492,5 +2739,288 @@ mod tests {
         assert_eq!(json["filtered"], true);
         assert_eq!(json["allCount"], 40);
         assert_eq!(json["resultVersion"], 8);
+    }
+
+    // ---- U6: disk cache settings and notices ---------------------------
+
+    use crate::cache::plan::{CacheKey, CacheOutcome, CoveredRange};
+    use crate::cache::settings::SettingsLoad;
+
+    fn location(dir: &tempfile::TempDir) -> CacheLocation {
+        CacheLocation {
+            settings_path: dir.path().join("config").join("settings.json"),
+            cache_directory: dir.path().join("cache"),
+        }
+    }
+
+    fn enabled_session(dir: &tempfile::TempDir) -> AppSession {
+        let location = location(dir);
+        crate::cache::settings::save_settings(&location.settings_path, true).unwrap();
+        AppSession::with_catalog(catalog()).with_cache_location(location)
+    }
+
+    fn some_cache_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        let cache = LogCache::new(location(dir).cache_directory);
+        let key = CacheKey::new(dev(), "ap-northeast-1".into(), "/g".into());
+        cache
+            .write(
+                &key,
+                CoveredRange {
+                    start_ms: 0,
+                    end_ms: 9,
+                },
+                Vec::new(),
+            )
+            .unwrap();
+        cache.entry_path(&key)
+    }
+
+    #[test]
+    fn a_session_without_a_location_is_disabled_and_has_no_disk() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert!(!session.cache_enabled());
+        assert_eq!(session.fetch_cache(), None);
+        assert_eq!(session.cache_location(), None);
+        let view = session.view();
+        assert!(!view.cache_enabled);
+        assert_eq!(view.cache_directory, None);
+        assert_eq!(view.settings_dialog, SettingsDialog::Closed);
+        assert!(view.can_open_settings);
+        session.open_settings().unwrap();
+        session.save_settings(true).unwrap();
+        assert!(!session.cache_enabled(), "nowhere to save it");
+        assert_eq!(
+            session.view().settings_notice,
+            Some(SettingsNotice::SaveFailed)
+        );
+        assert_eq!(session.settings_dialog(), SettingsDialog::Open);
+    }
+
+    #[test]
+    fn a_saved_enabled_setting_starts_enabled_with_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = enabled_session(&dir);
+        assert!(session.cache_enabled());
+        assert_eq!(
+            session
+                .fetch_cache()
+                .map(|cache| cache.directory().to_path_buf()),
+            Some(location(&dir).cache_directory)
+        );
+        let view = session.view();
+        assert!(view.cache_enabled);
+        assert_eq!(
+            view.cache_directory,
+            Some(location(&dir).cache_directory.display().to_string())
+        );
+        let fresh = tempfile::tempdir().unwrap();
+        let first_launch =
+            AppSession::with_catalog(catalog()).with_cache_location(location(&fresh));
+        assert!(!first_launch.cache_enabled(), "no settings file: disabled");
+        assert_eq!(first_launch.fetch_cache(), None);
+    }
+
+    #[test]
+    fn the_dialog_cannot_open_while_fetching_or_while_a_change_awaits_confirmation() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert!(!session.view().can_open_settings);
+        assert_eq!(session.open_settings(), Err(SessionError::Busy));
+
+        let mut session = done_session(5);
+        session
+            .select_profile(ProfileSelector::Named("prod".to_string()))
+            .unwrap();
+        assert!(!session.view().can_open_settings);
+        assert_eq!(
+            session.open_settings(),
+            Err(SessionError::ConfirmationPending)
+        );
+        assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
+    }
+
+    #[test]
+    fn while_the_dialog_is_open_fetching_and_changes_are_refused() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        let generation = session.connection_generation();
+        session.open_settings().unwrap();
+        let view = session.view();
+        assert!(!view.can_fetch && !view.can_change_connection && !view.can_reload);
+        let refused = SessionError::ConfirmationPending;
+        assert_eq!(session.begin_fetch(generation), Err(refused));
+        assert_eq!(
+            session.update_input(InputField::StartText, "2024-01-02 03:00:00".into()),
+            Err(refused)
+        );
+        assert_eq!(session.select_profile(dev()), Err(refused));
+        assert_eq!(session.select_region("us-east-1".into()), Err(refused));
+        assert_eq!(session.reload_log_groups(generation), Err(refused));
+        assert_eq!(
+            session.select_log_group("/aws/lambda/MyFunction".into(), generation),
+            Err(refused)
+        );
+        assert_eq!(session.update_log_group_filter("x".into()), Err(refused));
+        assert_eq!(session.update_log_filter("error".into()), Err(refused));
+        assert_eq!(session.log_filter(), "", "not taken");
+        session.cancel_settings();
+        assert!(session.can_fetch());
+        assert_eq!(
+            session.update_log_filter("error".into()),
+            Ok(Some("error".into()))
+        );
+    }
+
+    #[test]
+    fn saving_enabled_writes_the_setting_and_closes_the_dialog() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        session.open_settings().unwrap();
+        session.save_settings(true).unwrap();
+        assert!(session.cache_enabled());
+        assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
+        assert_eq!(session.view().settings_notice, None);
+        assert_eq!(
+            crate::cache::settings::load_settings(&location(&dir).settings_path),
+            SettingsLoad::Loaded {
+                cache_enabled: true
+            }
+        );
+        assert_eq!(
+            session.save_settings(false),
+            Err(SessionError::SettingsClosed)
+        );
+    }
+
+    #[test]
+    fn saving_disabled_removes_the_cached_files_and_closes_the_dialog() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let cached = some_cache_file(&dir);
+        session.open_settings().unwrap();
+        session.save_settings(false).unwrap();
+        assert!(!session.cache_enabled());
+        assert_eq!(session.fetch_cache(), None);
+        assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
+        assert!(!cached.exists());
+        assert!(
+            !crate::cache::settings::load_settings(&location(&dir).settings_path).cache_enabled()
+        );
+    }
+
+    #[test]
+    fn a_failed_removal_keeps_the_dialog_open_and_the_cache_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        // A regular file where the cache folder should be cannot be listed.
+        std::fs::write(location(&dir).cache_directory, b"not a folder").unwrap();
+        session.open_settings().unwrap();
+        session.save_settings(false).unwrap();
+        assert!(!session.cache_enabled(), "the setting was written");
+        assert_eq!(session.settings_dialog(), SettingsDialog::Open);
+        assert_eq!(
+            session.view().settings_notice,
+            Some(SettingsNotice::ClearFailed)
+        );
+        session.cancel_settings();
+        assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
+        assert_eq!(session.view().settings_notice, None);
+    }
+
+    #[test]
+    fn a_setting_that_cannot_be_written_keeps_the_dialog_and_the_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let config = location(&dir).settings_path.parent().unwrap().to_path_buf();
+        std::fs::remove_dir_all(&config).unwrap();
+        std::fs::write(&config, b"not a folder").unwrap();
+        session.open_settings().unwrap();
+        session.save_settings(false).unwrap();
+        assert!(session.cache_enabled(), "unchanged");
+        assert_eq!(session.settings_dialog(), SettingsDialog::Open);
+        assert_eq!(
+            session.view().settings_notice,
+            Some(SettingsNotice::SaveFailed)
+        );
+    }
+
+    #[test]
+    fn clear_cache_removes_the_files_at_once_and_keeps_the_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let cached = some_cache_file(&dir);
+        assert_eq!(session.clear_cache(), Err(SessionError::SettingsClosed));
+        assert!(cached.exists());
+        session.open_settings().unwrap();
+        session.clear_cache().unwrap();
+        assert!(!cached.exists());
+        assert!(session.cache_enabled());
+        assert_eq!(session.settings_dialog(), SettingsDialog::Open);
+        assert_eq!(
+            session.view().settings_notice,
+            Some(SettingsNotice::Cleared)
+        );
+        session.cancel_settings();
+        assert!(!cached.exists(), "cancel does not bring them back");
+    }
+
+    #[test]
+    fn saving_shows_only_for_the_running_job_and_the_finish_makes_the_notices() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let mut job = finished_job(&mut session, 3, None);
+        session.on_saving(job.job_id + 1000);
+        assert!(!session.cache_saving(), "an older job is ignored");
+        session.on_saving(job.job_id);
+        assert!(session.cache_saving());
+        assert!(session.progress_update().unwrap().cache_saving);
+        assert!(session.view().cache_saving);
+        job.read_failed = true;
+        job.cache_outcome = CacheOutcome::SaveFailed;
+        session.finish_fetch(&job, 2);
+        assert!(!session.cache_saving());
+        assert_eq!(
+            session.view().cache_notices,
+            vec![CacheNotice::ReadFailed, CacheNotice::SaveFailed]
+        );
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert!(
+            session.cache_notices().is_empty(),
+            "gone with the next Fetch"
+        );
+    }
+
+    #[test]
+    fn a_hit_is_noticed_and_an_abnormal_end_also_stops_saving() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let mut job = finished_job(&mut session, 2, None);
+        job.served_from_cache = true;
+        job.cache_outcome = CacheOutcome::Hit;
+        session.finish_fetch(&job, 2);
+        assert_eq!(session.cache_notices(), [CacheNotice::Hit]);
+
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let running = finished_job(&mut session, 0, None);
+        session.on_saving(running.job_id);
+        assert!(session.cache_saving());
+        let failure = ApiFailure::new(FailureKind::Other, &SafeDetailFields::default());
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), failure));
+        assert!(!session.cache_saving());
+        assert!(session.cache_notices().is_empty());
+        assert_eq!(session.phase(), Phase::Failed);
     }
 }

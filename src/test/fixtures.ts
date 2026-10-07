@@ -40,6 +40,13 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     logFilter: "",
     filterSummary: null,
     filterResultVersion: 0,
+    cacheEnabled: false,
+    cacheDirectory: "/Users/me/Library/Caches/dev.local-sights.app/log-cache",
+    settingsDialog: "Closed",
+    settingsNotice: null,
+    canOpenSettings: true,
+    cacheSaving: false,
+    cacheNotices: [],
     ...overrides,
   };
 }

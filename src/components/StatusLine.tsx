@@ -1,4 +1,4 @@
-import type { FilterSummary, SessionView } from "../api";
+import type { CacheNotice, FilterSummary, SessionView } from "../api";
 import type { Translate } from "../i18n/messages";
 
 export interface StatusLineProps {
@@ -16,13 +16,24 @@ export interface StatusLineProps {
  * listing is incomplete, and on failure the kind name and the safe detail
  * (U1:BR4.4, provisional wording until U7). Since U5, while a log filter
  * is in force: "filtered N of M events" (with the zero case in words) and,
- * while the scan runs, "filtering", next to the rest (U5:BR3.3).
+ * while the scan runs, "filtering", next to the rest (U5:BR3.3). Since U6:
+ * "saving to the cache" while a fetch writes the cache, and after a fetch
+ * its cache notices next to the count, in words (U6:BR5.3); a fetch shown
+ * from the cache has no stream counts, so only the count and the notice are
+ * shown (U6 review R-12).
  */
+
+const CACHE_NOTICE_KEYS: Record<CacheNotice, string> = {
+  Hit: "cache.hit",
+  ReadFailed: "cache.readFailed",
+  SaveFailed: "cache.saveFailed",
+};
 export function StatusLine({ session, t, onOpenFailures }: StatusLineProps) {
   const filter = session?.filterSummary ?? null;
   return (
     <div className="status-line" role="status" aria-live="polite" data-testid="status-line">
       {renderStatus(session, t, onOpenFailures)}
+      {session && renderCache(session, t)}
       {filter && <> {renderFilter(filter, t)}</>}
     </div>
   );
@@ -46,6 +57,27 @@ function renderFilter(filter: FilterSummary, t: Translate) {
   );
 }
 
+function renderCache(session: SessionView, t: Translate) {
+  if (session.phase === "Fetching") {
+    return (
+      session.cacheSaving && (
+        <>
+          {" "}
+          <span data-testid="status-line-cache-saving">{t("cache.saving")}</span>
+        </>
+      )
+    );
+  }
+  return session.cacheNotices.map((notice) => (
+    <span key={notice}>
+      {" "}
+      <span className="status-line-cache" data-testid={`status-line-cache-${notice}`}>
+        {t(CACHE_NOTICE_KEYS[notice])}
+      </span>
+    </span>
+  ));
+}
+
 function renderStatus(session: SessionView | null, t: Translate, onOpenFailures: () => void) {
   if (session === null || session.phase === "Idle") {
     return <span data-testid="status-line-idle">{t("status.idle")}</span>;
@@ -66,6 +98,15 @@ function renderStatus(session: SessionView | null, t: Translate, onOpenFailures:
           planned: progress.plannedStreamCount,
           count: progress.eventCount,
         })}
+      </span>
+    );
+  }
+  if (session.cacheNotices.includes("Hit")) {
+    return (
+      <span data-testid="status-line-count">
+        {session.eventCount === 0
+          ? t("status.zero")
+          : t("status.count", { count: session.eventCount })}
       </span>
     );
   }

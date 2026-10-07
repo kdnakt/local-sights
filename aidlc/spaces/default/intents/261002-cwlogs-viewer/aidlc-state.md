@@ -64,9 +64,7 @@
 
 
 
-- **Active Unit**: u6-disk-cache
 
-- **Unit State**: in-progress
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -129,7 +127,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-06T01:47:57Z
+- **Last Updated**: 2026-10-07T01:03:04Z
 
 - **Construction Autonomy Mode**: autonomous
 

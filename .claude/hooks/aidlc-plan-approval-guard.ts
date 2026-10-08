@@ -1294,6 +1294,16 @@ export async function run(input: string): Promise<number> {
         } else if (foreign.length) {
           authorityFailure = `swarm command names Units outside the emitted batch: ${foreign.join(", ")}`;
         }
+      } else if (
+        activeDirective.kind === "ask" &&
+        activeDirective.ask_type === GUARD_RECOVERY_ASK_TYPE &&
+        !mutation.opaqueShell &&
+        mutation.targets.every((candidate) =>
+          isTrustedRecordTarget(projectDir, candidate, recordDir))
+      ) {
+        // Carrying out a guard-recovery remedy (a re-review) writes only the
+        // intent record; no Code Generation source is touched.
+        return 0;
       } else if (activeDirective.kind !== "run-stage") {
         authorityFailure =
           `workspace mutation cannot select one approval target from directive kind "${activeDirective.kind}"`;

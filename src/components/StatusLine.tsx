@@ -1,5 +1,6 @@
 import type { CacheNotice, FilterSummary, SessionView } from "../api";
 import type { Translate } from "../i18n/messages";
+import { ErrorMessage } from "./ErrorMessage";
 
 export interface StatusLineProps {
   session: SessionView | null;
@@ -13,8 +14,9 @@ export interface StatusLineProps {
  * While fetching: finished / planned streams and the events so far. After a
  * fetch: the event count including the explicit zero case (U1:BR5.4), a
  * button with the number of failed streams, the notice that the stream
- * listing is incomplete, and on failure the kind name and the safe detail
- * (U1:BR4.4, provisional wording until U7). Since U5, while a log filter
+ * listing is incomplete, and on failure what happened in words (U7:BR2.4:
+ * only that sentence; what to do and the detail are in the error area above
+ * the list, replacing U1:BR4.4's kind name). Since U5, while a log filter
  * is in force: "filtered N of M events" (with the zero case in words) and,
  * while the scan runs, "filtering", next to the rest (U5:BR3.3). Since U6:
  * "saving to the cache" while a fetch writes the cache, and after a fetch
@@ -118,7 +120,7 @@ function renderStatus(session: SessionView | null, t: Translate, onOpenFailures:
       {failure && (
         <>
           <span className="status-line-error" data-testid="status-line-error">
-            {t("status.failed", { kind: t(`failure.kind.${failure.kind}`) })}
+            <ErrorMessage failure={failure} scene="Fetch" t={t} compact testId="status-line" />
           </span>{" "}
         </>
       )}
@@ -127,14 +129,6 @@ function renderStatus(session: SessionView | null, t: Translate, onOpenFailures:
           ? t("status.zero")
           : t("status.count", { count: session.eventCount })}
       </span>
-      {failure && (
-        <>
-          {" "}
-          <span className="status-line-detail" data-testid="status-line-detail">
-            {t("status.detail", { detail: failure.safeDetail })}
-          </span>
-        </>
-      )}
       {session.phase === "Done" && session.listingStatus === "Partial" && (
         <>
           {" "}

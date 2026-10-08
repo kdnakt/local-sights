@@ -1,5 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { detectLocale, isMessageKey, messages, timeZoneLabelKey, translate } from "./messages";
+import { render } from "@testing-library/react";
+import { createElement, type ReactElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { CloseConfirmDialog } from "../components/CloseConfirmDialog";
+import { FailureList } from "../components/FailureList";
+import { FetchErrorBanner } from "../components/FetchErrorBanner";
+import { LogGroupPane } from "../components/LogGroupPane";
+import { StatusLine } from "../components/StatusLine";
+import type { ApiFailure, FailureKind } from "../api";
+import { connectedView, sessionView } from "../test/fixtures";
+import {
+  detectLocale,
+  isMessageKey,
+  messages,
+  timeZoneLabelKey,
+  translate,
+  type Translate,
+} from "./messages";
 
 // Keys produced by the Rust core (request.rs, failure.rs, session.rs, catalog).
 const CORE_KEYS = [
@@ -67,7 +83,6 @@ describe("message catalog", () => {
   it("has the U3 screen texts in both languages and no stream name keys", () => {
     for (const key of [
       "table.stream",
-      "table.scroll",
       "status.listing",
       "status.fetching",
       "status.failedStreams",
@@ -182,5 +197,174 @@ describe("message catalog", () => {
       expect(isMessageKey(key), key).toBe(true);
     }
     expect(translate("ja", "settings.location", { path: "/c" })).toBe("保存場所：/c");
+  });
+
+  it("has the U7 error texts word for word as BR2.2", () => {
+    const canonical: Record<FailureKind, { what: [string, string]; next: [string, string] }> = {
+      AuthRequired: {
+        what: [
+          "Credentials could not be used (for example, the SSO session expired).",
+          "認証情報を使えませんでした（SSO のログイン切れなど）。",
+        ],
+        next: [
+          "If you use SSO, run aws sso login, then {retry}. Otherwise, check the profile settings or choose another profile.",
+          "SSO を使っているときは aws sso login を実行してから、{retry}。それ以外はプロファイルの設定を確認するか、別のプロファイルを選んでください。",
+        ],
+      },
+      AccessDenied: {
+        what: ["Access was denied.", "権限がないため拒否されました。"],
+        next: [
+          "Check the IAM permissions or choose another profile.",
+          "IAM の権限を確認するか、別のプロファイルを選んでください。",
+        ],
+      },
+      Throttled: {
+        what: ["AWS throttled the requests.", "AWS の呼び出しが多すぎるため、制限されました。"],
+        next: ["Wait a while, then {retry}.", "しばらく待ってから、{retry}。"],
+      },
+      Network: {
+        what: ["Could not connect to AWS.", "AWS に接続できませんでした。"],
+        next: ["Check your connection, then {retry}.", "接続を確認してから、{retry}。"],
+      },
+      NotFound: {
+        what: [
+          "The log group or stream was not found.",
+          "ロググループかストリームが見つかりませんでした。",
+        ],
+        next: [
+          "Press [Reload] to load the log group list again and choose again.",
+          "[再読み込み] でロググループの一覧を読み込み直して、選び直してください。",
+        ],
+      },
+      InvalidInput: {
+        what: ["AWS rejected the request.", "AWS が条件を受け付けませんでした。"],
+        next: ["Check the time range, then {retry}.", "時間範囲を見直してから、{retry}。"],
+      },
+      RegionMissing: {
+        what: [
+          "This profile has no default region.",
+          "このプロファイルには既定のリージョンがありません。",
+        ],
+        next: ["Choose a region in the top bar.", "上部バーでリージョンを選んでください。"],
+      },
+      Other: {
+        what: ["Something went wrong while calling AWS.", "AWS の呼び出しで問題が起きました。"],
+        next: [
+          "{retry}. If it keeps happening, check the details.",
+          "{retry}。続くときは詳細を確かめてください。",
+        ],
+      },
+    };
+    for (const [kind, texts] of Object.entries(canonical)) {
+      const what = `error.what.${kind}`;
+      const next = `error.next.${kind}`;
+      expect(isMessageKey(what) && messages[what], what).toEqual({
+        en: texts.what[0],
+        ja: texts.what[1],
+      });
+      expect(isMessageKey(next) && messages[next], next).toEqual({
+        en: texts.next[0],
+        ja: texts.next[1],
+      });
+    }
+    expect(messages["error.retry.fetch"]).toEqual({
+      en: "Press [Fetch] to fetch again",
+      ja: "[Fetch] でもう一度取得してください",
+    });
+    expect(messages["error.retry.listing"]).toEqual({
+      en: "Press [Reload] to load the list again",
+      ja: "[再読み込み] でもう一度読み込んでください",
+    });
+    expect(translate("ja", "status.detail", { detail: "x" })).toBe("詳細：x");
+  });
+
+  it("has the close confirmation word for word as BR3.3", () => {
+    expect(messages["close.title"]).toEqual({ en: "Fetching is in progress.", ja: "取得中です。" });
+    expect(messages["close.message"]).toEqual({
+      en: "If you close the window, the logs fetched so far will be lost.",
+      ja: "ウィンドウを閉じると、ここまで取得したログは失われます。",
+    });
+    expect(messages["close.keep"]).toEqual({ en: "Keep fetching", ja: "取得を続ける" });
+    expect(messages["close.close"]).toEqual({ en: "Close", ja: "閉じる" });
+  });
+
+  it("drops the provisional kind-name texts and uses the same placeholders in both languages", () => {
+    for (const gone of ["status.failed", "table.scroll"]) {
+      expect(isMessageKey(gone), gone).toBe(false);
+    }
+    expect(messages["logGroups.partial"].en).not.toContain("{kind}");
+    const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+    for (const [key, texts] of Object.entries(messages)) {
+      expect(placeholders(texts.ja), key).toEqual(placeholders(texts.en));
+    }
+  });
+
+  it("draws no fixed text: every word on the U7 parts comes from a message key", () => {
+    // A translator that shows only the key: anything else on screen is fixed text.
+    const keysOnly: Translate = (key) => `⟦${key}⟧`;
+    const failure: ApiFailure = { kind: "Throttled", safeDetail: "d", retryable: true };
+    const failedJob = {
+      jobId: 1,
+      status: "Failed" as const,
+      eventCount: 0,
+      plannedStreamCount: 0,
+      finishedStreamCount: 0,
+      failedStreamCount: 0,
+      failure,
+    };
+    const parts: Array<[ReactElement, string[]]> = [
+      [
+        createElement(FetchErrorBanner, {
+          session: sessionView({ phase: "Failed", lastJob: failedJob }),
+          t: keysOnly,
+        }),
+        [],
+      ],
+      [
+        createElement(StatusLine, {
+          session: sessionView({ phase: "Failed", lastJob: failedJob }),
+          t: keysOnly,
+          onOpenFailures: vi.fn(),
+        }),
+        [],
+      ],
+      [
+        createElement(LogGroupPane, {
+          session: connectedView({
+            logGroups: {
+              status: "Partial",
+              visibleGroups: [],
+              totalCount: 0,
+              emptyState: null,
+              failure,
+            },
+          }),
+          t: keysOnly,
+          onFilterChange: vi.fn(),
+          onReload: vi.fn(),
+          onSelect: vi.fn(),
+        }),
+        [],
+      ],
+      [
+        createElement(FailureList, {
+          failedStreams: [{ logStreamName: "stream-1", failure }],
+          listingFailure: failure,
+          t: keysOnly,
+          onClose: vi.fn(),
+        }),
+        ["stream-1"],
+      ],
+      [createElement(CloseConfirmDialog, { t: keysOnly, onKeep: vi.fn(), onClose: vi.fn() }), []],
+    ];
+    for (const [element, data] of parts) {
+      const { container, unmount } = render(element);
+      let rest = (container.textContent ?? "").replace(/⟦[^⟧]*⟧/g, "");
+      for (const value of data) {
+        rest = rest.replaceAll(value, "");
+      }
+      expect(rest.trim(), container.innerHTML).toBe("");
+      unmount();
+    }
   });
 });

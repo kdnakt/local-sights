@@ -37,14 +37,16 @@ function renderList(listing: ApiFailure | null = null) {
 }
 
 describe("FailureList", () => {
-  it("lists each failed stream with the kind name and the safe detail", () => {
+  it("lists each failed stream with what happened, what to do and the safe detail", () => {
     renderList();
     const items = screen.getAllByTestId("failure-list-item");
     expect(items).toHaveLength(2);
     expect(within(items[0]!).getByText("2024/01/02/[$LATEST]aaa")).toBeInTheDocument();
-    expect(items[0]).toHaveTextContent("Throttled");
-    expect(items[1]).toHaveTextContent("Access denied");
+    expect(items[0]).toHaveTextContent("AWS throttled the requests.");
+    expect(items[0]).toHaveTextContent("Wait a while, then Press [Fetch] to fetch again.");
+    expect(items[1]).toHaveTextContent("Access was denied.");
     expect(items[1]).toHaveTextContent("Details: kind=AccessDenied; api=GetLogEvents");
+    expect(items[1]).not.toHaveTextContent("Access denied");
     expect(screen.queryByTestId("failure-list-listing")).not.toBeInTheDocument();
   });
 
@@ -52,7 +54,10 @@ describe("FailureList", () => {
     renderList(listingFailure);
     const list = screen.getAllByRole("listitem");
     expect(list[0]).toHaveAttribute("data-testid", "failure-list-listing");
-    expect(list[0]).toHaveTextContent("Stream listing Network error");
+    expect(list[0]).toHaveTextContent("Stream listing");
+    expect(list[0]).toHaveTextContent("Could not connect to AWS.");
+    expect(list[0]).toHaveTextContent("Check your connection, then Press [Fetch] to fetch again.");
+    expect(list[0]).toHaveTextContent("Details: kind=Network; api=DescribeLogStreams");
     expect(list).toHaveLength(3);
   });
 

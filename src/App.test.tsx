@@ -40,6 +40,9 @@ vi.mock("./api", async (importOriginal) => {
     clearCache: vi.fn(),
     getRows: vi.fn(),
     findRowPosition: vi.fn(),
+    rowPositions: vi.fn(),
+    cancelClose: vi.fn(),
+    confirmClose: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
       handlers.session = handler;
       return () => undefined;
@@ -74,6 +77,13 @@ describe("App", () => {
       rowWindow(events, offset, limit),
     );
     vi.mocked(api.findRowPosition).mockResolvedValue({ position: null, timelineVersion: 0 });
+    vi.mocked(api.rowPositions).mockImplementation(async (keys) => ({
+      positions: keys.map(() => null),
+      timelineVersion: 0,
+      resultVersion: 0,
+      discardGeneration: 0,
+      totalCount: 0,
+    }));
     for (const command of [
       api.selectProfile,
       api.selectRegion,
@@ -89,6 +99,8 @@ describe("App", () => {
       api.cancelSettings,
       api.saveSettings,
       api.clearCache,
+      api.cancelClose,
+      api.confirmClose,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -243,7 +255,7 @@ describe("App", () => {
     );
     render(<App locale="en" />);
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
-    expect(screen.getAllByRole("cell")[0]).toHaveTextContent("core time 0");
+    expect(screen.getAllByRole("gridcell")[0]).toHaveTextContent("core time 0");
     expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 10:00:00");
     const readsBefore = vi.mocked(api.getRows).mock.calls.length;
 
@@ -268,7 +280,7 @@ describe("App", () => {
         startInput: { ...startInput, text: "2024-03-01 01:00:00" },
       }),
     );
-    await waitFor(() => expect(screen.getAllByRole("cell")[0]).toHaveTextContent("utc 0"));
+    await waitFor(() => expect(screen.getAllByRole("gridcell")[0]).toHaveTextContent("utc 0"));
     expect(vi.mocked(api.getRows).mock.calls.length).toBeGreaterThan(readsBefore);
     expect(screen.getByRole("columnheader", { name: "Time (UTC)" })).toBeInTheDocument();
     expect(screen.getByTestId("time-zone-toggle-utc-radio")).toBeChecked();
@@ -429,5 +441,116 @@ describe("App", () => {
     expect(api.setLogFilter).toHaveBeenCalledWith("error");
     await waitFor(() => expect(api.setLogFilter).toHaveBeenCalledTimes(2));
     expect(api.setLogFilter).toHaveBeenLastCalledWith("error");
+  });
+
+  it("asks before closing while fetching and forwards [Keep fetching], Escape and [Close]", async () => {
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 3, closeConfirmation: "Pending" }));
+    const dialog = screen.getByTestId("close-confirm-dialog");
+    expect(dialog).toHaveTextContent("Fetching is in progress.");
+    expect(dialog).toHaveTextContent(
+      "If you close the window, the logs fetched so far will be lost.",
+    );
+    // Focus on [Keep fetching]: an Enter pressed by mistake loses nothing.
+    expect(screen.getByTestId("close-confirm-keep-button")).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(api.cancelClose).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Escape}");
+    expect(api.cancelClose).toHaveBeenCalledTimes(2);
+    expect(api.confirmClose).not.toHaveBeenCalled();
+    // The fetch ended meanwhile: the dialog stays while the session asks (BR3.4).
+    push(sessionView({ phase: "Done", eventCount: 4, closeConfirmation: "Pending" }));
+    await user.click(screen.getByTestId("close-confirm-close-button"));
+    expect(api.confirmClose).toHaveBeenCalledTimes(1);
+    push(sessionView({ phase: "Done", eventCount: 4, closeConfirmation: "None" }));
+    expect(screen.queryByTestId("close-confirm-dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows a failed fetch in words above the list and only what happened in the status line", async () => {
+    render(<App locale="ja" />);
+    await screen.findByTestId("fetch-form");
+    push(
+      sessionView({
+        phase: "Failed",
+        eventCount: 3,
+        timelineVersion: 2,
+        lastJob: {
+          jobId: 1,
+          status: "Failed",
+          eventCount: 3,
+          plannedStreamCount: 0,
+          finishedStreamCount: 0,
+          failedStreamCount: 0,
+          failure: { kind: "Network", safeDetail: "kind=Network", retryable: true },
+        },
+      }),
+    );
+    const banner = screen.getByTestId("fetch-error-banner");
+    expect(banner).toHaveAttribute("role", "alert");
+    expect(screen.getByTestId("fetch-error-what")).toHaveTextContent(
+      "AWS に接続できませんでした。",
+    );
+    expect(screen.getByTestId("fetch-error-next")).toHaveTextContent(
+      "接続を確認してから、[Fetch] でもう一度取得してください。",
+    );
+    expect(screen.getByTestId("fetch-error-detail")).toHaveTextContent("詳細：kind=Network");
+    expect(screen.getByTestId("status-line-error")).toHaveTextContent(
+      "AWS に接続できませんでした。",
+    );
+    expect(screen.getByTestId("status-line")).not.toHaveTextContent("詳細");
+    // The rows fetched before the failure stay listed below.
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+  });
+
+  it("closes every expanded row when the session says the logs were discarded", async () => {
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Done", eventCount: 3, timelineVersion: 1 }));
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    await user.click(screen.getAllByTestId("log-table-row-line")[1]!);
+    expect(screen.getByTestId("log-table-expanded")).toHaveTextContent("middle");
+    push(sessionView({ phase: "Done", eventCount: 3, timelineVersion: 3, discardGeneration: 1 }));
+    await waitFor(() => expect(screen.queryByTestId("log-table-expanded")).not.toBeInTheDocument());
+  });
+
+  it("moves through the screen with Tab in the order of BR4.4", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(
+      connectedView({ selectedLogGroupName: "/aws/ecs/web", eventCount: 3, phase: "Done" }),
+    );
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("log-group-pane-list");
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    const seen: string[] = [];
+    for (let step = 0; step < 16; step += 1) {
+      await user.tab();
+      const active = document.activeElement;
+      const name = active?.getAttribute("data-testid") ?? active?.tagName ?? "";
+      if (seen.at(-1) !== name) {
+        seen.push(name);
+      }
+    }
+    const order = [
+      "connection-bar-profile-select",
+      "connection-bar-region-select",
+      "time-zone-toggle-local-radio",
+      "connection-bar-settings-button",
+      "log-group-pane-filter-input",
+      "log-group-pane-list",
+      "fetch-form-start-input",
+      "fetch-form-end-input",
+      "fetch-form-submit-button",
+      "log-filter-input",
+      "log-table",
+    ];
+    const positions = order.map((name) => seen.indexOf(name));
+    expect(
+      positions.every((position) => position >= 0),
+      seen.join(", "),
+    ).toBe(true);
+    expect([...positions].sort((x, y) => x - y)).toEqual(positions);
   });
 });

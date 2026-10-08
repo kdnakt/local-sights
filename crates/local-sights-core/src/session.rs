@@ -30,14 +30,21 @@
 //! a pending connection change refuses is refused too (U6:BR5.1). The
 //! session also shows "saving to the cache" while a fetch writes and the
 //! cache notices of the last fetch (U6:BR3.7, BR5.3, review R-11).
+//! Since U7 it decides whether closing the window or ending the app must be
+//! confirmed (closeConfirmation, U7:BR3.1-BR3.4), copies the discard
+//! generation of the LogView into the view (U7:BR1.6, review R-11), counts
+//! the cache writes under way so the settings dialog stays closed until
+//! they end (U6 review R-02), and splits each settings operation into the
+//! decision, the file work (done by the caller without the session lock)
+//! and its result (U6 review R-01).
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::LogCache;
 use crate::cache::plan::{CacheNotice, cache_notices};
 use crate::cache::settings::{load_settings, save_settings};
+use crate::cache::{LogCache, WriteTracker};
 use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileSelector};
 use crate::connection::{
     ChangeOutcome, ConnectionSelection, ConnectionState, ListingCommand, PendingConnectionChange,
@@ -192,6 +199,123 @@ pub enum SettingsDialog {
     Closed,
     /// Open: other operations are refused (U6:BR5.1).
     Open,
+}
+
+/// Whether closing the window or ending the app awaits an answer
+/// (U7:BR3.1). The screen shows the confirmation while it is Pending.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum CloseConfirmation {
+    /// Nothing is asked.
+    #[default]
+    None,
+    /// Closing was stopped while fetching; [Keep fetching] or [Close] is
+    /// awaited.
+    Pending,
+}
+
+/// What to do with a request to close the window or end the app (U7:BR3.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseDecision {
+    /// Let it close: nothing is fetched or written, or [Close] was chosen.
+    Allow,
+    /// Stop it; `changed` when the confirmation has just become Pending
+    /// (the screen must be told), not when it already was.
+    Prevent {
+        /// Whether closeConfirmation changed to Pending.
+        changed: bool,
+    },
+}
+
+/// The answer [Close] (U7:BR3.2): the app may end now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CloseConfirmed {
+    /// Whether a fetch is still running and must be aborted first (not
+    /// when it ended while the dialog was shown, BR3.4).
+    pub abort_fetch: bool,
+}
+
+/// File work of a settings operation, done by the caller without the
+/// session lock (U6 review R-01): [`SettingsWork::run`] blocks on the file
+/// system, then [`AppSession::finish_settings_work`] applies its result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsWork {
+    /// [Save]: write the setting; when it switched the cache off, then
+    /// remove every cached file (U6:BR1.3, review R-10).
+    Save {
+        /// Where the setting and the cache live.
+        location: CacheLocation,
+        /// The new setting.
+        enabled: bool,
+        /// Whether the cached files must be removed after writing.
+        clear_after: bool,
+    },
+    /// [Clear cache]: remove every cached file (U6:BR1.4).
+    Clear {
+        /// Where the cache lives.
+        location: CacheLocation,
+    },
+}
+
+/// Result of [`SettingsWork::run`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsWorkResult {
+    /// The setting was written; `cleared` says whether the cached files were
+    /// removed after it (`None`: nothing had to be removed).
+    Saved {
+        /// The setting written.
+        enabled: bool,
+        /// Whether the removal after it worked, when one was needed.
+        cleared: Option<bool>,
+    },
+    /// The setting could not be written; it is unchanged.
+    SaveFailed,
+    /// [Clear cache] ran; whether every cached file was removed.
+    Cleared(bool),
+}
+
+impl SettingsWork {
+    /// Does the file work (blocking): writes the setting first and removes
+    /// the cached files only after it was written (U6 review R-10).
+    /// Diagnostics go to standard error and hold no path or credential.
+    pub fn run(&self) -> SettingsWorkResult {
+        match self {
+            Self::Save {
+                location,
+                enabled,
+                clear_after,
+            } => {
+                if let Err(error) = save_settings(&location.settings_path, *enabled) {
+                    eprintln!("local-sights: settings: the setting could not be saved: {error}");
+                    return SettingsWorkResult::SaveFailed;
+                }
+                SettingsWorkResult::Saved {
+                    enabled: *enabled,
+                    cleared: clear_after.then(|| clear_cache_files(location)),
+                }
+            }
+            Self::Clear { location } => SettingsWorkResult::Cleared(clear_cache_files(location)),
+        }
+    }
+
+    /// The result to apply when the work could not run to its end (its
+    /// thread ended abnormally): the operation failed.
+    pub fn failed(&self) -> SettingsWorkResult {
+        match self {
+            Self::Save { .. } => SettingsWorkResult::SaveFailed,
+            Self::Clear { .. } => SettingsWorkResult::Cleared(false),
+        }
+    }
+}
+
+/// Removes every cached file of `location`; whether that worked.
+fn clear_cache_files(location: &CacheLocation) -> bool {
+    match LogCache::new(location.cache_directory.clone()).clear_all() {
+        Ok(_) => true,
+        Err(error) => {
+            eprintln!("local-sights: cache: the cache could not be cleared: {error}");
+            false
+        }
+    }
 }
 
 /// What the settings dialog tells after an operation (U6:BR1.3, BR1.4).
@@ -372,6 +496,11 @@ pub struct SessionView {
     pub cache_saving: bool,
     /// Cache notices of the last fetch (U6:BR5.3).
     pub cache_notices: Vec<CacheNotice>,
+    /// Times the held logs were discarded, copied from the LogView
+    /// (U7:BR1.6, review R-11).
+    pub discard_generation: u64,
+    /// Whether closing awaits an answer (U7:BR3.1).
+    pub close_confirmation: CloseConfirmation,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -451,6 +580,16 @@ pub struct AppSession {
     /// From `on_saving` to the end of the fetch (U6:BR3.7).
     cache_saving: bool,
     cache_notices: Vec<CacheNotice>,
+    /// Cache writes under way, also of a fetch that ended abnormally (U6
+    /// review R-02).
+    cache_writes: WriteTracker,
+    /// A settings operation's file work is under way (U6 review R-01).
+    settings_busy: bool,
+    /// Latest discard generation of the LogView (U7:BR1.6).
+    discard_generation: u64,
+    close_confirmation: CloseConfirmation,
+    /// [Close] was chosen: the app may end without asking again (BR3.2).
+    close_confirmed: bool,
 }
 
 impl Default for AppSession {
@@ -517,6 +656,11 @@ impl AppSession {
             settings_notice: None,
             cache_saving: false,
             cache_notices: Vec::new(),
+            cache_writes: WriteTracker::new(),
+            settings_busy: false,
+            discard_generation: 0,
+            close_confirmation: CloseConfirmation::None,
+            close_confirmed: false,
         };
         session.revalidate();
         session
@@ -542,11 +686,18 @@ impl AppSession {
     }
 
     /// The cache a fetch starting now uses: `None` when disabled, so the
-    /// fetch neither reads nor writes the disk (U6:BR1.5).
+    /// fetch neither reads nor writes the disk (U6:BR1.5). Its writes are
+    /// counted in [`AppSession::cache_writes`] (U6 review R-02).
     pub fn fetch_cache(&self) -> Option<LogCache> {
         let location = self.cache_location.as_ref()?;
-        self.cache_enabled
-            .then(|| LogCache::new(location.cache_directory.clone()))
+        self.cache_enabled.then(|| {
+            LogCache::new(location.cache_directory.clone()).with_writes(self.cache_writes.clone())
+        })
+    }
+
+    /// The cache writes under way (U6 review R-02).
+    pub fn cache_writes(&self) -> &WriteTracker {
+        &self.cache_writes
     }
 
     /// Whether the settings dialog is open.
@@ -554,16 +705,22 @@ impl AppSession {
         self.settings_dialog
     }
 
-    /// Whether the settings dialog may be opened: not while fetching (also
-    /// while writing the cache) and not while a connection change awaits
-    /// confirmation (U6:BR5.1).
+    /// Whether the settings dialog may be opened: not while fetching, not
+    /// while a cache write runs (also one that outlived its fetch, U6 review
+    /// R-02) and not while a connection change awaits confirmation
+    /// (U6:BR5.1).
     pub fn can_open_settings(&self) -> bool {
-        self.phase != Phase::Fetching && self.connection.pending().is_none()
+        !self.is_busy_with_disk() && self.connection.pending().is_none()
+    }
+
+    /// Fetching, writing the cache or doing a settings operation's files.
+    fn is_busy_with_disk(&self) -> bool {
+        self.phase == Phase::Fetching || self.cache_writes.is_writing() || self.settings_busy
     }
 
     /// Opens the settings dialog (U6:BR5.1); opening it again keeps it open.
     pub fn open_settings(&mut self) -> Result<(), SessionError> {
-        if self.phase == Phase::Fetching {
+        if self.phase == Phase::Fetching || self.cache_writes.is_writing() {
             return Err(SessionError::Busy);
         }
         if self.connection.pending().is_some() {
@@ -583,62 +740,107 @@ impl AppSession {
         self.settings_notice = None;
     }
 
-    /// [Save] (U6:BR1.1, BR1.3, review R-10): writes the setting first. When
-    /// it cannot be written, the dialog stays open with the notice and the
-    /// setting is unchanged. When written, the setting is taken; switching
-    /// from enabled to disabled then removes every cached file, and the
-    /// dialog closes only when that worked too (otherwise it stays open,
-    /// disabled, with the notice).
+    /// [Save] (U6:BR1.1, BR1.3, review R-10) in one step: the decision, the
+    /// file work and its result. The app does the file work without the
+    /// session lock with [`AppSession::begin_save_settings`],
+    /// [`SettingsWork::run`] and [`AppSession::finish_settings_work`] (U6
+    /// review R-01).
     pub fn save_settings(&mut self, enabled: bool) -> Result<(), SessionError> {
-        if self.settings_dialog != SettingsDialog::Open {
-            return Err(SessionError::SettingsClosed);
+        let work = self.begin_save_settings(enabled)?;
+        self.run_settings_work(work);
+        Ok(())
+    }
+
+    /// [Clear cache] (U6:BR1.4) in one step; see [`AppSession::save_settings`].
+    pub fn clear_cache(&mut self) -> Result<(), SessionError> {
+        let work = self.begin_clear_cache()?;
+        self.run_settings_work(work);
+        Ok(())
+    }
+
+    fn run_settings_work(&mut self, work: Option<SettingsWork>) {
+        if let Some(work) = work {
+            let result = work.run();
+            self.finish_settings_work(result);
         }
+    }
+
+    /// Decides [Save] (U6:BR1.1, BR1.3): refused unless the dialog is open
+    /// and no other settings work runs. Without a location nothing can be
+    /// saved: the dialog tells so and there is no work. Otherwise returns
+    /// the work: write the setting, then remove the cached files when it
+    /// switches an enabled cache off (U6 review R-10).
+    pub fn begin_save_settings(
+        &mut self,
+        enabled: bool,
+    ) -> Result<Option<SettingsWork>, SessionError> {
+        self.ensure_settings_work_allowed()?;
         let Some(location) = self.cache_location.clone() else {
             self.settings_notice = Some(SettingsNotice::SaveFailed);
-            return Ok(());
+            return Ok(None);
         };
-        if let Err(error) = save_settings(&location.settings_path, enabled) {
-            eprintln!("local-sights: settings: the setting could not be saved: {error}");
-            self.settings_notice = Some(SettingsNotice::SaveFailed);
-            return Ok(());
-        }
-        let was_enabled = self.cache_enabled;
-        self.cache_enabled = enabled;
-        if was_enabled && !enabled && !self.clear_cache_files(&location) {
-            self.settings_notice = Some(SettingsNotice::ClearFailed);
-            return Ok(());
-        }
-        self.cancel_settings();
-        Ok(())
+        self.settings_busy = true;
+        Ok(Some(SettingsWork::Save {
+            location,
+            enabled,
+            clear_after: self.cache_enabled && !enabled,
+        }))
     }
 
-    /// [Clear cache] (U6:BR1.4): removes every cached file at once and tells
-    /// the result in the dialog; the setting is unchanged and [Cancel] does
-    /// not bring the files back.
-    pub fn clear_cache(&mut self) -> Result<(), SessionError> {
+    /// Decides [Clear cache] (U6:BR1.4); without a location there is
+    /// nothing to remove and the dialog says it was cleared.
+    pub fn begin_clear_cache(&mut self) -> Result<Option<SettingsWork>, SessionError> {
+        self.ensure_settings_work_allowed()?;
+        let Some(location) = self.cache_location.clone() else {
+            self.settings_notice = Some(SettingsNotice::Cleared);
+            return Ok(None);
+        };
+        self.settings_busy = true;
+        Ok(Some(SettingsWork::Clear { location }))
+    }
+
+    /// Applies the result of the file work (U6:BR1.1, BR1.3, BR1.4, review
+    /// R-10): a setting that could not be written is unchanged and the
+    /// dialog says so; a written setting is taken, and the dialog closes
+    /// only when the removal after it (if any) worked too; [Clear cache]
+    /// tells its result. A dialog cancelled meanwhile stays closed and
+    /// shows nothing.
+    pub fn finish_settings_work(&mut self, result: SettingsWorkResult) {
+        self.settings_busy = false;
+        let notice = match result {
+            SettingsWorkResult::SaveFailed => Some(SettingsNotice::SaveFailed),
+            SettingsWorkResult::Saved { enabled, cleared } => {
+                self.cache_enabled = enabled;
+                (cleared == Some(false)).then_some(SettingsNotice::ClearFailed)
+            }
+            SettingsWorkResult::Cleared(true) => Some(SettingsNotice::Cleared),
+            SettingsWorkResult::Cleared(false) => Some(SettingsNotice::ClearFailed),
+        };
+        if self.settings_dialog != SettingsDialog::Open {
+            return;
+        }
+        let closes = matches!(
+            result,
+            SettingsWorkResult::Saved {
+                cleared: None | Some(true),
+                ..
+            }
+        );
+        if closes {
+            self.cancel_settings();
+        } else {
+            self.settings_notice = notice;
+        }
+    }
+
+    fn ensure_settings_work_allowed(&self) -> Result<(), SessionError> {
         if self.settings_dialog != SettingsDialog::Open {
             return Err(SessionError::SettingsClosed);
         }
-        let cleared = match self.cache_location.clone() {
-            Some(location) => self.clear_cache_files(&location),
-            None => true,
-        };
-        self.settings_notice = Some(if cleared {
-            SettingsNotice::Cleared
-        } else {
-            SettingsNotice::ClearFailed
-        });
-        Ok(())
-    }
-
-    fn clear_cache_files(&self, location: &CacheLocation) -> bool {
-        match LogCache::new(location.cache_directory.clone()).clear_all() {
-            Ok(_) => true,
-            Err(error) => {
-                eprintln!("local-sights: cache: the cache could not be cleared: {error}");
-                false
-            }
+        if self.settings_busy {
+            return Err(SessionError::Busy);
         }
+        Ok(())
     }
 
     /// Records that the running job writes to the cache (U6:BR3.7); only
@@ -879,8 +1081,14 @@ impl AppSession {
         if self.phase == Phase::Fetching {
             return Err(SessionError::Busy);
         }
-        if self.connection.pending().is_some() || self.settings_dialog == SettingsDialog::Open {
+        if self.connection.pending().is_some()
+            || self.settings_dialog == SettingsDialog::Open
+            || self.close_confirmation == CloseConfirmation::Pending
+        {
             return Err(SessionError::ConfirmationPending);
+        }
+        if self.settings_busy {
+            return Err(SessionError::Busy);
         }
         let selection = self.connection.selection().clone();
         let (Some(profile), Some(region), Some(_), Ok(validated)) = (
@@ -1075,6 +1283,65 @@ impl AppSession {
         self.timeline_version = self.timeline_version.max(version);
     }
 
+    /// Records the discard generation the caller read from the LogView
+    /// under the session lock, as the timeline version (U7:BR1.6, review
+    /// R-11); it never goes back.
+    pub fn set_discard_generation(&mut self, generation: u64) {
+        self.discard_generation = self.discard_generation.max(generation);
+    }
+
+    /// U7:BR3.1: a request to close the window or to end the app. Allowed
+    /// when [Close] was already chosen, and when nothing is fetched or
+    /// written; while fetching (also while the cache is written, even by a
+    /// fetch that ended abnormally) it is stopped and the confirmation
+    /// becomes Pending. A request while Pending stays stopped and changes
+    /// nothing.
+    pub fn request_close(&mut self) -> CloseDecision {
+        if self.close_confirmed {
+            return CloseDecision::Allow;
+        }
+        if self.close_confirmation == CloseConfirmation::Pending {
+            return CloseDecision::Prevent { changed: false };
+        }
+        if self.phase == Phase::Fetching || self.cache_writes.is_writing() {
+            self.close_confirmation = CloseConfirmation::Pending;
+            return CloseDecision::Prevent { changed: true };
+        }
+        CloseDecision::Allow
+    }
+
+    /// U7:BR3.2: [Keep fetching] or Escape. Returns whether a confirmation
+    /// was pending; the fetch goes on either way.
+    pub fn cancel_close(&mut self) -> bool {
+        let pending = self.close_confirmation == CloseConfirmation::Pending;
+        self.close_confirmation = CloseConfirmation::None;
+        pending
+    }
+
+    /// U7:BR3.2, BR3.4: [Close]. Only while Pending: marks that the app may
+    /// end without asking again and says whether a fetch must be aborted
+    /// first (not when it ended while the dialog was shown). `None` when
+    /// nothing was asked.
+    pub fn confirm_close(&mut self) -> Option<CloseConfirmed> {
+        if self.close_confirmation != CloseConfirmation::Pending {
+            return None;
+        }
+        self.close_confirmed = true;
+        Some(CloseConfirmed {
+            abort_fetch: self.phase == Phase::Fetching,
+        })
+    }
+
+    /// Whether closing awaits an answer.
+    pub fn close_confirmation(&self) -> CloseConfirmation {
+        self.close_confirmation
+    }
+
+    /// Whether [Close] was chosen (BR3.2).
+    pub fn close_confirmed(&self) -> bool {
+        self.close_confirmed
+    }
+
     /// Opens or closes the list of failures (BR6.3). Opening needs a failed
     /// stream or a listing failure; closing always works.
     pub fn set_failure_list_open(&mut self, open: bool) -> Result<(), SessionError> {
@@ -1226,6 +1493,8 @@ impl AppSession {
             can_open_settings: self.can_open_settings(),
             cache_saving: self.cache_saving,
             cache_notices: self.cache_notices.clone(),
+            discard_generation: self.discard_generation,
+            close_confirmation: self.close_confirmation,
         }
     }
 
@@ -3022,5 +3291,230 @@ mod tests {
         assert!(!session.cache_saving());
         assert!(session.cache_notices().is_empty());
         assert_eq!(session.phase(), Phase::Failed);
+    }
+
+    // ---- U7: closing while fetching (BR3.1-BR3.4), the discard generation
+    // (review R-11) and the cache write mark (U6 review R-02) ----
+
+    fn fetching_session() -> AppSession {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        session
+    }
+
+    #[test]
+    fn closing_when_not_fetching_is_allowed_without_asking() {
+        let mut session = done_session(3);
+        assert_eq!(session.request_close(), CloseDecision::Allow);
+        assert_eq!(session.close_confirmation(), CloseConfirmation::None);
+        assert_eq!(session.view().close_confirmation, CloseConfirmation::None);
+        let mut idle = AppSession::with_catalog(catalog());
+        assert_eq!(idle.request_close(), CloseDecision::Allow);
+    }
+
+    #[test]
+    fn closing_while_fetching_is_stopped_and_a_second_request_stays_stopped() {
+        let mut session = fetching_session();
+        assert_eq!(
+            session.request_close(),
+            CloseDecision::Prevent { changed: true }
+        );
+        assert_eq!(
+            session.view().close_confirmation,
+            CloseConfirmation::Pending
+        );
+        assert_eq!(
+            session.request_close(),
+            CloseDecision::Prevent { changed: false }
+        );
+        assert_eq!(session.close_confirmation(), CloseConfirmation::Pending);
+        assert_eq!(session.phase(), Phase::Fetching, "the fetch goes on");
+    }
+
+    #[test]
+    fn closing_while_a_cache_write_runs_after_an_abnormal_end_is_also_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let cache = session.fetch_cache().unwrap();
+        let writing = cache.writes().start();
+        let failure = ApiFailure::new(FailureKind::Other, &SafeDetailFields::default());
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), failure));
+        assert_eq!(session.phase(), Phase::Failed);
+        assert_eq!(
+            session.request_close(),
+            CloseDecision::Prevent { changed: true }
+        );
+        assert!(session.cancel_close());
+        drop(writing);
+        assert_eq!(session.request_close(), CloseDecision::Allow);
+    }
+
+    #[test]
+    fn keep_fetching_returns_to_none_and_the_fetch_goes_on() {
+        let mut session = fetching_session();
+        session.request_close();
+        assert!(session.cancel_close());
+        assert_eq!(session.view().close_confirmation, CloseConfirmation::None);
+        assert_eq!(session.phase(), Phase::Fetching);
+        assert!(!session.cancel_close(), "nothing to cancel");
+        assert_eq!(
+            session.request_close(),
+            CloseDecision::Prevent { changed: true },
+            "asked again next time"
+        );
+    }
+
+    #[test]
+    fn close_stops_the_fetch_and_marks_that_the_app_may_end() {
+        let mut session = fetching_session();
+        assert_eq!(session.confirm_close(), None, "nothing was asked");
+        assert!(!session.close_confirmed());
+        session.request_close();
+        assert_eq!(
+            session.confirm_close(),
+            Some(CloseConfirmed { abort_fetch: true })
+        );
+        assert!(session.close_confirmed());
+        assert_eq!(
+            session.request_close(),
+            CloseDecision::Allow,
+            "the exit that follows is not stopped again"
+        );
+    }
+
+    #[test]
+    fn the_confirmation_stays_when_the_fetch_ends_meanwhile() {
+        let mut session = fetching_session();
+        session.request_close();
+        let job = finished_job(&mut session, 4, None);
+        session.finish_fetch(&job, 2);
+        assert_eq!(session.phase(), Phase::Done);
+        assert_eq!(
+            session.view().close_confirmation,
+            CloseConfirmation::Pending
+        );
+        assert_eq!(
+            session.begin_fetch(session.connection_generation()),
+            Err(SessionError::ConfirmationPending)
+        );
+        assert_eq!(
+            session.confirm_close(),
+            Some(CloseConfirmed { abort_fetch: false }),
+            "nothing left to stop"
+        );
+    }
+
+    #[test]
+    fn the_view_carries_the_newest_discard_generation() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert_eq!(session.view().discard_generation, 0);
+        session.set_discard_generation(3);
+        session.set_discard_generation(2);
+        assert_eq!(session.view().discard_generation, 3);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(json["discardGeneration"], 3);
+        assert_eq!(json["closeConfirmation"], "None");
+    }
+
+    #[test]
+    fn the_settings_dialog_cannot_open_while_a_cache_write_is_under_way() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let writing = session.cache_writes().start();
+        assert!(!session.can_open_settings());
+        assert!(!session.view().can_open_settings);
+        assert_eq!(session.open_settings(), Err(SessionError::Busy));
+        drop(writing);
+        assert!(session.can_open_settings());
+        session.open_settings().unwrap();
+    }
+
+    // ---- U7: the settings file work outside the session lock (U6 review
+    // R-01) keeps the order of U6 review R-10 ----
+
+    #[test]
+    fn the_settings_work_writes_the_setting_first_and_removes_the_files_only_after() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let cached = some_cache_file(&dir);
+        session.open_settings().unwrap();
+        let work = session.begin_save_settings(false).unwrap().unwrap();
+        assert_eq!(
+            work,
+            SettingsWork::Save {
+                location: location(&dir),
+                enabled: false,
+                clear_after: true,
+            }
+        );
+        // Decided under the lock; nothing on disk changed yet.
+        assert!(cached.exists());
+        assert!(session.cache_enabled());
+        assert_eq!(session.begin_clear_cache(), Err(SessionError::Busy));
+        let result = work.run();
+        assert_eq!(
+            result,
+            SettingsWorkResult::Saved {
+                enabled: false,
+                cleared: Some(true),
+            }
+        );
+        assert!(!cached.exists());
+        session.finish_settings_work(result);
+        assert!(!session.cache_enabled());
+        assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
+    }
+
+    #[test]
+    fn a_setting_that_cannot_be_written_removes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let cached = some_cache_file(&dir);
+        let config = location(&dir).settings_path.parent().unwrap().to_path_buf();
+        std::fs::remove_dir_all(&config).unwrap();
+        std::fs::write(&config, b"not a folder").unwrap();
+        session.open_settings().unwrap();
+        let work = session.begin_save_settings(false).unwrap().unwrap();
+        assert_eq!(work.run(), SettingsWorkResult::SaveFailed);
+        assert_eq!(work.failed(), SettingsWorkResult::SaveFailed);
+        assert!(
+            cached.exists(),
+            "the files stay when the setting was not written"
+        );
+        session.finish_settings_work(SettingsWorkResult::SaveFailed);
+        assert!(session.cache_enabled());
+        assert_eq!(
+            session.view().settings_notice,
+            Some(SettingsNotice::SaveFailed)
+        );
+    }
+
+    #[test]
+    fn while_the_settings_work_runs_a_fetch_waits_and_a_cancelled_dialog_stays_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        fill_valid(&mut session);
+        session.open_settings().unwrap();
+        let work = session.begin_clear_cache().unwrap().unwrap();
+        session.cancel_settings();
+        assert_eq!(
+            session.begin_fetch(session.connection_generation()),
+            Err(SessionError::Busy)
+        );
+        assert!(!session.can_open_settings());
+        let result = work.run();
+        assert_eq!(result, SettingsWorkResult::Cleared(true));
+        assert_eq!(work.failed(), SettingsWorkResult::Cleared(false));
+        session.finish_settings_work(result);
+        assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
+        assert_eq!(session.view().settings_notice, None);
+        assert!(session.begin_fetch(session.connection_generation()).is_ok());
     }
 }

@@ -1,4 +1,9 @@
-/* Standard controls only; visual polish is out of scope for the MVP. */
+/*
+ * Standard controls only; visual polish is out of scope for the MVP.
+ * U7:BR4.2: only system colors (Canvas, CanvasText, Highlight, GrayText...)
+ * with `color-scheme: light dark`, so the screen follows the OS light or
+ * dark mode without reopening; no fixed color anywhere.
+ */
 :root {
   font-family: system-ui, sans-serif;
   font-size: 14px;
@@ -7,6 +12,8 @@
 
 body {
   margin: 0;
+  background: Canvas;
+  color: CanvasText;
 }
 
 .app {
@@ -105,7 +112,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgb(0 0 0 / 30%);
+  background: color-mix(in srgb, CanvasText 30%, transparent);
 }
 
 .confirm-dialog {
@@ -148,13 +155,23 @@ body {
   font-weight: bold;
 }
 
-/* Virtual log table (U3:BR6.4): fixed row height and column widths. */
+/*
+ * Virtual log table (U3:BR6.4, U7:BR1.4): each row is a 22 px line with
+ * fixed column widths, and an expanded row also has its expansion below.
+ */
 .log-table {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   border: 1px solid GrayText;
+}
+
+/* U7:BR4.4: the focus is always visible. */
+.log-table:focus-visible,
+.log-expanded-text:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: -2px;
 }
 
 .log-table-header {
@@ -174,6 +191,11 @@ body {
 }
 
 .log-table-row {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.log-table-line {
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -185,6 +207,61 @@ body {
   position: absolute;
   left: 0;
   right: 0;
+}
+
+.log-table-content .log-table-line {
+  cursor: default;
+}
+
+/* U7:BR1.5: the selected row in the standard selection colors (and aria-selected). */
+.log-table-row[aria-selected="true"] > .log-table-line {
+  background: Highlight;
+  color: HighlightText;
+}
+
+/*
+ * U7:BR1.2, BR1.3: the whole message as text, wrapped anywhere (also one
+ * long word), 18 px lines with 6 px padding, at most 20 lines (372 px),
+ * scrolling inside beyond that; selectable for copying.
+ */
+.log-expanded-text {
+  box-sizing: border-box;
+  max-height: 372px;
+  overflow-y: auto;
+  padding: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: inset 0 1px 0 GrayText;
+}
+
+/* U7:BR1.9: measures one monospace character once at startup. */
+.log-expanded-probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+/* U7:BR2.4, BR2.5: errors in words, one sentence per line. */
+.fetch-error-banner {
+  border: 1px solid GrayText;
+  padding: 6px 10px;
+}
+
+.error-message p {
+  margin: 0;
+}
+
+.error-message-what {
+  font-weight: bold;
 }
 
 .log-table-time,

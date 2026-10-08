@@ -7,6 +7,11 @@
  * filter field and its status texts (`logFilter.*`, `status.filter.*`).
  * Since U6 the settings dialog (`settings.*`) and the cache notices of the
  * status line (`cache.*`), whose wording is U6:BR5.3 word for word.
+ * Since U7 the error texts (`error.*`, U7:BR2.2 word for word, replacing the
+ * provisional "Failed: kind name" of U1:BR4.4), the close confirmation
+ * (`close.*`, U7:BR3.3 word for word) and the expanded message's name
+ * (`table.expanded`); the U3 scrolling hint of the list is gone (U7:BR1.5).
+ * `failure.kind.*` stay because the core names the kinds with them.
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -116,8 +121,8 @@ export const messages = {
   "logGroups.reload": { en: "Reload", ja: "再読み込み" },
   "logGroups.loading": { en: "Loading…", ja: "読み込み中…" },
   "logGroups.partial": {
-    en: "The list is incomplete: {kind}",
-    ja: "一覧は途中までです：{kind}",
+    en: "The list is incomplete.",
+    ja: "一覧は途中までです。",
   },
   "logGroups.empty.noGroups": { en: "There are no log groups.", ja: "ロググループがありません。" },
   "logGroups.empty.noMatches": {
@@ -163,7 +168,6 @@ export const messages = {
     en: "0 events: no logs in this range.",
     ja: "0 件：この範囲にログはありません。",
   },
-  "status.failed": { en: "Failed: {kind}", ja: "失敗：{kind}" },
   "status.detail": { en: "Details: {detail}", ja: "詳細：{detail}" },
   "failure.kind.AuthRequired": {
     en: "Authentication required",
@@ -183,10 +187,7 @@ export const messages = {
   "table.time": { en: "Time ({zone})", ja: "時刻（{zone}）" },
   "table.stream": { en: "Stream", ja: "ストリーム名" },
   "table.message": { en: "Message", ja: "メッセージ" },
-  "table.scroll": {
-    en: "Log rows: scroll with the arrow keys, Page Up, Page Down, Home and End",
-    ja: "ログの行：矢印キー・Page Up・Page Down・Home・End でスクロール",
-  },
+  "table.expanded": { en: "Full message", ja: "メッセージの全文" },
   "failures.title": { en: "Failures", ja: "失敗の一覧" },
   "failures.listing": { en: "Stream listing", ja: "ストリームの列挙" },
   "failures.close": { en: "Close (Esc)", ja: "閉じる（Esc）" },
@@ -247,6 +248,79 @@ export const messages = {
     ja: "キャッシュが読めなかったので取り直した",
   },
   "cache.saveFailed": { en: "Could not save to the cache", ja: "キャッシュに保存できなかった" },
+  "error.retry.fetch": {
+    en: "Press [Fetch] to fetch again",
+    ja: "[Fetch] でもう一度取得してください",
+  },
+  "error.retry.listing": {
+    en: "Press [Reload] to load the list again",
+    ja: "[再読み込み] でもう一度読み込んでください",
+  },
+  "error.what.AuthRequired": {
+    en: "Credentials could not be used (for example, the SSO session expired).",
+    ja: "認証情報を使えませんでした（SSO のログイン切れなど）。",
+  },
+  "error.next.AuthRequired": {
+    en: "If you use SSO, run aws sso login, then {retry}. Otherwise, check the profile settings or choose another profile.",
+    ja: "SSO を使っているときは aws sso login を実行してから、{retry}。それ以外はプロファイルの設定を確認するか、別のプロファイルを選んでください。",
+  },
+  "error.what.AccessDenied": { en: "Access was denied.", ja: "権限がないため拒否されました。" },
+  "error.next.AccessDenied": {
+    en: "Check the IAM permissions or choose another profile.",
+    ja: "IAM の権限を確認するか、別のプロファイルを選んでください。",
+  },
+  "error.what.Throttled": {
+    en: "AWS throttled the requests.",
+    ja: "AWS の呼び出しが多すぎるため、制限されました。",
+  },
+  "error.next.Throttled": {
+    en: "Wait a while, then {retry}.",
+    ja: "しばらく待ってから、{retry}。",
+  },
+  "error.what.Network": { en: "Could not connect to AWS.", ja: "AWS に接続できませんでした。" },
+  "error.next.Network": {
+    en: "Check your connection, then {retry}.",
+    ja: "接続を確認してから、{retry}。",
+  },
+  "error.what.NotFound": {
+    en: "The log group or stream was not found.",
+    ja: "ロググループかストリームが見つかりませんでした。",
+  },
+  "error.next.NotFound": {
+    en: "Press [Reload] to load the log group list again and choose again.",
+    ja: "[再読み込み] でロググループの一覧を読み込み直して、選び直してください。",
+  },
+  "error.what.InvalidInput": {
+    en: "AWS rejected the request.",
+    ja: "AWS が条件を受け付けませんでした。",
+  },
+  "error.next.InvalidInput": {
+    en: "Check the time range, then {retry}.",
+    ja: "時間範囲を見直してから、{retry}。",
+  },
+  "error.what.RegionMissing": {
+    en: "This profile has no default region.",
+    ja: "このプロファイルには既定のリージョンがありません。",
+  },
+  "error.next.RegionMissing": {
+    en: "Choose a region in the top bar.",
+    ja: "上部バーでリージョンを選んでください。",
+  },
+  "error.what.Other": {
+    en: "Something went wrong while calling AWS.",
+    ja: "AWS の呼び出しで問題が起きました。",
+  },
+  "error.next.Other": {
+    en: "{retry}. If it keeps happening, check the details.",
+    ja: "{retry}。続くときは詳細を確かめてください。",
+  },
+  "close.title": { en: "Fetching is in progress.", ja: "取得中です。" },
+  "close.message": {
+    en: "If you close the window, the logs fetched so far will be lost.",
+    ja: "ウィンドウを閉じると、ここまで取得したログは失われます。",
+  },
+  "close.keep": { en: "Keep fetching", ja: "取得を続ける" },
+  "close.close": { en: "Close", ja: "閉じる" },
 } as const satisfies Record<string, Record<Locale, string>>;
 
 export type MessageKey = keyof typeof messages;

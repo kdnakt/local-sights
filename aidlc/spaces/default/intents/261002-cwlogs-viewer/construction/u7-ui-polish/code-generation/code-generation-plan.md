@@ -117,55 +117,55 @@ R-02 の補足：ExitRequested を受けるため、`src-tauri` の `tauri::Buil
 
 ### Step 1: 骨組みと設定
 
-- [ ] `src-tauri/tauri.conf.json` のウィンドウの minWidth を 1024・minHeight を 640 にし、width・height がそれ以上であることを確かめる（BR4.1）。新しい依存は足さない
-- [ ] 新しいファイル（`src/rowLayout.ts`・`src/errorText.ts`・フック・部品）の空の骨組みを置く
+- [x] `src-tauri/tauri.conf.json` のウィンドウの minWidth を 1024・minHeight を 640 にし、width・height がそれ以上であることを確かめる（BR4.1）。新しい依存は足さない
+- [x] 新しいファイル（`src/rowLayout.ts`・`src/errorText.ts`・フック・部品）の空の骨組みを置く
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
 
-- [ ] U1〜U6 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U7 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
+- [x] U1〜U6 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U7 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
 
 ### Step 3: 純粋なロジックのテストを先に書く（失敗を確かめる）
 
 各テストを書いたら実行し、失敗の出力を記録してから Step 4 に進む。
 
-- [ ] `src/rowLayout.test.ts`：展開の累積と offset、rowAt との往復、展開部分の中の y はその行に属する、U3 の正規化（R-12）での縮小、100 万件と展開ありで End が末尾の行に届く、操作した行より上は動かない、アンカーからのスクロールの位置、見積もりの上限 372 px と全角 2 倍（R-14）、展開がないときに U3 と同じ答え（`virtualScroll.test.ts` の値と比べる）
-- [ ] `src/errorText.test.ts`：8 種類 × 3 場面、{retry} の差し込み（Fetch・Stream は [Fetch]、Listing は [再読み込み]）、起きない組み合わせは Other、詳細の有無
-- [ ] `src/hooks/expansionState.test.ts`（展開の集合と選択の更新の純粋な関数）：開閉、破棄の世代で空と一番上、絞り込み・追加では保つ、キーが消えたら同じ位置の行、窓にない行では Enter・Space が何もしない
-- [ ] `log_view.rs` のテスト：`positions_of` の絞り込みの有無・隠れた行・ない行、`clear()` で discardGeneration が増え追加では増えない（R-11）
-- [ ] `session.rs` のテスト：終了の判断（取得中・書き込み中・取得中でない、Pending 中のもう一度、確認中の取得の終わり、[Close] で中断と終えてよい印、[Keep fetching]）
-- [ ] `cache/plan.rs` のテスト：件数の突き合わせ（全体と範囲ごと）、行の切れ目で切れたファイルを壊れたとする、版 1 は知らない版（U6 R-03）
+- [x] `src/rowLayout.test.ts`：展開の累積と offset、rowAt との往復、展開部分の中の y はその行に属する、U3 の正規化（R-12）での縮小、100 万件と展開ありで End が末尾の行に届く、操作した行より上は動かない、アンカーからのスクロールの位置、見積もりの上限 372 px と全角 2 倍（R-14）、展開がないときに U3 と同じ答え（`virtualScroll.test.ts` の値と比べる）
+- [x] `src/errorText.test.ts`：8 種類 × 3 場面、{retry} の差し込み（Fetch・Stream は [Fetch]、Listing は [再読み込み]）、起きない組み合わせは Other、詳細の有無
+- [x] `src/hooks/expansionState.test.ts`（展開の集合と選択の更新の純粋な関数）：開閉、破棄の世代で空と一番上、絞り込み・追加では保つ、キーが消えたら同じ位置の行、窓にない行では Enter・Space が何もしない
+- [x] `log_view.rs` のテスト：`positions_of` の絞り込みの有無・隠れた行・ない行、`clear()` で discardGeneration が増え追加では増えない（R-11）
+- [x] `session.rs` のテスト：終了の判断（取得中・書き込み中・取得中でない、Pending 中のもう一度、確認中の取得の終わり、[Close] で中断と終えてよい印、[Keep fetching]）
+- [x] `cache/plan.rs` のテスト：件数の突き合わせ（全体と範囲ごと）、行の切れ目で切れたファイルを壊れたとする、版 1 は知らない版（U6 R-03）
 
 ### Step 4: 純粋なロジックを実装する（テストを通す）→ 整理する
 
-- [ ] Step 3 の対象を実装し、テストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない。U3 の `virtualScroll.ts` は `rowLayout.ts` に置き換え、U3 のテストが通ることを確かめる
+- [x] Step 3 の対象を実装し、テストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない。U3 の `virtualScroll.ts` は `rowLayout.ts` に置き換え、U3 のテストが通ることを確かめる
 
 ### Step 5: ライブラリの残りを実装する → テストする（U6 R-01〜R-04、R-06）
 
-- [ ] `cache/mod.rs`：ヘッダの eventCount と範囲ごとの件数の書き込みと突き合わせ（U6 R-03）
-- [ ] `coordinator.rs`：写し取りをブロッキング用のスレッドで行う（U6 R-04）。テスト 3 つを足す（U6 R-06）
-- [ ] `session.rs`：設定の保存・全削除を「判断と反映」と「ファイル操作」に分け、ファイル操作をロックの外で行える形にする（U6 R-01）。書き込み中の印で、異常終了のあとも書き込みが終わるまで設定ダイアログを開けない（U6 R-02）。SessionView に discardGeneration と closeConfirmation を足す
-- [ ] テスト（実装の後）：ファイル操作をロックの外で行う形でも R-10（U6）の順が保たれる、書き込み中の印で設定を拒む、版 1 のキャッシュを捨てて取り直す
+- [x] `cache/mod.rs`：ヘッダの eventCount と範囲ごとの件数の書き込みと突き合わせ（U6 R-03）
+- [x] `coordinator.rs`：写し取りをブロッキング用のスレッドで行う（U6 R-04）。テスト 3 つを足す（U6 R-06）
+- [x] `session.rs`：設定の保存・全削除を「判断と反映」と「ファイル操作」に分け、ファイル操作をロックの外で行える形にする（U6 R-01）。書き込み中の印で、異常終了のあとも書き込みが終わるまで設定ダイアログを開けない（U6 R-02）。SessionView に discardGeneration と closeConfirmation を足す
+- [x] テスト（実装の後）：ファイル操作をロックの外で行う形でも R-10（U6）の順が保たれる、書き込み中の印で設定を拒む、版 1 のキャッシュを捨てて取り直す
 
 ### Step 6: Tauri のつなぎを実装する
 
-- [ ] `src-tauri/src/lib.rs`：コマンド `row_positions(keys)`（LogView の 1 回のロック）、`confirm_close`・`cancel_close`。`CloseRequested` は取得中なら `prevent_close` と Pending、取得中でなければ通す（中断をやめる）。`Builder::run` を `build()` ＋ `run` のコールバックにし、`ExitRequested` を同じく扱う。終えてよい印が立っていれば止めない。`Destroyed` では中断だけ。設定のコマンドを async にしてファイル操作を `spawn_blocking` で行う（U6 R-01）。`build.rs`・`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
+- [x] `src-tauri/src/lib.rs`：コマンド `row_positions(keys)`（LogView の 1 回のロック）、`confirm_close`・`cancel_close`。`CloseRequested` は取得中なら `prevent_close` と Pending、取得中でなければ通す（中断をやめる）。`Builder::run` を `build()` ＋ `run` のコールバックにし、`ExitRequested` を同じく扱う。終えてよい印が立っていれば止めない。`Destroyed` では中断だけ。設定のコマンドを async にしてファイル操作を `spawn_blocking` で行う（U6 R-01）。`build.rs`・`capabilities/default.json` に新しいコマンドの権限だけを足す
+- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 7: 画面を実装する → Vitest でテストする（BR1.1〜BR1.10、BR2.1〜BR2.5、BR3.3、BR4.2〜BR4.4）
 
-- [ ] `useRowLayout`・`useRowPositions`・`useRowWindow`、`LogTable`（グリッドの役割、R-13 の tabIndex と見出し行、選択とキー操作、展開、アンカー）、`ExpandedMessage`（テキストノードだけ、折り返しの CSS、372 px、スクロールするときの入力位置、Escape・Shift+Tab で戻る）、`ErrorMessage`・`FetchErrorBanner`・`StatusLine`（詳細の行を外す）・`LogGroupPane`・`FailureList`、`CloseConfirmDialog`、`App`、`api.ts`、`messages.ts`（BR2.2・BR3.3 の文言、使わなくなったキーを除く）、`styles.css`（システムカラーだけ）。操作できる要素に `data-testid` を付ける
-- [ ] 画面のテスト（実装の後）：`LogTable.test.tsx`、`useRowPositions.test.tsx`、`ErrorMessage.test.tsx`・`FetchErrorBanner.test.tsx`・`StatusLine.test.tsx`・`LogGroupPane.test.tsx`・`FailureList.test.tsx`、`CloseConfirmDialog.test.tsx`、`App.test.tsx`（Tab の順、closeConfirmation で出る）、`messages.test.ts`（すべてのキーの英日、正本どおり、決め打ちの文字がないことを部品の描画から確かめる）の更新
+- [x] `useRowLayout`・`useRowPositions`・`useRowWindow`、`LogTable`（グリッドの役割、R-13 の tabIndex と見出し行、選択とキー操作、展開、アンカー）、`ExpandedMessage`（テキストノードだけ、折り返しの CSS、372 px、スクロールするときの入力位置、Escape・Shift+Tab で戻る）、`ErrorMessage`・`FetchErrorBanner`・`StatusLine`（詳細の行を外す）・`LogGroupPane`・`FailureList`、`CloseConfirmDialog`、`App`、`api.ts`、`messages.ts`（BR2.2・BR3.3 の文言、使わなくなったキーを除く）、`styles.css`（システムカラーだけ）。操作できる要素に `data-testid` を付ける
+- [x] 画面のテスト（実装の後）：`LogTable.test.tsx`、`useRowPositions.test.tsx`、`ErrorMessage.test.tsx`・`FetchErrorBanner.test.tsx`・`StatusLine.test.tsx`・`LogGroupPane.test.tsx`・`FailureList.test.tsx`、`CloseConfirmDialog.test.tsx`、`App.test.tsx`（Tab の順、closeConfirmation で出る）、`messages.test.ts`（すべてのキーの英日、正本どおり、決め打ちの文字がないことを部品の描画から確かめる）の更新
 
 ### Step 8: ビルドの設定と手元の確認
 
-- [ ] `README.md` の手元の確認の項目に U7 の分（ウィンドウの閉じる・Cmd+Q・Dock の終了を取得中・書き込み中・取得中でないときに試す、書き込み中に [Close] したあとのキャッシュと一時ファイル、ダークモードの切替、1024×640 で崩れない、100 万件で展開とスクロールの体感、行の展開とキーボード操作、エラーの文）を足す
-- [ ] 診断ログのファイル出力がないこと（`eprintln!` だけ）を確かめる（BR4.5）
-- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [x] `README.md` の手元の確認の項目に U7 の分（ウィンドウの閉じる・Cmd+Q・Dock の終了を取得中・書き込み中・取得中でないときに試す、書き込み中に [Close] したあとのキャッシュと一時ファイル、ダークモードの切替、1024×640 で崩れない、100 万件で展開とスクロールの体感、行の展開とキーボード操作、エラーの文）を足す
+- [x] 診断ログのファイル出力がないこと（`eprintln!` だけ）を確かめる（BR4.5）
+- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 9: ドキュメントとトレーサビリティ
 
-- [ ] 公開関数に doc コメントを付ける
-- [ ] `code-summary.md`（R-14 の契約の変更の記録を含む）・`source-manifest.json`・`traceability.json`（U7 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
+- [x] 公開関数に doc コメントを付ける
+- [x] `code-summary.md`（R-14 の契約の変更の記録を含む）・`source-manifest.json`・`traceability.json`（U7 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
 
 ## 4. 要件・ルールと手順の対応
 

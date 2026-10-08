@@ -1,0 +1,254 @@
+{
+  "stage": "code-generation",
+  "unit": "u7-ui-polish",
+  "upstream_ids": [
+    "BR1.1",
+    "BR1.2",
+    "BR1.3",
+    "BR1.4",
+    "BR1.5",
+    "BR1.6",
+    "BR1.7",
+    "BR1.8",
+    "BR1.9",
+    "BR1.10",
+    "BR2.1",
+    "BR2.2",
+    "BR2.3",
+    "BR2.4",
+    "BR2.5",
+    "BR3.1",
+    "BR3.2",
+    "BR3.3",
+    "BR3.4",
+    "BR4.1",
+    "BR4.2",
+    "BR4.3",
+    "BR4.4",
+    "BR4.5",
+    "FR1.5",
+    "FR4.9",
+    "FR5",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR8",
+    "FR8.1",
+    "FR8.2",
+    "FR8.3",
+    "NFR2",
+    "NFR5",
+    "NFR10",
+    "NFR11",
+    "NFR12",
+    "NFR13",
+    "NFR16"
+  ],
+  "coverage": [
+    {
+      "id": "BR1.1",
+      "status": "OK",
+      "target": "src/hooks/expansionState.ts"
+    },
+    {
+      "id": "BR1.2",
+      "status": "OK",
+      "target": "src/components/ExpandedMessage.tsx"
+    },
+    {
+      "id": "BR1.3",
+      "status": "OK",
+      "target": "src/components/ExpandedMessage.tsx"
+    },
+    {
+      "id": "BR1.4",
+      "status": "OK",
+      "target": "src/rowLayout.ts"
+    },
+    {
+      "id": "BR1.5",
+      "status": "OK",
+      "target": "src/hooks/expansionState.ts"
+    },
+    {
+      "id": "BR1.6",
+      "status": "OK",
+      "target": "src/hooks/expansionState.ts"
+    },
+    {
+      "id": "BR1.7",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/log_view.rs"
+    },
+    {
+      "id": "BR1.8",
+      "status": "OK",
+      "target": "src/components/LogTable.tsx"
+    },
+    {
+      "id": "BR1.9",
+      "status": "OK",
+      "target": "src/hooks/useRowLayout.ts"
+    },
+    {
+      "id": "BR1.10",
+      "status": "OK",
+      "target": "src/components/LogTable.tsx"
+    },
+    {
+      "id": "BR2.1",
+      "status": "OK",
+      "target": "src/errorText.ts"
+    },
+    {
+      "id": "BR2.2",
+      "status": "OK",
+      "target": "src/i18n/messages.ts"
+    },
+    {
+      "id": "BR2.3",
+      "status": "OK",
+      "target": "src/errorText.ts"
+    },
+    {
+      "id": "BR2.4",
+      "status": "OK",
+      "target": "src/components/FetchErrorBanner.tsx"
+    },
+    {
+      "id": "BR2.5",
+      "status": "OK",
+      "target": "src/components/ErrorMessage.tsx"
+    },
+    {
+      "id": "BR3.1",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs"
+    },
+    {
+      "id": "BR3.2",
+      "status": "OK",
+      "target": "src-tauri/src/lib.rs"
+    },
+    {
+      "id": "BR3.3",
+      "status": "OK",
+      "target": "src/components/CloseConfirmDialog.tsx"
+    },
+    {
+      "id": "BR3.4",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs"
+    },
+    {
+      "id": "BR4.1",
+      "status": "OK",
+      "target": "src-tauri/tauri.conf.json"
+    },
+    {
+      "id": "BR4.2",
+      "status": "OK",
+      "target": "src/styles.css"
+    },
+    {
+      "id": "BR4.3",
+      "status": "OK",
+      "target": "src/i18n/messages.ts"
+    },
+    {
+      "id": "BR4.4",
+      "status": "OK",
+      "target": "src/App.test.tsx"
+    },
+    {
+      "id": "BR4.5",
+      "status": "OK",
+      "target": "src-tauri/src/lib.rs"
+    },
+    {
+      "id": "FR1.5",
+      "status": "OK",
+      "target": "src/i18n/messages.ts"
+    },
+    {
+      "id": "FR4.9",
+      "status": "OK",
+      "target": "src-tauri/src/lib.rs"
+    },
+    {
+      "id": "FR5",
+      "status": "OK",
+      "target": "src/components/LogTable.tsx"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "src/components/LogTable.tsx"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "src/components/ExpandedMessage.tsx"
+    },
+    {
+      "id": "FR5.4",
+      "status": "OK",
+      "target": "src/components/ExpandedMessage.tsx"
+    },
+    {
+      "id": "FR8",
+      "status": "OK",
+      "target": "src/components/ErrorMessage.tsx"
+    },
+    {
+      "id": "FR8.1",
+      "status": "OK",
+      "target": "src/errorText.ts"
+    },
+    {
+      "id": "FR8.2",
+      "status": "OK",
+      "target": "src/components/ErrorMessage.tsx"
+    },
+    {
+      "id": "FR8.3",
+      "status": "OK",
+      "target": "src/errorText.ts"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "src/rowLayout.ts"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "src-tauri/src/lib.rs"
+    },
+    {
+      "id": "NFR10",
+      "status": "OK",
+      "target": "src/styles.css"
+    },
+    {
+      "id": "NFR11",
+      "status": "OK",
+      "target": "src-tauri/tauri.conf.json"
+    },
+    {
+      "id": "NFR12",
+      "status": "OK",
+      "target": "src/i18n/messages.ts"
+    },
+    {
+      "id": "NFR13",
+      "status": "OK",
+      "target": "src/components/LogTable.tsx"
+    },
+    {
+      "id": "NFR16",
+      "status": "OK",
+      "target": "src-tauri/src/lib.rs"
+    }
+  ]
+}

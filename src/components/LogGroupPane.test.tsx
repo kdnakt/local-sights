@@ -73,7 +73,7 @@ describe("LogGroupPane", () => {
     expect(onSelect).toHaveBeenCalledWith("/a");
   });
 
-  it("shows a partial list with the kind and safe detail", () => {
+  it("shows a partial list with the reason in words, what to do and the safe detail", () => {
     renderPane(
       connectedView({
         logGroups: {
@@ -90,11 +90,16 @@ describe("LogGroupPane", () => {
       }),
     );
     expect(screen.getByTestId("log-group-pane-partial")).toHaveTextContent(
-      "The list is incomplete: Access denied",
+      "The list is incomplete.",
     );
-    expect(screen.getByTestId("log-group-pane-detail")).toHaveTextContent(
-      "kind=AccessDenied; api=DescribeLogGroups; profile=dev",
+    expect(screen.getByTestId("log-group-pane-error-what")).toHaveTextContent("Access was denied.");
+    expect(screen.getByTestId("log-group-pane-error-next")).toHaveTextContent(
+      "Check the IAM permissions or choose another profile.",
     );
+    expect(screen.getByTestId("log-group-pane-error-detail")).toHaveTextContent(
+      "Details: kind=AccessDenied; api=DescribeLogGroups; profile=dev",
+    );
+    expect(screen.getByTestId("log-group-pane-status")).not.toHaveTextContent("Access denied");
   });
 
   it("distinguishes no groups from no matches", () => {
@@ -183,7 +188,11 @@ describe("LogGroupPane", () => {
       }),
     );
     expect(screen.getByTestId("log-group-pane-partial")).toHaveTextContent(
-      "The list is incomplete: Throttled",
+      "The list is incomplete.",
+    );
+    // The Listing scene points to [Reload].
+    expect(screen.getByTestId("log-group-pane-error-next")).toHaveTextContent(
+      "Wait a while, then Press [Reload] to load the list again.",
     );
     expect(screen.getByTestId("log-group-pane-no-matches")).toHaveTextContent(
       "No log groups match.",

@@ -11,11 +11,12 @@
 //! - the key, its SHA-256 file name and the names of temporary files
 //!   (BR2.1, BR2.2, BR1.4);
 //! - the checks that tell a broken cache from a good one (BR4.1, review
-//!   R-13);
+//!   R-13), and since U7 the event counts of the header that tell a file cut
+//!   at a line boundary from a whole one (U6 review R-03);
 //! - the status line notices made from a finished fetch (BR5.3).
 //!
-//! The types written to disk are only [`CacheHeader`] (format version, key
-//! and covered ranges) and [`CachedEvent`]; none of them can hold a
+//! The types written to disk are only [`CacheHeader`] (format version, key,
+//! covered ranges and event counts) and [`CachedEvent`]; none of them can hold a
 //! credential (BR3.6, project.md Forbidden).
 
 use std::cmp::Ordering;
@@ -29,8 +30,10 @@ use crate::coordinator::JobStatus;
 use crate::event::LogEvent;
 use crate::request::FetchRequest;
 
-/// Version of the cache file format (BR4.1).
-pub const FORMAT_VERSION: u32 = 1;
+/// Version of the cache file format (BR4.1). Version 2 (U7, U6 review R-03)
+/// adds the event counts to the header; a version 1 file is an unknown
+/// version, so it is removed and fetched again (BR4.1).
+pub const FORMAT_VERSION: u32 = 2;
 /// The newest part of a fetch that is never recorded: five minutes before
 /// the fetch started (BR3.1).
 pub const RECORD_MARGIN_MS: i64 = 300_000;
@@ -94,6 +97,13 @@ pub struct CacheHeader {
     pub key: CacheKey,
     /// Cached ranges: no overlap, no adjacency, earliest first (BR3.3).
     pub covered_ranges: Vec<CoveredRange>,
+    /// Number of events in the file (U6 review R-03); absent in version 1.
+    #[serde(default)]
+    pub event_count: u64,
+    /// Number of events in each covered range, in the same order (U6 review
+    /// R-03); absent in version 1.
+    #[serde(default)]
+    pub range_event_counts: Vec<u64>,
 }
 
 /// Why a cache file is taken as broken (BR4.1, review R-13).
@@ -120,6 +130,10 @@ pub enum Corruption {
     /// The events are not in `(timestamp, logStreamName, sequence)` order.
     #[error("the events are out of order")]
     EventsOutOfOrder,
+    /// The events read are not as many as the header says (a file cut at a
+    /// line boundary), or the header's counts disagree (U6 review R-03).
+    #[error("the event count does not match")]
+    CountMismatch,
 }
 
 /// Which kind of file a name in the cache folder is (BR1.4).
@@ -416,7 +430,93 @@ pub fn validate_header(header: &CacheHeader, expected: &CacheKey) -> Result<(), 
     if !ranges_are_well_formed(&header.covered_ranges) {
         return Err(Corruption::BadRanges);
     }
+    let counts_agree = header.range_event_counts.len() == header.covered_ranges.len()
+        && header
+            .range_event_counts
+            .iter()
+            .try_fold(0u64, |sum, count| sum.checked_add(*count))
+            == Some(header.event_count);
+    if !counts_agree {
+        return Err(Corruption::CountMismatch);
+    }
     Ok(())
+}
+
+/// U6 review R-03: the number of `events` in each of `ranges` (well formed,
+/// earliest first), in the order of the ranges; what the header records.
+pub fn count_events_by_range(events: &[CachedEvent], ranges: &[CoveredRange]) -> Vec<u64> {
+    let mut counts = vec![0u64; ranges.len()];
+    for event in events {
+        if let Some(index) = range_index(ranges, event.timestamp) {
+            counts[index] += 1;
+        }
+    }
+    counts
+}
+
+/// Index of the range of well-formed `ranges` holding `instant`.
+fn range_index(ranges: &[CoveredRange], instant: i64) -> Option<usize> {
+    let index = ranges.partition_point(|range| range.end_ms < instant);
+    ranges
+        .get(index)
+        .filter(|range| range.contains_instant(instant))
+        .map(|_| index)
+}
+
+/// Counts the events read from a cache file and compares them with the
+/// header (U6 review R-03): a file cut exactly at a line boundary passes
+/// every line check, but has fewer events than its header says.
+#[derive(Debug, Clone)]
+pub struct EventCounter {
+    ranges: Vec<CoveredRange>,
+    expected_total: u64,
+    expected_by_range: Vec<u64>,
+    total: u64,
+    by_range: Vec<u64>,
+}
+
+impl EventCounter {
+    /// A counter for the events of a file with a validated `header`.
+    pub fn new(header: &CacheHeader) -> Self {
+        Self {
+            ranges: header.covered_ranges.clone(),
+            expected_total: header.event_count,
+            expected_by_range: header.range_event_counts.clone(),
+            total: 0,
+            by_range: vec![0; header.covered_ranges.len()],
+        }
+    }
+
+    /// Counts one event read (after [`EventCheck::check`] accepted it).
+    pub fn count(&mut self, event: &CachedEvent) {
+        self.total += 1;
+        if let Some(index) = range_index(&self.ranges, event.timestamp) {
+            if let Some(count) = self.by_range.get_mut(index) {
+                *count += 1;
+            }
+        }
+    }
+
+    /// After reading the whole file: as many events as the header says.
+    pub fn verify_all(&self) -> Result<(), Corruption> {
+        if self.total == self.expected_total && self.by_range == self.expected_by_range {
+            Ok(())
+        } else {
+            Err(Corruption::CountMismatch)
+        }
+    }
+
+    /// After reading every event of `range` (a covered range of the header):
+    /// as many events in it as the header says.
+    pub fn verify_range(&self, range: CoveredRange) -> Result<(), Corruption> {
+        let index = self.ranges.iter().position(|covered| *covered == range);
+        let counted = index.and_then(|index| self.by_range.get(index));
+        let expected = index.and_then(|index| self.expected_by_range.get(index));
+        match (counted, expected) {
+            (Some(counted), Some(expected)) if counted == expected => Ok(()),
+            _ => Err(Corruption::CountMismatch),
+        }
+    }
 }
 
 /// Checks events one by one as they are read (BR4.1, review R-13): each
@@ -807,6 +907,8 @@ mod tests {
         let header = |ranges: Vec<CoveredRange>| CacheHeader {
             format_version: FORMAT_VERSION,
             key: expected.clone(),
+            event_count: 0,
+            range_event_counts: vec![0; ranges.len()],
             covered_ranges: ranges,
         };
         assert_eq!(
@@ -846,6 +948,103 @@ mod tests {
         );
         assert!(ranges_are_well_formed(&[range(0, 0)]));
         assert!(!ranges_are_well_formed(&[]));
+    }
+
+    // ---- U7: the event counts of the header (U6 review R-03) ----
+
+    fn counted_header(ranges: Vec<CoveredRange>, counts: Vec<u64>) -> CacheHeader {
+        CacheHeader {
+            format_version: FORMAT_VERSION,
+            key: key(ProfileSelector::SdkDefault),
+            covered_ranges: ranges,
+            event_count: counts.iter().sum(),
+            range_event_counts: counts,
+        }
+    }
+
+    #[test]
+    fn the_header_counts_the_events_of_each_range_and_in_total() {
+        let ranges = vec![range(100, 199), range(300, 399)];
+        let events = vec![
+            cached(100, "a", 0),
+            cached(150, "b", 0),
+            cached(300, "a", 1),
+        ];
+        assert_eq!(count_events_by_range(&events, &ranges), vec![2, 1]);
+        assert_eq!(count_events_by_range(&[], &ranges), vec![0, 0]);
+        let good = counted_header(ranges, vec![2, 1]);
+        let expected = good.key.clone();
+        assert_eq!(validate_header(&good, &expected), Ok(()));
+        let wrong_total = CacheHeader {
+            event_count: 4,
+            ..good.clone()
+        };
+        assert_eq!(
+            validate_header(&wrong_total, &expected),
+            Err(Corruption::CountMismatch)
+        );
+        let missing_range_count = CacheHeader {
+            range_event_counts: vec![3],
+            event_count: 3,
+            ..good
+        };
+        assert_eq!(
+            validate_header(&missing_range_count, &expected),
+            Err(Corruption::CountMismatch)
+        );
+    }
+
+    #[test]
+    fn a_file_cut_at_a_line_boundary_is_broken_as_a_whole_and_in_its_range() {
+        let header = counted_header(vec![range(100, 199), range(300, 399)], vec![2, 1]);
+        let all = [
+            cached(100, "a", 0),
+            cached(150, "b", 0),
+            cached(300, "a", 1),
+        ];
+        let mut whole = EventCounter::new(&header);
+        all.iter().for_each(|event| whole.count(event));
+        assert_eq!(whole.verify_all(), Ok(()));
+        assert_eq!(whole.verify_range(range(100, 199)), Ok(()));
+        assert_eq!(whole.verify_range(range(300, 399)), Ok(()));
+        // The last line is missing, cut after a whole line.
+        let mut cut = EventCounter::new(&header);
+        all[..2].iter().for_each(|event| cut.count(event));
+        assert_eq!(cut.verify_all(), Err(Corruption::CountMismatch));
+        assert_eq!(
+            cut.verify_range(range(100, 199)),
+            Ok(()),
+            "that range is whole"
+        );
+        assert_eq!(
+            cut.verify_range(range(300, 399)),
+            Err(Corruption::CountMismatch)
+        );
+        assert_eq!(
+            cut.verify_range(range(500, 599)),
+            Err(Corruption::CountMismatch),
+            "not a range of the header"
+        );
+    }
+
+    #[test]
+    fn a_version_1_header_is_an_unknown_version_and_version_2_writes_the_counts() {
+        assert_eq!(FORMAT_VERSION, 2);
+        let expected = key(ProfileSelector::SdkDefault);
+        let version_1 = serde_json::json!({
+            "formatVersion": 1,
+            "key": expected,
+            "coveredRanges": [{ "startMs": 100, "endMs": 199 }],
+        });
+        let parsed: CacheHeader = serde_json::from_value(version_1).unwrap();
+        assert_eq!(
+            validate_header(&parsed, &expected),
+            Err(Corruption::UnknownVersion)
+        );
+        let written = serde_json::to_value(counted_header(vec![range(100, 199)], vec![4])).unwrap();
+        assert_eq!(written["formatVersion"], 2);
+        assert_eq!(written["eventCount"], 4);
+        assert_eq!(written["rangeEventCounts"], serde_json::json!([4]));
     }
 
     #[test]

@@ -19,6 +19,13 @@
 //! Every call blocks on the file system; the fetch runs them on a blocking
 //! thread (BR3.5, BR4.2). Diagnostics go to standard error only and never
 //! contain a key, a message or a credential.
+//!
+//! Since U7 (U6 review R-03) the header also holds the number of events in
+//! the file and in each covered range (format version 2). Reading the whole
+//! file compares the total, and a lookup compares the count of the range it
+//! is served from, so a file cut exactly at a line boundary is broken
+//! (BR4.1). Since U7 (U6 review R-02) a [`WriteTracker`] tells while a write
+//! runs, even after the fetch that started it ended abnormally.
 
 pub mod plan;
 pub mod settings;
@@ -26,11 +33,13 @@ pub mod settings;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use plan::{
-    CacheHeader, CacheKey, CachedEvent, Corruption, CoveredRange, EventCheck, FORMAT_VERSION,
-    FileNameKind, classify_file_name, find_covering_range, merge_ranges, replace_events_in_range,
-    validate_header,
+    CacheHeader, CacheKey, CachedEvent, Corruption, CoveredRange, EventCheck, EventCounter,
+    FORMAT_VERSION, FileNameKind, classify_file_name, count_events_by_range, find_covering_range,
+    merge_ranges, replace_events_in_range, validate_header,
 };
 
 /// Permission bits of the cache and settings folders: owner only (BR3.6).
@@ -112,10 +121,61 @@ pub enum WriteKind {
     Rebuilt,
 }
 
+/// Counts the cache writes under way (U6 review R-02). Clones share the
+/// count; the app keeps one in AppSession and hands it to every
+/// [`LogCache`] it makes, so a write that outlives its fetch (the fetch task
+/// ended abnormally) still keeps the settings dialog closed until it ends.
+#[derive(Debug, Clone, Default)]
+pub struct WriteTracker {
+    in_flight: Arc<AtomicUsize>,
+}
+
+/// Marks one write under way until dropped.
+#[derive(Debug)]
+pub struct WriteGuard {
+    in_flight: Arc<AtomicUsize>,
+}
+
+impl WriteTracker {
+    /// A tracker with no write under way.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether a write is under way.
+    pub fn is_writing(&self) -> bool {
+        self.in_flight.load(Ordering::SeqCst) > 0
+    }
+
+    /// Marks a write under way until the guard is dropped.
+    pub fn start(&self) -> WriteGuard {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+        WriteGuard {
+            in_flight: Arc::clone(&self.in_flight),
+        }
+    }
+}
+
+impl Drop for WriteGuard {
+    fn drop(&mut self) {
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Two trackers are equal when they share the same count.
+impl PartialEq for WriteTracker {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.in_flight, &other.in_flight)
+    }
+}
+
+impl Eq for WriteTracker {}
+
 /// The cache folder (entities.md CacheSettings.cacheDirectory).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogCache {
     directory: PathBuf,
+    writes: WriteTracker,
 }
 
 /// A whole cache file read back.
@@ -129,17 +189,37 @@ enum EntryRead {
 /// Which events [`read_entry`] keeps.
 #[derive(Clone, Copy)]
 enum EventSelection {
-    /// Every event.
+    /// Every event; the total is compared with the header.
     All,
-    /// The events of `[start_ms, end_ms]`; reading stops after `end_ms`.
-    Range { start_ms: i64, end_ms: i64 },
+    /// The events of `[start_ms, end_ms]`, which lies in the covered range
+    /// `covering`; reading stops after `covering`, whose count is compared
+    /// with the header (U6 review R-03).
+    Range {
+        start_ms: i64,
+        end_ms: i64,
+        covering: CoveredRange,
+    },
 }
 
 impl LogCache {
     /// A cache in `directory` (the app's own folder in the OS cache folder,
     /// passed in at startup, BR1.6). Nothing is touched until a call.
     pub fn new(directory: PathBuf) -> Self {
-        Self { directory }
+        Self {
+            directory,
+            writes: WriteTracker::new(),
+        }
+    }
+
+    /// The same cache, counting its writes in `writes` (U6 review R-02).
+    pub fn with_writes(mut self, writes: WriteTracker) -> Self {
+        self.writes = writes;
+        self
+    }
+
+    /// The tracker of this cache's writes.
+    pub fn writes(&self) -> &WriteTracker {
+        &self.writes
     }
 
     /// The cache folder, shown in the settings dialog (FR7.3).
@@ -157,7 +237,8 @@ impl LogCache {
     pub fn read_header(&self, key: &CacheKey) -> HeaderRead {
         let mut reader = match open_entry(&self.entry_path(key)) {
             Ok(reader) => reader,
-            Err(missing_or_unreadable) => return missing_or_unreadable,
+            Err(OpenError::Missing) => return HeaderRead::Missing,
+            Err(OpenError::Unreadable) => return HeaderRead::Unreadable,
         };
         match read_header_line(&mut reader, key) {
             Ok(header) => HeaderRead::Found(header),
@@ -173,12 +254,15 @@ impl LogCache {
     /// cache; an unreadable one is kept.
     pub fn lookup(&self, key: &CacheKey, start_ms: i64, end_ms: i64) -> CacheLookup {
         let path = self.entry_path(key);
-        let read = read_entry(
-            &path,
-            key,
-            EventSelection::Range { start_ms, end_ms },
-            |header| find_covering_range(&header.covered_ranges, start_ms, end_ms).is_some(),
-        );
+        let read = read_entry(&path, key, |header| {
+            find_covering_range(&header.covered_ranges, start_ms, end_ms).map(|covering| {
+                EventSelection::Range {
+                    start_ms,
+                    end_ms,
+                    covering,
+                }
+            })
+        });
         match read {
             ReadOutcome::Entry(EntryRead::Missing) => CacheLookup::Missing,
             ReadOutcome::Entry(EntryRead::Unreadable) => CacheLookup::Unreadable,
@@ -209,10 +293,11 @@ impl LogCache {
         range: CoveredRange,
         events: Vec<CachedEvent>,
     ) -> Result<WriteKind, CacheError> {
+        let _writing = self.writes.start();
         ensure_private_dir(&self.directory)?;
         self.remove_leftover_temp_files(key);
         let path = self.entry_path(key);
-        let existing = match read_entry(&path, key, EventSelection::All, |_| true) {
+        let existing = match read_entry(&path, key, |_| Some(EventSelection::All)) {
             ReadOutcome::Entry(entry) => entry,
             ReadOutcome::Skipped => EntryRead::Missing,
         };
@@ -238,9 +323,12 @@ impl LogCache {
                 )
             }
         };
+        let range_event_counts = count_events_by_range(&merged, &ranges);
         let header = CacheHeader {
             format_version: FORMAT_VERSION,
             key: key.clone(),
+            event_count: merged.len() as u64,
+            range_event_counts,
             covered_ranges: ranges,
         };
         let temp_name = key.temp_file_name(&random_suffix());
@@ -360,35 +448,43 @@ enum ReadOutcome {
     Skipped,
 }
 
-fn open_entry(path: &Path) -> Result<BufReader<File>, HeaderRead> {
+/// Why a cache file could not be opened.
+enum OpenError {
+    /// There is no file: simply no cache.
+    Missing,
+    /// The file exists but cannot be opened.
+    Unreadable,
+}
+
+fn open_entry(path: &Path) -> Result<BufReader<File>, OpenError> {
     match File::open(path) {
         Ok(file) => Ok(BufReader::new(file)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Err(HeaderRead::Missing),
-        Err(_) => Err(HeaderRead::Unreadable),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Err(OpenError::Missing),
+        Err(_) => Err(OpenError::Unreadable),
     }
 }
 
-/// Reads the header, asks `wants_events` whether to go on, then reads the
-/// selected events, checking every event read (BR4.1, review R-13).
+/// Reads the header, asks `select` which events to read (`None`: none),
+/// then reads them, checking every event read (BR4.1, review R-13) and
+/// their count (U6 review R-03).
 fn read_entry(
     path: &Path,
     key: &CacheKey,
-    selection: EventSelection,
-    wants_events: impl FnOnce(&CacheHeader) -> bool,
+    select: impl FnOnce(&CacheHeader) -> Option<EventSelection>,
 ) -> ReadOutcome {
     let mut reader = match open_entry(path) {
         Ok(reader) => reader,
-        Err(HeaderRead::Missing) => return ReadOutcome::Entry(EntryRead::Missing),
-        Err(_) => return ReadOutcome::Entry(EntryRead::Unreadable),
+        Err(OpenError::Missing) => return ReadOutcome::Entry(EntryRead::Missing),
+        Err(OpenError::Unreadable) => return ReadOutcome::Entry(EntryRead::Unreadable),
     };
     let header = match read_header_line(&mut reader, key) {
         Ok(header) => header,
         Err(error) => return ReadOutcome::Entry(entry_error(error)),
     };
-    if !wants_events(&header) {
+    let Some(selection) = select(&header) else {
         return ReadOutcome::Skipped;
-    }
-    match read_events(&mut reader, &header.covered_ranges, selection) {
+    };
+    match read_events(&mut reader, &header, selection) {
         Ok(events) => ReadOutcome::Entry(EntryRead::Found(header, events)),
         Err(error) => ReadOutcome::Entry(entry_error(error)),
     }
@@ -417,10 +513,11 @@ fn read_header_line(
 
 fn read_events(
     reader: &mut BufReader<File>,
-    ranges: &[CoveredRange],
+    header: &CacheHeader,
     selection: EventSelection,
 ) -> Result<Vec<CachedEvent>, LineError> {
-    let mut check = EventCheck::new(ranges);
+    let mut check = EventCheck::new(&header.covered_ranges);
+    let mut counter = EventCounter::new(header);
     let mut events = Vec::new();
     let mut line = String::new();
     while read_line(reader, &mut line)? {
@@ -428,17 +525,30 @@ fn read_events(
             serde_json::from_str(&line).map_err(|_| LineError::Corrupt(Corruption::Unparsable))?;
         check.check(&event).map_err(LineError::Corrupt)?;
         match selection {
-            EventSelection::All => events.push(event),
-            EventSelection::Range { start_ms, end_ms } => {
-                if event.timestamp > end_ms {
+            EventSelection::All => {
+                counter.count(&event);
+                events.push(event);
+            }
+            EventSelection::Range {
+                start_ms,
+                end_ms,
+                covering,
+            } => {
+                if event.timestamp > covering.end_ms {
                     break;
                 }
-                if event.timestamp >= start_ms {
+                counter.count(&event);
+                if (start_ms..=end_ms).contains(&event.timestamp) {
                     events.push(event);
                 }
             }
         }
     }
+    let counted = match selection {
+        EventSelection::All => counter.verify_all(),
+        EventSelection::Range { covering, .. } => counter.verify_range(covering),
+    };
+    counted.map_err(LineError::Corrupt)?;
     Ok(events)
 }
 
@@ -661,7 +771,7 @@ mod tests {
         }
         let text = fs::read_to_string(cache.entry_path(&key())).unwrap();
         assert_eq!(text.lines().count(), 5, "one header and four events");
-        assert!(text.lines().next().unwrap().contains("\"formatVersion\":1"));
+        assert!(text.lines().next().unwrap().contains("\"formatVersion\":2"));
     }
 
     #[test]
@@ -759,7 +869,7 @@ mod tests {
             ),
             (
                 "unknown version",
-                Box::new(|text| text.replacen("\"formatVersion\":1", "\"formatVersion\":9", 1)),
+                Box::new(|text| text.replacen("\"formatVersion\":2", "\"formatVersion\":9", 1)),
                 Corruption::UnknownVersion,
             ),
             (
@@ -808,6 +918,62 @@ mod tests {
     }
 
     #[test]
+    fn a_file_cut_at_a_line_boundary_is_broken_and_removed() {
+        for (from, to) in [(100, 199), (110, 150)] {
+            let (_dir, cache) = written();
+            let path = cache.entry_path(&key());
+            let text = fs::read_to_string(&path).unwrap();
+            // Drop the last event line whole: every line left is valid JSON.
+            let lines: Vec<&str> = text.lines().collect();
+            fs::write(&path, lines[..lines.len() - 1].join("\n") + "\n").unwrap();
+            assert_eq!(
+                cache.lookup(&key(), from, to),
+                CacheLookup::Corrupt(Corruption::CountMismatch),
+                "[{from}, {to}]"
+            );
+            assert!(!path.exists(), "removed");
+        }
+        let (_dir, cache) = written();
+        let path = cache.entry_path(&key());
+        let text = fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        fs::write(&path, lines[..lines.len() - 1].join("\n") + "\n").unwrap();
+        assert_eq!(
+            cache.write(&key(), range(300, 399), Vec::new()),
+            Ok(WriteKind::Rebuilt),
+            "a whole read of a cut file sees it too"
+        );
+    }
+
+    #[test]
+    fn the_header_records_the_counts_and_writes_are_tracked() {
+        let (_dir, cache) = written();
+        cache
+            .write(&key(), range(300, 399), vec![cached(310, "c", 0)])
+            .unwrap();
+        match cache.read_header(&key()) {
+            HeaderRead::Found(header) => {
+                assert_eq!(header.event_count, 5);
+                assert_eq!(header.range_event_counts, vec![4, 1]);
+            }
+            other => panic!("expected a header, got {other:?}"),
+        }
+        let tracker = WriteTracker::new();
+        let tracked = cache.clone().with_writes(tracker.clone());
+        assert_eq!(tracked.writes(), &tracker);
+        assert!(!tracker.is_writing());
+        let guard = tracker.start();
+        assert!(tracked.writes().is_writing());
+        drop(guard);
+        tracked.write(&key(), range(500, 599), Vec::new()).unwrap();
+        assert!(
+            !tracker.is_writing(),
+            "the write's own mark is gone after it"
+        );
+        assert_ne!(WriteTracker::new(), tracker);
+    }
+
+    #[test]
     fn a_missing_file_is_no_cache_and_an_unreadable_one_is_kept() {
         let dir = tempfile::tempdir().unwrap();
         let cache = LogCache::new(dir.path().to_path_buf());
@@ -844,7 +1010,7 @@ mod tests {
         let text = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            text.replacen("\"formatVersion\":1", "\"formatVersion\":0", 1),
+            text.replacen("\"formatVersion\":2", "\"formatVersion\":0", 1),
         )
         .unwrap();
         let kind = cache.write(&key(), range(500, 599), vec![cached(510, "d", 0)]);

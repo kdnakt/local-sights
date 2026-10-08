@@ -51,9 +51,26 @@
 //! `session-changed` (U6:BR5.1). The filter scan asks the core whether to
 //! report its progress (`filter::should_report_progress`, U5 review R-03).
 //!
+//! Since U7 the screen asks the positions of its expanded, selected and
+//! top rows in one call, `row_positions`, which locks the LogView once and
+//! also answers the discard generation (U7:BR1.6, BR1.7, review R-11); the
+//! generation is copied into the session whenever the filter summary is.
+//! Closing the window (`CloseRequested`) or ending the app (`ExitRequested`,
+//! Cmd+Q and the Dock menu) while fetching or writing the cache is stopped
+//! and AppSession's closeConfirmation becomes Pending (U7:BR3.1); the
+//! screen answers with `cancel_close` ([Keep fetching]) or `confirm_close`
+//! ([Close]: abort the fetch, set the "may exit" flag and exit, BR3.2). The
+//! app is therefore built first and run with a callback that sees
+//! `RunEvent::ExitRequested`. Closing no longer aborts the fetch by itself;
+//! only `Destroyed` still aborts, as a safety net. The settings commands are
+//! async and do their file work on a blocking thread without the session
+//! lock (U6 review R-01).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
-//! no secret credential and no access key ID is ever logged or shown.
+//! no secret credential and no access key ID is ever logged or shown. No
+//! log file is ever written (U7:BR4.5, NFR16).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -69,17 +86,17 @@ use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
-use local_sights_core::log_view::LogView;
+use local_sights_core::log_view::{LogView, RowKey, RowPositions};
 use local_sights_core::paging::PageDecision;
 use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
-    AppSession, CacheLocation, ConnectionEffect, DisplayRowWindow, InputField, SessionError,
-    SessionView,
+    AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, InputField,
+    SessionError, SessionView, SettingsWork,
 };
 use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_zone::{TimeZoneChoice, TimeZoneContext};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 
 /// Event carrying the latest [`SessionView`].
 pub const SESSION_CHANGED: &str = "session-changed";
@@ -103,6 +120,9 @@ const CACHE_FOLDER_NAME: &str = "log-cache";
 
 /// Most rows one `get_rows` call returns; a viewport needs far fewer.
 const MAX_ROWS_PER_REQUEST: usize = 1_000;
+/// Most keys one `row_positions` call answers: the expanded rows, the
+/// selected row and the top row (U7:BR1.7).
+const MAX_KEYS_PER_REQUEST: usize = 10_000;
 
 /// Shared state of the app.
 #[derive(Debug)]
@@ -114,6 +134,9 @@ struct AppState {
     /// Abort handle of the running fetch with its fetch number from the
     /// session (BR5.5), so a finished fetch only forgets its own handle.
     abort: Arc<Mutex<Option<(u64, AbortHandle)>>>,
+    /// Set by [Close] (U7:BR3.2): the exit and window close that follow are
+    /// not stopped again. Read without the session lock.
+    exit_allowed: AtomicBool,
 }
 
 impl AppState {
@@ -137,10 +160,12 @@ impl AppState {
             log_view: Arc::default(),
             gateway: Arc::default(),
             abort: Arc::default(),
+            exit_allowed: AtomicBool::new(false),
         }
     }
 
-    /// Asks the running fetch, if any, to stop (window closing, BR5.5).
+    /// Asks the running fetch, if any, to stop ([Close] or the window being
+    /// destroyed, BR5.5, U7:BR3.2).
     fn abort_fetch(&self) {
         if let Some((_, handle)) = lock(&self.abort).as_ref() {
             handle.abort();
@@ -205,11 +230,13 @@ fn emit_or_log<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     }
 }
 
-/// Copies the log filter summary into the session (U5:BR3.6). Called with
-/// the session locked; locks the LogView second (the lock order).
+/// Copies the log filter summary (U5:BR3.6) and the discard generation
+/// (U7:BR1.6, review R-11) into the session. Called with the session
+/// locked; locks the LogView second (the lock order).
 fn sync_filter(session: &mut AppSession, log_view: &Mutex<LogView>) {
-    let state = lock(log_view).filter_state();
-    session.set_filter_state(state);
+    let view = lock(log_view);
+    session.set_filter_state(view.filter_state());
+    session.set_discard_generation(view.discard_generation());
 }
 
 /// Maps a stale operation (an older connection generation, BR6.7) to a
@@ -284,6 +311,70 @@ fn find_row_position(
             .position_of(&log_stream_name, sequence)
             .map(|position| position as u64),
         timeline_version: log_view.version(),
+    }
+}
+
+/// U7:BR1.7: the current positions of several rows (the expanded rows, the
+/// selected row and the top row) in one LogView lock, with the timeline
+/// version, the result version, the discard generation and the row count.
+/// At most `MAX_KEYS_PER_REQUEST` keys are answered.
+#[tauri::command]
+fn row_positions(keys: Vec<RowKey>, state: State<'_, AppState>) -> RowPositions {
+    let keys = &keys[..keys.len().min(MAX_KEYS_PER_REQUEST)];
+    lock(&state.log_view).positions_of(keys)
+}
+
+/// [Keep fetching] or Escape on the close confirmation (U7:BR3.2): the
+/// fetch goes on and the dialog closes.
+#[tauri::command]
+fn cancel_close(app: AppHandle, state: State<'_, AppState>) {
+    let view = {
+        let mut session = lock(&state.session);
+        session.cancel_close();
+        session.view()
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+}
+
+/// [Close] on the close confirmation (U7:BR3.2, BR3.4): aborts a fetch
+/// still running (U3:BR5.5; nothing is written to the cache, U6:BR3.2),
+/// marks that the app may exit and exits without asking again. Does
+/// nothing when no confirmation is pending.
+#[tauri::command]
+fn confirm_close(app: AppHandle, state: State<'_, AppState>) {
+    let Some(confirmed) = lock(&state.session).confirm_close() else {
+        return;
+    };
+    state.exit_allowed.store(true, Ordering::SeqCst);
+    if confirmed.abort_fetch {
+        state.abort_fetch();
+    }
+    app.exit(0);
+}
+
+/// U7:BR3.1: whether a request to close the window or end the app must be
+/// stopped. Never once [Close] was chosen; otherwise AppSession decides,
+/// and when its confirmation has just become Pending the screen is told.
+fn must_stop_closing(app: &AppHandle) -> bool {
+    let Some(state) = app.try_state::<AppState>() else {
+        return false;
+    };
+    if state.exit_allowed.load(Ordering::SeqCst) {
+        return false;
+    }
+    let (decision, view) = {
+        let mut session = lock(&state.session);
+        let decision = session.request_close();
+        (decision, session.view())
+    };
+    match decision {
+        CloseDecision::Allow => false,
+        CloseDecision::Prevent { changed } => {
+            if changed {
+                emit_or_log(app, SESSION_CHANGED, view);
+            }
+            true
+        }
     }
 }
 
@@ -438,7 +529,7 @@ fn begin_and_spawn_fetch(
         run_fetch_with_cache(
             gateway.as_ref(),
             &validated,
-            log_view.as_ref(),
+            &log_view,
             &retrier,
             cache.as_ref(),
             fetch_started_at_ms,
@@ -475,8 +566,9 @@ fn now_epoch_ms() -> i64 {
         })
 }
 
-/// Opens the settings dialog (U6:BR5.1); refused while fetching or while a
-/// connection change awaits confirmation.
+/// Opens the settings dialog (U6:BR5.1); refused while fetching, while a
+/// cache write runs (U6 review R-02) or while a connection change awaits
+/// confirmation.
 #[tauri::command]
 fn open_settings(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
     change_settings(&app, &state, AppSession::open_settings)
@@ -493,23 +585,26 @@ fn cancel_settings(app: AppHandle, state: State<'_, AppState>) -> Result<(), Com
 
 /// Saves the cache setting; switching it off removes the cached files
 /// (U6:BR1.1, BR1.3). A failure is told in the dialog, which stays open.
+/// The file work runs on a blocking thread without the session lock (U6
+/// review R-01).
 #[tauri::command]
-fn save_settings(
+async fn save_settings(
     enabled: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    change_settings(&app, &state, |session| session.save_settings(enabled))
+    run_settings_work(&app, &state, |session| session.begin_save_settings(enabled)).await
 }
 
-/// Removes every cached file at once ([Clear cache], U6:BR1.4).
+/// Removes every cached file at once ([Clear cache], U6:BR1.4), on a
+/// blocking thread without the session lock (U6 review R-01).
 #[tauri::command]
-fn clear_cache(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
-    change_settings(&app, &state, AppSession::clear_cache)
+async fn clear_cache(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    run_settings_work(&app, &state, AppSession::begin_clear_cache).await
 }
 
-/// Runs one settings dialog operation and pushes the new state. The dialog
-/// cannot be open while a fetch runs, so no cache write is under way.
+/// Runs one settings dialog operation that needs no file work and pushes
+/// the new state. The dialog cannot be open while a fetch runs.
 fn change_settings(
     app: &AppHandle,
     state: &AppState,
@@ -518,6 +613,40 @@ fn change_settings(
     let view = {
         let mut session = lock(&state.session);
         operation(&mut session)?;
+        session.view()
+    };
+    emit_or_log(app, SESSION_CHANGED, view);
+    Ok(())
+}
+
+/// U6 review R-01: decides under the session lock, does the file work on a
+/// blocking thread with no lock held, then applies the result under the
+/// lock and pushes the new state.
+async fn run_settings_work(
+    app: &AppHandle,
+    state: &AppState,
+    begin: impl FnOnce(&mut AppSession) -> Result<Option<SettingsWork>, SessionError>,
+) -> Result<(), CommandError> {
+    let (work, view) = {
+        let mut session = lock(&state.session);
+        let work = begin(&mut session)?;
+        (work, session.view())
+    };
+    let Some(work) = work else {
+        emit_or_log(app, SESSION_CHANGED, view);
+        return Ok(());
+    };
+    let failed = work.failed();
+    let result = match tauri::async_runtime::spawn_blocking(move || work.run()).await {
+        Ok(result) => result,
+        Err(_) => {
+            eprintln!("local-sights: settings: the file work ended abnormally");
+            failed
+        }
+    };
+    let view = {
+        let mut session = lock(&state.session);
+        session.finish_settings_work(result);
         session.view()
     };
     emit_or_log(app, SESSION_CHANGED, view);
@@ -583,6 +712,7 @@ fn change_connection(
             let version = log_view.clear();
             session.set_timeline_version(version);
             session.set_filter_state(log_view.filter_state());
+            session.set_discard_generation(log_view.discard_generation());
         }
         (effect, session.view())
     };
@@ -846,10 +976,14 @@ impl FetchSink for TauriSink {
 
 /// Starts the desktop app.
 ///
+/// The app is built first and then run with a callback, so that ending the
+/// app (`RunEvent::ExitRequested`: Cmd+Q, the Dock menu, the last window
+/// closing) can be stopped like closing the window (U7:BR3.1, review R-02).
+///
 /// # Errors
-/// Returns the Tauri error when the app cannot be built or run.
+/// Returns the Tauri error when the app cannot be built.
 pub fn run() -> Result<(), tauri::Error> {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .setup(|app| {
             // U6:BR1.6: the folders come from the OS, so the state is made
             // here, where the app's paths are known.
@@ -857,15 +991,21 @@ pub fn run() -> Result<(), tauri::Error> {
             app.manage(AppState::load(location));
             Ok(())
         })
-        .on_window_event(|window, event| {
-            // Closing the window stops a running fetch (BR5.5); the
-            // confirmation dialog comes with U7.
-            if matches!(
-                event,
-                WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
-            ) {
-                window.state::<AppState>().abort_fetch();
+        .on_window_event(|window, event| match event {
+            // U7:BR3.1 (1): stopped while fetching or writing the cache; the
+            // fetch is no longer aborted here (BR3.2 does that on [Close]).
+            WindowEvent::CloseRequested { api, .. } => {
+                if must_stop_closing(window.app_handle()) {
+                    api.prevent_close();
+                }
             }
+            // U7:BR3.1 (3): the window is gone; stop a fetch just in case.
+            WindowEvent::Destroyed => {
+                if let Some(state) = window.try_state::<AppState>() {
+                    state.abort_fetch();
+                }
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             get_session,
@@ -880,13 +1020,25 @@ pub fn run() -> Result<(), tauri::Error> {
             select_log_group,
             get_rows,
             find_row_position,
+            row_positions,
             set_failure_list_open,
             select_time_zone,
             set_log_filter,
             open_settings,
             cancel_settings,
             save_settings,
-            clear_cache
+            clear_cache,
+            cancel_close,
+            confirm_close
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?;
+    app.run(|app, event| {
+        // U7:BR3.1 (2): Cmd+Q and the Dock menu, stopped like the window.
+        if let RunEvent::ExitRequested { api, .. } = event {
+            if must_stop_closing(app) {
+                api.prevent_exit();
+            }
+        }
+    });
+    Ok(())
 }

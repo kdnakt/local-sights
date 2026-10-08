@@ -10,6 +10,10 @@
  * Since U6 the settings dialog commands (`openSettings`, `cancelSettings`,
  * `saveSettings`, `clearCache`) and the cache fields of the session view and
  * of the progress message (U6:BR5.1, BR5.3).
+ * Since U7 `rowPositions` asks the positions of several rows at once with the
+ * discard generation (U7:BR1.6, BR1.7), the session view carries the discard
+ * generation and the close confirmation, and `confirmClose` / `cancelClose`
+ * answer it (U7:BR3.1-BR3.3).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -121,6 +125,9 @@ export type SettingsDialog = "Closed" | "Open";
 /** What the settings dialog tells after an operation (U6:BR1.3, BR1.4). */
 export type SettingsNotice = "Cleared" | "ClearFailed" | "SaveFailed";
 
+/** Whether closing the window awaits an answer (U7:BR3.1). */
+export type CloseConfirmation = "None" | "Pending";
+
 /** One cache notice of the status line; wording in U6:BR5.3. */
 export type CacheNotice = "Hit" | "ReadFailed" | "SaveFailed";
 
@@ -190,6 +197,10 @@ export interface SessionView {
   cacheSaving: boolean;
   /** Cache notices of the last fetch (U6:BR5.3). */
   cacheNotices: CacheNotice[];
+  /** Advances whenever the held logs are discarded (U7:BR1.6). */
+  discardGeneration: number;
+  /** Pending while the close confirmation is shown (U7:BR3.1). */
+  closeConfirmation: CloseConfirmation;
 }
 
 export interface LogEvent {
@@ -230,6 +241,26 @@ export interface RowWindow {
 export interface RowPosition {
   position: number | null;
   timelineVersion: number;
+}
+
+/** One held event, as `rowPositions` asks for it (U7:BR1.7). */
+export interface RowKeyParts {
+  logStreamName: string;
+  sequence: number;
+}
+
+/**
+ * The current positions of several rows, in the order asked, with the
+ * versions they belong to (U7:BR1.7). A position is `null` when the row is
+ * hidden by the log filter or no longer held.
+ */
+export interface RowPositions {
+  positions: Array<number | null>;
+  timelineVersion: number;
+  resultVersion: number;
+  discardGeneration: number;
+  /** Rows of the current list (the filter result while a filter is in force). */
+  totalCount: number;
 }
 
 /** Error returned by a command: a message-catalog key. */
@@ -352,6 +383,21 @@ export function getRows(offset: number, limit: number): Promise<RowWindow> {
 /** Finds the current position of one event. */
 export function findRowPosition(logStreamName: string, sequence: number): Promise<RowPosition> {
   return invoke<RowPosition>("find_row_position", { logStreamName, sequence });
+}
+
+/** U7:BR1.7: the current positions of several rows in one call. */
+export function rowPositions(keys: RowKeyParts[]): Promise<RowPositions> {
+  return invoke<RowPositions>("row_positions", { keys });
+}
+
+/** [Keep fetching] or Escape on the close confirmation (U7:BR3.2). */
+export function cancelClose(): Promise<void> {
+  return invoke<void>("cancel_close");
+}
+
+/** [Close] on the close confirmation: stop fetching and end the app (U7:BR3.2). */
+export function confirmClose(): Promise<void> {
+  return invoke<void>("confirm_close");
 }
 
 /**

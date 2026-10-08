@@ -8,8 +8,17 @@
 //! within the same lock, so a viewport read never sees one without the
 //! other. Rows and positions are read with the filter in mind (BR3.1,
 //! BR3.2). The lock order of the app becomes session, then LogView.
+//!
+//! Since U7 the LogView owns the discard generation (review R-11): it
+//! advances whenever held logs are discarded, in the same step and under
+//! the same lock as the timeline version, so the screen knows when the
+//! `(logStreamName, sequence)` keys of its expanded rows went stale
+//! (U7:BR1.6). [`LogView::positions_of`] answers the positions of several
+//! rows in one lock with the versions they belong to (U7:BR1.7).
 
 use std::sync::{Mutex, PoisonError};
+
+use serde::{Deserialize, Serialize};
 
 use crate::cache::plan::CoveredRange;
 use crate::coordinator::{HeldEvents, TimelineStore, copy_chunk_in_range};
@@ -22,6 +31,37 @@ use crate::timeline::{EventTimeline, RowWindow};
 pub struct LogView {
     timeline: EventTimeline,
     filter: FilterEngine,
+    /// Times held logs were discarded (U7:BR1.6, review R-11).
+    discard_generation: u64,
+}
+
+/// One held event as the screen names it (U3:BR4.4).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowKey {
+    /// Stream of the event.
+    pub log_stream_name: String,
+    /// Position of the event within its stream in this fetch.
+    pub sequence: u64,
+}
+
+/// Answer of [`LogView::positions_of`] (U7:BR1.7): one position per key, in
+/// the order of the keys, and the versions they belong to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowPositions {
+    /// Position in the current list, `None` when hidden by the filter or not
+    /// held.
+    pub positions: Vec<Option<u64>>,
+    /// Version of the timeline (U3:BR4.5).
+    pub timeline_version: u64,
+    /// Version of the filter result (U5:BR3.6).
+    pub result_version: u64,
+    /// Discard generation (U7:BR1.6).
+    pub discard_generation: u64,
+    /// Number of rows of the current list: the held events, or the matching
+    /// ones while a filter is in force.
+    pub total_count: u64,
 }
 
 impl LogView {
@@ -59,9 +99,45 @@ impl LogView {
 
     /// Discards every event (U3:BR4.5), empties the result and advances its
     /// epoch, keeping the text (BR2.2); returns the new timeline version.
+    /// When events were held, the discard generation advances too (U7:BR1.6,
+    /// review R-11): the fetch start, a connection change and an abort all
+    /// discard through here.
     pub fn clear(&mut self) -> u64 {
+        if !self.timeline.is_empty() {
+            self.discard_generation += 1;
+        }
         self.filter.on_discarded();
         self.timeline.clear()
+    }
+
+    /// Times held logs were discarded (U7:BR1.6); adding never changes it.
+    pub fn discard_generation(&self) -> u64 {
+        self.discard_generation
+    }
+
+    /// U7:BR1.7: the current positions of `keys` in one lock (with a filter
+    /// in force, positions in the result, as [`LogView::position_of`]), with
+    /// the timeline version, the result version, the discard generation and
+    /// the number of rows of the list.
+    pub fn positions_of(&self, keys: &[RowKey]) -> RowPositions {
+        let total_count = if self.filter.is_active() {
+            self.filter.matched_count()
+        } else {
+            self.timeline.len()
+        };
+        RowPositions {
+            positions: keys
+                .iter()
+                .map(|key| {
+                    self.position_of(&key.log_stream_name, key.sequence)
+                        .map(|position| position as u64)
+                })
+                .collect(),
+            timeline_version: self.timeline.version(),
+            result_version: self.filter.result_version(),
+            discard_generation: self.discard_generation,
+            total_count: total_count as u64,
+        }
     }
 
     /// Sets the filter text (BR1.1, BR1.4); on [`FilterChange::Started`] the
@@ -362,6 +438,88 @@ mod tests {
         assert_eq!(summary.status, FilterStatus::Filtering);
         assert_eq!(summary.filter_id, view.filter().filter_id());
         assert_eq!(view.clear(), view.version());
+    }
+
+    fn row_key(stream: &str, sequence: u64) -> RowKey {
+        RowKey {
+            log_stream_name: stream.to_string(),
+            sequence,
+        }
+    }
+
+    #[test]
+    fn positions_of_answers_every_key_in_one_call_with_the_versions() {
+        let mut view = LogView::new();
+        view.append(ten());
+        let keys = [row_key("s", 4), row_key("s", 99), row_key("other", 0)];
+        let answer = view.positions_of(&keys);
+        assert_eq!(answer.positions, vec![Some(4), None, None]);
+        assert_eq!(answer.timeline_version, view.version());
+        assert_eq!(answer.result_version, view.filter().result_version());
+        assert_eq!(answer.discard_generation, view.discard_generation());
+        assert_eq!(answer.total_count, 10);
+        assert!(view.positions_of(&[]).positions.is_empty());
+    }
+
+    #[test]
+    fn positions_of_with_a_filter_are_inside_the_result_and_hidden_rows_have_none() {
+        let mut view = LogView::new();
+        view.append(ten());
+        view.set_filter("error");
+        finish_scan(&mut view);
+        let keys = [row_key("s", 4), row_key("s", 3), row_key("s", 8)];
+        let answer = view.positions_of(&keys);
+        assert_eq!(answer.positions, vec![Some(2), None, Some(4)]);
+        assert_eq!(answer.total_count, 5, "the result is the list");
+        assert_eq!(answer.result_version, view.filter().result_version());
+        // The same key, the filter cleared: shown again at its timeline position.
+        view.set_filter("");
+        assert_eq!(
+            view.positions_of(&keys).positions,
+            vec![Some(4), Some(3), Some(8)]
+        );
+    }
+
+    #[test]
+    fn the_discard_generation_advances_only_when_held_logs_are_discarded() {
+        let store = Mutex::new(LogView::new());
+        assert_eq!(store.lock().unwrap().discard_generation(), 0);
+        store.add(ten());
+        assert_eq!(
+            store.lock().unwrap().discard_generation(),
+            0,
+            "adding is not a discard"
+        );
+        store.discard();
+        assert_eq!(store.lock().unwrap().discard_generation(), 1);
+        store.discard();
+        assert_eq!(
+            store.lock().unwrap().discard_generation(),
+            1,
+            "nothing held, nothing discarded"
+        );
+        let mut view = store.lock().unwrap();
+        view.append(ten());
+        view.set_filter("error");
+        view.clear();
+        assert_eq!(view.discard_generation(), 2);
+        assert_eq!(view.positions_of(&[row_key("s", 0)]).discard_generation, 2);
+    }
+
+    #[test]
+    fn positions_serialize_with_camel_case_names_for_the_screen() {
+        let mut view = LogView::new();
+        view.append(ten());
+        let json = serde_json::to_value(view.positions_of(&[row_key("s", 1)])).unwrap();
+        assert_eq!(json["positions"], serde_json::json!([1]));
+        assert!(json.get("timelineVersion").is_some());
+        assert!(json.get("resultVersion").is_some());
+        assert!(json.get("discardGeneration").is_some());
+        assert_eq!(json["totalCount"], 10);
+        let key: RowKey =
+            serde_json::from_value(serde_json::json!({"logStreamName": "s", "sequence": 3}))
+                .unwrap();
+        assert_eq!(key, row_key("s", 3));
     }
 
     // ---- Speed (NFR1, NFR2): release build only ----

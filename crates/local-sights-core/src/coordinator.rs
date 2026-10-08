@@ -14,9 +14,13 @@
 //! whole range is fetched from AWS (U6:BR2.4) and, when every stream
 //! succeeded, the recordable part is written before the job finishes
 //! (U6:BR3.1, BR3.2, BR3.5). The order of the notices is U6:BR3.7.
+//!
+//! Since U7 (U6 review R-04) the held events of a cache write are copied on
+//! a blocking thread too, one chunk per lock, so the async runtime never
+//! waits for the copy; the timeline is therefore shared as an `Arc`.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::Serialize;
 
@@ -465,15 +469,16 @@ enum CacheAnswer {
 ///   (U6:BR4.1). The end of that fetch is held back; when the fetch
 ///   completed with no failed stream and a recordable range (U6:BR3.1,
 ///   BR3.2), `on_saving` is sent, the recordable events are copied from the
-///   timeline one chunk per lock and written on a blocking thread
-///   (U6:BR3.5). Then the job finishes with its cache outcome.
+///   timeline one chunk per lock on a blocking thread (U6 review R-04) and
+///   written on a blocking thread (U6:BR3.5). Then the job finishes with
+///   its cache outcome.
 ///
 /// `fetch_started_at_ms` is when the fetch started (epoch milliseconds), the
 /// base of the five-minute margin (U6:BR3.1).
 pub async fn run_fetch_with_cache<G, T, S>(
     gateway: &G,
     fetch: &ValidatedFetch,
-    timeline: &T,
+    timeline: &Arc<T>,
     retrier: &Retrier<'_>,
     cache: Option<&LogCache>,
     fetch_started_at_ms: i64,
@@ -481,24 +486,24 @@ pub async fn run_fetch_with_cache<G, T, S>(
 ) -> FetchJob
 where
     G: CloudWatchLogsGateway,
-    T: TimelineStore + HeldEvents,
+    T: TimelineStore + HeldEvents + Send + Sync + 'static,
     S: FetchSink + Send,
 {
     let (Some(cache), Some(key)) = (cache, CacheKey::from_request(&fetch.request)) else {
-        return run_fetch(gateway, fetch, timeline, retrier, sink).await;
+        return run_fetch(gateway, fetch, timeline.as_ref(), retrier, sink).await;
     };
     let start_ms = fetch.range.start_instant();
     let end_ms = fetch.range.end_instant();
     let read_failed = match look_up(cache, &key, start_ms, end_ms).await {
         CacheAnswer::Hit(events) => {
-            return serve_from_cache(fetch, timeline, retrier, events, sink);
+            return serve_from_cache(fetch, timeline.as_ref(), retrier, events, sink);
         }
         CacheAnswer::NoCache => false,
         CacheAnswer::ReadFailed => true,
     };
 
     let mut deferred = DeferredFinishSink::new(sink);
-    let returned = run_fetch(gateway, fetch, timeline, retrier, &mut deferred).await;
+    let returned = run_fetch(gateway, fetch, timeline.as_ref(), retrier, &mut deferred).await;
     let Some((mut job, timeline_version)) = deferred.take_finished() else {
         // run_fetch always finishes its job; without it there is nothing to
         // report, and the caller's recovery ends the fetch.
@@ -518,8 +523,10 @@ where
         None => CacheOutcome::NotSaved,
         Some(record) => {
             sink.on_saving(job.job_id);
-            let events = copy_held_events(timeline, record);
-            save(cache, key, record, events).await
+            match copy_on_blocking_thread(timeline, record).await {
+                Some(events) => save(cache, key, record, events).await,
+                None => CacheOutcome::SaveFailed,
+            }
         }
     };
     sink.on_finished(&job, timeline_version);
@@ -542,6 +549,8 @@ where
     let mut job = FetchJob::start(fetch.range);
     let mut timeline_version = timeline.discard();
     if retrier.is_aborted() {
+        // The cache is in use but nothing is written (U6 review R-06).
+        job.cache_outcome = CacheOutcome::NotSaved;
         sink.on_started(&job, timeline_version);
         return abort(job, timeline, sink);
     }
@@ -581,6 +590,27 @@ async fn look_up(cache: &LogCache, key: &CacheKey, start_ms: i64, end_ms: i64) -
         Err(_) => {
             eprintln!("local-sights: cache: the cache lookup ended abnormally; fetching from AWS");
             CacheAnswer::ReadFailed
+        }
+    }
+}
+
+/// Copies the held events of `range` on a blocking thread (U6 review R-04),
+/// one chunk per lock; `None`, with a diagnostic, when that thread ended
+/// abnormally (the write then fails and the rows are kept).
+async fn copy_on_blocking_thread<T>(
+    timeline: &Arc<T>,
+    range: CoveredRange,
+) -> Option<Vec<CachedEvent>>
+where
+    T: HeldEvents + Send + Sync + 'static,
+{
+    let held = Arc::clone(timeline);
+    let task = tokio::task::spawn_blocking(move || copy_held_events(held.as_ref(), range));
+    match task.await {
+        Ok(events) => Some(events),
+        Err(_) => {
+            eprintln!("local-sights: cache: copying the fetched logs ended abnormally");
+            None
         }
     }
 }
@@ -823,17 +853,24 @@ mod tests {
         }
     }
 
-    /// Records the kind of every delivery, in order.
+    /// Records the kind of every delivery, in order, and how many events
+    /// were held when the job started (U6 review R-06).
     #[derive(Default)]
     struct Recorder {
         kinds: Vec<&'static str>,
         batches: Vec<BatchProgress>,
         finished: Option<FetchJob>,
+        timeline: Option<Arc<Mutex<EventTimeline>>>,
+        held_at_start: Option<usize>,
     }
 
     impl FetchSink for Recorder {
         fn on_started(&mut self, _job: &FetchJob, _timeline_version: u64) {
             self.kinds.push("Started");
+            self.held_at_start = self
+                .timeline
+                .as_ref()
+                .map(|timeline| timeline.lock().unwrap().len());
         }
         fn on_listing_progress(&mut self, _job_id: u64, _progress: ListingProgress) {
             self.kinds.push("Listing");
@@ -889,7 +926,7 @@ mod tests {
 
     async fn fetch_with(
         gateway: &FakeLogs,
-        timeline: &Mutex<EventTimeline>,
+        timeline: &Arc<Mutex<EventTimeline>>,
         cache: Option<&LogCache>,
         started_at: i64,
         aborted: bool,
@@ -901,7 +938,10 @@ mod tests {
             handle.abort();
         }
         let retrier = Retrier::new(&policy, &jitter, &signal);
-        let mut sink = Recorder::default();
+        let mut sink = Recorder {
+            timeline: Some(Arc::clone(timeline)),
+            ..Recorder::default()
+        };
         let job = run_fetch_with_cache(
             gateway,
             &validated(),
@@ -917,7 +957,7 @@ mod tests {
 
     async fn fetch(
         gateway: &FakeLogs,
-        timeline: &Mutex<EventTimeline>,
+        timeline: &Arc<Mutex<EventTimeline>>,
         cache: Option<&LogCache>,
     ) -> (FetchJob, Recorder) {
         fetch_with(gateway, timeline, cache, A_DAY_LATER, false).await
@@ -959,7 +999,7 @@ mod tests {
     async fn a_disabled_cache_reads_and_writes_nothing_and_fetches_as_u3() {
         let dir = tempfile::tempdir().unwrap();
         let gateway = two_streams();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let (job, sink) = fetch(&gateway, &timeline, None).await;
         assert_eq!(job.cache_outcome, CacheOutcome::NotUsed);
         assert!(!job.served_from_cache && !job.read_failed);
@@ -985,7 +1025,7 @@ mod tests {
         };
         cache.write(&cache_key(), wider, held).unwrap();
         let gateway = FakeLogs::default();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         timeline.add(vec![LogEvent {
             timestamp: 1,
             ingestion_time: None,
@@ -1023,7 +1063,7 @@ mod tests {
             .write(&cache_key(), whole_range(), Vec::new())
             .unwrap();
         let gateway = FakeLogs::default();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let (job, sink) = fetch(&gateway, &timeline, Some(&cache)).await;
         assert_eq!(gateway.calls(), 0);
         assert_eq!(sink.kinds, vec!["Started", "Finished"]);
@@ -1036,7 +1076,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cache = LogCache::new(dir.path().join("cache"));
         let gateway = two_streams();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let (job, sink) = fetch(&gateway, &timeline, Some(&cache)).await;
         assert_eq!(job.cache_outcome, CacheOutcome::Saved);
         assert!(!job.served_from_cache && !job.read_failed);
@@ -1077,7 +1117,7 @@ mod tests {
 
         let mut gateway = two_streams();
         gateway.failing_stream = Some("c");
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let (job, sink) = fetch(&gateway, &timeline, Some(&cache)).await;
         assert_eq!(job.status, JobStatus::CompletedWithFailures);
         assert_eq!(job.cache_outcome, CacheOutcome::NotSaved);
@@ -1100,7 +1140,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cache = LogCache::new(dir.path().to_path_buf());
         let gateway = two_streams();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let just_after = START + 60_000;
         let (job, sink) = fetch_with(&gateway, &timeline, Some(&cache), just_after, false).await;
         assert_eq!(job.status, JobStatus::Completed);
@@ -1121,7 +1161,7 @@ mod tests {
         std::fs::write(&path, &text[..text.len() - 3]).unwrap();
 
         let gateway = two_streams();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let just_after = START + 60_000;
         let (job, _sink) = fetch_with(&gateway, &timeline, Some(&cache), just_after, false).await;
         assert!(job.read_failed);
@@ -1148,7 +1188,7 @@ mod tests {
         // the new file cannot replace it.
         std::fs::create_dir(cache.entry_path(&cache_key())).unwrap();
         let gateway = two_streams();
-        let timeline = Mutex::new(EventTimeline::new());
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
         let (job, sink) = fetch(&gateway, &timeline, Some(&cache)).await;
         assert!(job.read_failed);
         assert_eq!(job.cache_outcome, CacheOutcome::SaveFailed);
@@ -1160,6 +1200,120 @@ mod tests {
         assert_eq!(&sink.kinds[sink.kinds.len() - 2..], ["Saving", "Finished"]);
         assert!(cache.entry_path(&cache_key()).is_dir(), "kept");
         assert_eq!(timeline.lock().unwrap().len(), 3, "the fetched rows stay");
+    }
+
+    // ---- U7: U6 review R-03, R-06 ----
+
+    fn held_before(timeline: &Arc<Mutex<EventTimeline>>) {
+        timeline.add(vec![
+            LogEvent {
+                timestamp: 1,
+                ingestion_time: None,
+                message: "from the last fetch".to_string(),
+                log_stream_name: "old".to_string(),
+                sequence: 0,
+            };
+            1
+        ]);
+    }
+
+    #[tokio::test]
+    async fn the_held_logs_are_discarded_before_on_started_for_a_hit_and_for_aws() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        cache
+            .write(&cache_key(), whole_range(), vec![stored(START + 5, "a", 0)])
+            .unwrap();
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
+        held_before(&timeline);
+        let (hit, sink) = fetch(&two_streams(), &timeline, Some(&cache)).await;
+        assert_eq!(hit.cache_outcome, CacheOutcome::Hit);
+        assert_eq!(sink.held_at_start, Some(0), "discarded before on_started");
+        assert_eq!(sink.kinds, vec!["Started", "Batch", "Finished"]);
+
+        held_before(&timeline);
+        let (fetched, sink) = fetch(&two_streams(), &timeline, None).await;
+        assert_eq!(fetched.cache_outcome, CacheOutcome::NotUsed);
+        assert_eq!(sink.held_at_start, Some(0));
+    }
+
+    #[tokio::test]
+    async fn an_abort_during_a_hit_is_aborted_and_not_saved_and_calls_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        cache
+            .write(&cache_key(), whole_range(), vec![stored(START + 5, "a", 0)])
+            .unwrap();
+        let before = std::fs::read(cache.entry_path(&cache_key())).unwrap();
+        let gateway = two_streams();
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
+        held_before(&timeline);
+        let (job, sink) = fetch_with(&gateway, &timeline, Some(&cache), A_DAY_LATER, true).await;
+        assert_eq!(job.status, JobStatus::Aborted);
+        assert_eq!(job.cache_outcome, CacheOutcome::NotSaved);
+        assert!(!job.served_from_cache);
+        assert_eq!(sink.kinds, vec!["Started", "Finished"]);
+        assert_eq!(sink.held_at_start, Some(0));
+        assert_eq!(gateway.calls(), 0);
+        assert!(timeline.lock().unwrap().is_empty());
+        assert_eq!(
+            std::fs::read(cache.entry_path(&cache_key())).unwrap(),
+            before
+        );
+    }
+
+    #[tokio::test]
+    async fn a_broken_cache_with_a_recordable_range_is_read_failed_and_saved_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        cache
+            .write(&cache_key(), whole_range(), vec![stored(START + 5, "a", 0)])
+            .unwrap();
+        let path = cache.entry_path(&cache_key());
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, &text[..text.len() - 3]).unwrap();
+        let gateway = two_streams();
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
+        let (job, sink) = fetch(&gateway, &timeline, Some(&cache)).await;
+        assert!(job.read_failed);
+        assert_eq!(job.cache_outcome, CacheOutcome::Saved);
+        assert_eq!(&sink.kinds[sink.kinds.len() - 2..], ["Saving", "Finished"]);
+        assert_eq!(gateway.calls(), 3);
+        let (again, _sink) = fetch(&gateway, &timeline, Some(&cache)).await;
+        assert_eq!(again.cache_outcome, CacheOutcome::Hit, "written whole");
+    }
+
+    #[tokio::test]
+    async fn a_version_1_cache_is_removed_and_the_logs_are_fetched_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        let path = cache.entry_path(&cache_key());
+        std::fs::write(
+            &path,
+            format!(
+                "{}\n{}\n",
+                serde_json::json!({
+                    "formatVersion": 1,
+                    "key": cache_key(),
+                    "coveredRanges": [whole_range()],
+                }),
+                serde_json::to_string(&stored(START + 5, "a", 0)).unwrap()
+            ),
+        )
+        .unwrap();
+        let gateway = two_streams();
+        let timeline = Arc::new(Mutex::new(EventTimeline::new()));
+        let (job, _sink) = fetch(&gateway, &timeline, Some(&cache)).await;
+        assert!(job.read_failed, "an unknown version is a broken cache");
+        assert_eq!(gateway.calls(), 3, "fetched from AWS");
+        assert_eq!(job.cache_outcome, CacheOutcome::Saved);
+        match cache.read_header(&cache_key()) {
+            HeaderRead::Found(header) => {
+                assert_eq!(header.format_version, 2);
+                assert_eq!(header.event_count, 3);
+            }
+            other => panic!("expected a version 2 header, got {other:?}"),
+        }
     }
 
     #[test]

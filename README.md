@@ -5,7 +5,7 @@ with a React + TypeScript screen. It calls only the read-only
 `DescribeLogGroups`, `DescribeLogStreams` and `GetLogEvents` APIs and sends
 no telemetry or crash reports anywhere.
 
-> Status: units U1 to U6. You choose a profile and a region, pick a log
+> Status: units U1 to U7. You choose a profile and a region, pick a log
 > group from the list (with a filter), enter a time range in local time or
 > UTC (switch in the top bar) and press
 > **Fetch**: every stream of the group that matters for the range is read,
@@ -17,7 +17,9 @@ no telemetry or crash reports anywhere.
 > a text (ignoring case), on your machine, without calling AWS again.
 > An optional disk cache (off by default, **[\*]** in the top bar) keeps
 > fully successful fetches on your machine and shows a range it already
-> holds without calling AWS.
+> holds without calling AWS. A row opens below itself to show its whole
+> message; errors say what happened and what to do next; closing the window
+> while fetching asks first.
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -94,7 +96,7 @@ Run these on your own machine with your own AWS credentials (`npm run tauri dev`
 - [ ] The fetched rows appear with the time to the millisecond (`yyyy-mm-dd hh:mm:ss.mmm`) in the chosen time zone (Local at launch, U4).
 - [ ] A long message, or one with line breaks, is shown on one line and cut with an ellipsis (…) at the edge of the column.
 - [ ] The status line shows the event count, and for a range with no logs says explicitly that there are 0 events.
-- [ ] On an error (for example a misspelled log group, or a profile without a default region), the status line shows the error kind and the safe detail, which contains no secret or access key ID; rows fetched before the error stay visible.
+- [ ] On an error (for example a misspelled log group, or a profile without a default region), the error area above the list says what happened, what to do next and the safe detail, which contains no secret or access key ID; the status line says only what happened (U7); rows fetched before the error stay visible.
 - [ ] After a fetch finishes, the inputs are enabled again and fetching again replaces the previous rows.
 
 Connection and log groups (U2):
@@ -106,7 +108,7 @@ Connection and log groups (U2):
 - [ ] Selecting a group (click, or arrow keys then Enter/Space) shows its name next to the time inputs, even when the filter hides it. **Reload** re-reads the list and keeps the selection and the shown logs.
 - [ ] With logs shown, changing the profile or region asks "The logs shown will be cleared. Change the connection?" with focus on **Cancel**; **Cancel** or Escape keeps everything, **Change** clears the logs, count and error, deselects the log group and loads the new list.
 - [ ] While fetching, the profile, region, log group list and **Reload** are disabled.
-- [ ] With a profile that lacks permission (or an expired SSO login), the pane shows that the list is incomplete with the error kind and the safe detail, and the app keeps running; you can choose another profile or region.
+- [ ] With a profile that lacks permission (or an expired SSO login), the pane shows that the list is incomplete, what happened, what to do next and the safe detail (U7), and the app keeps running; you can choose another profile or region.
 - [ ] If `~/.aws/credentials` (or config) exists but cannot be read, a notice near the profile selector names the file kind only (no path, no content).
 
 Whole-group fetch (U3):
@@ -114,9 +116,9 @@ Whole-group fetch (U3):
 - [ ] There is no stream input; **Fetch** is available once a log group is selected and the times are valid.
 - [ ] While the streams are listed, the status line says "Listing streams…" with the number selected so far; then "Fetching… n/m streams" with the events so far.
 - [ ] For a group with several active streams, the rows of all streams are mixed in time order (equal times: by stream name, then the order within the stream) with the stream name in its own column.
-- [ ] With close to a million events, scrolling (mouse, arrow keys, Page Up, Page Down, Home, End) stays responsive and reaches the first and last rows.
+- [ ] With close to a million events, scrolling (mouse, or moving the selected row with the arrow keys, Page Up, Page Down, Home, End since U7) stays responsive and reaches the first and last rows.
 - [ ] While a fetch adds rows, a list scrolled down keeps the row at the top where it is; a list at the very top stays at the top.
-- [ ] When some streams fail (for example with a role that may not read one stream), the status line shows "Failed in N streams"; pressing it (or Tab to it and Enter/Space) opens the list of stream names with the error kind and safe detail, focus on **Close**; **Close** or Escape closes it, and fetching again empties it.
+- [ ] When some streams fail (for example with a role that may not read one stream), the status line shows "Failed in N streams"; pressing it (or Tab to it and Enter/Space) opens the list of stream names, each with what happened, what to do next and the safe detail (U7), focus on **Close**; **Close** or Escape closes it, and fetching again empties it.
 - [ ] Streams without events or without times: with a group that has an empty stream and a start later than its old streams, `fetch_check` reports the empty stream among the streams fetched (`streams:` on standard error). This checks the assumption about where such streams appear in the listing (rules.md, BR1.2); if it does not hold, note it for the next unit.
 
 Time zones (U4):
@@ -148,6 +150,20 @@ Disk cache (U6):
 - [ ] Damage a cache file (for example cut its last line with `truncate -s -10 <file>`): the next fetch of that range says "The cache could not be read, so the logs were fetched again" and the file is replaced by a good one.
 - [ ] **Clear cache** removes the cache files at once ("The cache was cleared.") and **Cancel** does not bring them back; unchecking the box and **Save** also removes them and closes the dialog.
 - [ ] With close to a million events, note how long "Saving to cache" lasts (the fetch ends only after the write; the design sets no bound, NFR2), and that the screen keeps scrolling meanwhile.
+
+Screen polish (U7):
+
+- [ ] Clicking a row's line opens its whole message right below it; clicking it again closes it; several rows can be open at once. The text keeps its line breaks, is not reformatted (JSON stays as received), wraps at the edge (also a long word without spaces), and a message such as `<b>bold</b>` shows the tags as text. More than 20 lines scroll inside the expansion. The text can be selected and copied with Cmd+C; clicking inside it does not close the row.
+- [ ] In the list, ↑ / ↓ move the selected row (shown in the selection color), Page Up / Page Down by a screenful, Home / End to the first / last row (also with close to a million events); Enter or Space opens or closes the selected row. With the selected row's long expansion open, Tab enters it (↑ ↓ and Space then scroll it), Escape or Shift+Tab goes back to the list. A screen reader announces the list as a grid with the selected row.
+- [ ] Opening, closing and changing the size of the window keep the row at the top in place; the rows above an opened row do not move. Expanded rows stay open when the log filter changes (a hidden row opens again when shown), when the time zone is switched and while a fetch adds rows; they all close when a new fetch starts or the connection changes.
+- [ ] With close to a million events and some rows open, scrolling and opening rows stay responsive.
+- [ ] Errors read as words in the error area above the list (a failed fetch), in the log group pane (a failed list, pointing to **Reload**) and in the failure list (a failed stream), each with "Details: …" when there is a safe detail; the status line shows only what happened. No error is shown by color alone. Note: the Japanese next-action texts say "[Fetch]" (BR2.2 wording) while the Japanese button reads 取得; check whether that reads well.
+- [ ] Closing the window, Cmd+Q and Quit in the Dock menu: while not fetching the app closes at once; while fetching (and while "Saving to cache") a dialog says "Fetching is in progress." with focus on **Keep fetching**. **Keep fetching** or Escape closes the dialog and the fetch goes on; **Close** stops the fetch and ends the app without asking again. When the fetch ends while the dialog is open, the dialog stays; **Close** then ends the app.
+- [ ] After **Close** during "Saving to cache", the next launch shows the previous cache unchanged (fetching the same range is served as before, or fetched again); a leftover `*.cache.tmp-*` file in the cache folder goes away with the next save or **Clear cache**.
+- [ ] Switching the OS between light and dark mode recolors the open window at once (no restart); dialogs and the selected row stay readable.
+- [ ] At the minimum window size, 1024×640, the top bar, the log group pane, the conditions, the list and the status line do not overlap and there is no horizontal scroll bar; the window cannot be made smaller.
+- [ ] With the OS language set to Japanese every text is Japanese, otherwise English; Tab goes profile → region → time zone → **[\*]** → log group filter → log group list → start → end → **Fetch** → log filter → list, with the focus always visible.
+- [ ] Diagnostics appear only on standard error when the app is started from a terminal (`npm run tauri dev`); no log file is written anywhere.
 
 ## Check against real AWS from the terminal
 

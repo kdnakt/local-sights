@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import type { SessionView } from "../api";
 import type { Translate } from "../i18n/messages";
+import { ErrorMessage } from "./ErrorMessage";
 
 export interface LogGroupPaneProps {
   session: SessionView;
@@ -13,7 +14,8 @@ export interface LogGroupPaneProps {
 /**
  * Left pane: filter (U2:BR3.7), the single-choice log group list (U2:BR3.8)
  * and Reload (U2:BR3.5), in that Tab order (U2:BR5.2), with the list's
- * loading, partial (kind and safe detail, U2:BR3.4), empty (U2:BR3.10) and
+ * loading, partial (U2:BR3.4; since U7 the reason in words with what to do
+ * and the safe detail, U7:BR2.4), empty (U2:BR3.10) and
  * prompt (U2:BR2.1, BR2.2) messages. The list is a keyboard listbox: arrow
  * keys move, Enter or Space selects (U2:BR5.2). Mount with a `key` to reset
  * the filter draft from a session.
@@ -131,12 +133,8 @@ function renderStatus(session: SessionView, t: Translate) {
     // A partial list can still be filtered to nothing: say both (U2:BR3.10).
     return (
       <>
-        <span data-testid="log-group-pane-partial">
-          {t("logGroups.partial", { kind: t(`failure.kind.${list.failure.kind}`) })}
-        </span>{" "}
-        <span data-testid="log-group-pane-detail">
-          {t("status.detail", { detail: list.failure.safeDetail })}
-        </span>
+        <span data-testid="log-group-pane-partial">{t("logGroups.partial")}</span>
+        <ErrorMessage failure={list.failure} scene="Listing" t={t} testId="log-group-pane-error" />
         {list.emptyState === "NoMatches" && (
           <>
             {" "}

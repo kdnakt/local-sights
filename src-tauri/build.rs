@@ -24,6 +24,9 @@ fn main() {
             "cancel_settings",
             "save_settings",
             "clear_cache",
+            "row_positions",
+            "cancel_close",
+            "confirm_close",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

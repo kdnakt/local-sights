@@ -110,7 +110,7 @@ describe("StatusLine", () => {
     );
   });
 
-  it("shows the failure kind name, the count and the safe detail when failed", () => {
+  it("shows only what happened in words and the count when failed, never the detail", () => {
     renderStatus(
       sessionView({
         phase: "Failed",
@@ -130,10 +130,14 @@ describe("StatusLine", () => {
         },
       }),
     );
-    expect(screen.getByTestId("status-line-error")).toHaveTextContent("Failed: Access denied");
-    expect(screen.getByTestId("status-line-detail")).toHaveTextContent(
-      "Details: kind=AccessDenied; api=DescribeLogStreams; profile=dev",
-    );
+    expect(screen.getByTestId("status-line-error")).toHaveTextContent("Access was denied.");
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("0 events");
+    // U7:BR2.4: the next action and the detail are in the error area, not here.
+    expect(screen.queryByTestId("status-line-detail")).not.toBeInTheDocument();
+    const line = screen.getByTestId("status-line");
+    expect(line).not.toHaveTextContent("Details:");
+    expect(line).not.toHaveTextContent("IAM");
+    expect(line).not.toHaveTextContent("Failed:");
   });
 
   it("shows filtered / all and the filtering notice next to the fetch progress", () => {

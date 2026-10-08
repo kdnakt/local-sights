@@ -23,6 +23,9 @@
     "allow-open-settings",
     "allow-cancel-settings",
     "allow-save-settings",
-    "allow-clear-cache"
+    "allow-clear-cache",
+    "allow-row-positions",
+    "allow-cancel-close",
+    "allow-confirm-close"
   ]
 }

@@ -47,6 +47,8 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     canOpenSettings: true,
     cacheSaving: false,
     cacheNotices: [],
+    discardGeneration: 0,
+    closeConfirmation: "None",
     ...overrides,
   };
 }

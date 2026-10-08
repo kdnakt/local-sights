@@ -1,17 +1,25 @@
 /**
- * Virtual scrolling of the log table (U3:BR6.4, BR6.5, Q1: own code).
+ * U3's fixed-height view of the log list (U3:BR6.4, BR6.5, BR6.8), now
+ * computed by `rowLayout.ts` with no row expanded (U7:BR1.4, review R-12).
  *
- * Rows have a fixed height. The scrolled area is `totalCount × rowHeight`
- * high, but browsers cap the height of an element, so above
- * `maxScrollHeight` the scroll position is mapped proportionally onto the
- * "virtual" position of the full list. Every function here is pure.
+ * The log table itself uses `rowLayout.ts` directly since U7; this module
+ * keeps U3's functions and answers so that U3's tests keep checking the
+ * new calculation without expansions. Every function here is pure.
  */
 
-/** Height of one row, in pixels (fixed, BR6.4). */
-export const ROW_HEIGHT = 22;
+import {
+  anchorAt as layoutAnchorAt,
+  buildLayout,
+  maxScrollTop as layoutMaxScrollTop,
+  scrollHeight as layoutScrollHeight,
+  scrollTopForAnchor,
+  toScrollTop,
+  toVirtualTop,
+  visibleRange,
+  type Layout,
+} from "./rowLayout";
 
-/** Highest scrolled area used, below every browser's element height limit. */
-export const MAX_SCROLL_HEIGHT = 10_000_000;
+export { MAX_SCROLL_HEIGHT, ROW_HEIGHT } from "./rowLayout";
 
 export interface Geometry {
   totalCount: number;
@@ -38,79 +46,44 @@ export interface Anchor {
 
 const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"] as const;
 
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(Math.max(value, low), Math.max(low, high));
-}
-
-/** Height of the full list. */
-function virtualHeight(g: Geometry): number {
-  return Math.max(0, g.totalCount) * g.rowHeight;
-}
-
-function maxVirtualTop(g: Geometry): number {
-  return Math.max(0, virtualHeight(g) - g.viewportHeight);
+function layoutOf(g: Geometry): Layout {
+  return buildLayout(g.totalCount, [], {
+    rowHeight: g.rowHeight,
+    maxScrollHeight: g.maxScrollHeight,
+  });
 }
 
 /** Height of the scrolled area: the list's height, capped. */
 export function scrollHeight(g: Geometry): number {
-  return Math.min(virtualHeight(g), g.maxScrollHeight);
+  return layoutScrollHeight(layoutOf(g));
 }
 
 /** Highest scroll position. */
 export function maxScrollTop(g: Geometry): number {
-  return Math.max(0, scrollHeight(g) - g.viewportHeight);
-}
-
-function toVirtual(scrollTop: number, g: Geometry): number {
-  const maxTop = maxScrollTop(g);
-  if (maxTop <= 0) {
-    return 0;
-  }
-  return (clamp(scrollTop, 0, maxTop) * maxVirtualTop(g)) / maxTop;
-}
-
-function fromVirtual(virtualTop: number, g: Geometry): number {
-  const maxVirtual = maxVirtualTop(g);
-  if (maxVirtual <= 0) {
-    return 0;
-  }
-  return (clamp(virtualTop, 0, maxVirtual) * maxScrollTop(g)) / maxVirtual;
+  return layoutMaxScrollTop(layoutOf(g), g.viewportHeight);
 }
 
 /** The rows that cover the viewport at `scrollTop`, and where to draw them. */
 export function visibleRows(scrollTop: number, g: Geometry): RowRange {
-  if (g.totalCount <= 0) {
-    return { firstRow: 0, rowCount: 0, offsetY: 0 };
-  }
-  const top = clamp(scrollTop, 0, maxScrollTop(g));
-  const virtualTop = toVirtual(top, g);
-  const firstRow = Math.min(Math.floor(virtualTop / g.rowHeight), g.totalCount - 1);
-  const rowsInView = Math.ceil(g.viewportHeight / g.rowHeight) + 1;
-  const rowCount = Math.min(g.totalCount - firstRow, rowsInView);
-  const offsetY = top - (virtualTop - firstRow * g.rowHeight);
-  return { firstRow, rowCount, offsetY };
+  const range = visibleRange(layoutOf(g), scrollTop, g.viewportHeight);
+  return { firstRow: range.first, rowCount: range.count, offsetY: range.offsetY };
 }
 
 /** Scroll position that shows `row` at the top, scrolled `pixelOffset` past. */
 export function scrollTopForRow(row: number, pixelOffset: number, g: Geometry): number {
-  return fromVirtual(row * g.rowHeight + pixelOffset, g);
+  return scrollTopForAnchor(layoutOf(g), row, pixelOffset, g.viewportHeight);
 }
 
 /** The row at the top at `scrollTop`; `null` when scrolled to the very top. */
 export function anchorAt(scrollTop: number, g: Geometry): Anchor | null {
-  if (scrollTop <= 0 || g.totalCount <= 0) {
-    return null;
-  }
-  const virtualTop = toVirtual(scrollTop, g);
-  const row = Math.min(Math.floor(virtualTop / g.rowHeight), g.totalCount - 1);
-  return { row, pixelOffset: virtualTop - row * g.rowHeight };
+  const anchor = layoutAnchorAt(layoutOf(g), scrollTop, g.viewportHeight);
+  return anchor === null ? null : { row: anchor.position, pixelOffset: anchor.offsetPx };
 }
 
 /**
- * BR6.5: after the list changed, the scroll position that keeps the anchored
- * row where it was. `newPosition` is the anchored row's new position, or
- * `null` when there was no anchor (scrolled to the top) or the row is gone:
- * then the list shows its top.
+ * U3:BR6.5: after the list changed, the scroll position that keeps the
+ * anchored row where it was; the top when there was no anchor or the row is
+ * gone.
  */
 export function preservedScrollTop(
   newPosition: number | null,
@@ -124,20 +97,23 @@ export function preservedScrollTop(
 }
 
 /**
- * BR6.8: the scroll position after a key press (arrows: one row, Page Up and
- * Page Down: one viewport, Home and End: either end); `null` for other keys.
+ * U3:BR6.8: the scroll position after a key press (arrows: one row, Page Up
+ * and Page Down: one viewport, Home and End: either end); `null` for other
+ * keys. U7:BR1.5 replaced these keys in the log table with row selection.
  */
 export function scrollTopForKey(key: string, scrollTop: number, g: Geometry): number | null {
   if (!(SCROLL_KEYS as readonly string[]).includes(key)) {
     return null;
   }
+  const layout = layoutOf(g);
   if (key === "Home") {
     return 0;
   }
   if (key === "End") {
-    return maxScrollTop(g);
+    return layoutMaxScrollTop(layout, g.viewportHeight);
   }
   const step = key.startsWith("Page") ? g.viewportHeight : g.rowHeight;
   const direction = key === "ArrowUp" || key === "PageUp" ? -1 : 1;
-  return fromVirtual(toVirtual(scrollTop, g) + direction * step, g);
+  const virtualTop = toVirtualTop(layout, scrollTop, g.viewportHeight);
+  return toScrollTop(layout, virtualTop + direction * step, g.viewportHeight);
 }

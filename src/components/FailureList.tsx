@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ApiFailure, FailedStream } from "../api";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Translate } from "../i18n/messages";
+import { ErrorMessage } from "./ErrorMessage";
 
 export interface FailureListProps {
   failedStreams: readonly FailedStream[];
@@ -13,8 +14,9 @@ export interface FailureListProps {
 
 /**
  * The failures of the last fetch (U3:BR6.3): the stream listing failure
- * first, then each failed stream with the kind name and the safe detail
- * only (U1:BR4.3). Focus starts on Close (BR6.8); Close or Escape closes it.
+ * first, then each failed stream, each in words: what happened, what to do
+ * next and the safe detail only (U7:BR2.2-BR2.4, U1:BR4.3). Focus starts
+ * on Close (BR6.8); Close or Escape closes it.
  */
 export function FailureList({ failedStreams, listingFailure, t, onClose }: FailureListProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -34,20 +36,24 @@ export function FailureList({ failedStreams, listingFailure, t, onClose }: Failu
       <ul className="failure-list-items">
         {listingFailure && (
           <li data-testid="failure-list-listing">
-            <span className="failure-list-name">{t("failures.listing")}</span>{" "}
-            <span>{t(`failure.kind.${listingFailure.kind}`)}</span>{" "}
-            <span className="failure-list-detail">
-              {t("status.detail", { detail: listingFailure.safeDetail })}
-            </span>
+            <span className="failure-list-name">{t("failures.listing")}</span>
+            <ErrorMessage
+              failure={listingFailure}
+              scene="Stream"
+              t={t}
+              testId="failure-list-listing-error"
+            />
           </li>
         )}
         {failedStreams.map((failed) => (
           <li key={failed.logStreamName} data-testid="failure-list-item">
-            <span className="failure-list-name">{failed.logStreamName}</span>{" "}
-            <span>{t(`failure.kind.${failed.failure.kind}`)}</span>{" "}
-            <span className="failure-list-detail">
-              {t("status.detail", { detail: failed.failure.safeDetail })}
-            </span>
+            <span className="failure-list-name">{failed.logStreamName}</span>
+            <ErrorMessage
+              failure={failed.failure}
+              scene="Stream"
+              t={t}
+              testId="failure-list-item-error"
+            />
           </li>
         ))}
       </ul>

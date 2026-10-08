@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelClose,
   cancelConnectionChange,
   cancelSettings,
   clearCache,
+  confirmClose,
   confirmConnectionChange,
   getSession,
   isCommandError,
@@ -29,9 +31,11 @@ import {
   type SessionView,
   type TimeZoneChoice,
 } from "./api";
+import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FailureList } from "./components/FailureList";
+import { FetchErrorBanner } from "./components/FetchErrorBanner";
 import { FetchForm } from "./components/FetchForm";
 import { LogGroupPane } from "./components/LogGroupPane";
 import { LogTable } from "./components/LogTable";
@@ -56,6 +60,12 @@ export interface AppProps {
  * Since U6 it opens the settings dialog from the [*] button and returns the
  * focus to it when the dialog closes (U6:BR5.1, BR5.2), and counts refused
  * log filter hand-overs so the field can send its text again (U5 review R-02).
+ * Since U7 it shows the failure of a whole fetch in words above the list
+ * (U7:BR2.4), hands the list the discard generation (U7:BR1.6) and shows
+ * the close confirmation while the session says it is pending, forwarding
+ * the answer (U7:BR3.1-BR3.3). The Tab order is the order of the screen:
+ * profile, region, time zone, [*], log group filter, log group list,
+ * start, end, [Fetch], log filter, then the log list (U7:BR4.4).
  */
 export function App({ locale }: AppProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
@@ -164,6 +174,8 @@ export function App({ locale }: AppProps) {
     [run],
   );
   const handleClearCache = useCallback(() => run(clearCache), [run]);
+  const handleKeepFetching = useCallback(() => run(cancelClose), [run]);
+  const handleCloseApp = useCallback(() => run(confirmClose), [run]);
   const handleOpenFailures = useCallback(() => run(() => setFailureListOpen(true)), [run]);
   const handleCloseFailures = useCallback(() => run(() => setFailureListOpen(false)), [run]);
 
@@ -233,12 +245,14 @@ export function App({ locale }: AppProps) {
               </button>
             </div>
           )}
+          <FetchErrorBanner session={session} t={t} />
           <LogTable
             totalCount={session?.filterSummary?.matchedCount ?? session?.eventCount ?? 0}
             timelineVersion={session?.timelineVersion ?? 0}
             timeZone={session?.timeZone ?? "Local"}
             filterId={session?.filterSummary?.filterId ?? null}
             resultVersion={session?.filterResultVersion ?? 0}
+            discardGeneration={session?.discardGeneration ?? 0}
             t={t}
             onError={reportError}
           />
@@ -256,6 +270,9 @@ export function App({ locale }: AppProps) {
           onCancel={handleCancelSettings}
           onClear={handleClearCache}
         />
+      )}
+      {session?.closeConfirmation === "Pending" && (
+        <CloseConfirmDialog t={t} onKeep={handleKeepFetching} onClose={handleCloseApp} />
       )}
     </main>
   );

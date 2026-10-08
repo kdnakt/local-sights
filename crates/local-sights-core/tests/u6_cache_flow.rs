@@ -10,7 +10,7 @@
 
 mod support;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use local_sights_core::cache::plan::{CacheKey, CacheOutcome, CoveredRange};
 use local_sights_core::cache::{HeaderRead, LogCache};
@@ -51,7 +51,7 @@ fn validated(start: &str, end: &str) -> ValidatedFetch {
 
 async fn fetch(
     gateway: &FakeGateway,
-    view: &Mutex<LogView>,
+    view: &Arc<Mutex<LogView>>,
     cache: &LogCache,
     request: &ValidatedFetch,
     started_at: i64,
@@ -114,7 +114,7 @@ async fn the_same_range_again_is_served_from_the_cache_without_aws_and_filtered(
             (T_030405 + 20, "a2 error again"),
         ]],
     );
-    let view = Mutex::new(LogView::new());
+    let view = Arc::new(Mutex::new(LogView::new()));
     let first = fetch(&gateway, &view, &cache, &request, A_DAY_LATER).await;
     assert_eq!(first.cache_outcome, CacheOutcome::Saved);
     let calls = gateway.api_log().len();
@@ -159,7 +159,7 @@ async fn a_following_range_joins_the_cached_one_and_the_joined_range_hits() {
             vec![(T_030405 + MINUTE + 1_001, "second minute")],
         ],
     );
-    let view = Mutex::new(LogView::new());
+    let view = Arc::new(Mutex::new(LogView::new()));
 
     let job = fetch(&gateway, &view, &cache, &first, A_DAY_LATER).await;
     assert_eq!(job.cache_outcome, CacheOutcome::Saved);
@@ -210,7 +210,7 @@ async fn the_last_five_minutes_before_the_fetch_are_not_recorded() {
             ],
         ],
     );
-    let view = Mutex::new(LogView::new());
+    let view = Arc::new(Mutex::new(LogView::new()));
 
     let job = fetch(&gateway, &view, &cache, &ten_minutes, started_at).await;
     assert_eq!(job.cache_outcome, CacheOutcome::Saved);

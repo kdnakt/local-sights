@@ -70,6 +70,10 @@
 
 
 
+- **Active Unit**: u7-ui-polish
+
+- **Unit State**: in-progress
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -131,7 +135,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-08T04:01:49Z
+- **Last Updated**: 2026-10-08T05:08:49Z
 
 - **Construction Autonomy Mode**: autonomous
 

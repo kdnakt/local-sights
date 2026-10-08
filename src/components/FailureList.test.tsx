@@ -43,7 +43,7 @@ describe("FailureList", () => {
     expect(items).toHaveLength(2);
     expect(within(items[0]!).getByText("2024/01/02/[$LATEST]aaa")).toBeInTheDocument();
     expect(items[0]).toHaveTextContent("AWS throttled the requests.");
-    expect(items[0]).toHaveTextContent("Wait a while, then Press [Fetch] to fetch again.");
+    expect(items[0]).toHaveTextContent("Wait a while, then press [Fetch] to fetch again.");
     expect(items[1]).toHaveTextContent("Access was denied.");
     expect(items[1]).toHaveTextContent("Details: kind=AccessDenied; api=GetLogEvents");
     expect(items[1]).not.toHaveTextContent("Access denied");
@@ -56,7 +56,7 @@ describe("FailureList", () => {
     expect(list[0]).toHaveAttribute("data-testid", "failure-list-listing");
     expect(list[0]).toHaveTextContent("Stream listing");
     expect(list[0]).toHaveTextContent("Could not connect to AWS.");
-    expect(list[0]).toHaveTextContent("Check your connection, then Press [Fetch] to fetch again.");
+    expect(list[0]).toHaveTextContent("Check your connection, then press [Fetch] to fetch again.");
     expect(list[0]).toHaveTextContent("Details: kind=Network; api=DescribeLogStreams");
     expect(list).toHaveLength(3);
   });

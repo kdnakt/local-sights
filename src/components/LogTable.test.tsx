@@ -7,7 +7,7 @@ import { LogTable, type LogTableProps } from "./LogTable";
 
 vi.mock("../api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../api")>();
-  return { ...original, getRows: vi.fn(), rowPositions: vi.fn(), findRowPosition: vi.fn() };
+  return { ...original, getRows: vi.fn(), rowPositions: vi.fn() };
 });
 
 const api = await import("../api");
@@ -230,6 +230,40 @@ describe("LogTable", () => {
     await user.click(within(rows()[1]!).getByTestId("log-table-row-line"));
     expect(screen.getAllByTestId("log-table-expanded")).toHaveLength(1);
     expect(rows()[1]).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("names the expansion as a region for screen readers (R-06)", async () => {
+    serveRows(10, (row) => logEvent(row, `message ${row}`));
+    const user = userEvent.setup();
+    renderTable({ totalCount: 10 });
+    await waitFor(() => expect(rows().length).toBeGreaterThan(2));
+    await user.click(within(rows()[1]!).getByTestId("log-table-row-line"));
+    const region = screen.getByRole("region", { name: "Full message" });
+    expect(region).toBe(within(rows()[1]!).getByTestId("log-table-expanded"));
+    expect(region).toHaveTextContent("message 1");
+  });
+
+  it("refuses to open more rows than the limit and says so (R-04)", async () => {
+    serveRows(10, (row) => logEvent(row, `message ${row}`));
+    const user = userEvent.setup();
+    renderTable({ totalCount: 10, maxExpandedRows: 2 });
+    await waitFor(() => expect(rows().length).toBeGreaterThan(3));
+    const lineOf = (index: number) => within(rows()[index]!).getByTestId("log-table-row-line");
+    await user.click(lineOf(0));
+    await user.click(lineOf(1));
+    expect(screen.queryByTestId("log-table-expand-limit")).toBeNull();
+    await user.click(lineOf(2));
+    expect(screen.getAllByTestId("log-table-expanded")).toHaveLength(2);
+    expect(rows()[2]).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("log-table-expand-limit")).toHaveTextContent(
+      "Up to 2 rows can be open at once. Close a row to open another.",
+    );
+    expect(screen.getByRole("status")).toBe(screen.getByTestId("log-table-expand-limit"));
+    // Closing one clears the notice, and then the row opens.
+    await user.click(lineOf(0));
+    expect(screen.queryByTestId("log-table-expand-limit")).toBeNull();
+    await user.click(lineOf(2));
+    expect(rows()[2]).toHaveAttribute("aria-expanded", "true");
   });
 
   it("stops an expansion at 20 lines (372 px) and uses its measured height", async () => {

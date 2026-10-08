@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   anchorAt,
   maxScrollTop,
-  preservedScrollTop,
   scrollHeight,
-  scrollTopForKey,
   scrollTopForRow,
   visibleRows,
   type Geometry,
@@ -78,20 +76,7 @@ describe("virtual scroll", () => {
     expect(anchor).toEqual({ row: 10, pixelOffset: 5 });
     // 50 rows were inserted above: the anchored row is now at 60.
     const after = geometry(1_050);
-    expect(preservedScrollTop(60, anchor?.pixelOffset ?? 0, after)).toBe(1_205);
-    // The anchored row is gone (the logs were discarded): back to the top.
-    expect(preservedScrollTop(null, 5, after)).toBe(0);
-  });
-
-  it("scrolls by row, by page and to either end with the keyboard", () => {
-    const g = geometry(1_000);
-    expect(scrollTopForKey("ArrowDown", 0, g)).toBe(20);
-    expect(scrollTopForKey("ArrowUp", 0, g)).toBe(0);
-    expect(scrollTopForKey("PageDown", 40, g)).toBe(140);
-    expect(scrollTopForKey("PageUp", 40, g)).toBe(0);
-    expect(scrollTopForKey("End", 0, g)).toBe(19_900);
-    expect(scrollTopForKey("Home", 5_000, g)).toBe(0);
-    expect(scrollTopForKey("ArrowDown", 19_900, g)).toBe(19_900);
-    expect(scrollTopForKey("Enter", 0, g)).toBeNull();
+    // (U7 review R-05: U3's preservedScrollTop was this call.)
+    expect(scrollTopForRow(60, anchor?.pixelOffset ?? 0, after)).toBe(1_205);
   });
 });

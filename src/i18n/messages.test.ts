@@ -17,7 +17,8 @@ import {
   type Translate,
 } from "./messages";
 
-// Keys produced by the Rust core (request.rs, failure.rs, session.rs, catalog).
+// Keys produced by the Rust core (request.rs, failure.rs, session.rs, catalog,
+// log_view.rs).
 const CORE_KEYS = [
   "validation.logGroupRequired",
   "validation.logGroupTooLong",
@@ -50,6 +51,7 @@ const CORE_KEYS = [
   "selection.logGroupRequired",
   "catalog.unreadable.config",
   "catalog.unreadable.credentials",
+  "rows.tooManyKeys",
 ];
 
 describe("message catalog", () => {
@@ -199,7 +201,7 @@ describe("message catalog", () => {
     expect(translate("ja", "settings.location", { path: "/c" })).toBe("保存場所：/c");
   });
 
-  it("has the U7 error texts word for word as BR2.2", () => {
+  it("has the U7 error texts word for word as BR2.2, with the {retry} texts of review R-02", () => {
     const canonical: Record<FailureKind, { what: [string, string]; next: [string, string] }> = {
       AuthRequired: {
         what: [
@@ -268,14 +270,37 @@ describe("message catalog", () => {
       });
     }
     expect(messages["error.retry.fetch"]).toEqual({
-      en: "Press [Fetch] to fetch again",
-      ja: "[Fetch] でもう一度取得してください",
+      en: "press [Fetch] to fetch again",
+      ja: "[取得] でもう一度取得してください",
     });
     expect(messages["error.retry.listing"]).toEqual({
-      en: "Press [Reload] to load the list again",
+      en: "press [Reload] to load the list again",
       ja: "[再読み込み] でもう一度読み込んでください",
     });
+    // R-02: the button names are the ones on the screen, in both languages.
+    for (const locale of ["en", "ja"] as const) {
+      expect(messages["error.retry.fetch"][locale]).toContain(
+        `[${messages["form.fetch"][locale]}]`,
+      );
+      expect(messages["error.retry.listing"][locale]).toContain(
+        `[${messages["logGroups.reload"][locale]}]`,
+      );
+    }
     expect(translate("ja", "status.detail", { detail: "x" })).toBe("詳細：x");
+  });
+
+  it("has the texts of the row limit and of a refused positions request (R-04)", () => {
+    expect(translate("en", "table.expandLimit", { max: "10,000" })).toBe(
+      "Up to 10,000 rows can be open at once. Close a row to open another.",
+    );
+    expect(translate("ja", "table.expandLimit", { max: "10,000" })).toBe(
+      "同時に開ける行は 10,000 行までです。別の行を開くには、開いている行を閉じてください。",
+    );
+    // Produced by the core (LogView::checked_positions_of, TooManyKeys::message_key).
+    expect(isMessageKey("rows.tooManyKeys")).toBe(true);
+    expect(translate("ja", "rows.tooManyKeys")).toBe(
+      "一度に問い合わせた行が多すぎるため、一覧を更新できませんでした。",
+    );
   });
 
   it("has the close confirmation word for word as BR3.3", () => {

@@ -1,8 +1,8 @@
 /**
  * Message catalog (BR6.1). Every string shown on screen is looked up here by
  * key, in English or Japanese. Keys starting with `validation.`,
- * `failure.kind.` and `session.` are produced by the Rust core and must stay
- * in sync with it. Since U4 the time labels take a `{zone}` placeholder filled
+ * `failure.kind.`, `session.` and `rows.` are produced by the Rust core and
+ * must stay in sync with it. Since U4 the time labels take a `{zone}` placeholder filled
  * with `timeZone.local` or `timeZone.utc` (U4:BR3.2). Since U5 the log
  * filter field and its status texts (`logFilter.*`, `status.filter.*`).
  * Since U6 the settings dialog (`settings.*`) and the cache notices of the
@@ -10,7 +10,13 @@
  * Since U7 the error texts (`error.*`, U7:BR2.2 word for word, replacing the
  * provisional "Failed: kind name" of U1:BR4.4), the close confirmation
  * (`close.*`, U7:BR3.3 word for word) and the expanded message's name
- * (`table.expanded`); the U3 scrolling hint of the list is gone (U7:BR1.5).
+ * (`table.expanded`), the notice when no more rows can be opened
+ * (`table.expandLimit`, code generation review R-04); the U3 scrolling hint of the list is gone (U7:BR1.5).
+ * The `{retry}` texts (`error.retry.*`) differ from BR2.2 as approved at
+ * the code generation review (R-02): the Japanese names the button as
+ * shown ([取得]), and the English starts with a lowercase "press" because
+ * it is put inside a sentence (`errorLines` capitalizes it when the next
+ * action starts with it).
  * `failure.kind.*` stay because the core names the kinds with them.
  */
 
@@ -188,6 +194,14 @@ export const messages = {
   "table.stream": { en: "Stream", ja: "ストリーム名" },
   "table.message": { en: "Message", ja: "メッセージ" },
   "table.expanded": { en: "Full message", ja: "メッセージの全文" },
+  "rows.tooManyKeys": {
+    en: "Too many rows were asked for at once, so the list was not updated.",
+    ja: "一度に問い合わせた行が多すぎるため、一覧を更新できませんでした。",
+  },
+  "table.expandLimit": {
+    en: "Up to {max} rows can be open at once. Close a row to open another.",
+    ja: "同時に開ける行は {max} 行までです。別の行を開くには、開いている行を閉じてください。",
+  },
   "failures.title": { en: "Failures", ja: "失敗の一覧" },
   "failures.listing": { en: "Stream listing", ja: "ストリームの列挙" },
   "failures.close": { en: "Close (Esc)", ja: "閉じる（Esc）" },
@@ -249,11 +263,11 @@ export const messages = {
   },
   "cache.saveFailed": { en: "Could not save to the cache", ja: "キャッシュに保存できなかった" },
   "error.retry.fetch": {
-    en: "Press [Fetch] to fetch again",
-    ja: "[Fetch] でもう一度取得してください",
+    en: "press [Fetch] to fetch again",
+    ja: "[取得] でもう一度取得してください",
   },
   "error.retry.listing": {
-    en: "Press [Reload] to load the list again",
+    en: "press [Reload] to load the list again",
     ja: "[再読み込み] でもう一度読み込んでください",
   },
   "error.what.AuthRequired": {

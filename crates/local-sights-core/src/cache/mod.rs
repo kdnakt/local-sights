@@ -30,11 +30,12 @@
 pub mod plan;
 pub mod settings;
 
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use plan::{
     CacheHeader, CacheKey, CachedEvent, Corruption, CoveredRange, EventCheck, EventCounter,
@@ -121,19 +122,33 @@ pub enum WriteKind {
     Rebuilt,
 }
 
+/// Called when the last write under way ends (code generation review
+/// R-03). It runs on the thread that ended the write, so it must not block
+/// or take a lock its caller may hold; the app only hands the work to its
+/// async runtime.
+pub type IdleListener = Arc<dyn Fn() + Send + Sync>;
+
+/// The count and the listener shared by a tracker, its clones and guards.
+#[derive(Default)]
+struct WriteCount {
+    in_flight: AtomicUsize,
+    on_idle: Mutex<Option<IdleListener>>,
+}
+
 /// Counts the cache writes under way (U6 review R-02). Clones share the
 /// count; the app keeps one in AppSession and hands it to every
 /// [`LogCache`] it makes, so a write that outlives its fetch (the fetch task
 /// ended abnormally) still keeps the settings dialog closed until it ends.
-#[derive(Debug, Clone, Default)]
+/// A listener set with [`WriteTracker::on_idle`] hears when the last write
+/// ends, so the app can tell the screen (code generation review R-03).
+#[derive(Clone, Default)]
 pub struct WriteTracker {
-    in_flight: Arc<AtomicUsize>,
+    shared: Arc<WriteCount>,
 }
 
 /// Marks one write under way until dropped.
-#[derive(Debug)]
 pub struct WriteGuard {
-    in_flight: Arc<AtomicUsize>,
+    shared: Arc<WriteCount>,
 }
 
 impl WriteTracker {
@@ -144,28 +159,63 @@ impl WriteTracker {
 
     /// Whether a write is under way.
     pub fn is_writing(&self) -> bool {
-        self.in_flight.load(Ordering::SeqCst) > 0
+        self.shared.in_flight.load(Ordering::SeqCst) > 0
     }
 
     /// Marks a write under way until the guard is dropped.
     pub fn start(&self) -> WriteGuard {
-        self.in_flight.fetch_add(1, Ordering::SeqCst);
+        self.shared.in_flight.fetch_add(1, Ordering::SeqCst);
         WriteGuard {
-            in_flight: Arc::clone(&self.in_flight),
+            shared: Arc::clone(&self.shared),
         }
     }
+
+    /// Calls `listener` each time the last write under way ends (the count
+    /// goes back to zero); replaces an earlier listener.
+    pub fn on_idle(&self, listener: IdleListener) {
+        *lock_listener(&self.shared.on_idle) = Some(listener);
+    }
+}
+
+/// Locks the listener slot; a poisoned lock still holds a usable value.
+fn lock_listener(
+    slot: &Mutex<Option<IdleListener>>,
+) -> std::sync::MutexGuard<'_, Option<IdleListener>> {
+    slot.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 impl Drop for WriteGuard {
     fn drop(&mut self) {
-        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        if self.shared.in_flight.fetch_sub(1, Ordering::SeqCst) == 1 {
+            // Cloned out first, so the listener runs without the slot locked.
+            let listener = lock_listener(&self.shared.on_idle).clone();
+            if let Some(listener) = listener {
+                listener();
+            }
+        }
+    }
+}
+
+impl fmt::Debug for WriteTracker {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WriteTracker")
+            .field("in_flight", &self.shared.in_flight.load(Ordering::SeqCst))
+            .finish_non_exhaustive()
+    }
+}
+
+impl fmt::Debug for WriteGuard {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("WriteGuard").finish_non_exhaustive()
     }
 }
 
 /// Two trackers are equal when they share the same count.
 impl PartialEq for WriteTracker {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.in_flight, &other.in_flight)
+        Arc::ptr_eq(&self.shared, &other.shared)
     }
 }
 
@@ -971,6 +1021,46 @@ mod tests {
             "the write's own mark is gone after it"
         );
         assert_ne!(WriteTracker::new(), tracker);
+    }
+
+    #[test]
+    fn the_idle_listener_hears_only_the_end_of_the_last_write() {
+        // Review R-03: the app re-sends the view when the last write ends.
+        use std::sync::atomic::AtomicUsize;
+        let tracker = WriteTracker::new();
+        let heard = Arc::new(AtomicUsize::new(0));
+        let ended = Arc::clone(&heard);
+        let first = tracker.start();
+        tracker.on_idle(Arc::new(move || {
+            ended.fetch_add(1, Ordering::SeqCst);
+        }));
+        let second = tracker.clone().start();
+        drop(first);
+        assert_eq!(
+            heard.load(Ordering::SeqCst),
+            0,
+            "a write is still under way"
+        );
+        assert!(tracker.is_writing());
+        drop(second);
+        assert_eq!(heard.load(Ordering::SeqCst), 1);
+        assert!(!tracker.is_writing());
+        drop(tracker.start());
+        assert_eq!(
+            heard.load(Ordering::SeqCst),
+            2,
+            "each return to idle is heard"
+        );
+        assert!(format!("{tracker:?}").contains("in_flight: 0"));
+    }
+
+    #[test]
+    fn without_a_listener_the_end_of_a_write_is_silent() {
+        let tracker = WriteTracker::new();
+        let guard = tracker.start();
+        assert!(format!("{guard:?}").starts_with("WriteGuard"));
+        drop(guard);
+        assert!(!tracker.is_writing());
     }
 
     #[test]

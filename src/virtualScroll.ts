@@ -4,7 +4,11 @@
  *
  * The log table itself uses `rowLayout.ts` directly since U7; this module
  * keeps U3's functions and answers so that U3's tests keep checking the
- * new calculation without expansions. Every function here is pure.
+ * new calculation without expansions. U3's `preservedScrollTop` and
+ * `scrollTopForKey` were removed at the code generation review (R-05): the
+ * list keeps its top row with `scrollTopForAnchor` (BR1.8) and the keys
+ * move the selection (BR1.5, `expansionState.moveSelection`). Every
+ * function here is pure.
  */
 
 import {
@@ -13,8 +17,6 @@ import {
   maxScrollTop as layoutMaxScrollTop,
   scrollHeight as layoutScrollHeight,
   scrollTopForAnchor,
-  toScrollTop,
-  toVirtualTop,
   visibleRange,
   type Layout,
 } from "./rowLayout";
@@ -43,8 +45,6 @@ export interface Anchor {
   row: number;
   pixelOffset: number;
 }
-
-const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"] as const;
 
 function layoutOf(g: Geometry): Layout {
   return buildLayout(g.totalCount, [], {
@@ -78,42 +78,4 @@ export function scrollTopForRow(row: number, pixelOffset: number, g: Geometry): 
 export function anchorAt(scrollTop: number, g: Geometry): Anchor | null {
   const anchor = layoutAnchorAt(layoutOf(g), scrollTop, g.viewportHeight);
   return anchor === null ? null : { row: anchor.position, pixelOffset: anchor.offsetPx };
-}
-
-/**
- * U3:BR6.5: after the list changed, the scroll position that keeps the
- * anchored row where it was; the top when there was no anchor or the row is
- * gone.
- */
-export function preservedScrollTop(
-  newPosition: number | null,
-  pixelOffset: number,
-  g: Geometry,
-): number {
-  if (newPosition === null) {
-    return 0;
-  }
-  return scrollTopForRow(newPosition, pixelOffset, g);
-}
-
-/**
- * U3:BR6.8: the scroll position after a key press (arrows: one row, Page Up
- * and Page Down: one viewport, Home and End: either end); `null` for other
- * keys. U7:BR1.5 replaced these keys in the log table with row selection.
- */
-export function scrollTopForKey(key: string, scrollTop: number, g: Geometry): number | null {
-  if (!(SCROLL_KEYS as readonly string[]).includes(key)) {
-    return null;
-  }
-  const layout = layoutOf(g);
-  if (key === "Home") {
-    return 0;
-  }
-  if (key === "End") {
-    return layoutMaxScrollTop(layout, g.viewportHeight);
-  }
-  const step = key.startsWith("Page") ? g.viewportHeight : g.rowHeight;
-  const direction = key === "ArrowUp" || key === "PageUp" ? -1 : 1;
-  const virtualTop = toVirtualTop(layout, scrollTop, g.viewportHeight);
-  return toScrollTop(layout, virtualTop + direction * step, g.viewportHeight);
 }

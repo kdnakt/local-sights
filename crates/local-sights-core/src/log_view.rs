@@ -14,7 +14,10 @@
 //! the same lock as the timeline version, so the screen knows when the
 //! `(logStreamName, sequence)` keys of its expanded rows went stale
 //! (U7:BR1.6). [`LogView::positions_of`] answers the positions of several
-//! rows in one lock with the versions they belong to (U7:BR1.7).
+//! rows in one lock with the versions they belong to (U7:BR1.7);
+//! [`LogView::checked_positions_of`] refuses a request of more than
+//! [`MAX_POSITION_KEYS`] keys instead of cutting it short (code generation
+//! review R-04).
 
 use std::sync::{Mutex, PoisonError};
 
@@ -33,6 +36,32 @@ pub struct LogView {
     filter: FilterEngine,
     /// Times held logs were discarded (U7:BR1.6, review R-11).
     discard_generation: u64,
+}
+
+/// Most rows the screen opens at once (U7, code generation review R-04);
+/// the screen's `MAX_EXPANDED_ROWS` is the same number.
+pub const MAX_EXPANDED_ROWS: usize = 10_000;
+
+/// Most keys one positions request may ask: the expanded rows, the
+/// selected row and the top row (U7:BR1.7, review R-04).
+pub const MAX_POSITION_KEYS: usize = MAX_EXPANDED_ROWS + 2;
+
+/// A positions request asked more than [`MAX_POSITION_KEYS`] keys (review
+/// R-04). Nothing is answered, so no row is taken for hidden by mistake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("{asked} row keys were asked, at most {max} are accepted")]
+pub struct TooManyKeys {
+    /// Keys asked.
+    pub asked: usize,
+    /// Keys accepted at most.
+    pub max: usize,
+}
+
+impl TooManyKeys {
+    /// Message-catalog key shown on the screen.
+    pub fn message_key(&self) -> &'static str {
+        "rows.tooManyKeys"
+    }
 }
 
 /// One held event as the screen names it (U3:BR4.4).
@@ -120,6 +149,25 @@ impl LogView {
     /// the timeline version, the result version, the discard generation and
     /// the number of rows of the list.
     pub fn positions_of(&self, keys: &[RowKey]) -> RowPositions {
+        self.positions_unchecked(keys)
+    }
+
+    /// [`LogView::positions_of`] for a request from the screen: more than
+    /// [`MAX_POSITION_KEYS`] keys are refused as a whole (review R-04).
+    ///
+    /// # Errors
+    /// [`TooManyKeys`] when `keys` is longer than [`MAX_POSITION_KEYS`].
+    pub fn checked_positions_of(&self, keys: &[RowKey]) -> Result<RowPositions, TooManyKeys> {
+        if keys.len() > MAX_POSITION_KEYS {
+            return Err(TooManyKeys {
+                asked: keys.len(),
+                max: MAX_POSITION_KEYS,
+            });
+        }
+        Ok(self.positions_unchecked(keys))
+    }
+
+    fn positions_unchecked(&self, keys: &[RowKey]) -> RowPositions {
         let total_count = if self.filter.is_active() {
             self.filter.matched_count()
         } else {
@@ -504,6 +552,53 @@ mod tests {
         view.clear();
         assert_eq!(view.discard_generation(), 2);
         assert_eq!(view.positions_of(&[row_key("s", 0)]).discard_generation, 2);
+    }
+
+    #[test]
+    fn a_request_of_more_keys_than_accepted_is_refused_not_cut_short() {
+        let mut view = LogView::new();
+        view.append(vec![LogEvent {
+            timestamp: 1,
+            ingestion_time: None,
+            message: "m".to_string(),
+            log_stream_name: "s".to_string(),
+            sequence: 0,
+        }]);
+        assert_eq!(
+            MAX_POSITION_KEYS, 10_002,
+            "10,000 open rows, the selected and the top row"
+        );
+        let at_limit: Vec<RowKey> = (0..MAX_POSITION_KEYS as u64)
+            .map(|sequence| row_key("s", sequence))
+            .collect();
+        let answer = view.checked_positions_of(&at_limit).unwrap();
+        assert_eq!(answer.positions.len(), MAX_POSITION_KEYS);
+        assert_eq!(answer.positions[0], Some(0));
+        assert_eq!(answer, view.positions_of(&at_limit));
+
+        let mut over = at_limit;
+        over.push(row_key("s", 99_999));
+        let refused = view.checked_positions_of(&over).unwrap_err();
+        assert_eq!(
+            refused,
+            TooManyKeys {
+                asked: MAX_POSITION_KEYS + 1,
+                max: MAX_POSITION_KEYS
+            }
+        );
+        assert_eq!(refused.message_key(), "rows.tooManyKeys");
+        assert_eq!(
+            refused.to_string(),
+            "10003 row keys were asked, at most 10002 are accepted"
+        );
+    }
+
+    #[test]
+    fn an_empty_request_is_answered_with_the_versions_only() {
+        let view = LogView::new();
+        let answer = view.checked_positions_of(&[]).unwrap();
+        assert!(answer.positions.is_empty());
+        assert_eq!(answer.total_count, 0);
     }
 
     #[test]

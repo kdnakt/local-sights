@@ -20,7 +20,8 @@ export interface ExpandedMessageProps {
  * it never opens or closes the row (only the row's line does). It sits in a
  * full-width grid cell of its row. When it is the selected row's and it
  * scrolls, Tab enters it (tabIndex 0, review R-13); Escape or Shift+Tab goes
- * back to the list.
+ * back to the list. The scrolling text is a named region ("Full message"),
+ * so screen readers announce its name (code generation review R-06).
  */
 export function ExpandedMessage({
   message,
@@ -63,6 +64,7 @@ export function ExpandedMessage({
       <div
         ref={textRef}
         className="log-expanded-text"
+        role="region"
         tabIndex={focusable ? 0 : -1}
         aria-label={label}
         data-testid="log-table-expanded"

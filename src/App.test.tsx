@@ -39,7 +39,6 @@ vi.mock("./api", async (importOriginal) => {
     saveSettings: vi.fn(),
     clearCache: vi.fn(),
     getRows: vi.fn(),
-    findRowPosition: vi.fn(),
     rowPositions: vi.fn(),
     cancelClose: vi.fn(),
     confirmClose: vi.fn(),
@@ -76,7 +75,6 @@ describe("App", () => {
     vi.mocked(api.getRows).mockImplementation(async (offset, limit) =>
       rowWindow(events, offset, limit),
     );
-    vi.mocked(api.findRowPosition).mockResolvedValue({ position: null, timelineVersion: 0 });
     vi.mocked(api.rowPositions).mockImplementation(async (keys) => ({
       positions: keys.map(() => null),
       timelineVersion: 0,
@@ -493,7 +491,7 @@ describe("App", () => {
       "AWS に接続できませんでした。",
     );
     expect(screen.getByTestId("fetch-error-next")).toHaveTextContent(
-      "接続を確認してから、[Fetch] でもう一度取得してください。",
+      "接続を確認してから、[取得] でもう一度取得してください。",
     );
     expect(screen.getByTestId("fetch-error-detail")).toHaveTextContent("詳細：kind=Network");
     expect(screen.getByTestId("status-line-error")).toHaveTextContent(

@@ -3,7 +3,7 @@
 //! This crate stays thin: every decision lives in `local-sights-core`.
 //! Operations arrive as Tauri commands (`get_session`, `update_input`,
 //! `start_fetch`, since U2 the connection and log group commands, and since
-//! U3 `get_rows`, `find_row_position` and `set_failure_list_open`, and since
+//! U3 `get_rows` and `set_failure_list_open`, and since
 //! U4 `select_time_zone`, and since U5 `set_log_filter`); state
 //! changes are pushed to the screen with the `session-changed` event; while
 //! a fetch runs, each listing page and each added page sends only the light
@@ -35,7 +35,7 @@
 //! for one chunk at a time and stops as soon as its ticket is stale
 //! (U5:BR1.5, BR2.4). The scan pushes the light `filter-progress` event;
 //! `session-changed` and `fetch-progress` carry the filter summary too
-//! (U5:BR3.6). `get_rows` and `find_row_position` read with the filter in
+//! (U5:BR3.6). `get_rows` and `row_positions` read with the filter in
 //! mind (U5:BR3.1, BR3.2). Lock order is session, then LogView; the filter
 //! summary is copied into the session while both are held. Filtering calls
 //! no AWS API (U5 FR6.2).
@@ -55,16 +55,27 @@
 //! top rows in one call, `row_positions`, which locks the LogView once and
 //! also answers the discard generation (U7:BR1.6, BR1.7, review R-11); the
 //! generation is copied into the session whenever the filter summary is.
-//! Closing the window (`CloseRequested`) or ending the app (`ExitRequested`,
-//! Cmd+Q and the Dock menu) while fetching or writing the cache is stopped
-//! and AppSession's closeConfirmation becomes Pending (U7:BR3.1); the
-//! screen answers with `cancel_close` ([Keep fetching]) or `confirm_close`
+//! A request of more keys than it accepts is refused with an error, never
+//! cut short (code generation review R-04). U3's `find_row_position` is gone
+//! (review R-05).
+//!
+//! Closing the window (`CloseRequested`), choosing Quit in the app menu or
+//! pressing Cmd+Q (a menu item of this app, handled in `on_menu_event`,
+//! code generation review R-01) or ending the app with `app.exit`
+//! (`ExitRequested`) while fetching or writing the cache is stopped and
+//! AppSession's closeConfirmation becomes Pending (U7:BR3.1); the screen
+//! answers with `cancel_close` ([Keep fetching]) or `confirm_close`
 //! ([Close]: abort the fetch, set the "may exit" flag and exit, BR3.2). The
 //! app is therefore built first and run with a callback that sees
-//! `RunEvent::ExitRequested`. Closing no longer aborts the fetch by itself;
-//! only `Destroyed` still aborts, as a safety net. The settings commands are
-//! async and do their file work on a blocking thread without the session
-//! lock (U6 review R-01).
+//! `RunEvent::ExitRequested`. Known limitation (review R-01): the Dock
+//! menu's Quit goes through `applicationWillTerminate` of tao, which can
+//! neither be seen nor stopped here, so it ends the app without asking;
+//! BR3.1 (2) is only partly met. Closing no longer aborts the fetch by
+//! itself; only `Destroyed` still aborts, as a safety net. The settings
+//! commands are async and do their file work on a blocking thread without
+//! the session lock (U6 review R-01). When the last cache write ends, the
+//! view is pushed again if no fetch runs, so a write that outlived its fetch
+//! opens the settings dialog again on the screen (review R-03).
 //!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
@@ -91,12 +102,13 @@ use local_sights_core::paging::PageDecision;
 use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
     AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, InputField,
-    SessionError, SessionView, SettingsWork,
+    Phase, SessionError, SessionView, SettingsWork,
 };
 use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_zone::{TimeZoneChoice, TimeZoneContext};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
+use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
 
 /// Event carrying the latest [`SessionView`].
 pub const SESSION_CHANGED: &str = "session-changed";
@@ -120,9 +132,8 @@ const CACHE_FOLDER_NAME: &str = "log-cache";
 
 /// Most rows one `get_rows` call returns; a viewport needs far fewer.
 const MAX_ROWS_PER_REQUEST: usize = 1_000;
-/// Most keys one `row_positions` call answers: the expanded rows, the
-/// selected row and the top row (U7:BR1.7).
-const MAX_KEYS_PER_REQUEST: usize = 10_000;
+/// Id of this app's Quit menu item (Cmd+Q, code generation review R-01).
+const QUIT_MENU_ID: &str = "local-sights-quit";
 
 /// Shared state of the app.
 #[derive(Debug)]
@@ -208,16 +219,6 @@ impl From<SessionError> for CommandError {
     }
 }
 
-/// Answer of `find_row_position`.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RowPosition {
-    /// Current position of the event, or `None` when it is not held.
-    position: Option<u64>,
-    /// Version of the timeline the position belongs to.
-    timeline_version: u64,
-}
-
 /// Locks a mutex. A poisoned lock still holds consistent data (every
 /// update is a single step), so it is recovered, not fatal.
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -296,32 +297,28 @@ fn select_time_zone(time_zone: TimeZoneChoice, app: AppHandle, state: State<'_, 
     emit_or_log(&app, SESSION_CHANGED, view);
 }
 
-/// Returns the current position of one event (U3:BR4.4); with a log filter
-/// in force, its position in the filter result, or none when it is not in
-/// it (U5:BR3.2, review R-08).
-#[tauri::command]
-fn find_row_position(
-    log_stream_name: String,
-    sequence: u64,
-    state: State<'_, AppState>,
-) -> RowPosition {
-    let log_view = lock(&state.log_view);
-    RowPosition {
-        position: log_view
-            .position_of(&log_stream_name, sequence)
-            .map(|position| position as u64),
-        timeline_version: log_view.version(),
-    }
-}
-
 /// U7:BR1.7: the current positions of several rows (the expanded rows, the
 /// selected row and the top row) in one LogView lock, with the timeline
 /// version, the result version, the discard generation and the row count.
-/// At most `MAX_KEYS_PER_REQUEST` keys are answered.
+///
+/// # Errors
+/// `rows.tooManyKeys` when more than `MAX_POSITION_KEYS` (10,000 open rows,
+/// the selected and the top row) keys are asked; nothing is answered then,
+/// so no row is taken for hidden by mistake (code generation review R-04).
 #[tauri::command]
-fn row_positions(keys: Vec<RowKey>, state: State<'_, AppState>) -> RowPositions {
-    let keys = &keys[..keys.len().min(MAX_KEYS_PER_REQUEST)];
-    lock(&state.log_view).positions_of(keys)
+fn row_positions(
+    keys: Vec<RowKey>,
+    state: State<'_, AppState>,
+) -> Result<RowPositions, CommandError> {
+    lock(&state.log_view)
+        .checked_positions_of(&keys)
+        .map_err(|error| {
+            // Counts only: no key, no message.
+            eprintln!("local-sights: row_positions: {error}");
+            CommandError {
+                key: error.message_key().to_string(),
+            }
+        })
 }
 
 /// [Keep fetching] or Escape on the close confirmation (U7:BR3.2): the
@@ -376,6 +373,126 @@ fn must_stop_closing(app: &AppHandle) -> bool {
             true
         }
     }
+}
+
+/// Code generation review R-01: Quit in the app menu or Cmd+Q goes through
+/// the same decision as closing the window. While fetching or writing the
+/// cache the confirmation becomes Pending (and the screen is told);
+/// otherwise the app exits.
+fn quit_requested(app: &AppHandle) {
+    if !must_stop_closing(app) {
+        app.exit(0);
+    }
+}
+
+/// Handles this app's menu items: only Quit (Cmd+Q) is its own; the
+/// predefined items (copy, paste, hide, ...) are handled by the OS.
+fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
+    if event.id() == QUIT_MENU_ID {
+        quit_requested(app);
+    }
+}
+
+/// Code generation review R-01: the macOS app menu. It is Tauri's default
+/// menu with Quit (Cmd+Q) replaced by an item of this app, so that it can
+/// be stopped while fetching ([`handle_menu_event`]); the default Quit
+/// would end the app through `terminate:` without asking. The Edit menu
+/// keeps the standard items, so copying an expanded message and pasting
+/// into the inputs keep working with the keyboard.
+///
+/// The Dock menu's Quit cannot be routed here (known limitation, BR3.1
+/// (2) only partly met).
+///
+/// # Errors
+/// Returns the Tauri error when a menu item cannot be made.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let name = app.package_info().name.clone();
+    let quit = MenuItem::with_id(
+        app,
+        QUIT_MENU_ID,
+        format!("Quit {name}"),
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?;
+    let app_submenu = Submenu::with_items(
+        app,
+        name,
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let view = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[&PredefinedMenuItem::fullscreen(app, None)?],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    Menu::with_items(app, &[&app_submenu, &edit, &view, &window])
+}
+
+/// Code generation review R-03: when the last cache write ends, pushes the
+/// view again unless a fetch runs (a running fetch pushes its own view when
+/// it ends). This is what tells the screen that a write which outlived its
+/// fetch is over, so the settings dialog can be opened again. Runs on the
+/// async runtime, never inside the write's own thread or a held lock.
+fn watch_cache_writes(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let listener_app = app.clone();
+    lock(&state.session)
+        .cache_writes()
+        .on_idle(Arc::new(move || {
+            let app = listener_app.clone();
+            tauri::async_runtime::spawn(async move {
+                let Some(state) = app.try_state::<AppState>() else {
+                    return;
+                };
+                let view = {
+                    let session = lock(&state.session);
+                    if session.phase() == Phase::Fetching {
+                        return;
+                    }
+                    session.view()
+                };
+                emit_or_log(&app, SESSION_CHANGED, view);
+            });
+        }));
 }
 
 /// Changes the log filter text (U5:BR1.1, BR1.4). Accepted while fetching;
@@ -977,20 +1094,30 @@ impl FetchSink for TauriSink {
 /// Starts the desktop app.
 ///
 /// The app is built first and then run with a callback, so that ending the
-/// app (`RunEvent::ExitRequested`: Cmd+Q, the Dock menu, the last window
-/// closing) can be stopped like closing the window (U7:BR3.1, review R-02).
+/// app (`RunEvent::ExitRequested`: `app.exit`, the last window closing) can
+/// be stopped like closing the window (U7:BR3.1, review R-02). On macOS the
+/// app menu's Quit (Cmd+Q) is this app's own item, routed through the same
+/// decision (code generation review R-01); the Dock menu's Quit cannot be
+/// stopped (known limitation).
 ///
 /// # Errors
 /// Returns the Tauri error when the app cannot be built.
 pub fn run() -> Result<(), tauri::Error> {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Review R-01: Quit (Cmd+Q) of the macOS app menu is this app's own item.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(app_menu);
+    let app = builder
         .setup(|app| {
             // U6:BR1.6: the folders come from the OS, so the state is made
             // here, where the app's paths are known.
             let location = cache_location(app.handle());
             app.manage(AppState::load(location));
+            // Review R-03: a write that outlived its fetch tells the screen.
+            watch_cache_writes(app.handle());
             Ok(())
         })
+        .on_menu_event(handle_menu_event)
         .on_window_event(|window, event| match event {
             // U7:BR3.1 (1): stopped while fetching or writing the cache; the
             // fetch is no longer aborted here (BR3.2 does that on [Close]).
@@ -1019,7 +1146,6 @@ pub fn run() -> Result<(), tauri::Error> {
             update_log_group_filter,
             select_log_group,
             get_rows,
-            find_row_position,
             row_positions,
             set_failure_list_open,
             select_time_zone,
@@ -1033,7 +1159,8 @@ pub fn run() -> Result<(), tauri::Error> {
         ])
         .build(tauri::generate_context!())?;
     app.run(|app, event| {
-        // U7:BR3.1 (2): Cmd+Q and the Dock menu, stopped like the window.
+        // U7:BR3.1 (2): `app.exit` and the last window closing, stopped like
+        // the window (Cmd+Q comes through `handle_menu_event`, review R-01).
         if let RunEvent::ExitRequested { api, .. } = event {
             if must_stop_closing(app) {
                 api.prevent_exit();

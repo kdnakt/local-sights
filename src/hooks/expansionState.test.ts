@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_EXPANDED_ROWS,
   initialExpansionState,
   moveSelection,
   rowKeyOf,
   toggleRow,
-  toggleSelected,
+  type ExpansionState,
   withDiscardGeneration,
   withPositions,
   withSelectedKey,
@@ -112,15 +113,32 @@ describe("expansionState", () => {
     });
   });
 
-  it("does nothing on Enter or Space while the selected row is not loaded", () => {
-    const state = moveSelection(initialExpansionState(0), "End", 1_000, 5, () => undefined);
-    expect(state).not.toBeNull();
-    if (state === null) {
-      return;
-    }
-    expect(toggleSelected(state, () => undefined)).toBe(state);
-    const toggled = toggleSelected(state, (position) => (position === 999 ? c : undefined));
-    expect([...toggled.expanded]).toEqual([[c, 999]]);
-    expect(toggleSelected(toggled, () => c).expanded.size).toBe(0);
+  it("refuses to open more than MAX_EXPANDED_ROWS rows and says so (R-04)", () => {
+    const full: ExpansionState = {
+      ...initialExpansionState(0),
+      expanded: new Map(
+        Array.from({ length: MAX_EXPANDED_ROWS }, (_, i) => [rowKeyOf("s", i), i] as const),
+      ),
+    };
+    expect(MAX_EXPANDED_ROWS).toBe(10_000);
+    const refused = toggleRow(full, c, 20_000);
+    expect(refused.expanded).toBe(full.expanded);
+    expect(refused.expanded.has(c)).toBe(false);
+    expect(refused.limitReached).toBe(true);
+    expect(refused.selection).toEqual({ key: c, position: 20_000 });
+    // Closing one is always allowed and clears the notice; then one more opens.
+    const closed = toggleRow(refused, rowKeyOf("s", 0), 0);
+    expect(closed.expanded.size).toBe(MAX_EXPANDED_ROWS - 1);
+    expect(closed.limitReached).toBe(false);
+    const reopened = toggleRow(closed, c, 20_000);
+    expect(reopened.expanded.size).toBe(MAX_EXPANDED_ROWS);
+    expect(reopened.limitReached).toBe(false);
+  });
+
+  it("starts with the notice off and clears it when the logs are discarded", () => {
+    expect(initialExpansionState(0).limitReached).toBe(false);
+    const state = { ...toggleRow(initialExpansionState(0), a, 1), limitReached: true };
+    expect(withDiscardGeneration(state, 1).limitReached).toBe(false);
+    expect(withPositions(state, new Map([[a, 2]]), 10).limitReached).toBe(true);
   });
 });

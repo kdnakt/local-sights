@@ -13,7 +13,10 @@
  * Since U7 `rowPositions` asks the positions of several rows at once with the
  * discard generation (U7:BR1.6, BR1.7), the session view carries the discard
  * generation and the close confirmation, and `confirmClose` / `cancelClose`
- * answer it (U7:BR3.1-BR3.3).
+ * answer it (U7:BR3.1-BR3.3). U3's `findRowPosition` was removed at the
+ * code generation review (R-05): `rowPositions` replaces it. A request of
+ * more keys than the core accepts is refused with an error key, never cut
+ * short (review R-04).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -237,12 +240,6 @@ export interface RowWindow {
   resultVersion: number | null;
 }
 
-/** The current position of one event (U3:BR4.4). */
-export interface RowPosition {
-  position: number | null;
-  timelineVersion: number;
-}
-
 /** One held event, as `rowPositions` asks for it (U7:BR1.7). */
 export interface RowKeyParts {
   logStreamName: string;
@@ -378,11 +375,6 @@ export function startFetch(generation: number): Promise<void> {
 /** Reads at most `limit` rows of the timeline from `offset`. */
 export function getRows(offset: number, limit: number): Promise<RowWindow> {
   return invoke<RowWindow>("get_rows", { offset, limit });
-}
-
-/** Finds the current position of one event. */
-export function findRowPosition(logStreamName: string, sequence: number): Promise<RowPosition> {
-  return invoke<RowPosition>("find_row_position", { logStreamName, sequence });
 }
 
 /** U7:BR1.7: the current positions of several rows in one call. */

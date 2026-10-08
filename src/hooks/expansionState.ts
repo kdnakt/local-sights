@@ -24,7 +24,19 @@ export interface ExpansionState {
   /** Expanded rows in the order they were opened, with their positions (`null`: hidden). */
   expanded: ReadonlyMap<RowKey, number | null>;
   selection: Selection;
+  /**
+   * The last attempt to open a row was refused because `MAX_EXPANDED_ROWS`
+   * rows are open (code generation review R-04); the list says so.
+   */
+  limitReached: boolean;
 }
+
+/**
+ * Most rows open at once (review R-04). The positions of the open rows,
+ * the selected row and the top row are asked in one `row_positions` call,
+ * which accepts at most this many keys plus those two.
+ */
+export const MAX_EXPANDED_ROWS = 10_000;
 
 /** Finds the key of the row at a position, when that row is loaded. */
 export type KeyAt = (position: number) => RowKey | undefined;
@@ -48,21 +60,38 @@ export function parseRowKey(key: RowKey): { logStreamName: string; sequence: num
 
 /** Nothing expanded, the top row selected. */
 export function initialExpansionState(discardGeneration = 0): ExpansionState {
-  return { discardGeneration, expanded: new Map(), selection: { key: null, position: 0 } };
+  return {
+    discardGeneration,
+    expanded: new Map(),
+    selection: { key: null, position: 0 },
+    limitReached: false,
+  };
 }
 
 /**
  * BR1.1: opens the row when it is closed and closes it when it is open; the
- * other rows stay as they are. The row also becomes the selected row.
+ * other rows stay as they are. The row also becomes the selected row. While
+ * `maxExpanded` (`MAX_EXPANDED_ROWS`) rows are open, opening one more is refused and
+ * `limitReached` is set, so the refusal is shown, never silent (review
+ * R-04); any successful toggle clears it.
  */
-export function toggleRow(state: ExpansionState, key: RowKey, position: number): ExpansionState {
+export function toggleRow(
+  state: ExpansionState,
+  key: RowKey,
+  position: number,
+  maxExpanded: number = MAX_EXPANDED_ROWS,
+): ExpansionState {
+  const selection = { key, position };
+  if (!state.expanded.has(key) && state.expanded.size >= maxExpanded) {
+    return { ...state, selection, limitReached: true };
+  }
   const expanded = new Map(state.expanded);
   if (expanded.has(key)) {
     expanded.delete(key);
   } else {
     expanded.set(key, position);
   }
-  return { ...state, expanded, selection: { key, position } };
+  return { ...state, expanded, selection, limitReached: false };
 }
 
 /**
@@ -157,17 +186,4 @@ export function moveSelection(
     ...state,
     selection: { key: rowCount > 0 ? (keyAt(position) ?? null) : null, position },
   };
-}
-
-/**
- * BR1.5: Enter or Space opens or closes the selected row, as a click would
- * (BR1.1). Nothing happens while that row is not loaded yet.
- */
-export function toggleSelected(state: ExpansionState, keyAt: KeyAt): ExpansionState {
-  const { position } = state.selection;
-  const key = keyAt(position);
-  if (key === undefined) {
-    return state;
-  }
-  return toggleRow(state, key, position);
 }

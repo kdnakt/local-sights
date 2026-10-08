@@ -192,7 +192,7 @@ describe("LogGroupPane", () => {
     );
     // The Listing scene points to [Reload].
     expect(screen.getByTestId("log-group-pane-error-next")).toHaveTextContent(
-      "Wait a while, then Press [Reload] to load the list again.",
+      "Wait a while, then press [Reload] to load the list again.",
     );
     expect(screen.getByTestId("log-group-pane-no-matches")).toHaveTextContent(
       "No log groups match.",

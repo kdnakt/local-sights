@@ -11,6 +11,7 @@ import {
 import type { DisplayRow, RowWindow, TimeZoneChoice } from "../api";
 import { toSingleLine } from "../format";
 import {
+  MAX_EXPANDED_ROWS,
   initialExpansionState,
   moveSelection,
   rowKeyOf,
@@ -66,6 +67,8 @@ export interface LogTableProps {
   viewportWidth?: number;
   /** Width of one monospace character; measured once when absent. */
   charWidth?: number;
+  /** Most rows open at once; `MAX_EXPANDED_ROWS` unless a test sets fewer. */
+  maxExpandedRows?: number;
 }
 
 /** The scroll position and the layout it was taken with. */
@@ -131,6 +134,7 @@ export function LogTable({
   viewportHeight: fixedViewportHeight,
   viewportWidth: fixedViewportWidth,
   charWidth,
+  maxExpandedRows = MAX_EXPANDED_ROWS,
 }: LogTableProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -353,15 +357,19 @@ export function LogTable({
     setScrollTop(top);
   };
 
-  /** BR1.1: opens or closes the row and selects it. */
+  /**
+   * BR1.1: opens or closes the row and selects it. Opening is refused while
+   * MAX_EXPANDED_ROWS rows are open; the notice below the list says so
+   * (review R-04).
+   */
   const toggle = (event: DisplayRow, position: number) => {
     const key = keyOf(event);
     if (expansion.expanded.has(key)) {
       forgetRows(key);
-    } else {
+    } else if (toggleRow(expansion, key, position, maxExpandedRows).expanded.has(key)) {
       rowLayout.remember(key, event.message);
     }
-    setExpansion((state) => toggleRow(state, key, position));
+    setExpansion((state) => toggleRow(state, key, position, maxExpandedRows));
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -410,94 +418,101 @@ export function LogTable({
   const contentStyle = useMemo(() => ({ height: scrollHeight(layout) }), [layout]);
 
   return (
-    <div
-      ref={gridRef}
-      className="log-table"
-      role="grid"
-      aria-label={t("table.label")}
-      aria-rowcount={totalCount + 1}
-      aria-colcount={3}
-      aria-activedescendant={
-        selectedDrawn && totalCount > 0 ? rowElementId(selected.position) : undefined
-      }
-      tabIndex={0}
-      data-testid="log-table"
-      onKeyDown={handleKeyDown}
-    >
-      <div className="log-table-header" role="rowgroup">
-        <div className="log-table-row log-table-line" role="row" aria-rowindex={1}>
-          <div className="log-table-time" role="columnheader">
-            {t("table.time", { zone: t(timeZoneLabelKey(timeZone)) })}
-          </div>
-          <div className="log-table-stream" role="columnheader">
-            {t("table.stream")}
-          </div>
-          <div className="log-table-message" role="columnheader">
-            {t("table.message")}
-          </div>
-        </div>
-      </div>
+    <>
       <div
-        ref={viewportRef}
-        className="log-table-viewport"
-        style={
-          fixedViewportHeight === undefined
-            ? undefined
-            : { height: fixedViewportHeight, width: fixedViewportWidth }
+        ref={gridRef}
+        className="log-table"
+        role="grid"
+        aria-label={t("table.label")}
+        aria-rowcount={totalCount + 1}
+        aria-colcount={3}
+        aria-activedescendant={
+          selectedDrawn && totalCount > 0 ? rowElementId(selected.position) : undefined
         }
-        data-testid="log-table-viewport"
-        onScroll={handleScroll}
+        tabIndex={0}
+        data-testid="log-table"
+        onKeyDown={handleKeyDown}
       >
-        <div className="log-table-content" role="rowgroup" style={contentStyle}>
-          {rows.map(({ event, position, top }) => {
-            const key = keyOf(event);
-            const expanded = expansion.expanded.has(key);
-            const isSelected = selected.position === position;
-            return (
-              <div
-                key={key}
-                id={rowElementId(position)}
-                className="log-table-row"
-                role="row"
-                aria-rowindex={position + 2}
-                aria-expanded={expanded}
-                aria-selected={isSelected}
-                style={{ top }}
-                data-testid="log-table-row"
-              >
+        <div className="log-table-header" role="rowgroup">
+          <div className="log-table-row log-table-line" role="row" aria-rowindex={1}>
+            <div className="log-table-time" role="columnheader">
+              {t("table.time", { zone: t(timeZoneLabelKey(timeZone)) })}
+            </div>
+            <div className="log-table-stream" role="columnheader">
+              {t("table.stream")}
+            </div>
+            <div className="log-table-message" role="columnheader">
+              {t("table.message")}
+            </div>
+          </div>
+        </div>
+        <div
+          ref={viewportRef}
+          className="log-table-viewport"
+          style={
+            fixedViewportHeight === undefined
+              ? undefined
+              : { height: fixedViewportHeight, width: fixedViewportWidth }
+          }
+          data-testid="log-table-viewport"
+          onScroll={handleScroll}
+        >
+          <div className="log-table-content" role="rowgroup" style={contentStyle}>
+            {rows.map(({ event, position, top }) => {
+              const key = keyOf(event);
+              const expanded = expansion.expanded.has(key);
+              const isSelected = selected.position === position;
+              return (
                 <div
-                  className="log-table-line"
-                  role="none"
-                  data-testid="log-table-row-line"
-                  onClick={() => {
-                    toggle(event, position);
-                    focusGrid();
-                  }}
+                  key={key}
+                  id={rowElementId(position)}
+                  className="log-table-row"
+                  role="row"
+                  aria-rowindex={position + 2}
+                  aria-expanded={expanded}
+                  aria-selected={isSelected}
+                  style={{ top }}
+                  data-testid="log-table-row"
                 >
-                  <div className="log-table-time" role="gridcell">
-                    {event.displayTime}
+                  <div
+                    className="log-table-line"
+                    role="none"
+                    data-testid="log-table-row-line"
+                    onClick={() => {
+                      toggle(event, position);
+                      focusGrid();
+                    }}
+                  >
+                    <div className="log-table-time" role="gridcell">
+                      {event.displayTime}
+                    </div>
+                    <div className="log-table-stream" role="gridcell" title={event.logStreamName}>
+                      {event.logStreamName}
+                    </div>
+                    <div className="log-table-message" role="gridcell">
+                      {toSingleLine(event.message)}
+                    </div>
                   </div>
-                  <div className="log-table-stream" role="gridcell" title={event.logStreamName}>
-                    {event.logStreamName}
-                  </div>
-                  <div className="log-table-message" role="gridcell">
-                    {toSingleLine(event.message)}
-                  </div>
+                  {expanded && (
+                    <ExpandedMessage
+                      message={event.message}
+                      focusable={isSelected && rowLayout.scrolls(key)}
+                      label={t("table.expanded")}
+                      onMeasure={(height, scrolls) => rowLayout.measure(key, height, scrolls)}
+                      onLeave={focusGrid}
+                    />
+                  )}
                 </div>
-                {expanded && (
-                  <ExpandedMessage
-                    message={event.message}
-                    focusable={isSelected && rowLayout.scrolls(key)}
-                    label={t("table.expanded")}
-                    onMeasure={(height, scrolls) => rowLayout.measure(key, height, scrolls)}
-                    onLeave={focusGrid}
-                  />
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
+      {expansion.limitReached && (
+        <p className="log-table-notice" role="status" data-testid="log-table-expand-limit">
+          {t("table.expandLimit", { max: maxExpandedRows.toLocaleString("en-US") })}
+        </p>
+      )}
+    </>
   );
 }

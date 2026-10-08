@@ -17,7 +17,6 @@ import {
   virtualHeight,
   visibleRange,
 } from "./rowLayout";
-import { anchorAt as u3AnchorAt, visibleRows, type Geometry } from "./virtualScroll";
 
 /** Rows of 22 px; rows 3 and 10 are expanded, row 200 does not exist. */
 function expandedLayout() {
@@ -173,23 +172,17 @@ describe("rowLayout", () => {
     const middle = visibleRange(big, maxScrollTop(big, viewport) / 2, viewport);
     expect(Math.abs(middle.first - 499_997)).toBeLessThanOrEqual(1);
 
-    // The same answers as U3's virtualScroll for a sweep of lists and positions.
-    for (const totalCount of [0, 1, 7, 1_000, 1_000_000]) {
-      const g: Geometry = {
-        totalCount,
-        rowHeight: 20,
-        viewportHeight: viewport,
-        maxScrollHeight: 10_000_000,
-      };
-      for (const top of [0, 1, 205, 9_999, 19_900, 50_000, 5_000_000]) {
-        const u3 = visibleRows(top, g);
-        const range = visibleRange(fixed(totalCount), top, viewport);
-        expect([range.first, range.count]).toEqual([u3.firstRow, u3.rowCount]);
-        expect(range.offsetY).toBeCloseTo(u3.offsetY, 6);
-        const anchor = anchorAt(fixed(totalCount), top, viewport);
-        const u3Anchor = u3AnchorAt(top, g);
-        expect(anchor?.position ?? null).toBe(u3Anchor?.row ?? null);
-      }
-    }
+    // U3's fixed expected values (virtualScroll.test.ts), checked here
+    // directly against rowLayout (review R-05: virtualScroll.ts delegates to
+    // rowLayout, so comparing the two would compare the code with itself).
+    expect(anchorAt(fixed(0), 0, viewport)).toBeNull();
+    expect(anchorAt(fixed(1_000), 0, viewport)).toBeNull();
+    expect(scrollTopForAnchor(fixed(1_000), 0, 0, viewport)).toBe(0);
+    expect(scrollTopForAnchor(fixed(1_000), 999, 0, viewport)).toBe(19_900);
+    expect(visibleRange(big, 0, viewport)).toEqual({ first: 0, count: 6, offsetY: 0 });
+    const end = visibleRange(big, maxScrollTop(big, viewport), viewport);
+    expect(end.first + end.count).toBe(1_000_000);
+    expect(end.offsetY + end.count * 20).toBeGreaterThanOrEqual(maxScrollTop(big, viewport) + 100);
+    expect(end.offsetY + end.count * 20).toBeLessThanOrEqual(scrollHeight(big) + 20);
   });
 });

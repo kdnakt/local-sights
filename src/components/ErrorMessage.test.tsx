@@ -18,7 +18,7 @@ describe("ErrorMessage", () => {
       "Credentials could not be used (for example, the SSO session expired).",
     );
     expect(screen.getByTestId("error-message-next")).toHaveTextContent(
-      "If you use SSO, run aws sso login, then Press [Fetch] to fetch again. Otherwise, check the profile settings or choose another profile.",
+      "If you use SSO, run aws sso login, then press [Fetch] to fetch again. Otherwise, check the profile settings or choose another profile.",
     );
     expect(screen.getByTestId("error-message-detail")).toHaveTextContent(
       "Details: kind=AuthRequired; profile=dev",
@@ -30,7 +30,7 @@ describe("ErrorMessage", () => {
     render(<ErrorMessage failure={{ ...auth, safeDetail: "" }} scene="Listing" t={t} />);
     expect(screen.queryByTestId("error-message-detail")).not.toBeInTheDocument();
     expect(screen.getByTestId("error-message-next")).toHaveTextContent(
-      "then Press [Reload] to load the list again.",
+      "then press [Reload] to load the list again.",
     );
   });
 

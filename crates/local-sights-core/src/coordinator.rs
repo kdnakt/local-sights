@@ -27,7 +27,7 @@ use serde::Serialize;
 use crate::cache::plan::{
     CacheKey, CacheOutcome, CachedEvent, CoveredRange, WriteCheck, decide_write, resequence,
 };
-use crate::cache::{CacheLookup, LogCache};
+use crate::cache::{CacheError, CacheLookup, LogCache, WriteKind};
 use crate::event::LogEvent;
 use crate::failure::ApiFailure;
 use crate::fetcher::{StreamFetchEnd, StreamFetchOutcome, fetch_stream};
@@ -629,16 +629,37 @@ fn copy_held_events<T: HeldEvents>(timeline: &T, range: CoveredRange) -> Vec<Cac
     }
 }
 
+/// The write of [`save`], ready to run on a blocking thread, with the
+/// write already marked under way (code generation review R-03): the mark
+/// is raised here, before the work is queued, and moves into the work, so
+/// there is no moment between queueing and running in which
+/// `is_writing()` is false and the settings dialog could open (and a
+/// [Clear cache] be overwritten by this write).
+fn prepare_write(
+    cache: &LogCache,
+    key: CacheKey,
+    range: CoveredRange,
+    events: Vec<CachedEvent>,
+) -> impl FnOnce() -> Result<WriteKind, CacheError> + Send + 'static {
+    let writing = cache.writes().start();
+    let cache = cache.clone();
+    move || {
+        let result = cache.write(&key, range, events);
+        drop(writing);
+        result
+    }
+}
+
 /// Writes on a blocking thread (U6:BR3.5): Saved, or SaveFailed with a
-/// diagnostic (no key, no message).
+/// diagnostic (no key, no message). The write is marked under way before
+/// it is queued (review R-03, [`prepare_write`]).
 async fn save(
     cache: &LogCache,
     key: CacheKey,
     range: CoveredRange,
     events: Vec<CachedEvent>,
 ) -> CacheOutcome {
-    let cache = cache.clone();
-    let task = tokio::task::spawn_blocking(move || cache.write(&key, range, events));
+    let task = tokio::task::spawn_blocking(prepare_write(cache, key, range, events));
     match task.await {
         Ok(Ok(_)) => CacheOutcome::Saved,
         Ok(Err(error)) => {
@@ -1352,6 +1373,69 @@ mod tests {
         assert_eq!(
             timeline.copy_events_in_range(nothing, None, 4),
             (Vec::new(), None)
+        );
+    }
+
+    #[test]
+    fn a_write_is_marked_under_way_before_it_is_queued() {
+        // Review R-03: the mark is up as soon as the write is prepared, before
+        // any thread runs it, and goes down once the write has run.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        let writes = cache.writes().clone();
+        let work = prepare_write(
+            &cache,
+            cache_key(),
+            whole_range(),
+            vec![stored(START + 1, "a", 0)],
+        );
+        assert!(writes.is_writing(), "marked before the work runs");
+        assert_eq!(work(), Ok(WriteKind::Created));
+        assert!(!writes.is_writing(), "the mark goes with the work");
+    }
+
+    #[test]
+    fn a_prepared_write_that_never_runs_still_lowers_the_mark() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        let writes = cache.writes().clone();
+        let work = prepare_write(&cache, cache_key(), whole_range(), Vec::new());
+        assert!(writes.is_writing());
+        drop(work);
+        assert!(
+            !writes.is_writing(),
+            "a dropped task does not leave the mark up"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            0,
+            "nothing written"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_keeps_the_mark_up_until_the_blocking_write_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().to_path_buf());
+        let writes = cache.writes().clone();
+        let ended = Arc::new(AtomicU64::new(0));
+        let seen = Arc::clone(&ended);
+        writes.on_idle(Arc::new(move || {
+            seen.fetch_add(1, Ordering::SeqCst);
+        }));
+        let outcome = save(
+            &cache,
+            cache_key(),
+            whole_range(),
+            vec![stored(START + 1, "a", 0)],
+        )
+        .await;
+        assert_eq!(outcome, CacheOutcome::Saved);
+        assert!(!writes.is_writing());
+        assert_eq!(
+            ended.load(Ordering::SeqCst),
+            1,
+            "the end of the last write is heard once"
         );
     }
 }

@@ -16,7 +16,6 @@ fn main() {
             "update_log_group_filter",
             "select_log_group",
             "get_rows",
-            "find_row_position",
             "set_failure_list_open",
             "select_time_zone",
             "set_log_filter",

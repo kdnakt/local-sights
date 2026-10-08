@@ -61,7 +61,8 @@
     "NFR12",
     "NFR13",
     "NFR16",
-    "NFR5"
+    "NFR5",
+    "NFR2"
   ],
   "coverage": [
     {
@@ -222,7 +223,7 @@
     {
       "id": "FR5.2",
       "status": "OK",
-      "target": "BR1.1, BR1.4, BR1.5, BR1.6"
+      "target": "BR1.1, BR1.4, BR1.5, BR1.6, BR1.7, BR1.8, BR1.9"
     },
     {
       "id": "FR5.3",
@@ -352,7 +353,7 @@
     {
       "id": "NFR13",
       "status": "OK",
-      "target": "BR1.5, BR3.3, BR4.4"
+      "target": "BR1.5, BR1.10, BR3.3, BR4.4"
     },
     {
       "id": "NFR16",
@@ -363,6 +364,11 @@
       "id": "NFR5",
       "status": "OK",
       "target": "BR2.1, BR4.5"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "BR1.2, BR1.4, BR1.7"
     }
   ],
   "reverse": [
@@ -380,6 +386,26 @@
       "id": "BR2.3",
       "status": "N/A",
       "target": "詳細をすべてのエラーに（Q4）"
+    },
+    {
+      "id": "BR1.7",
+      "status": "N/A",
+      "target": "位置をまとめて引く（レビュー R-01）"
+    },
+    {
+      "id": "BR1.8",
+      "status": "N/A",
+      "target": "見えている行を動かさない（U3:BR6.5 の拡張）"
+    },
+    {
+      "id": "BR1.9",
+      "status": "N/A",
+      "target": "高さの見積もりと測り直し（レビュー R-06）"
+    },
+    {
+      "id": "BR1.10",
+      "status": "N/A",
+      "target": "グリッドの役割（レビュー R-05）"
     }
   ]
 }

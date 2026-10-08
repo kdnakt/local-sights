@@ -15383,6 +15383,18 @@ export function freshReviewReceipts(
       continue;
     }
     pendingRequests.delete(requestKey);
+    // A verified later iteration supersedes an earlier request whose record
+    // was lost (machine-local `.aidlc-engine/` does not survive a fresh
+    // checkout): that earlier request can never be retried into a result.
+    for (const [key, earlier] of pendingRequests) {
+      if (
+        earlier.unit === unit &&
+        earlier.iteration < iteration &&
+        earlier.verificationFailed === true
+      ) {
+        pendingRequests.delete(key);
+      }
+    }
     const recordedFingerprint = auditBlockField(e.block, "Artifact Fingerprint");
     const artifactFingerprintUsable = recordedFingerprint !== null;
     const currentFingerprint = reviewArtifactFingerprint(

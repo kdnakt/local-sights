@@ -604,6 +604,9 @@ function isNativePlanApprovalPrerequisite(name: string, args: string[]): boolean
 }
 
 function isPlanApprovalPrerequisite(args: string[]): boolean {
+  // The setup check only reads. A refusal tells the conductor to diagnose with
+  // --doctor, so it must stay reachable while that refusal stands.
+  if (args.length === 1 && args[0] === "--doctor") return true;
   if (args[0] !== "engine") return false;
   // Direct refusals can offer the abort or the fence switch without publishing
   // a selection marker. The strict drift ask in this hook prints
@@ -624,6 +627,13 @@ function isPlanApprovalPrerequisite(args: string[]): boolean {
   if (noun === "orchestrate" && (verb === "next" || verb === "continue")) {
     return true;
   }
+  // wait only reads whether dispatched work (such as a review file) has landed.
+  if (noun === "orchestrate" && verb === "wait") return true;
+  // A review request or verdict writes only the intent record and is how a
+  // guard-recovery "request review" remedy is carried out. The same route via
+  // aidlc-log.ts is already a trusted framework tool; the unified entry point
+  // gets the same reach and no more.
+  if (noun === "log" && verb === "review") return true;
   if (
     noun === "testing-posture" &&
     ["resolve", "render", "fingerprint", "verify"].includes(verb)

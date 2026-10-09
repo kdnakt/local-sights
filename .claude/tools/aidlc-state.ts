@@ -3590,10 +3590,14 @@ function gitHasSourceWork(pd: string): boolean | null {
     for (const line of lastCommit.split("\n")) {
       if (isNonDocPath(line)) return true;
     }
-    // HEAD~1 resolved and the last commit was doc-only: a definitive "no recent
-    // code" (e.g. a brownfield repo whose src/ predates this session), so return
-    // false to refuse - the FS fallback would wrongly pass on the pre-existing
-    // src/.
+    // The last commit was doc-only, but the code may have landed earlier on this
+    // feature branch (framework or record commits stacked on top). Look at
+    // everything the branch changed since it left the trunk.
+    if (branchHasSourceWork(pd)) return true;
+    // HEAD~1 resolved and neither the last commit nor the branch touched code: a
+    // definitive "no recent code" (e.g. a brownfield repo whose src/ predates
+    // this session), so return false to refuse - the FS fallback would wrongly
+    // pass on the pre-existing src/.
     return false;
   }
   // HEAD~1 did NOT resolve (a single-commit repo has no parent): we could not
@@ -3602,6 +3606,24 @@ function gitHasSourceWork(pd: string): boolean | null {
   // filesystem probe rather than false-refusing a greenfield first-commit whose
   // sole commit holds the source.
   return null;
+}
+
+// True when the current branch changed a non-doc path since it diverged from the
+// trunk (`origin/main`, else `main`). False when no trunk ref resolves, when
+// HEAD is the trunk itself (empty diff), or on any git error - so the caller
+// keeps its previous last-commit verdict.
+function branchHasSourceWork(pd: string): boolean {
+  for (const trunk of ["origin/main", "main"]) {
+    const base = git(pd, ["merge-base", trunk, "HEAD"])?.trim();
+    if (!base) continue;
+    const changed = git(pd, ["diff", "--name-only", base, "HEAD"]);
+    if (changed === null) return false;
+    for (const line of changed.split("\n")) {
+      if (isNonDocPath(line)) return true;
+    }
+    return false;
+  }
+  return false;
 }
 
 // The workspace_requires signal: git-aware when the workspace is a git repo

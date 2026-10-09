@@ -3568,8 +3568,10 @@ function isGitRepo(pd: string): boolean {
 // Returns null (NOT false) on any git error or a HEAD~1 miss (a single-commit or
 // 0-commit repo has no parent to diff), so the caller falls back to the
 // filesystem check rather than wrongly refusing a greenfield first commit. A
-// resolved HEAD~1 whose last commit is doc-only returns false (a real
-// "no recent code", e.g. a brownfield clean tree), so the guard still refuses.
+// resolved HEAD~1 whose last commit is doc-only falls through to the branch's
+// diff against the trunk: code there returns true, an unresolvable fork point
+// returns null, and otherwise false (a real "no recent code", e.g. a brownfield
+// clean tree), so the guard still refuses.
 function gitHasSourceWork(pd: string): boolean | null {
   const porcelain = git(pd, ["status", "--porcelain"]);
   if (porcelain === null) return null;
@@ -3592,8 +3594,11 @@ function gitHasSourceWork(pd: string): boolean | null {
     }
     // The last commit was doc-only, but the code may have landed earlier on this
     // feature branch (framework or record commits stacked on top). Look at
-    // everything the branch changed since it left the trunk.
-    if (branchHasSourceWork(pd)) return true;
+    // everything the branch changed since it left the trunk. When the fork point
+    // cannot be found (e.g. a shallow clone), defer to the filesystem probe.
+    const branch = branchHasSourceWork(pd);
+    if (branch === true) return true;
+    if (branch === null) return null;
     // HEAD~1 resolved and neither the last commit nor the branch touched code: a
     // definitive "no recent code" (e.g. a brownfield repo whose src/ predates
     // this session), so return false to refuse - the FS fallback would wrongly
@@ -3609,10 +3614,11 @@ function gitHasSourceWork(pd: string): boolean | null {
 }
 
 // True when the current branch changed a non-doc path since it diverged from the
-// trunk (`origin/main`, else `main`). False when no trunk ref resolves, when
-// HEAD is the trunk itself (empty diff), or on any git error - so the caller
-// keeps its previous last-commit verdict.
-function branchHasSourceWork(pd: string): boolean {
+// trunk (`origin/main`, else `main`). False when HEAD is the trunk itself
+// (empty diff) or the diff errors, so the caller keeps its last-commit verdict.
+// Null when no merge-base resolves (no trunk ref, or a shallow clone that cannot
+// see the fork point), so the caller defers to the filesystem probe.
+function branchHasSourceWork(pd: string): boolean | null {
   for (const trunk of ["origin/main", "main"]) {
     const base = git(pd, ["merge-base", trunk, "HEAD"])?.trim();
     if (!base) continue;
@@ -3623,7 +3629,7 @@ function branchHasSourceWork(pd: string): boolean {
     }
     return false;
   }
-  return false;
+  return null;
 }
 
 // The workspace_requires signal: git-aware when the workspace is a git repo

@@ -1,55 +1,72 @@
 # Code Summary — U1 薄い一本（u1-walking-skeleton）
 
-計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
+計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。U1 が書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
 
-## 作ったもの
+## 今回の作業（2026-10-10、既存のコードと計画の照合）
 
-| 場所 | 中身 |
-|------|------|
-| `Cargo.toml`・`Cargo.lock` | Rust のワークスペース（edition 2024、members：`crates/local-sights-core`・`src-tauri`） |
-| `crates/local-sights-core/src/` | GUI に依存しないライブラリ。`request.rs`（共通の検証）、`time_range.rs`（UTC の解釈・範囲・表示）、`paging.rs`（ページ終端）、`event.rs`・`timeline.rs`（LogEvent と EventTimeline の最小版）、`failure.rs`（ApiFailure と伏せ字）、`gateway/`（trait・AWS SDK の実装・エラーの分類）、`fetcher.rs`（EventFetcher）、`coordinator.rs`（FetchCoordinator と受け口 `FetchSink`）、`session.rs`（AppSession） |
-| `crates/local-sights-core/tests/` | 偽物の gateway と結合テスト `u1_fetch_flow.rs` |
-| `crates/local-sights-core/examples/fetch_check.rs` | 実際の AWS に対する手元用の確認用プログラム（テスト・CI からは実行しない） |
-| `src-tauri/` | Tauri 2 のアプリ。コマンド `get_session`・`update_input`・`start_fetch`、イベント `session-changed`・`log-batch`、CSP で外部への通信を許さない |
-| `src/` | 画面側（React + TypeScript）。入力欄と [Fetch]、一覧、ステータス行、英日の文言、Escape の土台 |
-| ルートの設定 | `package.json`・`package-lock.json`・Vite・Vitest・tsconfig・ESLint・Prettier・`README.md`・`.gitignore` |
+U1 のコードは以前の作業で作られており、その上に U2〜U7 の機能が足されている。ツールを 2.11.0 に上げた後、U1 の計画承認がもう一度求められた。利用者は「既存のコードを計画と照合する」を選んだ。開発担当が承認済みの計画の 12 手順を 1 つずつ今のコードとつき合わせた結果、すべての手順が今のコードで満たされていた。
 
-## 主な判断
+- 今回作った・変えた・消したアプリのソース：なし（変更は計画ファイルのチェックボックスだけ）。
+- `source-manifest.json`・`traceability.json` は前回のものを引き続き使う。マニフェストの全パスと、トレーサビリティの `OK` の対象ファイルが今もすべて存在することを確かめた。
+- テストを先に書く順序（Step 3・4）は元のビルドで行われた。今回は失敗の実行を作り直さず、既存のテストを流して確かめた。
 
-- 画面とライブラリは、操作を Tauri のコマンドで、状態とページごとのログをイベントで送ってつなぐ（Q1）。画面の行は jobId ごとに持ち、`session-changed` の jobId が変わったら捨て、同じ jobId の `log-batch` は後ろに足す。
-- AWS の接続先は最初の呼び出しのときに解決する。リージョンがなければ GetLogEvents を呼ばずに RegionMissing を返す。エラーはサービスのエラーコード・認証情報のエラー・タイムアウトと I/O から分類し、SDK の生のメッセージは捨てて安全な詳細だけを残す。
-- 画面に送る状態は `session-changed` イベントだけで届け、`start_fetch` コマンドは何も返さない（遅れて届いた応答が新しい状態や行を消さないようにするため。レビュー R-01）。画面の行は、jobId が null でなく、行の jobId と違うときだけ捨てる。
-- 伏せ字は項目によって変える。利用者が入力した名前（プロファイル名・ロググループ名・ストリーム名）はアクセスキー ID の形だけを伏せ字にし、長い名前もそのまま見えるようにする。それ以外（API 名・リクエスト ID・ロール ARN・アカウント ID）は、アクセスキー ID の形に加えて、ちょうど 40 文字の英数字と `/+`、100 文字以上続く英数字と記号も `[REDACTED]` にする（レビュー R-02）。
-- Tauri の権限は `core:event:default` と自前の 3 コマンドだけにする（レビュー R-03）。
-- 取得のタスクが異常終了して「取得中」のまま残った場合は、AppSession を Failed（種類 Other）にして `session-changed` を送る（レビュー R-04）。
-- テスト用のダミーのキーは実行時に文字列をつないで作り、リポジトリにアクセスキー ID の形の文字列を直書きしない。
-- 環境変数を変えるテスト（`gateway/aws.rs`）は 1 つのテスト関数の中で順に行い、一時ファイルだけを読み、インスタンスメタデータを無効にする。AWS の API は呼ばない。
+### 手順ごとの結果
 
-## テストの結果
+| 手順 | 結果 | 補足 |
+|------|------|------|
+| Step 1 骨組みと設定 | 満たしていた | ワークスペース、core と src-tauri の設定、CSP（外部への通信なし）、画面側の設定、`.gitignore`、ロックファイル 2 つ。テレメトリ系の依存なし |
+| Step 2 テストの実行環境 | 満たしていた | 単位を絞ったコマンドがどれもそのまま動いた |
+| Step 3 純粋なロジックのテスト | 満たしていた | 計画の観点はすべて既存のテストにある |
+| Step 4 実装と整理 | 満たしていた | テスト以外のコードに `unwrap()` / `expect()` なし |
+| Step 5 AWS 接続の層 | 逸脱あり（後続単位の形） | 下の「計画との違い」の 1 |
+| Step 6 取得の流れ | 逸脱あり（後続単位の形） | 同 2 |
+| Step 7 AppSession | 逸脱あり（後続単位の形） | 同 3 |
+| Step 8 Tauri のつなぎ | 逸脱あり（後続単位の形） | 同 4。組み立ては手元で確かめる |
+| Step 9 画面側 | 満たしていた（形は育っている） | 同 5 |
+| Step 10 確認用プログラム | 逸脱あり（後続単位の形） | 同 6 |
+| Step 11 ビルドと環境 | 満たしていた（制約あり） | `src-tauri` の組み立てと clippy はこのコンテナでは確かめられない |
+| Step 12 doc コメントと記録 | 満たしていた | core の `#![warn(missing_docs)]` で警告 0 件。記録はこのファイル |
+
+### テストと検査の結果（今回）
 
 | コマンド | 結果 |
 |----------|------|
-| `cargo test -p local-sights-core --lib -- request:: time_range:: paging:: event:: timeline:: failure:: gateway:: session::` | 72 件成功 |
-| `cargo test -p local-sights-core --test u1_fetch_flow` | 8 件成功 |
-| `npx vitest run`（U1 の 5 ファイル） | 26 件成功（全体では 6 ファイル 31 件） |
-| `cargo test --workspace` | 成功 |
-| `cargo fmt --check`・`cargo clippy --workspace --all-targets` | 成功・警告 0 |
+| `npm ci` | 成功（脆弱性 0 件） |
+| `cargo test -p local-sights-core --lib -- request:: time_range:: paging:: event:: timeline:: failure:: gateway:: session::` | 162 件成功、2 件 ignore |
+| `cargo test -p local-sights-core --test u1_fetch_flow` | 11 件成功 |
+| `cargo test -p local-sights-core`（全体） | ライブラリ 305 件成功・5 件 ignore、結合テスト 11+9+14+4+3 件成功。ignore は後続単位の速度測定テスト（`--release --ignored` で実行する前提） |
+| `npx vitest run`（U1 の 5 ファイル） | 64 件成功 |
+| `npx vitest run`（全体） | 21 ファイル 171 件成功 |
+| `cargo fmt --check` | 成功 |
+| `cargo clippy -p local-sights-core --all-targets` | 成功・警告 0 件 |
 | `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
 | `npm audit` | 脆弱性 0 件 |
-| `cargo build -p local-sights`（Tauri のアプリ） | 成功（このコンテナに Linux の前提ライブラリを入れられた） |
+| `cargo build -p local-sights` | このコンテナでは失敗（`gdk-3.0`・webkit2gtk-4.1 が入っていない）。計画 §6 のとおり開発者の手元で確かめる。前回の作業ではこのコンテナに前提ライブラリを入れて成功していた |
 
-ライブラリ側の件数：request 9、time_range 9、paging 7、event 3、timeline 6、failure 12、classify 8、aws 7、session 11、結合テスト 8。画面側：App 5、FetchForm 7、LogTable 5、StatusLine 5、useEscapeKey 4、messages 5。
-
-GUI の目視確認の項目（長いメッセージが 1 行で省略記号付きで切れることを含む）は `README.md` の「Manual GUI check (walking-skeleton checkpoint)」にまとめた（レビュー R-05）。テスト先行の部分（Step 3）は、実装前に失敗を確かめてから実装した。
+件数が前回（request 9、結合テスト 8 など）より増えているのは、U2〜U7 で同じファイルにテストが足されたため。
 
 ## 計画との違い
 
-1. core の `Cargo.toml` に `[[example]]` 節を置かない（既定の動きで example は組み立てるだけで実行されない）。
-2. `FetchSink::on_batch` に `job_id` を足した。画面が前回の取得の行を確実に捨てられるようにするため。
-3. 計画にないファイルを足した：`src/format.ts`（時刻の書式と 1 行化）、`src/styles.css`、`src/vite-env.d.ts`、`src/test/fixtures.ts`、`src/App.test.tsx`（3 件。unit-test-instructions のコマンドには含まれないが `npm test` で実行される）。
-4. `src-tauri` に feature `custom-protocol` を足した。`cargo install --path src-tauri --features custom-protocol` で入れたアプリが、開発サーバーではなく組み込みの画面を読むようにするため。
+今回の照合で見つかったもの（いずれも後続単位で育った形。計画どおり縮めず、満たしているものとして扱った）：
+
+1. Step 5：trait `CloudWatchLogsGateway` は `get_log_events` に加えて、U2・U3 で `describe_log_groups`・`describe_log_streams` を持つ。読み取り 3 API の範囲内で、`aws.rs` が呼ぶ API もこの 3 つだけ（project.md Forbidden に当たらない）。
+2. Step 6：FetchCoordinator は再試行・中断・キャッシュ・複数ストリームを持つ形になっている。ストリームを含めた並べ替えは U3 で入った。`u1_fetch_flow` の 11 件が計画の観点をすべて含む。
+3. Step 7：SessionState は U2〜U7 の状態を含む。計画の観点（Idle で始まる・理由・Fetching 中のロック・Done と件数・0 件・Failed・再取得）はすべてテストにある。
+4. Step 8：`log-batch` イベントは、U3 の仮想スクロールで `fetch-progress` イベントと `get_rows` コマンドに置き換わった。後続単位のコマンドも増えている。
+5. Step 9：LogTable は「全件を並べる」形から U3 の仮想スクロールに変わった。1 行表示・省略記号・時刻の書式・`data-testid` はある。
+6. Step 10：確認用プログラムの `--stream` 引数はなくなり、U3（U3:BR6.9）でロググループ全体を取得してストリーム名の列を出す形になった。終了コード 0/1/2 と標準出力・標準エラーの使い分けは計画どおり。
+7. Step 1：capabilities は `core:default` より狭い `core:event:default` と自前のコマンドだけ（前回のレビュー R-03）。
+
+前回の作業での違い（引き続き有効）：core の `Cargo.toml` に `[[example]]` 節を置かない。`FetchSink::on_batch` に `job_id` を足した。`src/format.ts` などの補助ファイルを足した。`src-tauri` に feature `custom-protocol` を足した。
+
+## 主な判断（前回の作業から）
+
+- 画面とライブラリは、操作を Tauri のコマンドで、状態の変化をイベントで送ってつなぐ（Q1）。
+- AWS の接続先は最初の呼び出しのときに解決し、リージョンがなければ GetLogEvents を呼ばずに RegionMissing を返す。SDK の生のメッセージは捨てて安全な詳細だけを残す。
+- 伏せ字は項目によって変える（レビュー R-02）。テスト用のダミーのキーは実行時に文字列をつないで作る。
+- 環境変数を変えるテストは一時ファイルだけを読み、インスタンスメタデータを無効にし、AWS の API は呼ばない。
 
 ## まだ確かめていないこと
 
-- GUI の目視と、実際の AWS での確認用プログラムの実行は、開発者本人の手元で本人の認証情報を使って行う（team.md Walking Skeleton）。手順は `README.md`。
-- `cargo-deny` の設定（`deny.toml`）と CI のワークフローは CI Pipeline ステージで作る。
+- `cargo build -p local-sights`（または `npm run tauri dev`）での Tauri のアプリの組み立てと `cargo clippy --workspace` は、開発者の手元で確かめる。
+- GUI の目視（`README.md` の「Manual GUI check (walking-skeleton checkpoint)」）と、本人の AWS 認証情報での `fetch_check` の実行は、開発者本人の手元で行う（team.md Walking Skeleton）。

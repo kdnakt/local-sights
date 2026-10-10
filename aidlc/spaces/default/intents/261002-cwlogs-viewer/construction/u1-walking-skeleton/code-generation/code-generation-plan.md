@@ -175,7 +175,7 @@ U1 の FR：FR1.2、FR3.1、FR3.5、FR4.3、FR4.4、FR4.6、FR5.1、FR8.3。ル�
 ### Step 12: ドキュメントとトレーサビリティ
 
 - [x] 公開関数に doc コメントを付ける
-- [ ] `code-summary.md`・`source-manifest.json`・`traceability.json`（BR1.1〜BR7.2 と U1 の FR を、実装またはテストのファイルに対応付ける）を書く
+- [x] `code-summary.md`・`source-manifest.json`・`traceability.json`（BR1.1〜BR7.2 と U1 の FR を、実装またはテストのファイルに対応付ける）を書く
 
 ## 5. 要件・ルールと手順の対応
 

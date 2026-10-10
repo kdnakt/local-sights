@@ -100,67 +100,67 @@ U2 の FR：FR1、FR1.1、FR1.3、FR1.4、FR2、FR2.1〜FR2.3。ルール：U2 �
 
 ### Step 1: 骨組みと設定
 
-- [x] `crates/local-sights-core/Cargo.toml` に `home` を足す（ホームの場所を得るため）。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）
-- [x] `src/lib.rs` に `catalog`・`log_groups`・`connection` のモジュールを宣言する
+- [ ] `crates/local-sights-core/Cargo.toml` に `home` を足す（ホームの場所を得るため）。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）
+- [ ] `src/lib.rs` に `catalog`・`log_groups`・`connection` のモジュールを宣言する
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
 
-- [x] U1 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U2 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
+- [ ] U1 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U2 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
 
 ### Step 3: 純粋なロジックのテストを先に書く（失敗を確かめる）
 
 各テストを書いたら実行し、失敗の出力を記録してから Step 4 に進む。
 
-- [x] `catalog/mod.rs` のテスト：config と credentials の中身（文字列）から、`[profile 名前]`・`[default]`・credentials の `[名前]` を集めて重複を除いた名前の昇順の一覧を作り、先頭に SdkDefault を置く（BR1.1）。認証情報の項目の値が結果に含まれない（BR1.2）。Named の既定のリージョンは config のそのセクションの region。SdkDefault の既定のリージョンは、渡した環境変数の値（AWS_REGION → AWS_DEFAULT_REGION → AWS_PROFILE のプロファイルの region → [default] の region）の順（BR1.5）。壊れた行があっても読めた分で作る
-- [x] `catalog/regions.rs` のテスト：一覧がコードの昇順で空でない（BR1.4）。既定のリージョンが一覧にないときに足される（BR1.5）
-- [x] `log_groups/mod.rs` のテスト：次のトークンがなければ終わり、直前に送ったトークンと同じなら終わり、違えば続ける（BR3.1）。ページを足すと名前の昇順に並ぶ（BR3.2、BR3.3）。絞り込みは前後の空白を除き、大文字・小文字を区別しない部分一致、空なら全件（BR3.7）。0 件・絞り込みで 0 件の区別（BR3.10）。途中のエラーで Partial になり取得できた分が残る（BR3.4）。listingId が違う応答と、いまの一覧がないときの応答は捨てる（BR3.6）
-- [x] `connection.rs` のテスト：起動時は未選択（BR2.1）。既定のリージョンがあるプロファイルを選ぶとリージョンが入り、ないと未選択（BR2.2）。両方が決まると一覧の取得を始める指示が出る（BR2.3）。表示中のログがあると変更は確認待ちになり、ないとすぐ適用される（BR2.5）。確認待ちで「変える」なら適用、「キャンセル」なら元の選択に戻る。適用で一覧の取得が無効になる（BR2.3、BR3.6）。確認待ちの変更は、プロファイルかリージョンの少なくとも一方を持つ
+- [ ] `catalog/mod.rs` のテスト：config と credentials の中身（文字列）から、`[profile 名前]`・`[default]`・credentials の `[名前]` を集めて重複を除いた名前の昇順の一覧を作り、先頭に SdkDefault を置く（BR1.1）。認証情報の項目の値が結果に含まれない（BR1.2）。Named の既定のリージョンは config のそのセクションの region。SdkDefault の既定のリージョンは、渡した環境変数の値（AWS_REGION → AWS_DEFAULT_REGION → AWS_PROFILE のプロファイルの region → [default] の region）の順（BR1.5）。壊れた行があっても読めた分で作る
+- [ ] `catalog/regions.rs` のテスト：一覧がコードの昇順で空でない（BR1.4）。既定のリージョンが一覧にないときに足される（BR1.5）
+- [ ] `log_groups/mod.rs` のテスト：次のトークンがなければ終わり、直前に送ったトークンと同じなら終わり、違えば続ける（BR3.1）。ページを足すと名前の昇順に並ぶ（BR3.2、BR3.3）。絞り込みは前後の空白を除き、大文字・小文字を区別しない部分一致、空なら全件（BR3.7）。0 件・絞り込みで 0 件の区別（BR3.10）。途中のエラーで Partial になり取得できた分が残る（BR3.4）。listingId が違う応答と、いまの一覧がないときの応答は捨てる（BR3.6）
+- [ ] `connection.rs` のテスト：起動時は未選択（BR2.1）。既定のリージョンがあるプロファイルを選ぶとリージョンが入り、ないと未選択（BR2.2）。両方が決まると一覧の取得を始める指示が出る（BR2.3）。表示中のログがあると変更は確認待ちになり、ないとすぐ適用される（BR2.5）。確認待ちで「変える」なら適用、「キャンセル」なら元の選択に戻る。適用で一覧の取得が無効になる（BR2.3、BR3.6）。確認待ちの変更は、プロファイルかリージョンの少なくとも一方を持つ
 
 ### Step 4: 純粋なロジックを実装する（テストを通す）→ 整理する
 
-- [x] `catalog/mod.rs`・`catalog/regions.rs`・`log_groups/mod.rs`・`connection.rs` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない
+- [ ] `catalog/mod.rs`・`catalog/regions.rs`・`log_groups/mod.rs`・`connection.rs` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない
 
 ### Step 5: AWS 接続の層を実装する → テストする（BR1.3、BR2.8、BR3.9）
 
-- [x] `catalog/files.rs`：設定ファイルの場所を決めて読む（BR1.1）。ファイルがなければ 0 件で知らせなし、読めない・解釈できないなら 0 件で、ファイルの種類だけを知らせとして返す（BR1.3、R-12）。読むときに見るのは見出し行と region の行だけ（BR1.2）
-- [x] `gateway/mod.rs`：trait に `describe_log_groups`（次のトークンだけを受け、ロググループの一覧と次のトークン、または ApiFailure を返す）を足す。`GetLogEventsRequest` にリージョン（省略可）を足す。読み取り 3 API 以外を呼ぶ手段は作らない（BR3.9）
-- [x] `gateway/aws.rs`：DescribeLogGroups の実装。リージョンが指定されていればそのリージョンで接続し、なければ U1 と同じくプロファイルの既定のリージョンで解決する（BR2.8、U1:BR1.6）。クライアントは（プロファイル, リージョン）ごとに使い回す。エラーは U1 の分類と安全な詳細を使う
-- [x] テスト（実装の後）：一時ファイルの設定ファイルで、ファイルなし・読めない（ディレクトリを指す）・正常の各場合（BR1.3）。DescribeLogGroups の SDK のエラーが U1 の種類に分類され、生のメッセージが捨てられること。リージョンの指定がある・ないときの接続先の解決。いずれも AWS の API は呼ばない（インスタンスメタデータも無効にする）
+- [ ] `catalog/files.rs`：設定ファイルの場所を決めて読む（BR1.1）。ファイルがなければ 0 件で知らせなし、読めない・解釈できないなら 0 件で、ファイルの種類だけを知らせとして返す（BR1.3、R-12）。読むときに見るのは見出し行と region の行だけ（BR1.2）
+- [ ] `gateway/mod.rs`：trait に `describe_log_groups`（次のトークンだけを受け、ロググループの一覧と次のトークン、または ApiFailure を返す）を足す。`GetLogEventsRequest` にリージョン（省略可）を足す。読み取り 3 API 以外を呼ぶ手段は作らない（BR3.9）
+- [ ] `gateway/aws.rs`：DescribeLogGroups の実装。リージョンが指定されていればそのリージョンで接続し、なければ U1 と同じくプロファイルの既定のリージョンで解決する（BR2.8、U1:BR1.6）。クライアントは（プロファイル, リージョン）ごとに使い回す。エラーは U1 の分類と安全な詳細を使う
+- [ ] テスト（実装の後）：一時ファイルの設定ファイルで、ファイルなし・読めない（ディレクトリを指す）・正常の各場合（BR1.3）。DescribeLogGroups の SDK のエラーが U1 の種類に分類され、生のメッセージが捨てられること。リージョンの指定がある・ないときの接続先の解決。いずれも AWS の API は呼ばない（インスタンスメタデータも無効にする）
 
 ### Step 6: 一覧の取得の流れを実装する → 偽物の gateway でテストする（BR3.1〜BR3.6、BR4.1）
 
-- [x] `log_groups/listing.rs`：新しい listingId で DescribeLogGroups のページをたどり、ページごとに受け口へ一覧の状態を届ける。エラーで止めて Partial を届ける。いまの listingId と違えば次のページを呼ばずにやめる
-- [x] 偽物の gateway（`tests/support/fake_gateway.rs`）に DescribeLogGroups の決めた応答を足す
-- [x] 結合テスト `crates/local-sights-core/tests/u2_log_group_listing.rs`（実装の後）：複数ページ、0 件、途中のエラー（最初のページ・2 ページ目）、同じトークンの防御、取り直しで古い取得がやめられ応答が捨てられる、AuthRequired・AccessDenied でも止まらず Partial
+- [ ] `log_groups/listing.rs`：新しい listingId で DescribeLogGroups のページをたどり、ページごとに受け口へ一覧の状態を届ける。エラーで止めて Partial を届ける。いまの listingId と違えば次のページを呼ばずにやめる
+- [ ] 偽物の gateway（`tests/support/fake_gateway.rs`）に DescribeLogGroups の決めた応答を足す
+- [ ] 結合テスト `crates/local-sights-core/tests/u2_log_group_listing.rs`（実装の後）：複数ページ、0 件、途中のエラー（最初のページ・2 ページ目）、同じトークンの防御、取り直しで古い取得がやめられ応答が捨てられる、AuthRequired・AccessDenied でも止まらず Partial
 
 ### Step 7: AppSession を広げる → テストする（BR2.4、BR2.6〜BR2.8、BR3.5、BR3.8）
 
-- [x] `session.rs`・`request.rs`：接続の選択（`connection.rs`）、ロググループ一覧の状態、絞り込みの文字列、選んだロググループを SessionState に足す。接続の変更の適用で、選択とログ・件数・直近の結果を消して phase を Idle に戻す（BR2.4）。取得中と確認待ちは選択と再読み込みを受け付けない（BR2.6）。検証を、画面だけの選択の検証と、共通の検証（U1:BR1.8。ロググループ名が空でないことも残す）に分ける（BR2.7）。取得の要求に選んだプロファイルとリージョンを入れる（BR2.8）。再読み込みは選択とログを変えない（BR3.5）。表示用の形に一覧・絞り込み・選択中の名前・確認待ちを足す
-- [x] `session.rs` のテスト（実装の後）：接続の変更の適用で Done・Failed から Idle、ログと件数と失敗の表示が消える。取得中と確認待ちの操作の拒否。未選択の理由と共通の検証の理由の両方。選んだプロファイル・リージョン・ロググループが取得の要求に入る。再読み込みで選択とログが変わらない。ロググループの選び直しでログが消えない
+- [ ] `session.rs`・`request.rs`：接続の選択（`connection.rs`）、ロググループ一覧の状態、絞り込みの文字列、選んだロググループを SessionState に足す。接続の変更の適用で、選択とログ・件数・直近の結果を消して phase を Idle に戻す（BR2.4）。取得中と確認待ちは選択と再読み込みを受け付けない（BR2.6）。検証を、画面だけの選択の検証と、共通の検証（U1:BR1.8。ロググループ名が空でないことも残す）に分ける（BR2.7）。取得の要求に選んだプロファイルとリージョンを入れる（BR2.8）。再読み込みは選択とログを変えない（BR3.5）。表示用の形に一覧・絞り込み・選択中の名前・確認待ちを足す
+- [ ] `session.rs` のテスト（実装の後）：接続の変更の適用で Done・Failed から Idle、ログと件数と失敗の表示が消える。取得中と確認待ちの操作の拒否。未選択の理由と共通の検証の理由の両方。選んだプロファイル・リージョン・ロググループが取得の要求に入る。再読み込みで選択とログが変わらない。ロググループの選び直しでログが消えない
 
 ### Step 8: Tauri のつなぎを実装する
 
-- [x] `src-tauri/src/lib.rs`：起動時に設定ファイルを読んでカタログを作る。コマンド `select_profile`・`select_region`・`confirm_connection_change`・`cancel_connection_change`・`reload_log_groups`・`update_log_group_filter`・`select_log_group` を足し、U1 の `update_input` からプロファイル名とロググループ名の欄をなくす。一覧の取得を非同期で始め、受け口が `session-changed` を送る。`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
+- [ ] `src-tauri/src/lib.rs`：起動時に設定ファイルを読んでカタログを作る。コマンド `select_profile`・`select_region`・`confirm_connection_change`・`cancel_connection_change`・`reload_log_groups`・`update_log_group_filter`・`select_log_group` を足し、U1 の `update_input` からプロファイル名とロググループ名の欄をなくす。一覧の取得を非同期で始め、受け口が `session-changed` を送る。`capabilities/default.json` に新しいコマンドの権限だけを足す
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
 
 ### Step 9: 画面を実装する → Vitest でテストする（BR5.1、BR5.2、BR3.8 の表示、BR3.10）
 
-- [x] `src/components/ConnectionBar.tsx`（プロファイルとリージョンの選択、未選択の状態、設定ファイルの知らせ）、`LogGroupPane.tsx`（絞り込みの欄、[再読み込み]、一覧、読み込み中・途中まで・0 件・うながし、矢印キーと Enter・スペースで選ぶ）、`ConfirmDialog.tsx`（文言と [変える]・[キャンセル]、開いたときのフォーカスは [キャンセル]、Escape で閉じる。U1 の `useEscapeKey` を使う）、`FetchForm.tsx`（プロファイル名とロググループ名の手入力欄をなくし、選択中のロググループ名を常に表示）、`App.tsx`、`src/i18n/messages.ts`（U2 の文言キーを英日で足す）。操作できる要素に `data-testid` を付ける
-- [x] 画面のテスト（実装の後）：`ConnectionBar.test.tsx`、`LogGroupPane.test.tsx`、`ConfirmDialog.test.tsx`、`FetchForm.test.tsx`・`App.test.tsx`・`messages.test.ts` の更新（手入力欄がない、選択中の名前、取得中の無効化、確認ダイアログの流れ、文言の英日のそろい）
+- [ ] `src/components/ConnectionBar.tsx`（プロファイルとリージョンの選択、未選択の状態、設定ファイルの知らせ）、`LogGroupPane.tsx`（絞り込みの欄、[再読み込み]、一覧、読み込み中・途中まで・0 件・うながし、矢印キーと Enter・スペースで選ぶ）、`ConfirmDialog.tsx`（文言と [変える]・[キャンセル]、開いたときのフォーカスは [キャンセル]、Escape で閉じる。U1 の `useEscapeKey` を使う）、`FetchForm.tsx`（プロファイル名とロググループ名の手入力欄をなくし、選択中のロググループ名を常に表示）、`App.tsx`、`src/i18n/messages.ts`（U2 の文言キーを英日で足す）。操作できる要素に `data-testid` を付ける
+- [ ] 画面のテスト（実装の後）：`ConnectionBar.test.tsx`、`LogGroupPane.test.tsx`、`ConfirmDialog.test.tsx`、`FetchForm.test.tsx`・`App.test.tsx`・`messages.test.ts` の更新（手入力欄がない、選択中の名前、取得中の無効化、確認ダイアログの流れ、文言の英日のそろい）
 
 ### Step 10: 確認用プログラムを合わせる（R-11）
 
-- [x] `examples/fetch_check.rs`：`--profile` を省略したら SdkDefault、指定したらその名前の Named として取得の要求を作る。リージョンの引数は足さない。U1 の出力と終了コードは変えない
+- [ ] `examples/fetch_check.rs`：`--profile` を省略したら SdkDefault、指定したらその名前の Named として取得の要求を作る。リージョンの引数は足さない。U1 の出力と終了コードは変えない
 
 ### Step 11: ビルドと環境の設定
 
-- [x] `README.md` の手元の GUI の確認の項目に U2 の分（プロファイルとリージョンの選択、既定のリージョンがないプロファイル、一覧と絞り込み、確認ダイアログ、権限のない接続での表示）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `README.md` の手元の GUI の確認の項目に U2 の分（プロファイルとリージョンの選択、既定のリージョンがないプロファイル、一覧と絞り込み、確認ダイアログ、権限のない接続での表示）を足す
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 12: ドキュメントとトレーサビリティ
 
-- [x] 公開関数に doc コメントを付ける
-- [x] `code-summary.md`・`source-manifest.json`・`traceability.json`（U2 の BR と FR を実装またはテストのファイルに対応付ける）を書く
+- [ ] 公開関数に doc コメントを付ける
+- [ ] `code-summary.md`・`source-manifest.json`・`traceability.json`（U2 の BR と FR を実装またはテストのファイルに対応付ける）を書く
 
 ## 4. 要件・ルールと手順の対応
 

@@ -1,8 +1,77 @@
 # Code Summary — U2 接続とロググループの選択（u2-connection-selection）
 
-計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
+計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。U2 が書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
 
-## 作ったもの・変えたもの
+## 今回の作業（2026-10-10、既存のコードと計画の照合）
+
+U2 のコードは以前の作業で作られており、その上に U3〜U7 の機能が足されている。ツールを 2.11.0 に上げた後、U2 の計画承認がもう一度求められた。利用者は計画を承認し、U1 と同じく既存のコードを計画と照合する形で進めた。
+
+- 今回作った・変えた・消したアプリのソース：なし（変更は計画ファイルのチェックボックスだけ）。
+- `source-manifest.json` に載っているパス 37 個と、`traceability.json` の `OK` の対象ファイル 34 個は、すべて今も存在する。どちらのファイルも前回のものを引き続き使う。
+- テストを先に書く順序（Step 3・4）は最初のビルドで行われた（28 件中 27 件が失敗してから実装）。今回は失敗の実行を作り直さず、既存のテストを流して確かめた。
+- 計画の 26 項目のうち、Step 8 の 2 つ目（`cargo build -p local-sights`）と Step 11 の 2 つ目（`cargo clippy --workspace --all-targets` と `cargo build -p local-sights` を含む検査）にはチェックを付けていない。このコンテナに Tauri の Linux 用の前提ライブラリ（webkit2gtk-4.1・gdk-3.0）がなく、実行できないため。開発者の手元か CI で確かめてから付ける。
+
+### 手順ごとの結果
+
+| 手順 | 結果 | 計画の文言との違い |
+|------|------|--------------------|
+| Step 1 骨組みと設定 | 満たしていた | 「ほかに新しい依存は足さない」は U2 の時点の話。いまは後の単位の依存（U3 の tokio の time、U4 の chrono-tz・iana-time-zone、U6 の sha2・serde_json）もある。テレメトリ系の依存はない |
+| Step 2 テストの実行環境 | 満たしていた | なし |
+| Step 3・4 純粋なロジック | 満たしていた | なし。catalog 9 件・regions 3 件・log_groups 9 件・connection 8 件のテスト名と中身で、計画の観点がすべてあることを確かめた |
+| Step 5 AWS 接続の層 | 満たしていた | BR1.3 は最初のビルドからの人間の決定による逸脱（壊れた行だけを読み飛ばす。下の「計画との違い」の 7）。U3 で DescribeLogStreams と `classify.rs` が加わった |
+| Step 6 一覧の取得の流れ | 満たしていた | なし（`u2_log_group_listing` 9 件）。一覧の取得は U3 の再試行を通らず、BR3.4 のとおりすぐ Partial になる |
+| Step 7 AppSession | 満たしている（後の単位による違いあり） | ストリーム名の欄は U3:BR6.1 でなくなった（`InputField` は `StartText`・`EndText` だけ）。選択・一覧の操作に接続の世代番号の検査が付いた（U3:BR6.7）。止める条件に設定ダイアログを開いている間が加わった（U6:BR5.1）。接続の変更で消すものに、失敗したストリーム・ストリーム一覧の状態・キャッシュの知らせが加わった（U3・U6） |
+| Step 8 Tauri のつなぎ | 1 つ目は満たしている。2 つ目は未チェック | `reload_log_groups`・`select_log_group` は `generation` を受け取る（U3）。ログの消去は EventTimeline ではなく LogView の `clear()`（U3・U5）。capabilities には後の単位のコマンドも並ぶ |
+| Step 9 画面 | 満たしている（後の単位による違いあり） | 選択中のロググループ名は、ストリーム名の欄ではなく時刻の入力欄の前に出る（U3 でストリーム名の欄がなくなったため）。一覧が途中までのときの表示は、U7:BR2.4 で種類名を出さない文の表示に変わった。上部バーの U2 の要素の間に、時間帯の切り替え（U4）と設定ボタン（U6）が入った（U2 の要素どうしの順序は保たれている） |
+| Step 10 確認用プログラム | 満たしている（後の単位による違いあり） | R-11 の扱い（`--profile` なしは SdkDefault、ありは Named、リージョンの引数なし）と終了コード 0/1/2 は計画どおり。「U1 の出力は変えない」は成り立っていない：U3 で `--stream` がなくなりロググループ全体を取得するようになり、標準出力にストリーム名の列、標準エラーにストリーム数と失敗したストリームの一覧が加わった |
+| Step 11 ビルドと環境 | 1 つ目は満たしている。2 つ目は未チェック | README の U2 の確認項目 9 つのうち 2 つは、後の単位に合わせた書き方（名前の表示位置、U7 の文のエラー表示） |
+| Step 12 doc コメントと記録 | 満たしていた | core の `#![warn(missing_docs)]` で警告 0 件。記録はこのファイル |
+
+### ルールの文言といまのコードの違い
+
+`traceability.json` では次の項目も `OK` のままにしている。U2 として作った実装とテストは残っており、ルールの中心（下の各項目の「そのまま成り立つ部分」）はいまも満たしているため。ただし、ルールの文言の一部は後の単位で変わっている：
+
+| ID | いまのコードとの違い | そのまま成り立つ部分 |
+|----|----------------------|----------------------|
+| BR2.7・FR2.3 | 「ストリーム名と日時が U1 の検証を通る」のストリーム名の部分。U3:BR6.1 でストリーム名がなくなり、いまの条件は「プロファイル・リージョン・ロググループが選ばれ、日時が検証を通る」 | 選択の検証と共通の検証に分かれていること。共通の検証にロググループ名が空でない確認が残っていること |
+| BR3.8 | 「ストリーム名の入力欄の近くに常に表示」。いまは時刻の入力欄の前に常に表示 | 1 つだけ選べる。選び直してもログを消さない |
+| BR3.4・BR4.1 | 画面の表示が「種類名と安全な詳細」の暫定表示から、U7:BR2.4 の「何が起きたか・次の行動・安全な詳細」の文に変わった（BR4.1 自身がこの仕上げを U7 に回している） | 取得できた分を残して Partial にする |
+| BR2.4 | 「EventTimeline の保持ログを破棄」は、いまは LogView の `clear()`。消える範囲も広がった | Done・Failed から Idle に戻る |
+| BR2.6 | 止める条件に、設定ダイアログを開いている間（U6:BR5.1）が加わった（内容を広げる変更） | 取得中と確認待ちに選択と再読み込みを受け付けない |
+| BR5.2 | Tab の順の間に、時間帯の切り替えと設定ボタンが入った（U4・U6） | U2 の要素どうしの順序 |
+
+### テストと検査の結果（今回）
+
+| コマンド | 結果 |
+|----------|------|
+| `cargo test -p local-sights-core --lib -- catalog:: log_groups:: connection:: session:: gateway::` | 132 件成功 |
+| `cargo test -p local-sights-core --test u2_log_group_listing` | 9 件成功 |
+| `cargo test -p local-sights-core`（全体） | lib 305 件成功（5 件 ignore、後続単位の速度測定）、結合テスト u1 11・u2 9・u3 14・u5 4・u6 3 件成功 |
+| `npx vitest run`（U2 の 6 ファイル） | 72 件成功 |
+| `npx vitest run`（全体） | 21 ファイル 171 件成功 |
+| `cargo fmt --check` | 成功 |
+| `cargo clippy -p local-sights-core --all-targets` | 成功・警告 0 件（`--workspace` は src-tauri を組み立てられないため実行できない） |
+| `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
+| `npm audit` | 脆弱性 0 件 |
+| `cargo build -p local-sights` | このコンテナでは失敗（`gdk-sys` の組み立てで `gdk-3.0` が見つからない）。前回の作業では成功していた |
+
+件数が前回（lib の該当分 76 件、画面 45 件など）より増えているのは、U3〜U7 で同じファイルにテストが足されたため。
+
+### 気づいた点（直していない）
+
+- U6 の範囲：設定ダイアログを開いている間、`LogGroupPane` の絞り込み欄は画面の上では無効にならない（`pendingChange` しか見ていない）。AppSession の側では拒否される。ダイアログが画面を覆う作りなら実害はないと見られるが、確かめていない。
+
+### U1 から持ち越した記録の訂正
+
+U1 のレビュー（READY）で出た記録の指摘は、レビューを記録した後のため U1 では直さず、project.md の決まりに従ってここに残す。いずれもコードの問題ではなく U1 の記録（`u1-walking-skeleton/code-generation/` の code-summary.md と traceability.json）の書き方の問題：
+
+1. U1 の code-summary は Step 3・7・9 を「満たしていた」としているが、BR1.1 のストリーム名の半分は、いまのコードではもう成り立たない。`request.rs` にストリーム名の検証はなく、テスト `blank_group_is_required_and_no_stream_name_is_needed` は逆のことを確かめている（U3:BR6.1）。FetchForm にもプロファイル・ロググループ・ストリームの入力欄はなく、計画の「入力欄 5 つ」は成り立たない（U2・U3）。
+2. U1 の code-summary は確認用プログラムの標準出力・標準エラーの使い分けを「計画どおり」としているが、BR7.1・BR4.5 とは 3 点違う：標準出力にストリーム名の列が加わった、最後の標準エラーの行にページ数がない、`ProgressSink::on_batch` が何もしないため取得がすべて終わってからまとめて出す（U3:BR6.9、BR4.1）。
+3. U1 の traceability.json は BR1.1 と BR7.1 を `OK` のままにしているが、どちらもルールの文言はいまのコードと合わない（上の 1・2 のとおり）。
+
+## 最初のビルドの記録
+
+### 作ったもの・変えたもの
 
 | 場所 | 中身 |
 |------|------|
@@ -17,7 +86,7 @@
 | `crates/local-sights-core/examples/fetch_check.rs` | R-11 の扱い（`--profile` なしは既定の設定、ありはその名前のプロファイル。リージョンの引数はなし）を doc コメントに明記。出力と終了コードは変えていない |
 | `README.md` | U2 の使い方と、手元の GUI の確認の 9 項目 |
 
-## 主な判断
+### 主な判断
 
 - 選んだプロファイルは `ProfileSelector`（`{"kind":"SdkDefault"}` か `{"kind":"Named","profileName":"..."}`）で表し、画面とのやり取りにもそのまま使う。
 - 一覧のページの終わりの判定は U1 の `paging::decide` を使い回す（次のトークンがない、または送ったトークンと同じ）。
@@ -31,7 +100,7 @@
 - 接続を変えてログを捨てるときは、コマンドの中で EventTimeline の鍵を取ったまま消してから画面に知らせる。そのため、遅れて走った消去が次の取得のログを消すことはない（レビュー R-05）。
 - 画面からの取得で、選んだプロファイルとリージョンが GetLogEvents の要求に入ることを `tests/u1_fetch_flow.rs` で確かめる。確認用プログラムの経路ではリージョンを渡さない（レビュー R-02、R-11）。
 
-## テストの結果
+### テストの結果（最初のビルド）
 
 | コマンド | 結果 |
 |----------|------|
@@ -46,7 +115,7 @@
 
 U2 のライブラリ側の件数：catalog 9、catalog::files 4、catalog::regions 3、connection 8、log_groups 9、session +14、request +2、gateway::aws +3、u1_fetch_flow +3、結合テスト u2_log_group_listing 9。画面側：ConnectionBar 5、LogGroupPane 12、ConfirmDialog 5、FetchForm +3、App +3。テスト先行の部分（Step 3）は、実装前に失敗を確かめてから実装した（28 件中 27 件が失敗。残る 1 件は ARN を画面に送らないことを serde の指定だけで満たすため、最初から通った）。
 
-## 計画との違い
+### 計画との違い（最初のビルド）
 
 1. 環境変数を変えるテストが 2 つのモジュールになったため、テスト専用の共通の鍵（`test_support::ENV_LOCK`）で並列実行の干渉を防いだ。
 2. テストの補助関数がテストのバイナリごとに使われ方が違うため、`tests/support/mod.rs` で未使用の警告を抑えた。
@@ -58,5 +127,6 @@ U2 のライブラリ側の件数：catalog 9、catalog::files 4、catalog::regi
 
 ## まだ確かめていないこと
 
+- `cargo build -p local-sights` と `cargo clippy --workspace --all-targets` は、開発者の手元か CI で確かめる（今回はこのコンテナで実行できなかった）。確かめたら計画の Step 8・Step 11 の 2 つ目にチェックを付ける。
 - GUI の目視は、開発者本人の手元で行う（`README.md` の「Connection and log groups (U2)」）。U2 は骨組みではないため必須ではない。
 - 実際の AWS での DescribeLogGroups の動作は、自動テストでは確かめない（偽物の gateway で確かめた）。

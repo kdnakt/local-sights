@@ -1,0 +1,48 @@
+# cargo-deny configuration (team.md Code Style: dependency checks in CI,
+# including vulnerabilities). Run locally with `cargo deny check` after
+# `cargo install cargo-deny --locked`.
+
+[graph]
+all-features = true
+
+[advisories]
+# Any known vulnerability or unmaintained/unsound advisory fails the check.
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Permissive licenses only; the project itself is Apache-2.0. An expression
+# such as "MIT OR Apache-2.0" passes when any alternative is allowed.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  "MPL-2.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[bans]
+# Duplicate versions of one crate are reported but do not fail the build.
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# Crates come from crates.io only.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

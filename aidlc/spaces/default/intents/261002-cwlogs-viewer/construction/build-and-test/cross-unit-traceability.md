@@ -87,3 +87,16 @@
 | NFR14 | テストしやすい構成（ライブラリと GUI の分離、AWS は trait の裏、公開関数にテスト、テストと CI は AWS に接続しない） | どの単位の対応表にも ID がない | `crates/local-sights-core`（GUI 非依存）と `src-tauri`・`src`（GUI）に分かれている。`aws_sdk_cloudwatchlogs` を使うのは `gateway/aws.rs` だけで、trait `CloudWatchLogsGateway` の裏にある。結合テストは偽物の gateway だけを使う。ライブラリの単体テスト 305 件・結合テスト 41 件 |
 
 扱いの案：NFR7・NFR14 はこのステージの確認で満たしていることを確かめた。NFR9 は手元で確かめる。対応表（`traceability.json`）への追記は、コード生成のステージを閉じたあとに気づいた訂正のため、この記録に残し、次に対応表を触る機会（CI Pipeline のステージ、または次の作業単位）で行う（project.md Corrections：レビュー後に気づいた修正は次の作業単位に回す）。
+
+## 追記（2026-10-10、承認のあとの後片付け）
+
+上の「対応のない ID」4 件を、次のように片付けた。上の判定と表は、承認したときの記録としてそのまま残す。
+
+| ID | 対応 | 担当の単位 | 対応先のファイル | 扱い |
+|----|------|------------|------------------|------|
+| FR7.8 | N/A（理由つき） | U6 | — | 機能のルールではなく「MVP から外してよい」という選択肢なので、コードの対応先は持たない。U6 の対応表の `N/A` と理由をそのまま正とする。`N/A` は理由を書けば有効な状態（`.claude/knowledge/aidlc-shared/verification.md`）なので、「対応なし」には数えない |
+| NFR7 | OK | U7 | `src-tauri/tauri.conf.json` | CSP の `connect-src` を IPC だけに絞り、外部への送信をできなくしている。U7 の `traceability.json` に追記した |
+| NFR9 | OK | U7 | `src-tauri/src/lib.rs` | macOS のアプリメニュー（Quit・Edit）を組み込む箇所。CI の `Tauri app (macos-latest)` で組み立てが通っている（PR #2）。起動の目視は引き続き手元で行う。U7 の `traceability.json` に追記した |
+| NFR14 | OK | U1 | `crates/local-sights-core/src/gateway/mod.rs` | AWS 呼び出しを trait `CloudWatchLogsGateway` の裏に置く境界。U1 の `traceability.json` に追記した |
+
+**追記後の判定：PASS** — FR/NFR 70 件のうち 69 件が `OK`、1 件（FR7.8）が理由つきの `N/A`。対応のない ID はない。対応先のファイルはすべて存在する。

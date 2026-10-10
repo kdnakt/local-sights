@@ -47,3 +47,16 @@ C. どちらも入れない（手で更新する）
 X. Other (please specify)
 
 [Answer]: B. Dependabot だけ設定し、定期実行は入れない
+
+## Follow-up Questions
+
+## F1. `cargo deny check` を今の依存関係に対して実行すると 2 件で失敗します。どう対処しますか？
+
+背景：(1) **RUSTSEC-2026-0104**（脆弱性）：`rustls-webpki 0.101.7` が、`aws-sdk-cloudwatchlogs` の既定機能 `rustls` が引き込む古い TLS ライブラリ（rustls 0.21）経由で依存に入っている。証明書失効リスト（CRL）を読むときだけ到達する panic で、このアプリは CRL を使わない。`aws-sdk-cloudwatchlogs` の既定機能を外して `default-https-client`・`rt-tokio` だけにすると rustls 0.21 は依存から消え（rustls 0.23 だけになる）、ライブラリのテスト 346 件・`cargo fmt`・clippy はそのまま通ることを確認済み（`Cargo.lock` から 147 行減る）。(2) **RUSTSEC-2024-0370**（保守停止）：`proc-macro-error 1.0.4` が Tauri → gtk → glib-macros 経由で入っている。Tauri 側の依存なのでこちらから外せない。
+
+A. (1) は SDK の機能指定を変えて rustls 0.21 を依存から外す（`Cargo.toml`・`Cargo.lock` の変更。この PR に含める）。(2) は `deny.toml` の `ignore` に ID と理由（Tauri の依存、保守停止のみで脆弱性ではない）を書く
+B. どちらも `deny.toml` の `ignore` に ID と理由を書く（依存関係は変えない。(1) の理由：CRL を使わないため影響なし）
+C. (1) だけ機能指定を変え、(2) は `ignore` せず CI を赤のままにして Tauri の更新を待つ
+X. Other (please specify)
+
+[Answer]: A. (1) は SDK の機能指定を変えて rustls 0.21 を依存から外す（`Cargo.toml`・`Cargo.lock` の変更。この PR に含める）。(2) は `deny.toml` の `ignore` に ID と理由（Tauri の依存、保守停止のみで脆弱性ではない）を書く

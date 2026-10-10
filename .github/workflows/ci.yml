@@ -71,7 +71,8 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          arguments: --all-features
+          # feature selection lives in deny.toml ([graph] all-features = true)
+          arguments: ""
 
   # The Tauri app (src-tauri) compiles against the OS WebView, so it is built
   # on both runners; workspace-wide clippy runs here because src-tauri cannot

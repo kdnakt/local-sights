@@ -14,7 +14,7 @@
 | G6 | 画面のテスト | `npx vitest run` がすべて成功 | `frontend` | Testing Posture、TC-3 |
 | G7 | 画面のバンドル | `npx vite build` が成功 | `frontend` | B-2 |
 | G8 | npm の依存関係 | `npm audit --audit-level=high` で high 以上の脆弱性なし | `frontend` | team.md Code Style（脆弱性の検査） |
-| G9 | cargo の依存関係 | `cargo deny check` が成功（脆弱性 0、許可外のライセンス 0、git・未知のレジストリ 0。重複は警告） | `cargo-deny` | team.md Code Style、Q3 |
+| G9 | cargo の依存関係 | `cargo deny check` が成功（脆弱性 0、許可外のライセンス 0、git・未知のレジストリ 0。重複は警告。例外は `deny.toml` の `ignore` に理由つきで 1 件：RUSTSEC-2024-0370） | `cargo-deny` | team.md Code Style、Q3 |
 | G10 | Rust の静的検査（ワークスペース） | `cargo clippy --workspace --all-targets` がエラーなし（Linux・macOS） | `tauri-app` | team.md Code Style、B-6 |
 | G11 | Tauri アプリの組み立て | `cargo build -p local-sights` が Linux と macOS で成功 | `tauri-app` | 各単位の `unit-test-instructions.md`、B-3 |
 

@@ -9,6 +9,7 @@
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 - 2026-10-10T05:41:51Z — Tauri アプリの組み立ては `rust-core`・`frontend` が通ってから走らせた（`needs`）; macOS ランナーは分数を多く消費するため、整形やテストで落ちる PR では走らせない。並行にすれば数分早いが、費用を優先した。
+- 2026-10-10T05:55:00Z — CI のステージで依存関係（`Cargo.toml`・`Cargo.lock`）を変えた; `cargo deny check` が AWS SDK の既定機能が引き込む rustls-webpki 0.101.7 の脆弱性（RUSTSEC-2026-0104）で落ちた。利用者の判断（F1 の A）で SDK の既定機能から `rustls` を外し、テスト 346 件が通ることを確かめた。Tauri 経由の保守停止（RUSTSEC-2024-0370）は理由つきで ignore にした。
 
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->

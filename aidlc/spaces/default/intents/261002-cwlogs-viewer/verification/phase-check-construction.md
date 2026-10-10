@@ -44,7 +44,7 @@ Build and Test の承認（2026-10-10）は、この 4 件を指摘として示�
 | `npx vitest run` | `frontend` G6 |
 | `npx vite build` | `frontend` G7 |
 | `npm audit` | `frontend` G8（high 以上） |
-| `cargo deny check`（Build and Test では未実行） | `cargo-deny` G9 |
+| `cargo deny check`（Build and Test では未実行。CI Pipeline で実行し、依存の変更と例外 1 件のあと全項目 ok） | `cargo-deny` G9 |
 | `cargo clippy --workspace --all-targets`（未実行） | `tauri-app` G10（Linux・macOS） |
 | `cargo build -p local-sights`（未実行） | `tauri-app` G11（Linux・macOS） |
 

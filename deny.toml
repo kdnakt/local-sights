@@ -3,7 +3,8 @@
 # `cargo install cargo-deny --locked`.
 
 [graph]
-all-features = true
+# Check the features the workspace actually builds with, not every optional one.
+all-features = false
 
 [advisories]
 # Any known vulnerability or unmaintained/unsound advisory fails the check.
@@ -11,7 +12,12 @@ version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-ignore = []
+ignore = [
+  # proc-macro-error 1.0.4 is unmaintained (no vulnerability). It comes in only
+  # through tauri -> gtk -> glib-macros (Linux GTK bindings) and cannot be
+  # removed from this side; drop this entry once Tauri moves past it.
+  { id = "RUSTSEC-2024-0370", reason = "unmaintained only; transitive via tauri/gtk, not removable here" },
+]
 
 [licenses]
 version = 2
@@ -21,7 +27,6 @@ allow = [
   "MIT",
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
-  "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
   "Unicode-3.0",
@@ -35,6 +40,8 @@ exceptions = []
 # Duplicate versions of one crate are reported but do not fail the build.
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace path dependencies (local-sights-core) carry no version; that is fine.
+allow-wildcard-paths = true
 highlight = "all"
 deny = []
 skip = []

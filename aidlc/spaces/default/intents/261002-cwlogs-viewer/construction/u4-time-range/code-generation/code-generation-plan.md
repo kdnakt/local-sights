@@ -101,55 +101,55 @@ U4 の FR：FR3、FR3.1〜FR3.6。NFR：NFR12、NFR13。ルール：U4 の BR1.1
 
 ### Step 1: 骨組みと設定
 
-- [x] `crates/local-sights-core/Cargo.toml` に `chrono-tz` と `iana-time-zone` を足す。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）。`cargo-deny` の許可するライセンスに収まることを確かめる
-- [x] `src/lib.rs` に `time_zone`・`date_input` のモジュールを宣言する
+- [ ] `crates/local-sights-core/Cargo.toml` に `chrono-tz` と `iana-time-zone` を足す。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）。`cargo-deny` の許可するライセンスに収まることを確かめる
+- [ ] `src/lib.rs` に `time_zone`・`date_input` のモジュールを宣言する
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
 
-- [x] U1〜U3 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U4 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
+- [ ] U1〜U3 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U4 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
 
 ### Step 3: 純粋なロジックのテストを先に書く（失敗を確かめる）
 
 各テストを書いたら実行し、失敗の出力を記録してから Step 4 に進む。
 
-- [x] `time_range.rs` のテスト：UTC では U1 と同じ瞬間になる。Asia/Tokyo（夏時間なし）で `2024-03-01 10:00:00` は UTC の `01:00:00`。America/New_York で `2024-03-10 02:30:00` は存在しない日時、`2024-11-03 01:30:00` は早い方（UTC の 05:30:00）。形の誤りは Format。瞬間の文字列化：Local（New_York）で夏時間をまたぐ 2 つの瞬間のオフセットが変わる、`.mmm` 付きの一覧用、4 桁の年に表せない瞬間は入力欄用が None・一覧用が数値（BR1.2、BR3.1、R-05）
-- [x] `date_input.rs` のテスト：空は instant も error も持たない。正しい入力は instant を持つ。切替で instant を持つ入力は文字列だけが変わり instant は同じ（Asia/Tokyo ⇄ UTC の受け入れ条件）。New_York の 2 回現れる時刻の遅い方の瞬間を UTC で入れ、ローカル → UTC と往復しても元の UTC の文字列に戻る。形式の誤りは切替後も誤りで文字列はそのまま。ローカルで存在しない日時は UTC に切り替えると正しい日時になる（R-02）。4 桁の年に表せない瞬間は文字列を残して解釈し直す（R-05）。同じ文字列を受けても解釈し直さず instant を保つ（BR1.5、R-06）
-- [x] `request.rs` のテスト：開始・終了の瞬間から範囲を作り、順序は瞬間で確かめる（BR1.6）。存在しない日時は StartNonexistentLocalTime・EndNonexistentLocalTime で、形式の誤りとは別。誤りがあるときは RangeOrder を出さない（BR2.1、BR2.2）
-- [x] `session.rs` の [Fetch] の条件のテスト：理由が条件の並びの順にすべて出る。確認待ちと取得中は押せない（理由の文言キーは足さない）（BR2.1、R-04）
+- [ ] `time_range.rs` のテスト：UTC では U1 と同じ瞬間になる。Asia/Tokyo（夏時間なし）で `2024-03-01 10:00:00` は UTC の `01:00:00`。America/New_York で `2024-03-10 02:30:00` は存在しない日時、`2024-11-03 01:30:00` は早い方（UTC の 05:30:00）。形の誤りは Format。瞬間の文字列化：Local（New_York）で夏時間をまたぐ 2 つの瞬間のオフセットが変わる、`.mmm` 付きの一覧用、4 桁の年に表せない瞬間は入力欄用が None・一覧用が数値（BR1.2、BR3.1、R-05）
+- [ ] `date_input.rs` のテスト：空は instant も error も持たない。正しい入力は instant を持つ。切替で instant を持つ入力は文字列だけが変わり instant は同じ（Asia/Tokyo ⇄ UTC の受け入れ条件）。New_York の 2 回現れる時刻の遅い方の瞬間を UTC で入れ、ローカル → UTC と往復しても元の UTC の文字列に戻る。形式の誤りは切替後も誤りで文字列はそのまま。ローカルで存在しない日時は UTC に切り替えると正しい日時になる（R-02）。4 桁の年に表せない瞬間は文字列を残して解釈し直す（R-05）。同じ文字列を受けても解釈し直さず instant を保つ（BR1.5、R-06）
+- [ ] `request.rs` のテスト：開始・終了の瞬間から範囲を作り、順序は瞬間で確かめる（BR1.6）。存在しない日時は StartNonexistentLocalTime・EndNonexistentLocalTime で、形式の誤りとは別。誤りがあるときは RangeOrder を出さない（BR2.1、BR2.2）
+- [ ] `session.rs` の [Fetch] の条件のテスト：理由が条件の並びの順にすべて出る。確認待ちと取得中は押せない（理由の文言キーは足さない）（BR2.1、R-04）
 
 ### Step 4: 純粋なロジックを実装する（テストを通す）→ 整理する
 
-- [x] `time_range.rs`・`date_input.rs`・`request.rs`・`session.rs`（条件の部分）を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない。entities の「instant は変わらない」の例外（R-09）を doc コメントに書く
+- [ ] `time_range.rs`・`date_input.rs`・`request.rs`・`session.rs`（条件の部分）を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない。entities の「instant は変わらない」の例外（R-09）を doc コメントに書く
 
 ### Step 5: OS のタイムゾーンの読み取りを実装する → テストする（BR1.1、BR3.4）
 
-- [x] `time_zone.rs`：TimeZoneChoice（Local・Utc、既定は Local）と TimeZoneContext（ローカルとして使う `Tz`）。起動時に `iana-time-zone` で名前を読み、`chrono-tz` で引く。読めない・知らない名前は UTC にし、名前だけを診断ログに出す（認証情報は関係しない）
-- [x] テスト（実装の後）：名前から TimeZoneContext を作る（知っている名前・知らない名前・空）。OS の設定に依存するテストは置かない
+- [ ] `time_zone.rs`：TimeZoneChoice（Local・Utc、既定は Local）と TimeZoneContext（ローカルとして使う `Tz`）。起動時に `iana-time-zone` で名前を読み、`chrono-tz` で引く。読めない・知らない名前は UTC にし、名前だけを診断ログに出す（認証情報は関係しない）
+- [ ] テスト（実装の後）：名前から TimeZoneContext を作る（知っている名前・知らない名前・空）。OS の設定に依存するテストは置かない
 
 ### Step 6: AppSession を広げる → テストする（BR1.4、BR1.5、BR2.1、R-08）
 
-- [x] `session.rs`：SessionState にタイムゾーンと開始・終了の DateTimeInput を持たせる。`select_time_zone` は取得中・確認待ちでも受け付け、入力欄を作り直して条件を確かめ直す（phase は変えない）。入力の書き換えは U1:BR1.4 のとおり取得中は拒む。行の取り寄せで、EventTimeline の各行に TimeRangeModel で文字列化した displayTime を付ける（R-08）。SessionView にタイムゾーン、入力欄の文字列と誤りを出す
-- [x] `session.rs` のテスト（実装の後）：起動時は Local。切替が取得中・確認待ちでも通り phase を変えない。取得中の入力の書き換えは拒まれる。切替で入力欄の文字列が作り直される。取り寄せた行の displayTime がいまのタイムゾーンで、切替後に変わる。取得の範囲はタイムゾーンに依らない。U1〜U3 のテストを DateTimeInput の形に直す
+- [ ] `session.rs`：SessionState にタイムゾーンと開始・終了の DateTimeInput を持たせる。`select_time_zone` は取得中・確認待ちでも受け付け、入力欄を作り直して条件を確かめ直す（phase は変えない）。入力の書き換えは U1:BR1.4 のとおり取得中は拒む。行の取り寄せで、EventTimeline の各行に TimeRangeModel で文字列化した displayTime を付ける（R-08）。SessionView にタイムゾーン、入力欄の文字列と誤りを出す
+- [ ] `session.rs` のテスト（実装の後）：起動時は Local。切替が取得中・確認待ちでも通り phase を変えない。取得中の入力の書き換えは拒まれる。切替で入力欄の文字列が作り直される。取り寄せた行の displayTime がいまのタイムゾーンで、切替後に変わる。取得の範囲はタイムゾーンに依らない。U1〜U3 のテストを DateTimeInput の形に直す
 
 ### Step 7: Tauri のつなぎを実装する
 
-- [x] `src-tauri/src/lib.rs`：起動時に TimeZoneContext を作って AppSession に渡す。コマンド `select_time_zone` を足し、`get_rows` の行に displayTime を入れる。`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
+- [ ] `src-tauri/src/lib.rs`：起動時に TimeZoneContext を作って AppSession に渡す。コマンド `select_time_zone` を足し、`get_rows` の行に displayTime を入れる。`capabilities/default.json` に新しいコマンドの権限だけを足す
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 8: 画面を実装する → Vitest でテストする（BR2.2 の文言、BR3.1〜BR3.3）
 
-- [x] `src/api.ts`（SessionView のタイムゾーンと入力欄、行の displayTime、`selectTimeZone`）、`src/components/TimeZoneToggle.tsx`（ローカル / UTC の標準部品、Tab と矢印キー・スペース、取得中も使える）、`ConnectionBar.tsx`（上部バーに置く）、`FetchForm.tsx`（ラベルと形式の誤りの文言にいまのタイムゾーン）、`LogTable.tsx`（見出しにタイムゾーン、各行は displayTime をそのまま表示）、`src/hooks/useRowWindow.ts`（timeZone の変化で取り寄せ直す、R-08）、`src/App.tsx`、`src/i18n/messages.ts`（U4 の文言キーを英日で足し、「(UTC)」固定の文言を置き換える）、`src/format.ts`（`formatUtcMillis` を消す）。操作できる要素に `data-testid` を付ける
-- [x] 画面のテスト（実装の後）：`TimeZoneToggle.test.tsx`（切替、キーボード、取得中も押せる）、`LogTable.test.tsx`（見出しの切替、displayTime をそのまま出す）、`FetchForm.test.tsx`（ラベル、存在しない日時の文言）、`App.test.tsx`（切替で行を取り寄せ直す）、`messages.test.ts`（英日のそろい）の更新
+- [ ] `src/api.ts`（SessionView のタイムゾーンと入力欄、行の displayTime、`selectTimeZone`）、`src/components/TimeZoneToggle.tsx`（ローカル / UTC の標準部品、Tab と矢印キー・スペース、取得中も使える）、`ConnectionBar.tsx`（上部バーに置く）、`FetchForm.tsx`（ラベルと形式の誤りの文言にいまのタイムゾーン）、`LogTable.tsx`（見出しにタイムゾーン、各行は displayTime をそのまま表示）、`src/hooks/useRowWindow.ts`（timeZone の変化で取り寄せ直す、R-08）、`src/App.tsx`、`src/i18n/messages.ts`（U4 の文言キーを英日で足し、「(UTC)」固定の文言を置き換える）、`src/format.ts`（`formatUtcMillis` を消す）。操作できる要素に `data-testid` を付ける
+- [ ] 画面のテスト（実装の後）：`TimeZoneToggle.test.tsx`（切替、キーボード、取得中も押せる）、`LogTable.test.tsx`（見出しの切替、displayTime をそのまま出す）、`FetchForm.test.tsx`（ラベル、存在しない日時の文言）、`App.test.tsx`（切替で行を取り寄せ直す）、`messages.test.ts`（英日のそろい）の更新
 
 ### Step 9: ビルドと環境の設定
 
-- [x] `README.md` の手元の確認の項目に U4 の分（ローカルと UTC の切替で入力欄と一覧の時刻が変わる、夏時間のある地域での存在しない日時の表示）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `README.md` の手元の確認の項目に U4 の分（ローカルと UTC の切替で入力欄と一覧の時刻が変わる、夏時間のある地域での存在しない日時の表示）を足す
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 10: ドキュメントとトレーサビリティ
 
-- [x] 公開関数に doc コメントを付ける
-- [x] `code-summary.md`・`source-manifest.json`・`traceability.json`（U4 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
+- [ ] 公開関数に doc コメントを付ける
+- [ ] `code-summary.md`・`source-manifest.json`・`traceability.json`（U4 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
 
 ## 4. 要件・ルールと手順の対応
 

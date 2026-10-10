@@ -72,9 +72,13 @@
 
 
 
-- **Active Unit**: u7-ui-polish
 
-- **Unit State**: in-progress
+
+- **Parked**: 2026-10-10T02:14:51Z
+
+- **Parked At Stage**: code-generation
+
+- **Parked By**: person
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -137,7 +141,7 @@ Per unit: [TBD]
 - **Current Stage**: code-generation
 - **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-10-09T13:16:46Z
+- **Last Updated**: 2026-10-10T02:14:51Z
 
 - **Construction Autonomy Mode**: autonomous
 

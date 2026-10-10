@@ -113,62 +113,62 @@ project.md の決まりに従い機能設計は直さず、ここで扱いを決
 ### Step 1: 骨組みと設定
 
 - [ ] ワークスペースの `Cargo.toml` に `sha2` を足し、`crates/local-sights-core/Cargo.toml` の `[dependencies]` に `sha2` と `serde_json` を足す（`serde_json` は dev から本番に移す）。`deny.toml` の許可ライセンスに収まることを確かめる
-- [ ] `src/lib.rs` に `cache` モジュール（`cache/mod.rs`・`cache/plan.rs`・`cache/settings.rs`）を宣言する
+- [x] `src/lib.rs` に `cache` モジュール（`cache/mod.rs`・`cache/plan.rs`・`cache/settings.rs`）を宣言する
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
 
-- [ ] U1〜U5 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U6 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
+- [x] U1〜U5 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U6 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
 
 ### Step 3: 純粋なロジックのテストを先に書く（失敗を確かめる）
 
 各テストを書いたら実行し、失敗の出力を記録してから Step 4 に進む。
 
-- [ ] `cache/plan.rs` のテスト：記録する範囲の終わりは min(終了, 開始時刻 − 300,000)、開始より前なら記録なし（BR3.1）。包含の判定は境界のミリ秒を含み、2 つの範囲にまたがれば入らない（BR2.3、BR2.4）。範囲のつなぎは重なり・隣り合い（end + 1 = start）を 1 つにし、離れていればそのまま、開始の早い順（BR3.3）。記録する範囲のイベントの入れ替えで範囲外は残り、範囲内は新しいものだけ、並びは U3:BR4.1 の順（BR3.3）。書き込む条件は Completed・失敗 0・途中で終わっていない・記録できる範囲あり・Hit でない、のすべてのときだけ（BR3.2）。sequence はストリームごとに 0 から振り直す（BR4.3）。キーは kind が違えば名前が同じでも別のハッシュ、ファイル名は 64 文字の 16 進と `.cache`、キャッシュと一時ファイルの名前の型の見分け（BR2.1、BR2.2、BR1.4）。ヘッダの範囲の形の確かめ（重なり・隣り合い・逆順・start > end を壊れたとする）と、読んだイベントの範囲・並びの確かめ（BR4.1、R-13）。知らせの組み立ては Hit・readFailed・SaveFailed から作り、readFailed と SaveFailed は両方入る（BR5.3）
-- [ ] `filter.rs` の `should_report_progress` のテスト：前回から 100 ミリ秒未満なら送らない、以上なら送る、Ready は間隔によらず必ず送る、最初の 1 回は送る（U5 R-03）
+- [x] `cache/plan.rs` のテスト：記録する範囲の終わりは min(終了, 開始時刻 − 300,000)、開始より前なら記録なし（BR3.1）。包含の判定は境界のミリ秒を含み、2 つの範囲にまたがれば入らない（BR2.3、BR2.4）。範囲のつなぎは重なり・隣り合い（end + 1 = start）を 1 つにし、離れていればそのまま、開始の早い順（BR3.3）。記録する範囲のイベントの入れ替えで範囲外は残り、範囲内は新しいものだけ、並びは U3:BR4.1 の順（BR3.3）。書き込む条件は Completed・失敗 0・途中で終わっていない・記録できる範囲あり・Hit でない、のすべてのときだけ（BR3.2）。sequence はストリームごとに 0 から振り直す（BR4.3）。キーは kind が違えば名前が同じでも別のハッシュ、ファイル名は 64 文字の 16 進と `.cache`、キャッシュと一時ファイルの名前の型の見分け（BR2.1、BR2.2、BR1.4）。ヘッダの範囲の形の確かめ（重なり・隣り合い・逆順・start > end を壊れたとする）と、読んだイベントの範囲・並びの確かめ（BR4.1、R-13）。知らせの組み立ては Hit・readFailed・SaveFailed から作り、readFailed と SaveFailed は両方入る（BR5.3）
+- [x] `filter.rs` の `should_report_progress` のテスト：前回から 100 ミリ秒未満なら送らない、以上なら送る、Ready は間隔によらず必ず送る、最初の 1 回は送る（U5 R-03）
 
 ### Step 4: 純粋なロジックを実装する（テストを通す）→ 整理する
 
-- [ ] `cache/plan.rs`・`filter::should_report_progress` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない
+- [x] `cache/plan.rs`・`filter::should_report_progress` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない
 
 ### Step 5: LogCache のファイルの読み書きを実装する → テストする（BR1.1〜BR1.4、BR3.4、BR3.6、BR4.1、BR4.2）
 
-- [ ] `cache/settings.rs`：設定ファイルの読み出し（ない・読めない・解釈できない・知らない版は無効、診断ログにだけ残す）と書き込み（一時ファイルから入れ替え、0600、フォルダは 0700 で作り緩ければ直し、直せなければ誤り）
-- [ ] `cache/mod.rs`：`LogCache` のヘッダだけの読み出し（1 行目）、指定範囲のイベントの読み出しと確かめ（R-13 の「ない」「読めない」「壊れた」の区別を戻り値で返す）、壊れたときの削除、書き込み（既存を読んで確かめ、通れば入れ替えてつなぎ、通らなければ作り直す。一時ファイルから入れ替え。権限）、全削除（直下の、名前の型が合う通常のファイルだけ。シンボリックリンクはたどらず消さない）。書くのは CacheKey・formatVersion・coveredRanges・CachedEvent だけで、認証情報の型を受け取る関数を持たない
-- [ ] テスト（実装の後、`tempfile` の一時フォルダで）：書いて読める、範囲の外のイベントは読まない、一時ファイルから入れ替わる（途中で失敗したら前のまま）、権限 0600・0700、緩いフォルダを 0700 に直す、全削除は名前の型が合う通常のファイルだけでほかのファイルとシンボリックリンクの先は残る、壊れたファイル（途中で切れた・版が違う・キーが違う・範囲の形が違う・並びが違う）は「壊れた」になり消える、ファイルがないのは「キャッシュなし」、書き込み時に既存が壊れていれば今回の範囲だけで作り直す、設定ファイルのない・壊れた・知らない版は無効、書いて読める
+- [x] `cache/settings.rs`：設定ファイルの読み出し（ない・読めない・解釈できない・知らない版は無効、診断ログにだけ残す）と書き込み（一時ファイルから入れ替え、0600、フォルダは 0700 で作り緩ければ直し、直せなければ誤り）
+- [x] `cache/mod.rs`：`LogCache` のヘッダだけの読み出し（1 行目）、指定範囲のイベントの読み出しと確かめ（R-13 の「ない」「読めない」「壊れた」の区別を戻り値で返す）、壊れたときの削除、書き込み（既存を読んで確かめ、通れば入れ替えてつなぎ、通らなければ作り直す。一時ファイルから入れ替え。権限）、全削除（直下の、名前の型が合う通常のファイルだけ。シンボリックリンクはたどらず消さない）。書くのは CacheKey・formatVersion・coveredRanges・CachedEvent だけで、認証情報の型を受け取る関数を持たない
+- [x] テスト（実装の後、`tempfile` の一時フォルダで）：書いて読める、範囲の外のイベントは読まない、一時ファイルから入れ替わる（途中で失敗したら前のまま）、権限 0600・0700、緩いフォルダを 0700 に直す、全削除は名前の型が合う通常のファイルだけでほかのファイルとシンボリックリンクの先は残る、壊れたファイル（途中で切れた・版が違う・キーが違う・範囲の形が違う・並びが違う）は「壊れた」になり消える、ファイルがないのは「キャッシュなし」、書き込み時に既存が壊れていれば今回の範囲だけで作り直す、設定ファイルのない・壊れた・知らない版は無効、書いて読める
 
 ### Step 6: FetchCoordinator のキャッシュの分岐を実装する → テストする（BR1.5、BR2.3、BR2.4、BR3.2、BR3.5、BR3.7、BR4.1、R-12、R-13）
 
-- [ ] `coordinator.rs`：`FetchJob` に `served_from_cache`・`cache_outcome`（NotUsed・Hit・Saved・NotSaved・SaveFailed）・`read_failed` を足す。`FetchSink` に `on_saving(job_id)` を足す（既定の中身は何もしない）。`DeferredFinishSink` は `on_finished` だけを保留し、ほかは元の受け口に渡す。`run_fetch_with_cache` は、無効なら `run_fetch` のまま（NotUsed）。有効なら、ヘッダを読み、すっぽり入ればイベントを読んで確かめ、通れば破棄 → on_started → 1 回の追加 → on_batch（1 件以上）→ on_finished（Hit）。入らない・ない・読めない・壊れたなら、`DeferredFinishSink` で `run_fetch` を回し、保留した `on_finished` のジョブで書き込む条件を判断し、書くなら on_saving → 保持ログから区切りごとに写し取る → ブロッキング用のスレッドで書き込む → Saved / SaveFailed、書かないなら NotSaved とし、cacheOutcome・readFailed を入れて元の受け口の on_finished を呼ぶ。途中で終わったときは U3:BR5.5 のまま（NotSaved）
-- [ ] テスト（実装の後、U3 の偽物の gateway と一時フォルダで）：無効なら書かず API は U3 のまま、Hit のとき API が 1 回も呼ばれず知らせが BR3.7 の順で件数が合う、0 件でも Hit、入らないとき全部取得して on_saving のあとに on_finished が来る、全部成功で書かれ次の同じ取得が Hit になる、失敗ありと途中で終わったときは書かずに既存も変わらない、記録できる範囲がないときは書かない、壊れたキャッシュは保持ログに何も足さずに取り直してファイルが消え readFailed になる、読めないだけのときは消さない、書き込みに失敗したら SaveFailed で取得結果は残る
+- [x] `coordinator.rs`：`FetchJob` に `served_from_cache`・`cache_outcome`（NotUsed・Hit・Saved・NotSaved・SaveFailed）・`read_failed` を足す。`FetchSink` に `on_saving(job_id)` を足す（既定の中身は何もしない）。`DeferredFinishSink` は `on_finished` だけを保留し、ほかは元の受け口に渡す。`run_fetch_with_cache` は、無効なら `run_fetch` のまま（NotUsed）。有効なら、ヘッダを読み、すっぽり入ればイベントを読んで確かめ、通れば破棄 → on_started → 1 回の追加 → on_batch（1 件以上）→ on_finished（Hit）。入らない・ない・読めない・壊れたなら、`DeferredFinishSink` で `run_fetch` を回し、保留した `on_finished` のジョブで書き込む条件を判断し、書くなら on_saving → 保持ログから区切りごとに写し取る → ブロッキング用のスレッドで書き込む → Saved / SaveFailed、書かないなら NotSaved とし、cacheOutcome・readFailed を入れて元の受け口の on_finished を呼ぶ。途中で終わったときは U3:BR5.5 のまま（NotSaved）
+- [x] テスト（実装の後、U3 の偽物の gateway と一時フォルダで）：無効なら書かず API は U3 のまま、Hit のとき API が 1 回も呼ばれず知らせが BR3.7 の順で件数が合う、0 件でも Hit、入らないとき全部取得して on_saving のあとに on_finished が来る、全部成功で書かれ次の同じ取得が Hit になる、失敗ありと途中で終わったときは書かずに既存も変わらない、記録できる範囲がないときは書かない、壊れたキャッシュは保持ログに何も足さずに取り直してファイルが消え readFailed になる、読めないだけのときは消さない、書き込みに失敗したら SaveFailed で取得結果は残る
 
 ### Step 7: AppSession を広げる → テストする（BR1.1、BR1.3、BR1.6、BR3.7、BR5.1、BR5.3、R-10、R-11、R-12）
 
-- [ ] `session.rs`：場所（設定ファイル・キャッシュ用フォルダ）を受け取る作り方を足し、既存の作り方は場所なし（無効・ディスクに触れない）のままにする。起動時に設定を読む。SessionView に cacheEnabled・cacheDirectory・settingsDialog・cacheSaving・cacheNotices・ダイアログの知らせ（消した・消せなかった・設定を書けなかった）を足す。`open_settings`（取得中・確認待ちは拒む）、`cancel_settings`、`save_settings(enabled)`（R-10 の順）、`clear_cache`。settingsDialog が Open のあいだ、取得の開始・接続とロググループの変更・入力の変更・絞り込みの文字列の変更を拒む（U2 の確認待ちと同じ誤りのキー）。`begin_fetch` の結果にキャッシュのキーに要る値を入れる。`on_saving` は現在のジョブのときだけ cacheSaving を true に、`finish_fetch` で false にして cacheNotices を作る。`abort_fetch_with_failure` でも cacheSaving を false にし cacheNotices を空にする（R-11）。新しい取得の開始で cacheNotices を空にする
-- [ ] `session.rs` のテスト（実装の後、一時フォルダで）：場所なしの作り方はディスクに触れず無効、設定ファイルの有効で起動すると有効、取得中と確認待ちは設定ダイアログを開けない、ダイアログ中は取得の開始などを拒む、有効にして保存で設定が書かれる、無効にして保存で全削除して閉じる、削除に失敗するとダイアログが開いたまま無効になる（R-10）、設定が書けないとダイアログが開いたまま前の値、古いジョブの on_saving は無視、finish_fetch で cacheNotices ができ cacheSaving が戻る、異常終了でも戻る（R-11）
+- [x] `session.rs`：場所（設定ファイル・キャッシュ用フォルダ）を受け取る作り方を足し、既存の作り方は場所なし（無効・ディスクに触れない）のままにする。起動時に設定を読む。SessionView に cacheEnabled・cacheDirectory・settingsDialog・cacheSaving・cacheNotices・ダイアログの知らせ（消した・消せなかった・設定を書けなかった）を足す。`open_settings`（取得中・確認待ちは拒む）、`cancel_settings`、`save_settings(enabled)`（R-10 の順）、`clear_cache`。settingsDialog が Open のあいだ、取得の開始・接続とロググループの変更・入力の変更・絞り込みの文字列の変更を拒む（U2 の確認待ちと同じ誤りのキー）。`begin_fetch` の結果にキャッシュのキーに要る値を入れる。`on_saving` は現在のジョブのときだけ cacheSaving を true に、`finish_fetch` で false にして cacheNotices を作る。`abort_fetch_with_failure` でも cacheSaving を false にし cacheNotices を空にする（R-11）。新しい取得の開始で cacheNotices を空にする
+- [x] `session.rs` のテスト（実装の後、一時フォルダで）：場所なしの作り方はディスクに触れず無効、設定ファイルの有効で起動すると有効、取得中と確認待ちは設定ダイアログを開けない、ダイアログ中は取得の開始などを拒む、有効にして保存で設定が書かれる、無効にして保存で全削除して閉じる、削除に失敗するとダイアログが開いたまま無効になる（R-10）、設定が書けないとダイアログが開いたまま前の値、古いジョブの on_saving は無視、finish_fetch で cacheNotices ができ cacheSaving が戻る、異常終了でも戻る（R-11）
 
 ### Step 8: Tauri のつなぎを実装する
 
-- [ ] `src-tauri/src/lib.rs`：`AppState` を `setup` の中で作り、`app_cache_dir`・`app_config_dir` から場所を決めて `AppSession` に渡す。取得は `run_fetch_with_cache` で行う。`TauriSink::on_saving` は `fetch-progress` を送る。コマンド `open_settings`・`cancel_settings`・`save_settings(enabled)`・`clear_cache` を足し、変わったら `session-changed` を送る。走査の間引きを `filter::should_report_progress` に置き換える（U5 R-03）。`capabilities/default.json`・`build.rs` に新しいコマンドの権限だけを足す
+- [x] `src-tauri/src/lib.rs`：`AppState` を `setup` の中で作り、`app_cache_dir`・`app_config_dir` から場所を決めて `AppSession` に渡す。取得は `run_fetch_with_cache` で行う。`TauriSink::on_saving` は `fetch-progress` を送る。コマンド `open_settings`・`cancel_settings`・`save_settings(enabled)`・`clear_cache` を足し、変わったら `session-changed` を送る。走査の間引きを `filter::should_report_progress` に置き換える（U5 R-03）。`capabilities/default.json`・`build.rs` に新しいコマンドの権限だけを足す
 - [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 9: 取得とキャッシュの結合テストを書く（実装の後）
 
-- [ ] 結合テスト `crates/local-sights-core/tests/u6_cache_flow.rs`：偽物の gateway・`LogView`・一時フォルダで、取得 → 書き込み → 同じ範囲の取り直しが Hit で API を呼ばず、絞り込み（U5）もかかる。範囲を広げると AWS から取得して範囲がつながり、広げた範囲も Hit になる。開始時刻の 5 分前より新しい部分は記録されず、その部分を含む取り直しは AWS から取得する（FR7.4、FR7.9、BR2.3、BR3.1、BR3.3）
+- [x] 結合テスト `crates/local-sights-core/tests/u6_cache_flow.rs`：偽物の gateway・`LogView`・一時フォルダで、取得 → 書き込み → 同じ範囲の取り直しが Hit で API を呼ばず、絞り込み（U5）もかかる。範囲を広げると AWS から取得して範囲がつながり、広げた範囲も Hit になる。開始時刻の 5 分前より新しい部分は記録されず、その部分を含む取り直しは AWS から取得する（FR7.4、FR7.9、BR2.3、BR3.1、BR3.3）
 
 ### Step 10: 画面を実装する → Vitest でテストする（BR5.1〜BR5.4、U5 R-01、R-02）
 
-- [ ] `src/api.ts`（設定の 4 つのコマンド、SessionView と進み具合の新しい項目）、`src/components/SettingsDialog.tsx`（新規。チェックボックス・保存場所・注意・[Clear cache]・[Cancel]・[Save]、開いたらチェックボックスに入力位置、閉じたら [*] に戻す、Escape は [Cancel]、知らせの文字）、`ConnectionBar.tsx`（[*] ボタン、取得中・確認待ちは押せない）、`StatusLine.tsx`（cache.saving・cache.hit・cache.readFailed・cache.saveFailed、Hit のときストリーム数を出さない）、`LogFilterInput.tsx`（Enter ですぐ渡す、失敗時とダイアログが閉じたときに `logFilter` と比べて送り直す）、`src/App.tsx`、`src/i18n/messages.ts`（U6 の文言キーを英日で足す。文言は BR5.3 の正本のまま）。操作できる要素に `data-testid` を付ける
-- [ ] 画面のテスト（実装の後）：`SettingsDialog.test.tsx`（開いたときの入力位置、Escape で閉じて保存しない、[Save] で保存のコマンド、[Clear cache] でその場のコマンドと知らせ、保存場所と注意が常に出る、閉じたら [*] に戻る）、`ConnectionBar.test.tsx`（[*] が取得中は押せない）、`StatusLine.test.tsx`（4 つの知らせ、readFailed と saveFailed が並ぶ、Hit でストリーム数を出さない）、`LogFilterInput.test.tsx`（Enter ですぐ渡す、失敗したら送り直す、ダイアログが閉じたら送り直す）、`App.test.tsx`、`messages.test.ts`（英日のそろい）の更新
+- [x] `src/api.ts`（設定の 4 つのコマンド、SessionView と進み具合の新しい項目）、`src/components/SettingsDialog.tsx`（新規。チェックボックス・保存場所・注意・[Clear cache]・[Cancel]・[Save]、開いたらチェックボックスに入力位置、閉じたら [*] に戻す、Escape は [Cancel]、知らせの文字）、`ConnectionBar.tsx`（[*] ボタン、取得中・確認待ちは押せない）、`StatusLine.tsx`（cache.saving・cache.hit・cache.readFailed・cache.saveFailed、Hit のときストリーム数を出さない）、`LogFilterInput.tsx`（Enter ですぐ渡す、失敗時とダイアログが閉じたときに `logFilter` と比べて送り直す）、`src/App.tsx`、`src/i18n/messages.ts`（U6 の文言キーを英日で足す。文言は BR5.3 の正本のまま）。操作できる要素に `data-testid` を付ける
+- [x] 画面のテスト（実装の後）：`SettingsDialog.test.tsx`（開いたときの入力位置、Escape で閉じて保存しない、[Save] で保存のコマンド、[Clear cache] でその場のコマンドと知らせ、保存場所と注意が常に出る、閉じたら [*] に戻る）、`ConnectionBar.test.tsx`（[*] が取得中は押せない）、`StatusLine.test.tsx`（4 つの知らせ、readFailed と saveFailed が並ぶ、Hit でストリーム数を出さない）、`LogFilterInput.test.tsx`（Enter ですぐ渡す、失敗したら送り直す、ダイアログが閉じたら送り直す）、`App.test.tsx`、`messages.test.ts`（英日のそろい）の更新
 
 ### Step 11: ビルドの設定と手元の確認
 
-- [ ] `README.md` の手元の確認の項目に U6 の分（有効にして取得 → 同じ条件で Hit、5 分前より新しい部分、無効にして保存で消える、[Clear cache]、壊れたファイルで取り直す、100 万件近い書き込みの時間）を足す
+- [x] `README.md` の手元の確認の項目に U6 の分（有効にして取得 → 同じ条件で Hit、5 分前より新しい部分、無効にして保存で消える、[Clear cache]、壊れたファイルで取り直す、100 万件近い書き込みの時間）を足す
 - [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 12: ドキュメントとトレーサビリティ
 
-- [ ] 公開関数に doc コメントを付ける
-- [ ] `code-summary.md`（「U5 の記録の補足」を含む、U5 R-04）・`source-manifest.json`・`traceability.json`（U6 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
+- [x] 公開関数に doc コメントを付ける
+- [x] `code-summary.md`（「U5 の記録の補足」を含む、U5 R-04）・`source-manifest.json`・`traceability.json`（U6 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
 
 ## 4. 要件・ルールと手順の対応
 

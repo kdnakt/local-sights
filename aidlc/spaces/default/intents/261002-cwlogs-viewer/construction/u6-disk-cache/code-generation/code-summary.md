@@ -2,7 +2,69 @@
 
 計画：`code-generation-plan.md`（Plan Approval 済み、埋め込みの Testing Contract を含む）。単位テストの手順：`unit-test-instructions.md`。書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。キャッシュのファイルの書式は質問票 Q1 の回答どおり JSON Lines。
 
-## 作ったもの・変えたもの
+## 今回の作業（2026-10-10、既存のコードと計画の照合）
+
+U6 のコードは以前の作業で作られており、その上に U7 の手が入っている。ツールを 2.11.0 に上げた後、U6 の計画承認がもう一度求められた。利用者は計画を承認し、U1〜U5 と同じく既存のコードを計画と照合する形で進めた。下の「最初のビルドの記録」は U7 より前の形で書かれているため、いまのコードとの違いはこの節に書く。
+
+- 今回作った・変えた・消したアプリのソース：なし（変更は計画ファイルのチェックボックスだけ）。
+- `source-manifest.json` のパス 35 件と、`traceability.json` の `OK` の対象は、すべて今も存在する。どちらも前回のものを引き続き使う。
+- 計画の Step 12 が求める「U5 の記録の補足」（U5 R-04）は、最初のビルドで下に書いてあり、今回もそのまま有効。
+- テストを先に書く順序（Step 3・4）は最初のビルドで行われた（下の「テスト先行の失敗の記録」）。今回は失敗の実行を作り直さず、既存のテストの中身と実行で確かめた。
+- 計画の 21 項目のうち次の 3 項目はチェックを付けていない（この環境で使えないコマンドやツールを含むため）：
+  - Step 1 の 1 つ目：`sha2` と `serde_json` は入っている。ただし `deny.toml` がなく `cargo-deny` も入っていないため、許可ライセンスの確かめはできない。代わりに `cargo tree -p sha2@0.11.0 -e normal -f '{p} {l}'` で手で確かめ、依存（sha2、digest 0.11.3、block-buffer、crypto-common、hybrid-array、cpufeatures 0.3.1、const-oid、ctutils、cmov、cfg-if、typenum）はすべて MIT OR Apache-2.0 だった。下の最初のビルドの記録にある「`generic-array` は MIT」は誤りで、いまの依存の木にあるのは `hybrid-array`（MIT OR Apache-2.0）。
+  - Step 8 の 2 つ目（`cargo build -p local-sights`）と Step 11 の 2 つ目（`cargo clippy --workspace --all-targets`・`cargo build -p local-sights` を含む検査）：Tauri の Linux 用の前提ライブラリがないため。
+
+### 手順ごとの結果
+
+| 手順 | 結果 | 計画の文言との違い |
+|------|------|--------------------|
+| Step 1 骨組みと設定 | 2 つ目は満たしていた。1 つ目は未チェック（上のとおり） | なし |
+| Step 2 テストの実行環境 | 満たしていた | なし |
+| Step 3・4 純粋なロジック | 満たしていた | なし。`cache/plan.rs` のテストは 14 件（U7 が件数の確かめのテスト 2 件を足した）、`should_report_progress` は 4 件。テスト以外に `unwrap()` / `expect()` はない |
+| Step 5 LogCache のファイル | 満たしている（U7 による違いあり） | ヘッダに `eventCount` と `rangeEventCounts` が加わり、`FORMAT_VERSION = 2` になった（U7。最初のビルドのレビュー R-03）。認証情報の型はない。U6 で書いた版 1 のファイルは「知らない版」として消して取り直す。壊れたものの種類に `CountMismatch` が加わった。Hit の読み出しは指定範囲の終わりではなく、それを含むキャッシュ済み範囲の終わりまで読んで件数と並びを確かめ、返すのは指定範囲のイベントだけ（計画の R-13 より厳しい）。書き込み中の印 `WriteTracker` が加わった（最初のビルドのレビュー R-02） |
+| Step 6 FetchCoordinator | 満たしている（U7 による違いあり） | 保持ログからの写し取りもブロッキング用のスレッドで行う（`copy_on_blocking_thread`、最初のビルドのレビュー R-04）。そのため引数が `timeline: &Arc<T>` になり、`T: TimelineStore + HeldEvents + Send + Sync + 'static` が要る。書き込みの前に印を立てる `prepare_write` が加わった。Hit の途中で中断されたときは Aborted・NotSaved で終わる（最初のビルドの「計画との違い 9」）。テストは 16 件 |
+| Step 7 AppSession | 満たしている（U7 による違いあり） | 設定のファイル操作は `SettingsWork`・`begin_save_settings`／`begin_clear_cache`・`finish_settings_work` に分かれ、セッションのロックの外で行える（最初のビルドのレビュー R-01。`save_settings`・`clear_cache` はこの 3 つを一度に回す形で残る）。書き込み中（取得が異常終了した後も続くものを含む）と設定の作業中はダイアログを開けず `Busy` になる。作業中に [Cancel] で閉じたダイアログは閉じたまま。`begin_fetch` は変えず、キーは `CacheKey::from_request` で作る（最初のビルドの違い 2）。計画にない誤りのキー `SessionError::SettingsClosed` がある |
+| Step 8 Tauri のつなぎ | 1 つ目は満たしている（違いあり、コードを読んで確かめた）。2 つ目は未チェック | キャッシュの場所は `app_cache_dir()` の直下ではなく `log-cache`（最初のビルドの違い 4）。`save_settings`・`clear_cache` は async のコマンドで、ファイル操作は `spawn_blocking` でロックの外で行う（最初のビルドのレビュー R-01）。U7 で閉じる確認と、書き込み中の終了の止め方が加わった |
+| Step 9 結合テスト | 満たしていた | なし（`u6_cache_flow` 3 件） |
+| Step 10 画面 | 満たしていた | なし。`cache.*` の文言は英日とも BR5.3 と一致する |
+| Step 11 ビルドの設定 | 1 つ目は満たしていた。2 つ目は未チェック | なし |
+| Step 12 doc コメントと記録 | 満たしている | `cargo rustdoc -- -W missing_docs` で missing_docs の警告は 0 件。記録はこのファイル |
+
+### ルールの文言といまのコードの違い
+
+`traceability.json` では次の項目も `OK` のままにしている。U6 として作った実装とテストは残っており、下の「そのまま成り立つ部分」はいまも満たしているため：
+
+| ID | いまのコードとの違い | そのまま成り立つ部分 |
+|----|----------------------|----------------------|
+| BR3.6 | ヘッダに `eventCount` と `rangeEventCounts` も書く（U7） | 認証情報を書かない、0700・0600、緩いフォルダを直す |
+| BR4.1 | 書式は版 2 になり、版 1 のファイルは「知らない版」として消して取り直す。件数が合わないことも壊れたとみなす。行の切れ目ちょうどで切れたファイルも「途中で切れている」と見分ける（文言より厳しい） | ほかの文言の内容はすべて守られている |
+| BR4.2 | Hit のとき、指定範囲ではなくキャッシュ済み範囲の終わりまで読む（下の最初のビルドの記録の「指定範囲の終わりを過ぎたところで読むのをやめる」とも合わなくなった） | 範囲に入らないときはイベントを読まない |
+| BR5.1 | 取得が異常終了した後も続く書き込みと、設定の作業中も、設定ダイアログを開けない（文言より厳しい） | 取得中（キャッシュへの書き込み中を含む）は開けない |
+| BR3.5 | 写し取りもブロッキング用のスレッドで行う（文言より厳しい） | ロックを握り続けない、書き込みに失敗しても取得結果を残す |
+| BR1.3 | ファイル操作はロックの外で行い、作業中に [Cancel] で閉じたダイアログは閉じたまま | 設定を書く → 全削除 → 両方成功したときだけ閉じる（R-10） |
+
+上の表以外の U6 の BR は、ルールの文といまのコードが合っている。FR7.x・NFR については、コードに反するものは見つかっていない（requirements.md の文言と 1 件ずつの照合まではしていない）。
+
+### テストと検査の結果（今回）
+
+| コマンド | 結果 |
+|----------|------|
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core --lib -- cache:: coordinator:: session:: filter::should_report_progress` | 135 件成功 |
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core --test u6_cache_flow` | 3 件成功 |
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core`（全体） | lib 305 件成功（5 件 ignore）、結合テスト u1 11・u2 9・u3 14・u5 4・u6 3 件成功 |
+| `npx vitest run`（U6 の 6 ファイル） | 69 件成功 |
+| `npx vitest run`（全体） | 21 ファイル 171 件成功 |
+| `cargo fmt --check` | 成功 |
+| `CARGO_INCREMENTAL=0 cargo clippy -p local-sights-core --all-targets` | 成功・警告 0 件（`--workspace` は src-tauri を組み立てられないため実行できない） |
+| `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
+| `npm audit` | 脆弱性 0 件 |
+| `cargo rustdoc -p local-sights-core --lib -- -W missing_docs` | missing_docs の警告 0 件。ほかに `[Save]`・`[Cancel]`・`[Close]` を doc のリンクと読み違えた `broken_intra_doc_links` の警告が `session.rs` に 10 件（見た目だけの問題。直していない） |
+| `cargo build -p local-sights` | このコンテナでは実行できない（Tauri の Linux 用の前提ライブラリがない） |
+| `cargo deny check licenses` | 未実行（`cargo-deny` も `deny.toml` もない） |
+
+## 最初のビルドの記録
+
+### 作ったもの・変えたもの
 
 | 場所 | 中身 |
 |------|------|
@@ -19,7 +81,7 @@
 | `src/` | `api.ts`（4 つのコマンド、SettingsDialog・SettingsNotice・CacheNotice の型、SessionView と FetchProgressUpdate の新しい項目、`withProgress` が cacheSaving を写す）、`components/SettingsDialog.tsx`（新規。チェックボックス・保存場所・注意・[Clear cache]・[Cancel]・[Save]、開いたらチェックボックスに入力位置、Tab と Shift+Tab はダイアログの中で回る、Escape は [Cancel]、閉じたら [*] に戻す、知らせの文字）、`ConnectionBar.tsx`（[*]、canOpenSettings が false なら押せない）、`StatusLine.tsx`（取得中の cache.saving、終わったあとの cache.hit・cache.readFailed・cache.saveFailed、Hit のときは件数と cache.hit だけ）、`LogFilterInput.tsx`（Enter ですぐ渡す、失敗の回数が増えたときとダイアログが閉じたときに `logFilter` と比べて違えば送り直す）、`FetchForm.tsx`（設定ダイアログ中も入力と絞り込みの欄を無効に）、`App.tsx`（ダイアログの表示とコマンド、[*] の ref、絞り込みの失敗の回数）、`i18n/messages.ts`（`settings.*`・`cache.*`・`session.settingsClosed` を英日。`cache.*` は BR5.3 の文言のまま） |
 | `README.md` | 状態の説明、絞り込みの Enter、U6 の手元の確認項目（ダイアログの操作、設定が残ること・権限、取得 → 同じ条件で Hit、5 分前より新しい部分、広げた範囲、壊れたファイル、[Clear cache] と無効にして保存、100 万件近い書き込みの時間） |
 
-## 主な判断
+### 主な判断
 
 - R-12：`run_fetch` は変えず、`run_fetch_with_cache` が Hit と AWS の両方の流れを持つ。AWS から取得するときは DeferredFinishSink で `on_finished` を保留し、書き込みを済ませてから cacheOutcome・readFailed を入れたジョブで元の受け口に `on_finished` を出す。受け口の知らせの順は BR3.7 のとおり。
 - 書き込みのための写し取りは、`TimelineStore` に手を入れず、新しい trait `HeldEvents` で行う（1 回の呼び出しで 1 回ロックを取って放す、4,096 件ずつ）。取得中のロック（フェーズが Fetching のまま）で追加と破棄は起きないため、添字を区切りの位置として使える。
@@ -33,9 +95,9 @@
 - 絞り込みの欄の送り直し（U5 R-02）は、入力欄が無効のあいだはしない。失敗はダイアログ中の競合でしか起きないため、ダイアログが閉じたときに送り直せば足りる。失敗は今までどおり誤りの帯にも出す。
 - 秘密情報：書く型は CacheHeader（formatVersion・CacheKey・coveredRanges）・CachedEvent・設定の 1 項目だけで、認証情報の型を受け取る関数はない。新しい診断ログはキー・ロググループ・メッセージを含まず、事実と I/O の種類だけを出す。AWS の新しい API 呼び出しはない（Hit のときは 1 回も呼ばない）。
 
-## テストの結果
+### テストの結果（最初のビルド）
 
-### テスト先行の失敗の記録（Testing Contract の Step 3）
+#### テスト先行の失敗の記録（Testing Contract の Step 3）
 
 `cache/plan.rs` のテスト 12 件と `filter::should_report_progress` のテスト 4 件を、中身を `todo!()` にした関数に対して書き、実装の前に単位のコマンドを実行した。
 
@@ -52,7 +114,7 @@ test result: FAILED. 61 passed; 16 failed; 0 ignored; 0 measured; 169 filtered o
 
 実装の後、同じコマンドで 77 件成功（失敗 0）。ファイルの読み書き・コーディネーター・AppSession・Tauri・画面は、計画どおり実装してからテストを書いた。
 
-### 最終の結果
+#### 最終の結果
 
 | コマンド | 結果 |
 |----------|------|
@@ -66,7 +128,7 @@ test result: FAILED. 61 passed; 16 failed; 0 ignored; 0 measured; 169 filtered o
 | `npm audit` | 脆弱性 0 |
 | `CARGO_INCREMENTAL=0 cargo build -p local-sights` | 成功 |
 
-### 部品ごとの新しいテストの件数
+#### 部品ごとの新しいテストの件数
 
 | 部品 | 場所 | 件数 |
 |------|------|------|
@@ -78,7 +140,7 @@ test result: FAILED. 61 passed; 16 failed; 0 ignored; 0 measured; 169 filtered o
 | 取得とキャッシュ | `tests/u6_cache_flow.rs` | 3 |
 | DesktopUi | `SettingsDialog.test.tsx` 6・`ConnectionBar.test.tsx` 1・`StatusLine.test.tsx` 4・`LogFilterInput.test.tsx` 3・`App.test.tsx` 3・`messages.test.ts` 1 | 18 |
 
-## 計画との違い
+### 計画との違い（最初のビルド）
 
 1. `deny.toml` がリポジトリにないため、計画 Step 1 の「`deny.toml` の許可ライセンスに収まることを確かめる」はできなかった。代わりに `cargo metadata` で `sha2` 0.11 とその依存のライセンスが MIT OR Apache-2.0（`generic-array` は MIT）であることを確かめた。新しいクレートは `Cargo.lock` に増えていない。
 2. 計画は「`begin_fetch` の結果にキャッシュのキーに要る値を入れる」としていたが、その値はすでに `begin_fetch` が返す FetchRequest に入っていたため、`begin_fetch` は変えずに `CacheKey::from_request` で作った。
@@ -120,6 +182,8 @@ U5 R-03 により、U5:BR3.6 の走査の知らせの間引き（100 ミリ秒�
 U5 の `code-summary.md` の「計画との違い」の 9 番「テストの件数は目安どおりか多い」は、計画の目安を満たしたという報告で、計画との違いではない。U5 の計画との違いは 1〜8 番の 8 件。
 
 ## まだ確かめていないこと・未解決
+
+- `cargo build -p local-sights`・`cargo clippy --workspace --all-targets`・`cargo-deny` によるライセンスの確かめは、Tauri の前提ライブラリと `cargo-deny`（と `deny.toml`）がある手元か CI で確かめる（2026-10-10 の照合ではこのコンテナで実行できなかった）。確かめたら計画の Step 1 の 1 つ目、Step 8・Step 11 の 2 つ目にチェックを付ける。
 
 - 実際の AWS での取得、画面での見た目と操作（ダイアログのキーボード操作、[*] への入力位置の戻り、Hit の表示、「キャッシュに保存中」の表示）、macOS の `~/Library/Caches/dev.local-sights.app/log-cache` と `~/Library/Application Support/dev.local-sights.app/settings.json` の場所と権限は、開発者本人の手元で確かめる（`README.md` の「Disk cache (U6)」）。
 - 100 万件近い書き込みにかかる時間は測っていない（設計で上限を決めていない、NFR2）。書き込みのあいだは取得中のままのため、その分だけ取得の終わりが遅れる。写し取りはイベントを 1 度メモリに写すため、100 万件ではその分のメモリを一時的に使う。手元の確認で測る。

@@ -141,7 +141,7 @@ U2 の FR：FR1、FR1.1、FR1.3、FR1.4、FR2、FR2.1〜FR2.3。ルール：U2 �
 ### Step 8: Tauri のつなぎを実装する
 
 - [x] `src-tauri/src/lib.rs`：起動時に設定ファイルを読んでカタログを作る。コマンド `select_profile`・`select_region`・`confirm_connection_change`・`cancel_connection_change`・`reload_log_groups`・`update_log_group_filter`・`select_log_group` を足し、U1 の `update_input` からプロファイル名とロググループ名の欄をなくす。一覧の取得を非同期で始め、受け口が `session-changed` を送る。`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
 
 ### Step 9: 画面を実装する → Vitest でテストする（BR5.1、BR5.2、BR3.8 の表示、BR3.10）
 
@@ -155,7 +155,7 @@ U2 の FR：FR1、FR1.1、FR1.3、FR1.4、FR2、FR2.1〜FR2.3。ルール：U2 �
 ### Step 11: ビルドと環境の設定
 
 - [x] `README.md` の手元の GUI の確認の項目に U2 の分（プロファイルとリージョンの選択、既定のリージョンがないプロファイル、一覧と絞り込み、確認ダイアログ、権限のない接続での表示）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 12: ドキュメントとトレーサビリティ
 

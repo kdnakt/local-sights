@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      aws-sdk:
+        patterns: ["aws-*"]
+      tauri:
+        patterns: ["tauri*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      tauri:
+        patterns: ["@tauri-apps/*"]
+      testing:
+        patterns: ["@testing-library/*", "vitest", "jsdom"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

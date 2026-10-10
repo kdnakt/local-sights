@@ -112,7 +112,7 @@ project.md の決まりに従い機能設計は直さず、ここで扱いを決
 
 ### Step 1: 骨組みと設定
 
-- [x] ワークスペースの `Cargo.toml` に `sha2` を足し、`crates/local-sights-core/Cargo.toml` の `[dependencies]` に `sha2` と `serde_json` を足す（`serde_json` は dev から本番に移す）。`deny.toml` の許可ライセンスに収まることを確かめる
+- [ ] ワークスペースの `Cargo.toml` に `sha2` を足し、`crates/local-sights-core/Cargo.toml` の `[dependencies]` に `sha2` と `serde_json` を足す（`serde_json` は dev から本番に移す）。`deny.toml` の許可ライセンスに収まることを確かめる
 - [x] `src/lib.rs` に `cache` モジュール（`cache/mod.rs`・`cache/plan.rs`・`cache/settings.rs`）を宣言する
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
@@ -149,7 +149,7 @@ project.md の決まりに従い機能設計は直さず、ここで扱いを決
 ### Step 8: Tauri のつなぎを実装する
 
 - [x] `src-tauri/src/lib.rs`：`AppState` を `setup` の中で作り、`app_cache_dir`・`app_config_dir` から場所を決めて `AppSession` に渡す。取得は `run_fetch_with_cache` で行う。`TauriSink::on_saving` は `fetch-progress` を送る。コマンド `open_settings`・`cancel_settings`・`save_settings(enabled)`・`clear_cache` を足し、変わったら `session-changed` を送る。走査の間引きを `filter::should_report_progress` に置き換える（U5 R-03）。`capabilities/default.json`・`build.rs` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 9: 取得とキャッシュの結合テストを書く（実装の後）
 
@@ -163,7 +163,7 @@ project.md の決まりに従い機能設計は直さず、ここで扱いを決
 ### Step 11: ビルドの設定と手元の確認
 
 - [x] `README.md` の手元の確認の項目に U6 の分（有効にして取得 → 同じ条件で Hit、5 分前より新しい部分、無効にして保存で消える、[Clear cache]、壊れたファイルで取り直す、100 万件近い書き込みの時間）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 12: ドキュメントとトレーサビリティ
 

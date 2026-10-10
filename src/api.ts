@@ -265,8 +265,11 @@ export interface CommandError {
   key: string;
 }
 
+/** Event that carries the whole SessionView after every state change. */
 export const SESSION_CHANGED = "session-changed";
+/** Light event sent for each listing page and added page while fetching (U3 review R-05). */
 export const FETCH_PROGRESS = "fetch-progress";
+/** Light event sent while the log filter scans the held events (U5:BR3.6). */
 export const FILTER_PROGRESS = "filter-progress";
 
 /**
@@ -346,6 +349,7 @@ export function withProgress(view: SessionView | null, update: FetchProgressUpda
   );
 }
 
+/** Whether a rejected command answered with a core message key. */
 export function isCommandError(value: unknown): value is CommandError {
   return (
     typeof value === "object" &&
@@ -354,10 +358,12 @@ export function isCommandError(value: unknown): value is CommandError {
   );
 }
 
+/** Reads the current SessionView. */
 export function getSession(): Promise<SessionView> {
   return invoke<SessionView>("get_session");
 }
 
+/** Changes one time input; refused while fetching (U1:BR1.4). */
 export function updateInput(field: InputField, value: string): Promise<SessionView> {
   return invoke<SessionView>("update_input", { field, value });
 }
@@ -481,16 +487,19 @@ export function selectorOf(profile: ConnectionProfile): ProfileSelector {
     : { kind: "SdkDefault" };
 }
 
+/** Listens to `session-changed`. */
 export function onSessionChanged(handler: (view: SessionView) => void): Promise<UnlistenFn> {
   return listen<SessionView>(SESSION_CHANGED, (event) => handler(event.payload));
 }
 
+/** Listens to `fetch-progress` (U3 review R-05). */
 export function onFetchProgress(
   handler: (update: FetchProgressUpdate) => void,
 ): Promise<UnlistenFn> {
   return listen<FetchProgressUpdate>(FETCH_PROGRESS, (event) => handler(event.payload));
 }
 
+/** Listens to `filter-progress` (U5:BR3.6). */
 export function onFilterProgress(
   handler: (update: FilterProgressUpdate) => void,
 ): Promise<UnlistenFn> {

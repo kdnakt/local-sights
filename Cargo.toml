@@ -12,7 +12,10 @@ publish = false
 [workspace.dependencies]
 local-sights-core = { path = "crates/local-sights-core" }
 aws-config = "1"
-aws-sdk-cloudwatchlogs = "1"
+# Default features minus "rustls", which pulls the legacy rustls 0.21 /
+# rustls-webpki 0.101 stack (RUSTSEC-2026-0104); the default HTTPS client
+# (rustls 0.23) stays.
+aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-credential-types = "1"
 aws-smithy-runtime-api = { version = "1", features = ["http-1x"] }
 aws-smithy-types = "1"

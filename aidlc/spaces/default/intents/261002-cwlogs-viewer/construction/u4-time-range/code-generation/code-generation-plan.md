@@ -101,7 +101,7 @@ U4 の FR：FR3、FR3.1〜FR3.6。NFR：NFR12、NFR13。ルール：U4 の BR1.1
 
 ### Step 1: 骨組みと設定
 
-- [x] `crates/local-sights-core/Cargo.toml` に `chrono-tz` と `iana-time-zone` を足す。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）。`cargo-deny` の許可するライセンスに収まることを確かめる
+- [ ] `crates/local-sights-core/Cargo.toml` に `chrono-tz` と `iana-time-zone` を足す。ほかに新しい依存は足さない。テレメトリを送る依存は入れない（project.md Forbidden）。`cargo-deny` の許可するライセンスに収まることを確かめる
 - [x] `src/lib.rs` に `time_zone`・`date_input` のモジュールを宣言する
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
@@ -134,7 +134,7 @@ U4 の FR：FR3、FR3.1〜FR3.6。NFR：NFR12、NFR13。ルール：U4 の BR1.1
 ### Step 7: Tauri のつなぎを実装する
 
 - [x] `src-tauri/src/lib.rs`：起動時に TimeZoneContext を作って AppSession に渡す。コマンド `select_time_zone` を足し、`get_rows` の行に displayTime を入れる。`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 8: 画面を実装する → Vitest でテストする（BR2.2 の文言、BR3.1〜BR3.3）
 
@@ -144,7 +144,7 @@ U4 の FR：FR3、FR3.1〜FR3.6。NFR：NFR12、NFR13。ルール：U4 の BR1.1
 ### Step 9: ビルドと環境の設定
 
 - [x] `README.md` の手元の確認の項目に U4 の分（ローカルと UTC の切替で入力欄と一覧の時刻が変わる、夏時間のある地域での存在しない日時の表示）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 10: ドキュメントとトレーサビリティ
 

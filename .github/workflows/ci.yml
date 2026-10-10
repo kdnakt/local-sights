@@ -1,0 +1,112 @@
+name: CI
+
+# Runs on every pull request and on every push to main (trunk-based: PRs are
+# squash-merged into main once every job here is green). No job talks to AWS
+# and no AWS credentials exist in this repository's secrets.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "" # clippy warnings stay warnings (team.md: no -D warnings)
+
+jobs:
+  # Library (GUI-independent) checks: format, lint, tests. Fastest feedback.
+  rust-core:
+    name: Rust library (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all --check
+      - name: clippy (library)
+        run: cargo clippy -p local-sights-core --all-targets
+      - name: tests (library, unit + integration)
+        run: cargo test -p local-sights-core
+
+  # Front end: types, lint, format, tests, bundle, dependency audit.
+  frontend:
+    name: Front end (tsc, eslint, prettier, vitest, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: typecheck
+        run: npx tsc --noEmit
+      - name: eslint
+        run: npx eslint .
+      - name: prettier
+        run: npx prettier --check .
+      - name: vitest
+        run: npx vitest run
+      - name: vite build
+        run: npx vite build
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+  # Dependency policy for Rust crates: advisories, licenses, bans, sources.
+  cargo-deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          # feature selection lives in deny.toml ([graph] all-features = true)
+          arguments: ""
+
+  # The Tauri app (src-tauri) compiles against the OS WebView, so it is built
+  # on both runners; workspace-wide clippy runs here because src-tauri cannot
+  # compile without those system libraries.
+  tauri-app:
+    name: Tauri app (${{ matrix.os }})
+    needs: [rust-core, frontend]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux WebKitGTK / GTK development packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: front-end bundle (frontendDist for the app)
+        run: npm run build
+      - name: clippy (workspace)
+        run: cargo clippy --workspace --all-targets
+      - name: build the app
+        run: cargo build -p local-sights

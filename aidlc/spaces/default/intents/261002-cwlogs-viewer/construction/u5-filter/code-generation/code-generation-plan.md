@@ -130,7 +130,7 @@ U5 では、機能設計で決めた振る舞いを実現するのに新しく�
 ### Step 6: Tauri のつなぎを実装する
 
 - [x] `src-tauri/src/lib.rs`：保持ログの置き場所を `Mutex<LogView>` にし、取得の流れには `LogView` を `TimelineStore` として渡す（R-02）。コマンド `set_log_filter(text)` を足し、条件を変えたら走査の作業を起動する（前の作業はやめる）。走査の 1 回分ごとと Ready のときに軽いイベントで filterSummary を送る。`get_rows`・`find_row_position` は `LogView` の絞り込みを考えた取り出しを使う。ロックの順はセッション → `LogView`。`capabilities/default.json`・`build.rs` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 7: 取得と絞り込みの結合テストを書く（実装の後）
 
@@ -145,7 +145,7 @@ U5 では、機能設計で決めた振る舞いを実現するのに新しく�
 
 - [x] `filter.rs` か `log_view.rs` にリリースビルドの `#[ignore]` のテストを置き、10 万件・100 万件の全体の絞り込みの時間を測る（上限は NFR1 の 10 秒・NFR2 の 100 秒）。100 万件を持った状態での 1 ページ（約 1 万件）の追加と逐次の判定の時間も測る
 - [x] `README.md` の手元の確認の項目に U5 の分（絞り込み、取得中の逐次、取り直しで文字列が残る、100 万件近いときの絞り込み中の操作）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 10: ドキュメントとトレーサビリティ
 

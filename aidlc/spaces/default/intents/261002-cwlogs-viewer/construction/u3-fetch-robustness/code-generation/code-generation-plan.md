@@ -155,7 +155,7 @@ U3 の FR：FR4、FR4.1、FR4.2、FR4.5、FR4.7、FR4.8、FR4.10、FR4.11。NFR�
 ### Step 8: Tauri のつなぎを実装する
 
 - [x] `src-tauri/src/lib.rs`：保持ログを `std::sync::Mutex` にし、取得の流れにはページの追加のたびに短く握る受け口を渡す。`log-batch` イベントをやめ、コマンド `get_rows(offset, limit)`・`find_row_position(logStreamName, sequence)`・`set_failure_list_open(open)` を足す。`select_log_group`・`reload_log_groups`・`start_fetch` に世代番号の引数を足し、古い世代は何もせずに終える（BR6.7）。接続先の変更で保持ログを破棄するとき timelineVersion を増やす（BR4.5）。ウィンドウを閉じるときに取得を中断する（BR5.5。確認ダイアログは U7）。`update_input` からストリーム名の欄をなくす。`capabilities/default.json` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる（判断はライブラリ側と画面側のテストで確かめる）
 
 ### Step 9: 画面を実装する → Vitest でテストする（BR6.1〜BR6.5、BR6.8）
 
@@ -169,7 +169,7 @@ U3 の FR：FR4、FR4.1、FR4.2、FR4.5、FR4.7、FR4.8、FR4.10、FR4.11。NFR�
 ### Step 11: ビルドと環境の設定
 
 - [x] `README.md`：確認用プログラムの使い方から `--stream` をなくし、必要な IAM 権限に DescribeLogStreams を足す。手元の確認の項目に U3 の分（複数ストリームの時刻順、100 万件に近い件数でのスクロール、取得中に一番上の行が動かない、失敗の一覧、列挙中の表示、時刻を持たないストリームの並び（rules.md の「前提と手元の確認の項目」））を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 12: ドキュメントとトレーサビリティ
 

@@ -105,52 +105,52 @@ U5 では、機能設計で決めた振る舞いを実現するのに新しく�
 
 ### Step 1: 骨組みと設定
 
-- [x] `src/lib.rs` に `filter`・`log_view` のモジュールを宣言する。新しい依存は足さない
+- [ ] `src/lib.rs` に `filter`・`log_view` のモジュールを宣言する。新しい依存は足さない
 
 ### Step 2: テストの実行環境と単位を絞ったコマンドの確認
 
-- [x] U1〜U4 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U5 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
+- [ ] U1〜U4 の実行環境（`cargo test`・Vitest）をそのまま使う。`unit-test-instructions.md` の U5 のコマンドが実行できることを確かめる（ファイルができた時点で確かめる）
 
 ### Step 3: 純粋なロジックのテストを先に書く（失敗を確かめる）
 
 各テストを書いたら実行し、失敗の出力を記録してから Step 4 に進む。
 
-- [x] `filter.rs` のテスト：前後の空白を除き、空は条件なし（BR1.1）。大文字・小文字を区別しない（`error` で `Error: timeout`）、改行を含むメッセージの 2 行目でも一致、ストリーム名は比べない、日本語の部分一致（BR1.2）。同じ文字列では filterId が増えない、変われば増える（BR1.4）。結果はキーの昇順で、同じキーは二重に入らない（BR2.3、R-02）。走査の 1 回分が scanCursor を進め、終わりで Ready（BR1.5）。Filtering 中の逐次の判定は scanCursor 以下のキーだけ（またぐページで取りこぼしも重複もない）、Ready ではすべて（BR2.1、R-01）。filterId か timelineEpoch が違う作業の結果は捨てる（BR2.4）。結果が変わるたびに resultVersion が増える（BR3.6）
-- [x] `log_view.rs` のテスト：`add` で保持ログへの追加と逐次の判定が一緒に起きる（絞り込み中は合う行だけ結果に入る）。`discard` で timelineEpoch が進み結果が空、文字列は残る（BR2.2）。絞り込み中の行の取り出しは matchedKeys の中の位置で、totalCount は matchedCount、allCount は全件、filtered = true（BR3.1）。絞り込んでいないときは U3・U4 のまま。走査の途中でも、ここまでに見つかった行が取り出せる（R-02）。絞り込み中の位置の問い合わせは結果の中の位置、結果にない・保持ログにないときは「ない」（R-08）。走査の再開位置は二分探索で求める（R-07）
+- [ ] `filter.rs` のテスト：前後の空白を除き、空は条件なし（BR1.1）。大文字・小文字を区別しない（`error` で `Error: timeout`）、改行を含むメッセージの 2 行目でも一致、ストリーム名は比べない、日本語の部分一致（BR1.2）。同じ文字列では filterId が増えない、変われば増える（BR1.4）。結果はキーの昇順で、同じキーは二重に入らない（BR2.3、R-02）。走査の 1 回分が scanCursor を進め、終わりで Ready（BR1.5）。Filtering 中の逐次の判定は scanCursor 以下のキーだけ（またぐページで取りこぼしも重複もない）、Ready ではすべて（BR2.1、R-01）。filterId か timelineEpoch が違う作業の結果は捨てる（BR2.4）。結果が変わるたびに resultVersion が増える（BR3.6）
+- [ ] `log_view.rs` のテスト：`add` で保持ログへの追加と逐次の判定が一緒に起きる（絞り込み中は合う行だけ結果に入る）。`discard` で timelineEpoch が進み結果が空、文字列は残る（BR2.2）。絞り込み中の行の取り出しは matchedKeys の中の位置で、totalCount は matchedCount、allCount は全件、filtered = true（BR3.1）。絞り込んでいないときは U3・U4 のまま。走査の途中でも、ここまでに見つかった行が取り出せる（R-02）。絞り込み中の位置の問い合わせは結果の中の位置、結果にない・保持ログにないときは「ない」（R-08）。走査の再開位置は二分探索で求める（R-07）
 
 ### Step 4: 純粋なロジックを実装する（テストを通す）→ 整理する
 
-- [x] `filter.rs`・`log_view.rs` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない。matchedKeys のキーはストリームの番号を使い、行ごとにストリーム名を複製しない（R-09）
+- [ ] `filter.rs`・`log_view.rs` を実装し、Step 3 のテストを通す。テストが通ったまま整理する。テスト以外で `unwrap()` / `expect()` を使わない。matchedKeys のキーはストリームの番号を使い、行ごとにストリーム名を複製しない（R-09）
 
 ### Step 5: AppSession を広げる → テストする（BR1.1、BR1.4、BR3.3、BR3.6）
 
-- [x] `session.rs`：絞り込みの文字列を受け取り、正規化して `LogView` の条件を変える指示を返す。filterSummary（filterId・matchedCount・allCount・status・resultVersion）を SessionView と進み具合（`fetch-progress` の中身）に入れる。取得中も文字列を受け付ける。確認待ちの間は U2 のとおり受け付けない
-- [x] `session.rs` のテスト（実装の後）：文字列の受け取りと filterSummary、取得中も受け付ける、取り直しで文字列が残る、確認待ちで拒む、SessionView と進み具合に filterSummary が入る
+- [ ] `session.rs`：絞り込みの文字列を受け取り、正規化して `LogView` の条件を変える指示を返す。filterSummary（filterId・matchedCount・allCount・status・resultVersion）を SessionView と進み具合（`fetch-progress` の中身）に入れる。取得中も文字列を受け付ける。確認待ちの間は U2 のとおり受け付けない
+- [ ] `session.rs` のテスト（実装の後）：文字列の受け取りと filterSummary、取得中も受け付ける、取り直しで文字列が残る、確認待ちで拒む、SessionView と進み具合に filterSummary が入る
 
 ### Step 6: Tauri のつなぎを実装する
 
-- [x] `src-tauri/src/lib.rs`：保持ログの置き場所を `Mutex<LogView>` にし、取得の流れには `LogView` を `TimelineStore` として渡す（R-02）。コマンド `set_log_filter(text)` を足し、条件を変えたら走査の作業を起動する（前の作業はやめる）。走査の 1 回分ごとと Ready のときに軽いイベントで filterSummary を送る。`get_rows`・`find_row_position` は `LogView` の絞り込みを考えた取り出しを使う。ロックの順はセッション → `LogView`。`capabilities/default.json`・`build.rs` に新しいコマンドの権限だけを足す
-- [x] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
+- [ ] `src-tauri/src/lib.rs`：保持ログの置き場所を `Mutex<LogView>` にし、取得の流れには `LogView` を `TimelineStore` として渡す（R-02）。コマンド `set_log_filter(text)` を足し、条件を変えたら走査の作業を起動する（前の作業はやめる）。走査の 1 回分ごとと Ready のときに軽いイベントで filterSummary を送る。`get_rows`・`find_row_position` は `LogView` の絞り込みを考えた取り出しを使う。ロックの順はセッション → `LogView`。`capabilities/default.json`・`build.rs` に新しいコマンドの権限だけを足す
+- [ ] 自動テストは置かず、`cargo build -p local-sights` で組み立てを確かめる
 
 ### Step 7: 取得と絞り込みの結合テストを書く（実装の後）
 
-- [x] 結合テスト `crates/local-sights-core/tests/u5_filter_flow.rs`：偽物の gateway と `LogView` で、絞り込みの文字列を入れたまま取得すると届いたページの合う行だけが結果に入る。取り直しで結果が空になり文字列は残る。走査の途中にページが届いても取りこぼしも重複もない（FR6.4、BR2.1、BR2.2）
+- [ ] 結合テスト `crates/local-sights-core/tests/u5_filter_flow.rs`：偽物の gateway と `LogView` で、絞り込みの文字列を入れたまま取得すると届いたページの合う行だけが結果に入る。取り直しで結果が空になり文字列は残る。走査の途中にページが届いても取りこぼしも重複もない（FR6.4、BR2.1、BR2.2）
 
 ### Step 8: 画面を実装する → Vitest でテストする（BR1.3、BR3.1〜BR3.4、BR3.6）
 
-- [x] `src/api.ts`（`setLogFilter`、filterSummary、行の取り出しの filtered・allCount・resultVersion）、`src/hooks/useDebouncedValue.ts`（0.3 秒待ち）、`src/components/LogFilterInput.tsx`（条件エリアの入力欄、ラベル・プレースホルダーは英日、取得中も使える）、`FetchForm.tsx`（条件エリアに置く）、`StatusLine.tsx`（「絞り込み後 N 件 / 全 M 件」、0 件の文字、絞り込み中）、`src/hooks/useRowWindow.ts`（filterId・resultVersion が変わったら件数が同じでも取り寄せ直す、古い版の行を捨てる、filterId が変わったら一番上に戻る）、`src/App.tsx`、`src/i18n/messages.ts`（U5 の文言キーを英日で足す）。操作できる要素に `data-testid` を付ける
-- [x] 画面のテスト（実装の後）：`LogFilterInput.test.tsx`（0.3 秒待ちで最後の文字列だけ渡す。待ちはテストで実時間を待たない）、`StatusLine.test.tsx`（「絞り込み後 / 全件」、0 件、絞り込み中）、`App.test.tsx`（版が変わると件数が同じでも取り寄せ直す、古い版の行は捨てる）、`messages.test.ts`（英日のそろい）の更新
+- [ ] `src/api.ts`（`setLogFilter`、filterSummary、行の取り出しの filtered・allCount・resultVersion）、`src/hooks/useDebouncedValue.ts`（0.3 秒待ち）、`src/components/LogFilterInput.tsx`（条件エリアの入力欄、ラベル・プレースホルダーは英日、取得中も使える）、`FetchForm.tsx`（条件エリアに置く）、`StatusLine.tsx`（「絞り込み後 N 件 / 全 M 件」、0 件の文字、絞り込み中）、`src/hooks/useRowWindow.ts`（filterId・resultVersion が変わったら件数が同じでも取り寄せ直す、古い版の行を捨てる、filterId が変わったら一番上に戻る）、`src/App.tsx`、`src/i18n/messages.ts`（U5 の文言キーを英日で足す）。操作できる要素に `data-testid` を付ける
+- [ ] 画面のテスト（実装の後）：`LogFilterInput.test.tsx`（0.3 秒待ちで最後の文字列だけ渡す。待ちはテストで実時間を待たない）、`StatusLine.test.tsx`（「絞り込み後 / 全件」、0 件、絞り込み中）、`App.test.tsx`（版が変わると件数が同じでも取り寄せ直す、古い版の行は捨てる）、`messages.test.ts`（英日のそろい）の更新
 
 ### Step 9: 速さの確かめとビルドの設定
 
-- [x] `filter.rs` か `log_view.rs` にリリースビルドの `#[ignore]` のテストを置き、10 万件・100 万件の全体の絞り込みの時間を測る（上限は NFR1 の 10 秒・NFR2 の 100 秒）。100 万件を持った状態での 1 ページ（約 1 万件）の追加と逐次の判定の時間も測る
-- [x] `README.md` の手元の確認の項目に U5 の分（絞り込み、取得中の逐次、取り直しで文字列が残る、100 万件近いときの絞り込み中の操作）を足す
-- [x] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
+- [ ] `filter.rs` か `log_view.rs` にリリースビルドの `#[ignore]` のテストを置き、10 万件・100 万件の全体の絞り込みの時間を測る（上限は NFR1 の 10 秒・NFR2 の 100 秒）。100 万件を持った状態での 1 ページ（約 1 万件）の追加と逐次の判定の時間も測る
+- [ ] `README.md` の手元の確認の項目に U5 の分（絞り込み、取得中の逐次、取り直しで文字列が残る、100 万件近いときの絞り込み中の操作）を足す
+- [ ] `cargo fmt --check`・`cargo clippy --workspace --all-targets`・`npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`・`npm audit`・`cargo build -p local-sights` が通ることを確かめる
 
 ### Step 10: ドキュメントとトレーサビリティ
 
-- [x] 公開関数に doc コメントを付ける
-- [x] `code-summary.md`・`source-manifest.json`・`traceability.json`（U5 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
+- [ ] 公開関数に doc コメントを付ける
+- [ ] `code-summary.md`・`source-manifest.json`・`traceability.json`（U5 の BR・FR・NFR を実装またはテストのファイルに対応付ける）を書く
 
 ## 4. 要件・ルールと手順の対応
 

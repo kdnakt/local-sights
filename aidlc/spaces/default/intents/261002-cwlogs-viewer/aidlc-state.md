@@ -74,11 +74,14 @@
 
 
 
-- **Parked**: 2026-10-10T02:14:51Z
 
-- **Parked At Stage**: code-generation
 
-- **Parked By**: person
+
+- **Active Unit**: u1-walking-skeleton
+
+- **Unit Stage**: code-generation
+
+- **Unit State**: in-progress
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -141,7 +144,7 @@ Per unit: [TBD]
 - **Current Stage**: code-generation
 - **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-10-10T02:14:51Z
+- **Last Updated**: 2026-10-10T02:30:56Z
 
 - **Construction Autonomy Mode**: autonomous
 

@@ -18,7 +18,7 @@
 - **Depth**: Standard
 - **Test Strategy**: Standard
 - **Review Override**: 
-- **Guard Policy**: relaxed (from scope local-tool)
+- **Guard Policy**: off (set by you)
 - **Sensors**: on (from scope local-tool)
 - **Learnings**: on (from scope local-tool)
 - **Summary Confirmation**: on (from scope local-tool)
@@ -160,7 +160,7 @@ Per unit: [TBD]
 - **Current Stage**: build-and-test
 - **Next Stage**: ci-pipeline
 - **Status**: Running
-- **Last Updated**: 2026-10-10T04:39:59Z
+- **Last Updated**: 2026-10-10T04:58:02Z
 
 - **Construction Autonomy Mode**: autonomous
 

@@ -1,8 +1,66 @@
 # Code Summary — U4 時間範囲とタイムゾーン（u4-time-range）
 
-計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
+計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。U4 が書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
 
-## 作ったもの・変えたもの
+## 今回の作業（2026-10-10、既存のコードと計画の照合）
+
+U4 のコードは以前の作業で作られており、その上に U5〜U7 の機能が足されている。ツールを 2.11.0 に上げた後、U4 の計画承認がもう一度求められた。利用者は計画を承認し、U1〜U3 と同じく既存のコードを計画と照合する形で進めた。
+
+- 今回作った・変えた・消したアプリのソース：なし（変更は計画ファイルのチェックボックスだけ）。
+- `source-manifest.json` のパス 32 件と、`traceability.json` の `OK` の対象 22 件は、すべて今も存在する。どちらも前回のものを引き続き使う。
+- テストを先に書く順序（Step 3・4）は最初のビルドで行われた（下の「テスト先行の証拠（Red）」）。今回は失敗の実行を作り直さず、既存のテストの中身と実行で確かめた。
+- 計画の 20 項目のうち次の 3 項目はチェックを付けていない（この環境で計画に書かれたコマンドを実行できないため）：
+  - Step 1 の 1 つ目：依存（`chrono-tz` 0.10・`iana-time-zone` 0.1）は入っており、テレメトリ系の依存もない。ただし `cargo-deny` が入っておらず `deny.toml` もないため、`cargo deny check licenses` は実行していない。代わりに配布元の Cargo.toml でライセンスを手で確かめた：chrono-tz 0.10.4（MIT OR Apache-2.0）、phf・phf_shared 0.12.1（MIT）、siphasher 1.0.4（MIT OR Apache-2.0）、iana-time-zone 0.1.65（MIT OR Apache-2.0）。
+  - Step 7 の 2 つ目（`cargo build -p local-sights`）：実行して `gdk-sys` の組み立てで失敗した（`gdk-3.0` がない）。
+  - Step 9 の 2 つ目（`cargo clippy --workspace --all-targets`・`cargo build -p local-sights` を含む検査）：Tauri の Linux 用の前提ライブラリがないため。
+
+### 手順ごとの結果
+
+| 手順 | 結果 | 計画の文言との違い |
+|------|------|--------------------|
+| Step 1 骨組みと設定 | 2 つ目は満たしていた。1 つ目は未チェック（上のとおり） | なし |
+| Step 2 テストの実行環境 | 満たしていた | なし |
+| Step 3・4 純粋なロジック | 満たしていた | なし。time_range・date_input・request・session のテストの中身で計画の観点がすべてあることを確かめた。R-09 の 2 つの例外は `date_input.rs` のモジュールの doc コメントにある |
+| Step 5 OS のタイムゾーン | 満たしていた | なし（テスト 4 件、OS の設定に依存しない） |
+| Step 6 AppSession | 満たしている（後の単位による違いあり） | 入力の書き換えを拒むのは、取得中に加えて確認待ちと設定ダイアログが開いている間（U6、`ensure_can_change`）。`can_fetch` にも設定ダイアログの条件が加わった（U6）。`DisplayRowWindow` に `filtered`・`allCount`・`resultVersion` が加わった（U5）。`select_time_zone` は設定ダイアログが開いていても受け付ける |
+| Step 7 Tauri のつなぎ | 1 つ目は満たしている（後の単位の形）。2 つ目は未チェック | `get_rows` は EventTimeline ではなく LogView から行を取る（U5。ロックの順はセッション → LogView）。capabilities には U6・U7 のコマンドの権限も並ぶ |
+| Step 8 画面 | 満たしている（後の単位による違いあり） | FetchForm は絞り込みの入力も持ち、設定ダイアログが開いている間も入力を無効にする（U5・U6）。`useRowWindow` は filterId と resultVersion にも反応する（U5）。計画では「取得中も押せる」を `TimeZoneToggle.test.tsx` に置くことになっていたが、そのファイルにはなく、同じ観点を `ConnectionBar.test.tsx` の "holds the time zone switch, usable while the connection is locked"（取得中）で確かめている。TimeZoneToggle にはそもそも無効にする手段がない |
+| Step 9 ビルドと環境 | 1 つ目は満たしていた。2 つ目は未チェック | README の「Time zones (U4)」に夏時間の存在しない日時も入っている |
+| Step 10 doc コメントと記録 | 満たしている | コアは `#![warn(missing_docs)]` で警告 0 件。画面側の U4 の公開物にも JSDoc がある。記録はこのファイル |
+
+### ルールの文言といまのコードの違い
+
+`traceability.json` では次の項目も `OK` のままにしている。どれも U4 の内容は保たれており、後の単位が条件を足したもの：
+
+| ID | いまのコードとの違い | そのまま成り立つ部分 |
+|----|----------------------|----------------------|
+| BR2.1 | [Fetch] を押せない条件に、設定ダイアログが開いている間（U6）が加わった（理由の文言は足していないので R-04 の方針は保たれる） | ほかの条件、理由の並び、誤りがあるとき RangeOrder を出さない |
+| BR1.5 | 書き換えを拒むのは取得中に加えて、確認待ち（U2:BR2.6）と設定ダイアログが開いている間（U6） | 同じ文字列なら解釈し直さない |
+| BR3.4 | 行は EventTimeline の RowWindow を直接ではなく、U5 の LogView（絞り込みの結果を含む）から取る | AppSession が displayTime を合成し、画面は変換しない |
+| BR3.1 | 切替の後も、U7 で開いた展開の行が開いたまま残る（足された振る舞い） | 切り替えても取り直さず、表示だけを描き直す |
+
+### テストと検査の結果（今回）
+
+| コマンド | 結果 |
+|----------|------|
+| `cargo test -p local-sights-core --lib -- time_range:: time_zone:: date_input:: request:: session::` | 124 件成功 |
+| `cargo test -p local-sights-core`（全体） | lib 305 件成功（5 件 ignore）、結合テスト u1 11・u2 9・u3 14・u5 4・u6 3 件成功 |
+| `npx vitest run`（U4 の 5 ファイル） | 69 件成功 |
+| `npx vitest run`（全体） | 21 ファイル 171 件成功 |
+| `cargo fmt --all --check` | 成功 |
+| `cargo clippy -p local-sights-core --all-targets` | 成功・警告 0 件（`--workspace` は src-tauri を組み立てられないため実行できない） |
+| `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
+| `npm audit` | 脆弱性 0 件 |
+| `cargo build -p local-sights` | このコンテナでは失敗（`gdk-3.0` がない） |
+| `cargo deny check licenses` | 未実行（`cargo-deny` が入っていない） |
+
+### 気づいた点（直していない）
+
+- `deny.toml` と CI の設定がまだないため、team.md の「CI で `cargo-deny` を行う」はまだ満たされていない（CI Pipeline ステージの範囲）。
+
+## 最初のビルドの記録
+
+### 作ったもの・変えたもの
 
 | 場所 | 中身 |
 |------|------|
@@ -17,7 +75,7 @@
 | `src/` | `api.ts`（TimeZoneChoice・DateTimeInput・DisplayRow、SessionView の変更、`selectTimeZone`）、`components/TimeZoneToggle.tsx`（新規、標準のラジオボタン 2 つ、無効にしない）、`ConnectionBar.tsx`（上部バーに置く）、`FetchForm.tsx`（ラベルと理由の文言にいまのタイムゾーン、コアの文字列を表示）、`LogTable.tsx`（見出しにタイムゾーン、各行は displayTime をそのまま表示）、`hooks/useRowWindow.ts`（timeZone の変化で取り寄せ直す）、`App.tsx`（切替の転送、タイムゾーンが変わったら FetchForm を作り直す）、`i18n/messages.ts`（`{zone}` 付きの文言、存在しない日時の文言、タイムゾーンの名前、英日）、`format.ts`（`formatUtcMillis` を削除）、`styles.css`（上部バーでの並べ方だけ） |
 | `README.md` | 状態の説明、入力とタイムゾーンの説明、U4 の手元の確認項目、確認用プログラムは UTC のままであること、テストは OS のタイムゾーンに依存しないこと |
 
-## 主な判断
+### 主な判断
 
 - タイムゾーンの変換はすべてライブラリが持つ（BR3.4）。画面は数値の時刻を文字列にしない。`formatUtcMillis` を消し、ログの行は `get_rows` で displayTime 付きで受け取る。
 - displayTime の合成は AppSession が行い、EventTimeline には新しい依存を足さない（R-08）。切替では timelineVersion を変えず、画面は SessionView の `timeZone` の変化を合図に表示範囲の行を取り寄せ直す（`useRowWindow` の依存に timeZone を足した）。位置を保つ処理（`find_row_position`）は timelineVersion だけに反応するため、切替では動かない。
@@ -31,7 +89,7 @@
 - タイムゾーンの切替は標準のラジオボタン（`fieldset` と `legend`）。Tab で入り、矢印キーとスペースで選べるのはブラウザの標準の動き（BR3.3、NFR13）。
 - 秘密情報：診断ログに出すのは「OS のタイムゾーンが読めない」またはタイムゾーンの名前（Debug 形式でエスケープ）だけ。U4 は AWS の API を新しく呼ばない。
 
-## テストの結果
+### テストの結果（最初のビルド）
 
 | コマンド | 結果 |
 |----------|------|
@@ -46,7 +104,7 @@
 
 U4 で足したテスト：time_range +8、date_input 9、time_zone 4、request +5、session +12（[Fetch] の条件 5、切替と表示の行 7）、画面側 TimeZoneToggle 5、ConnectionBar +1、LogTable +2、FetchForm +3、App +1、messages +2。U3 の時点の lib 165（+ignored 2）・Vitest 77 から、lib 203（+ignored 2）・Vitest 91。U4 で意図して書き直した既存のテスト：`session.rs` の 3 か所（入力の取り出しを DateTimeInput に、SessionView の JSON の形）、`LogTable.test.tsx`（コアの displayTime を出す、見出し「Time (Local)」、`formatUtcMillis` の確認を削除）、`App.test.tsx`（日本語の見出し「時刻（ローカル）」）、`ConnectionBar.test.tsx`（新しい props）、`src/test/fixtures.ts`（SessionView の新しい形、行に displayTime）。
 
-## テスト先行の証拠（Red）
+### テスト先行の証拠（Red）
 
 Testing Contract の `ordering` のとおり、純粋なロジック（選んだタイムゾーンでの解釈と文字列化、入力欄の切替と書き換え、瞬間からの範囲と理由、[Fetch] の理由の並び）はテストを先に書き、実行して失敗を確かめてから実装した。
 
@@ -55,7 +113,7 @@ Testing Contract の `ordering` のとおり、純粋なロジック（選んだ
 
 OS のタイムゾーンの読み取り（`time_zone.rs` の `resolve`・`detect`）、AppSession のつなぎ（切替・表示の行）、Tauri、画面は、実装してからテストを書いて実行した。Tauri には自動テストを置かず、`cargo build -p local-sights` で組み立てを確かめた。
 
-## 計画との違い
+### 計画との違い（最初のビルド）
 
 1. Red はコンパイルの失敗として記録した（U3 のような `todo!()` の骨組みは作らず、まだない関数・型を呼ぶテストを先に書いた）。
 2. Step 3 の `session.rs` のテストがローカルのタイムゾーン（New York）を必要とするため、Step 4 で TimeZoneChoice と TimeZoneContext の値の部分（`new`・`utc`・`local`・`zone`）だけを先に作った。OS の名前の読み取り（`from_name`・`resolve`・`detect`）は Step 5 で実装してからテストを書いた。
@@ -67,6 +125,8 @@ OS のタイムゾーンの読み取り（`time_zone.rs` の `resolve`・`detect
 8. 作業中にディスクが一杯になり `cargo build` が失敗したため、ビルドの一時ファイル `target/debug/incremental`（約 4.2 GB、作り直せるキャッシュ）を消し、以後は `CARGO_INCREMENTAL=0` でビルドした。コードの変更ではない。
 
 ## まだ確かめていないこと・未解決
+
+- `cargo build -p local-sights`・`cargo clippy --workspace --all-targets`・`cargo deny check licenses` は、Tauri の前提ライブラリと `cargo-deny` がある手元か CI で確かめる（2026-10-10 の照合ではこのコンテナで実行できなかった）。確かめたら計画の Step 1 の 1 つ目、Step 7・Step 9 の 2 つ目にチェックを付ける。
 
 - 画面での見た目と操作の確認（切替で入力欄と一覧の時刻が変わる、取得中の切替、夏時間のある地域での存在しない日時の表示）は、開発者本人の手元で行う（`README.md` の「Time zones (U4)」）。
 - OS のタイムゾーンは起動時に 1 回だけ読む。アプリの実行中に OS のタイムゾーンを変えた場合は、再起動するまで反映されない（BR1.1 の「起動のたびに」の範囲内だが、利用者向けの説明は README だけ）。

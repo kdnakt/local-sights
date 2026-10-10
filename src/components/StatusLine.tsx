@@ -9,6 +9,13 @@ export interface StatusLineProps {
   onOpenFailures: () => void;
 }
 
+/** Message key of each cache notice shown next to the count (U6:BR5.3). */
+const CACHE_NOTICE_KEYS: Record<CacheNotice, string> = {
+  Hit: "cache.hit",
+  ReadFailed: "cache.readFailed",
+  SaveFailed: "cache.saveFailed",
+};
+
 /**
  * One status line (U3:BR6.2). While listing: the streams selected so far.
  * While fetching: finished / planned streams and the events so far. After a
@@ -24,12 +31,6 @@ export interface StatusLineProps {
  * from the cache has no stream counts, so only the count and the notice are
  * shown (U6 review R-12).
  */
-
-const CACHE_NOTICE_KEYS: Record<CacheNotice, string> = {
-  Hit: "cache.hit",
-  ReadFailed: "cache.readFailed",
-  SaveFailed: "cache.saveFailed",
-};
 export function StatusLine({ session, t, onOpenFailures }: StatusLineProps) {
   const filter = session?.filterSummary ?? null;
   return (

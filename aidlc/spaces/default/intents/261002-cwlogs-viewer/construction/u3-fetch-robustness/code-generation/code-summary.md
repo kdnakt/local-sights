@@ -1,8 +1,73 @@
 # Code Summary — U3 取得の作り込み（u3-fetch-robustness）
 
-計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
+計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。U3 が書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
 
-## 作ったもの・変えたもの
+## 今回の作業（2026-10-10、既存のコードと計画の照合）
+
+U3 のコードは以前の作業で作られており、その上に U4〜U7 の機能が足されている。ツールを 2.11.0 に上げた後、U3 の計画承認がもう一度求められた。利用者は計画を承認し、U1・U2 と同じく既存のコードを計画と照合する形で進めた。
+
+- 今回変えたアプリのソースは 3 つで、doc コメントだけを直した。動きは変えていない（Vitest・tsc・prettier・eslint で確かめた）。3 つとも `source-manifest.json` にすでに載っている。
+  - `src/components/StatusLine.tsx`：`StatusLine` の doc コメントと関数の間に U6 の定数 `CACHE_NOTICE_KEYS` が入り込み、コメントが定数に付いていた。定数をコメントの前に移し、定数に短い doc コメントを付けた。
+  - `src/api.ts`：公開の定数と関数（`SESSION_CHANGED`・`FETCH_PROGRESS`・`FILTER_PROGRESS`・`isCommandError`・`getSession`・`updateInput`・`onSessionChanged`・`onFetchProgress`・`onFilterProgress`）に 1 行の doc コメントを足した。
+  - `src/i18n/messages.ts`：`messages` に 1 行の doc コメントを足した。
+- `source-manifest.json` のパスと、`traceability.json` の `OK` の対象ファイルは、すべて今も存在する。どちらも前回のものを引き続き使う。
+- テストを先に書く順序（Step 3・4）は最初のビルドで行われた（下の「テスト先行の証拠（Red）」）。今回は失敗の実行を作り直さず、既存のテストの中身と実行で確かめた。
+- Step 8 の 2 つ目（`cargo build -p local-sights`）と Step 11 の 2 つ目（`cargo clippy --workspace --all-targets`・`cargo build -p local-sights` を含む検査）はチェックを付けていない。このコンテナに Tauri の Linux 用の前提ライブラリ（webkit2gtk-4.1・gdk-3.0）がないため。
+
+### 手順ごとの結果
+
+| 手順 | 結果 | 計画の文言との違い |
+|------|------|--------------------|
+| Step 1 骨組みと設定 | 満たしていた | `tokio`（`time`）が通常の依存にもある（最初のビルドの「計画との違い 2」）。後の単位の依存（U4 の chrono-tz・iana-time-zone、U5 の regex、U6 の serde_json・sha2）もある。テレメトリ系の依存はない |
+| Step 2 テストの実行環境 | 満たしていた | なし |
+| Step 3・4 純粋なロジック | 満たしていた | streams 7 件・retry 11 件・timeline 8 件（ignore 2 件）・`decide_job_status` 5 件・世代番号・virtualScroll 6 件のテストの中身で、計画の観点があることを確かめた。RowWindow に U5 で `filtered`・`all_count`・`result_version` が加わった。`virtualScroll.ts` は U7 から `rowLayout.ts` を土台にした薄い層になった（U3 の関数と答えは残る） |
+| Step 5 AWS 接続の層 | 満たしていた | 要求の型 `DescribeLogStreamsRequest` は接続先（プロファイル・リージョン）も持つ（U2 と同じ形）。名前のないストリームは捨てる（計画の文にはない） |
+| Step 6 列挙と取得の流れ | 満たしていた | U6 で外側に `run_fetch_with_cache` が加わり、Tauri はそちらを呼ぶ。保持ログの受け口は U5 から `Mutex<LogView>` |
+| Step 7 AppSession | 満たしていた | timelineVersion は SessionView の `timeline_version` と `FetchProgressUpdate` に持つ。U5・U6 の項目が加わった |
+| Step 8 Tauri のつなぎ | 1 つ目は満たしている（後の単位の形）。2 つ目は未チェック | 保持ログは `std::sync::Mutex<LogView>`（U5）。`find_row_position` はまとめて問い合わせる `row_positions` に置き換わった（U7:BR1.6・BR1.7）。ウィンドウを閉じるだけでは中断せず、U7 の確認で [Close] を押すと `confirm_close` が中断する（`Destroyed` でも中断する）。取得は `run_fetch_with_cache`（U6）。`log-batch` の廃止、`get_rows`・`set_failure_list_open`、3 つの操作の世代番号、接続の変更での timelineVersion、`update_input` の 2 欄は計画どおり |
+| Step 9 画面 | 満たしている（後の単位の形） | キーはスクロールではなく選んだ行を動かす（U7:BR1.5）。展開した行だけ高さが変わる（U7:BR1.4）。時刻は選んだタイムゾーンで出す（U4:BR3.4）。位置を保つのは `useRowPositions` と `scrollTopForAnchor`（U7:BR1.8）。失敗の一覧は種類名ではなく文章で出す（U7:BR2.2〜BR2.4）。[閉じる] へのフォーカス、Escape、ストリーム名の欄がないこと、世代番号、古い応答を捨てることは計画どおり |
+| Step 10 確認用プログラム | 満たしていた | 終了コード 1 は、失敗したストリームがあるときに加えて Completed 以外のときも返す（最初のビルドの「計画との違い 7」） |
+| Step 11 ビルドと環境 | 1 つ目は満たしている。2 つ目は未チェック | なし |
+| Step 12 doc コメントと記録 | 満たしている | 上の 3 ファイルの doc コメントを直した。core は `#![warn(missing_docs)]` で警告 0 件。記録はこのファイル |
+
+### ルールの文言といまのコードの違い
+
+`traceability.json` では次の項目も `OK` のままにしている。U3 として作った実装とテストは残っており、下の「そのまま成り立つ部分」はいまも満たしているため。ルールの文言の一部は後の単位で変わっている：
+
+| ID | いまのコードとの違い | そのまま成り立つ部分 |
+|----|----------------------|----------------------|
+| BR4.3 | 絞り込み中は offset を絞り込みの結果の中で数える（U5:BR3.1） | `EventTimeline::rows` はルールどおりの答えとテストのまま |
+| BR4.4 | 画面からの問い合わせは `find_row_position` ではなく `row_positions`（U7）で、絞り込みの結果の中の位置を返す | `position_of` と sequence → timestamp の索引（R-10）。10 ミリ秒のテストも通る |
+| BR5.5 | ウィンドウを閉じるだけでは中断しない。U7 の確認で [Close] を押したときと `Destroyed` で中断する | 中断したときの動き（待ちを打ち切る、次の API を呼ばない、Aborted、破棄） |
+| BR6.2 | Failed のとき種類名と安全な詳細ではなく文章を出す（U7:BR2.4）。絞り込み（U5）とキャッシュ（U6）の表示が加わった | 列挙中・取得中・件数・0 件・「N ストリームで失敗」・列挙が途中まで |
+| BR6.3 | 種類名ではなく文章で出す（U7:BR2.2〜BR2.4） | 名前、安全な詳細、列挙の失敗を先頭、Escape と [閉じる]、取得し直すと閉じて消える |
+| BR6.4 | 展開した行は高さが変わる（U7）。時刻は選んだタイムゾーン（U4） | 保持ログを持たない、表示範囲だけを描く、3 列・列の幅は固定、メッセージは 1 行で省略 |
+| BR6.5 | 実装は `rowLayout` の `scrollTopForAnchor` と `row_positions`（U7:BR1.8） | 一番上なら一番上のまま、そうでなければ基準の行を同じ高さに保つ |
+| BR6.8 | キーはスクロールではなく行の選択を動かす（U7:BR1.5） | 英日の文言キー、失敗の数のボタンを Tab と Enter／スペースで開ける、[閉じる] へのフォーカス |
+| BR6.9 | 終了コード 1 を Completed 以外のときすべてで返す（最初のビルドからの違い） | ほかの点はルールの文のとおり |
+| BR4.2・BR5.1・NFR3 | 保持ログは `LogView`（U5）の中にあり、追加のときに絞り込みでも判定する。取得はキャッシュの分岐を通る（U6。BR5.1 の文がキャッシュの分岐は U6 で足すとしている） | 時刻順のマージ、ページごとに短くロックすること、取得中も行を読めること |
+
+上の表以外の U3 の BR・FR・NFR は、ルールの文といまのコードが合っている。
+
+### テストと検査の結果（今回）
+
+| コマンド | 結果 |
+|----------|------|
+| `cargo test -p local-sights-core --lib -- streams:: retry:: timeline:: coordinator:: fetcher:: session:: request:: gateway::` | 162 件成功、2 件 ignore |
+| `cargo test -p local-sights-core --test u3_fetch_flow` | 14 件成功 |
+| `cargo test -p local-sights-core --release --lib -- timeline:: --ignored` | 2 件成功。100 万件で取り出し 18.6 µs、位置の問い合わせ 13.5 µs（上限 10 ms）、重なる 1 万件の追加 82.9 ms |
+| `cargo test -p local-sights-core`（全体） | lib 305 件成功（5 件 ignore）、結合テスト u1 11・u2 9・u3 14・u5 4・u6 3 件成功 |
+| `npx vitest run`（U3 の 7 ファイル） | 89 件成功 |
+| `npx vitest run`（全体、doc コメントの変更後） | 21 ファイル 171 件成功 |
+| `cargo fmt --check` | 成功 |
+| `cargo clippy -p local-sights-core --all-targets` | 成功・警告 0 件（`--workspace` は src-tauri を組み立てられないため実行できない） |
+| `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .`（変更後） | 成功 |
+| `npm audit` | 脆弱性 0 件 |
+| `cargo build -p local-sights` | このコンテナでは実行できない（Tauri の Linux 用の前提ライブラリがない） |
+
+## 最初のビルドの記録
+
+### 作ったもの・変えたもの
 
 | 場所 | 中身 |
 |------|------|
@@ -22,7 +87,7 @@
 | `src/` | `virtualScroll.ts`（純粋な計算）、`hooks/useRowWindow.ts`、`LogTable`（3 列・表示範囲だけ描く・位置を保つ・キーボード）、`StatusLine`（列挙中・取得中・失敗の数・列挙が途中まで）、`FailureList`（新規）、`FetchForm` からストリーム名の欄を削除、`App` が世代番号を付ける、英日の文言 |
 | `README.md` | 3 つの API と IAM 権限、`--stream` の削除、U3 の手元の確認項目 |
 
-## 主な判断
+### 主な判断
 
 - 保持ログは 1 本のソート済みの `Vec` に、受けたページを挿入位置から後ろだけマージして入れる。ストリームごとの sequence → timestamp の索引から時刻を引き、キー全体で二分探索して位置を求める（R-10）。リリースビルドで 100 万件のとき、行の取り出し 約 20 µs、位置の問い合わせ 約 11 µs（上限 10 ms）。
 - 保持ログは取得の流れが 1 ページごとに短くロックするだけにし、画面は取得中でも `get_rows` で行を読める（NFR3）。ロックの順は常に「セッション → 保持ログ」。接続先の変更での破棄は、セッションのロックを握ったまま行い、新しい timelineVersion をセッションに書いてから画面に知らせる（遅れた破棄が次の取得のログを消さない）。
@@ -39,7 +104,7 @@
 - `get_rows` が 1 回に返す行は最大 1,000 行に制限する。
 - 秘密情報：失敗の一覧・ステータス行・標準エラー・診断ログに出すのは U1:BR4.3 の安全な詳細だけ。DescribeLogStreams の安全な詳細は API 名・リクエスト ID・プロファイル名・ロググループ名。
 
-## テストの結果
+### テストの結果（最初のビルド）
 
 | コマンド | 結果 |
 |----------|------|
@@ -53,7 +118,7 @@
 
 U3 のライブラリ側の件数：retry 11、streams 7、timeline 8（うち 1 件は `#[ignore]` の 100 万件の速さ）、coordinator 5、event 3（書き直し）、session +11（合計 36）、gateway::aws +3、request（2 件を書き直し）、結合テスト u3_fetch_flow 14、u1_fetch_flow 11（新しい流れに合わせて書き直し）。画面側：virtualScroll 7、LogTable 7、StatusLine 8、FailureList 4、FetchForm 10、App 7、messages 6。U2 の時点の 124（lib）・59（Vitest）から、lib 162（+ignored 1）・Vitest 75。
 
-## テスト先行の証拠（Red）
+### テスト先行の証拠（Red）
 
 Testing Contract の `ordering` のとおり、純粋なロジックはテストを先に書き、実行して失敗を確かめてから実装した。
 
@@ -63,7 +128,7 @@ Testing Contract の `ordering` のとおり、純粋なロジックはテスト
 
 AWS 接続の層（DescribeLogStreams の SDK の実装、偽物を使った列挙と取得の流れ）と GUI の層（AppSession のつなぎ、Tauri、画面）は、実装してからテストを書いて実行した。
 
-## 計画との違い
+### 計画との違い（最初のビルド）
 
 1. retry.rs は、テストと実装を同じ編集で書いてしまった。テスト先行の確認は、実装の中身を一時的に `todo!()` に差し替えて 11 件すべての失敗を確かめ（上の Red の 2）、元に戻す形で行った。ほかの純粋なロジックは骨組みとテストを先に書いて失敗を確かめてから実装した。
 2. `tokio` をライブラリ側の通常の依存にした（機能 `time`。待ちと中断に使う）。U2 までは dev-dependencies だけだったが、AWS SDK がすでに tokio に依存しているため、ビルドに入るクレートは増えない。`Cargo.lock` の差分は `local-sights-core` の依存に `fastrand` が 1 行増えただけ。
@@ -74,15 +139,16 @@ AWS 接続の層（DescribeLogStreams の SDK の実装、偽物を使った列�
 7. 確認用プログラムは、時刻順に出すため、取得がすべて終わってから標準出力に書く。取得中は標準エラーに「listing streams...」「fetching N streams...」を出す。終了コードは Completed 以外（失敗したストリームがある、列挙が途中まで、取得の失敗）で 1。
 8. 中身のない GetLogEvents のページは受け口に届けない（U1 では届けていた）。
 
-## まだ確かめていないこと・未解決
+### まだ確かめていないこと・未解決
 
+- `cargo build -p local-sights` と `cargo clippy --workspace --all-targets` は、開発者の手元か CI で確かめる（2026-10-10 の照合ではこのコンテナで実行できなかった）。確かめたら計画の Step 8・Step 11 の 2 つ目にチェックを付ける。
 - 実際の AWS での動作と GUI の目視（複数ストリームの時刻順、100 万件に近い件数でのスクロール、取得中に一番上の行が動かない、失敗の一覧、列挙中の表示）は、開発者本人の手元で行う（`README.md` の「Whole-group fetch (U3)」）。
 - BR1.2 の仮定（時刻を持たないストリームが列挙のどこに並ぶか）は、手元で確認用プログラムを使って確かめる（rules.md の「前提と手元の確認の項目」）。
 - NFR2 のうち「絞り込みの結果が 100 秒以内」と NFR3 の「行の展開」は、この単位の範囲外（後の単位）。U3 で確かめたのは、ライブラリ側の 100 万件での行の取り出しと位置の問い合わせの速さ（自動テスト）で、画面のスクロールの体感は手元の目視で確かめる。
 - 取得中のページごとの送信は、レビュー 1 の R-05 で軽い `fetch-progress` イベントに分けた（下の「レビュー 1 の指摘への対応」）。
 - Tauri の同期コマンドはメインスレッドで動く。`get_rows` は、取得の流れが大きなページをマージしている間だけ待つことがある。レビュー 1 の R-04 で測ったところ、100 万件を保持した状態で時刻の重なる約 1 万件のページを 1 つ足すのに約 163 ms かかった（リリースビルド）。NFR2 の「スクロールに 1 秒以内に反応」には収まるが、取得中の引っかかりは手元の目視で確かめる。
 
-## レビュー 1 の指摘への対応
+### レビュー 1 の指摘への対応
 
 レビュー 1（READY、Minor 6 件）の指摘は、project.md の決まりでは次の作業単位に回してよいものだったが、人間の判断で 6 件ともこの単位で直した。
 

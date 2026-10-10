@@ -1,8 +1,63 @@
 # Code Summary — U5 絞り込み（u5-filter）
 
-計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
+計画：`code-generation-plan.md`（Plan Approval 済み）。単位テストの手順：`unit-test-instructions.md`。U5 が書いたファイルの一覧は `source-manifest.json`、ルールと要件の対応は `traceability.json`。
 
-## 作ったもの・変えたもの
+## 今回の作業（2026-10-10、既存のコードと計画の照合）
+
+U5 のコードは以前の作業で作られており、その上に U6・U7 の機能が足されている。ツールを 2.11.0 に上げた後、U5 の計画承認がもう一度求められた。利用者は計画を承認し、U1〜U4 と同じく既存のコードを計画と照合する形で進めた。
+
+- 今回作った・変えた・消したアプリのソース：なし（変更は計画ファイルのチェックボックスだけ）。
+- `source-manifest.json` のパス 27 件と、`traceability.json` の `OK` の対象は、すべて今も存在する。どちらも前回のものを引き続き使う。
+- テストを先に書く順序（Step 3・4）は最初のビルドで行われた（下の「テスト先行の証拠（Red）」）。今回は失敗の実行を作り直さず、既存のテストの中身と実行で確かめた。
+- Step 6 の 2 つ目（`cargo build -p local-sights`）と Step 9 の 3 つ目（`cargo clippy --workspace --all-targets`・`cargo build -p local-sights` を含む検査）はチェックを付けていない。このコンテナに Tauri の Linux 用の前提ライブラリ（gdk-3.0 など）がないため。
+
+### 手順ごとの結果
+
+| 手順 | 結果 | 計画の文言との違い |
+|------|------|--------------------|
+| Step 1 骨組みと設定 | 満たしていた | なし |
+| Step 2 テストの実行環境 | 満たしていた | なし |
+| Step 3・4 純粋なロジック | 満たしていた | なし。`filter::tests` 8 件と `log_view` のテストで計画の観点がすべてあることを確かめた。matchedKeys はストリームの番号の表（`StreamTable`）を使う（R-09）。`log_view` には U7 のテスト（`positions_of`・`discard_generation`・`checked_positions_of`）も同居する |
+| Step 5 AppSession | 満たしている（U6 で拡張） | 絞り込みの文字列を拒む条件に、設定ダイアログが開いている間（U6）が加わった |
+| Step 6 Tauri のつなぎ | 1 つ目は満たしている（違いあり）。2 つ目は未チェック | 走査の知らせは「1 回分ごと」ではなく、別の `filter-progress` イベントで 100 ミリ秒に 1 回まで・Ready のときは必ず送る（最初のビルドのレビュー R-03。U6 で判断を `filter::should_report_progress` に移した）。`find_row_position` は U7 で消え、まとめて問い合わせる `row_positions`（中身は `LogView::position_of`）に置き換わった |
+| Step 7 結合テスト | 満たしていた | なし（`u5_filter_flow` 4 件） |
+| Step 8 画面 | 満たしている（違いあり） | Enter では 0.3 秒を待たずにすぐ渡す（U6:BR5.4）。拒まれた後やダイアログが閉じた後に同じ文字列を送り直す（最初のビルドのレビュー R-02）。欄を使えなくする条件に設定ダイアログが加わった（U6）。api の `findRowPosition` は U7 で `rowPositions` に置き換わった。filterId が変わったときに一番上へ戻す処理は、計画の書き方（`useRowWindow`）ではなく `LogTable` にある（最初のビルドから） |
+| Step 9 速さと設定 | 1・2 つ目は満たしていた。3 つ目は未チェック | README の「Log filter (U5):」の確認項目は「接続の変更の確認ダイアログを開いている間は使えない」とだけ書き、U6 の設定ダイアログの場合には触れていない（文書の小さなずれ。今回は直していない） |
+| Step 10 doc コメントと記録 | 満たしている | core は `#![warn(missing_docs)]` で警告 0 件。記録はこのファイル |
+
+### ルールの文言といまのコードの違い
+
+`traceability.json` では次の項目も `OK` のままにしている。U5 として作った実装とテストは残っており、下の「そのまま成り立つ部分」はいまも満たしているため：
+
+| ID | いまのコードとの違い | そのまま成り立つ部分 |
+|----|----------------------|----------------------|
+| BR1.3 | Enter ではすぐ渡す（U6:BR5.4）。拒まれた後やダイアログが閉じた後に同じ文字列を送り直す（最初のビルドのレビュー R-02） | 入力が止まって 0.3 秒後に最後の文字列だけを渡す |
+| BR3.2 | 位置の問い合わせの入口は `find_row_position` ではなく `row_positions`（U7:BR1.7） | 絞り込み中の位置は結果の中の位置（`LogView::position_of`）、filterId が変わると一番上に戻る、版が変わっても一番上の行を保つ |
+| BR3.4 | 設定ダイアログを開いている間も入力できない（U6） | 接続の変更の確認ダイアログを開いている間は入力できない |
+| BR3.6 | 知らせは別の `filter-progress` イベントで、100 ミリ秒に 1 回までに間引く（最初のビルドのレビュー R-03） | filterSummary が SessionView と fetch-progress に入る、版が変わると取り寄せ直す、古い版を捨てる |
+| BR2.5 | 「保持ログ → 絞り込み結果」の 2 つのロックは、`LogView` の 1 つのロックにまとめた形で満たす（計画の R-02 にもともと書いてある違い） | 同じロックの中で読み書きし、ロックの順はセッション → `LogView` |
+
+上の表以外の U5 の BR・FR・NFR は、ルールの文といまのコードが合っている。
+
+### テストと検査の結果（今回）
+
+| コマンド | 結果 |
+|----------|------|
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core --lib -- filter:: log_view:: session::` | 104 件成功、3 件 ignore |
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core --test u5_filter_flow` | 4 件成功 |
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core`（全体） | lib 305 件成功（5 件 ignore）、結合テスト u1 11・u2 9・u3 14・u5 4・u6 3 件成功 |
+| `CARGO_INCREMENTAL=0 cargo test -p local-sights-core --release --lib -- filter:: log_view:: --ignored` | 3 件成功。10 万件の絞り込み 3.2 ms（上限 10 秒）、100 万件 35.9 ms（上限 100 秒）、絞り込み中の行の取り出し 97 µs・位置の問い合わせ 4 µs、100 万件を持った状態での 1 万件のページの追加 218 ms。Linux のコンテナでの計測で、NFR1・NFR2 が想定する開発者の Mac での計測ではない。実行後に `target/release` を消した |
+| `npx vitest run`（U5 の 4 ファイル） | 56 件成功 |
+| `npx vitest run`（全体） | 21 ファイル 171 件成功 |
+| `cargo fmt --check` | 成功 |
+| `CARGO_INCREMENTAL=0 cargo clippy -p local-sights-core --all-targets` | 成功・警告 0 件（`--workspace` は src-tauri を組み立てられないため実行できない） |
+| `npx tsc --noEmit`・`npx prettier --check .`・`npx eslint .` | 成功 |
+| `npm audit` | 脆弱性 0 件 |
+| `cargo build -p local-sights` | このコンテナでは失敗（`gdk-3.0` がない） |
+
+## 最初のビルドの記録
+
+### 作ったもの・変えたもの
 
 | 場所 | 中身 |
 |------|------|
@@ -16,7 +71,7 @@
 | `src/` | `api.ts`（FilterStatus・FilterSummary・FilterProgressUpdate、SessionView・RowWindow・FetchProgressUpdate の追加の項目、`setLogFilter`、`onFilterProgress`、`withFilter`・`mergeSessionView`（版の古い絞り込みの知らせは無視）、`withProgress` も絞り込みの部分を反映）、`hooks/useDebouncedValue.ts`（新規、0.3 秒待ち）、`components/LogFilterInput.tsx`（新規、標準の検索欄、ラベル・プレースホルダーは英日、取得中も使える、確認待ちだけ無効、Enter で取得のフォームを送らない、最後の文字列だけを 300 ミリ秒後に渡す）、`FetchForm.tsx`（条件エリアに LogFilterInput を置く）、`StatusLine.tsx`（「絞り込み後 N 件 / 全 M 件」、0 件の文字、「絞り込み中…」を取得の進み具合と並べる）、`LogTable.tsx`（filterId・resultVersion を受け、版の変化では一番上の行を保ち、filterId の変化では一番上に戻る）、`hooks/useRowWindow.ts`（引数をオブジェクトにし、filterId・resultVersion の変化で件数が同じでも取り寄せ直し、知っている版より古い行を捨てる）、`App.tsx`（絞り込みの欄の文字列を App で持つ、`filter-progress` の受信、一覧の件数は絞り込み中は matchedCount）、`i18n/messages.ts`（U5 の文言 5 つを英日） |
 | `README.md` | 状態の説明、U5 の手元の確認項目（絞り込み、0 件、Enter で取得しない、取得中の逐次、取り直しで文字列が残る、確認待ちで使えない、100 万件近いときの絞り込み中の操作）、確認用プログラムは絞り込みを持たないこと、速さのテストのコマンド |
 
-## 主な判断
+### 主な判断
 
 - R-02：保持ログと絞り込みの状態は LogView にまとめ、1 つの `Mutex` で守る。ページの追加と逐次の判定、破棄と結果の空化、表示範囲の取り寄せと位置の問い合わせは、すべてこのロックの中で行う。ロックの順はセッション → LogView の 2 段。filterSummary は、セッションのロックを持ったまま LogView を読んでセッションに写すため、写した値はいつも直前の状態より新しい。
 - 走査は CPU だけを使うため、非同期の作業ではなく `spawn_blocking` のスレッドで行う。1 回分（4,096 行）ごとにロックを放し、`yield_now` で他のスレッドに譲る。前の走査は止める合図を持たず、filterId か timelineEpoch が変わったチケットで `Stale` になって自分で終わる（BR2.4）。
@@ -27,7 +82,7 @@
 - 絞り込みの欄は `type="search"`（標準部品、役割は searchbox）。Enter は取得のフォームを送らない（文字列を入れて Enter を押すと保持ログが捨てられて取り直しになるのを避けるため）。
 - 秘密情報：U5 は新しく AWS を呼ばず、新しい診断ログは「走査が異常に終わった」という事実だけを出す。
 
-## テストの結果
+### テストの結果（最初のビルド）
 
 | コマンド | 結果 |
 |----------|------|
@@ -54,7 +109,7 @@
 
 U5 で足したテスト：filter 8、log_view 8（＋速さ 3、ignored）、timeline +1、session +5、結合 4、画面側 LogFilterInput 4、StatusLine +3、App +3、messages +1、FetchForm +1、LogTable +1。U4 の時点の lib 203（+ignored 2）・Vitest 91 から、lib 225（+ignored 5）・Vitest 104。U5 で意図して書き直した既存のテスト：`session.rs` の RowWindow を作る 1 か所（新しい項目）、`LogTable.test.tsx`・`App.test.tsx`・`FetchForm.test.tsx`・`src/test/fixtures.ts`（RowWindow・FetchProgressUpdate・SessionView・FetchForm の props の新しい形）。
 
-## テスト先行の証拠（Red）
+### テスト先行の証拠（Red）
 
 Testing Contract の `ordering` のとおり、純粋なロジック（条件の正規化、一致の判定、結果のキーの並び、逐次の判定と走査の位置の分担、世代・filterId による古い結果の破棄、LogView の追加・破棄・絞り込みを考えた取り出しと位置の問い合わせ、索引からの timestamp）はテストを先に書き、実行して失敗を確かめてから実装した。
 
@@ -64,7 +119,7 @@ Testing Contract の `ordering` のとおり、純粋なロジック（条件の
 
 AppSession のつなぎ、Tauri、画面、結合テストは、実装してからテストを書いて実行した。Tauri には自動テストを置かず、`cargo build -p local-sights` で組み立てを確かめた。速さのテストは Step 9 で書いた。
 
-## 計画との違い
+### 計画との違い（最初のビルド）
 
 1. Red は 2 つの形で記録した。`filter.rs` は `todo!()` の骨組みに対する実行時の失敗、`log_view.rs` と `timeline.rs` はまだない型・項目・関数を呼ぶコンパイルの失敗。
 2. 計画の部品の表にない `timeline.rs`（U3 のモジュール）を変えた。RowWindow の新しい項目（entities.md の RowWindow）と、R-08 の「U3 の索引で timestamp を引く」ための `timestamp_of`。テストを先に書いた。
@@ -77,6 +132,9 @@ AppSession のつなぎ、Tauri、画面、結合テストは、実装してか�
 9. テストの件数は目安どおりか多い（filter 8・log_view 8・session 5・結合 4・画面側 13）。少なくはしていない。
 
 ## まだ確かめていないこと・未解決
+
+- `cargo build -p local-sights` と `cargo clippy --workspace --all-targets` は、開発者の手元か CI で確かめる（2026-10-10 の照合ではこのコンテナで実行できなかった）。確かめたら計画の Step 6 の 2 つ目と Step 9 の 3 つ目にチェックを付ける。
+- 速さ（NFR1・NFR2）は Linux のコンテナで測った値。開発者の Mac での計測は手元で行う。
 
 - 画面での見た目と操作（0.3 秒待ちの体感、取得中の逐次、100 万件近いときの絞り込み中のスクロールと入力の反応が 1 秒以内か）は、開発者本人の手元で行う（`README.md` の「Log filter (U5)」）。速さは作業環境の Linux コンテナでの計測で、NFR1・NFR2 が求める開発者の Mac での計測ではない。
 - `std::sync::Mutex` は公平ではない。走査は 1 回分ごとにロックを放して `yield_now` で譲るが、画面の取り寄せが待つ時間は最長で 1 回分（リリースで 1 ミリ秒未満の見込み）で、手元の確認で確かめる。

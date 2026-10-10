@@ -165,27 +165,30 @@ stage before Construction begins.
 ### Step 6: Completion Handoff
 
 Hand completion to `stage-protocol.md` via
-`bun .claude/tools/aidlc.ts engine orchestrate report --stage delivery-planning --result <outcome>`.
+`aidlc engine orchestrate report --stage delivery-planning --result <outcome>`.
 That `report` call owns every lifecycle transition and advancement; never perform one in prose, and never narrate this bookkeeping to the user.
 
-**Construction iteration.** Read the recorded choice before recommending a
-change. New workflows start with `Construction Checkpoints: enabled` and
+**Construction iteration.** Read the recorded choice before you recommend
+an order. New workflows start with `Construction Checkpoints: enabled` and
 `Construction Iteration: unit-major` with `Construction Execution: serial`:
 each Unit's applicable design stages and Code Generation run serially, followed
 by its verified completion checkpoint.
 An explicit stage-major choice remains valid. To enable later Code Generation
 batches, obtain the human's execution choice, set iteration to stage-major, then
-run `bun .claude/tools/aidlc.ts engine state set-construction-execution swarm`. This works with
+run `aidlc engine state set-construction-execution swarm`. This works with
 either gated or autonomous completion approval; the autonomy answer never changes
 execution order. Unit-major stays serial and refuses a contradictory swarm
 setting; select serial before returning to unit-major. For checkpoint-enabled work,
 skeleton-on always completes the first DAG Unit's full integrated slice before
 later Units, under either iteration order.
 
-Preserve an existing explicit choice. If the human approves changing iteration,
-record it with `bun .claude/tools/aidlc.ts engine state set-construction-iteration <unit-major|stage-major>`.
+Preserve an existing explicit choice. When the person asks to change the order
+("let's do each stage for both units together first"), run
+`aidlc engine state set-construction-iteration <unit-major|stage-major>` in
+that turn and say its `notice` line word for word; do not ask them to confirm it.
 Do not silently migrate a legacy workflow: without the checkpoint field it keeps
-its prior first-stage review and late stage-gate cascade. Team-owned work keeps
+its prior first-stage review, and its late stage approvals come as one question.
+Team-owned work keeps
 its own per-stage or unit-end `unit_gate` policy. Plan Approval, summary
 confirmation, and verification command selection remain human decisions under
 either order and autonomy choice.
@@ -215,10 +218,11 @@ UTF-8 text to `<record>/verification-command.txt` using the harness's
 file-write tool (Write/edit), never a shell `echo` or heredoc. Repo-derived
 command text must never be interpolated into a shell line: shell substitutions
 could execute before the human approves. Pass only the record-relative file path
-below and use the invoking SessionStart session ID:
+below; the command finds the session it runs in by itself, so pass no session
+and never look one up:
 
 ```bash
-bun .claude/tools/aidlc.ts engine log decision --stage "<directive.stage>" --checkpoint verification-command --command-file verification-command.txt --session "<session ID>" --decision "Use this command to verify each completed Unit?" --options "Approve,Request Changes"
+aidlc engine log decision --stage "<directive.stage>" --checkpoint verification-command --command-file verification-command.txt --decision "Use this command to verify each completed Unit?" --options "Approve,Request Changes"
 ```
 
 Copy the complete canonical command exactly from the `command` field in the
@@ -238,16 +242,15 @@ options:
     description: Propose a different project check before running verification.
 ```
 
-The human-turn hook binds the exact **Approve** / **Request Changes** reply in
-that session to the pending command. Only **Approve** authorizes the receipt;
-an unrelated reply, **Request Changes**, or a reply from another session does not.
-Never write `--details "Approve"` unless the human chose it. Only then record
-their answer using the same session ID, and set the command with the matching
-tool-owned receipt:
+Read the person's reply in that session and record the choice they made. The
+human-turn hook keeps that they replied to this question and their exact words;
+a reply from another session, or to another question, does not count. When they
+approve, record their answer, and set the command with the matching tool-owned
+receipt:
 
 ```bash
-bun .claude/tools/aidlc.ts engine log answer --stage "<directive.stage>" --checkpoint verification-command --command-file verification-command.txt --session "<session ID>" --details "Approve"
-bun .claude/tools/aidlc.ts engine state set-construction-verification-command --command-file verification-command.txt
+aidlc engine log answer --stage "<directive.stage>" --checkpoint verification-command --command-file verification-command.txt --details "Approve"
+aidlc engine state set-construction-verification-command --command-file verification-command.txt
 ```
 
 For **Request Changes**, record the same `log answer` with
@@ -262,13 +265,13 @@ and the typed setter; an autonomy grant does not authorize command selection.
 > using the execution settings you chose, or each of your teams can own a Unit
 > and approve its work independently."
 
-The several-teams choice requires the unit-first order above. If the plan is not
-already unit-major, explain that prerequisite and confirm switching. For an
-explicit swarm setting, first record
-`bun .claude/tools/aidlc.ts engine state set-construction-execution serial`, then record
-`bun .claude/tools/aidlc-state.ts set-construction-iteration unit-major`,
-then
-`bun .claude/tools/aidlc-state.ts set-unit-ownership team`. Team ownership
+Picking several teams is the person's request for the unit-first order above.
+If the plan is not already unit-major, switch it in the same turn and say each
+setter's `notice` line: for an explicit swarm setting, first run
+`aidlc engine state set-construction-execution serial`, then
+`aidlc engine state set-construction-iteration unit-major`.
+Then record
+`aidlc engine state set-unit-ownership team`. Team ownership
 requires the workspace root itself to be the source Git repository; intents with
 recorded sibling repos must remain solo.
 For the one-session choice, leave the field absent (the byte-identical default)
@@ -282,7 +285,7 @@ or record `set-unit-ownership solo`.
 > after the unit's design and code are complete."
 
 Record the answer with
-`bun .claude/tools/aidlc-state.ts set-unit-gate-rhythm per-stage` or
+`aidlc engine state set-unit-gate-rhythm per-stage` or
 `... unit-end`. If the field is absent under team ownership, `per-stage` is the
 default. These names are tool vocabulary; present the plain-language choices,
 not the field or enum names.

@@ -1,17 +1,23 @@
-# Code Generation 質問票 — U2 接続とロググループの選択（u2-connection-selection）
+# Code Generation Plan Approval
 
-上流の成果物：`construction/u2-connection-selection/functional-design/`（functional-spec.md・rules.md・entities.md）、`inception/units-generation/unit-of-work.md`、`inception/requirements-analysis/requirements.md`。
-
-U2 では、機能設計で振る舞いを決め終えており、計画を書くために新しく決める必要のある技術の選択はない（設定ファイルの読み取り・リージョンの一覧・画面とのつなぎ方は、機能設計のルールと U1 の決定から決まる）。そのため、計画の承認だけを確認する。
+AI-DLC writes this file when it asks you to approve the plan. To answer here
+instead of in chat, write your answer after `[Answer]:` and say done.
 
 ## Plan Approval
 
-対象：`code-generation-plan.md`（埋め込みの Testing Contract を含む）と `unit-test-instructions.md`。
+Approve the code plan for u2-connection-selection?
 
-[Approval Fingerprint]: sha256:v3:88cfff16660cb07a9292769e7fd762f28a691cc252469d64c3c9c8bf24b5515f
-[Planned Source]: 5ac27dac230f151a9bf0b7850c1b6bf87d96b6cd15116aeb7b777a57fe083784
+- 26 plan steps
+- Tests: see unit-test-instructions.md
 
-- Approve Plan
-- Request Changes
+Full plan: aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/code-generation/code-generation-plan.md
+Test instructions: aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/code-generation/unit-test-instructions.md
 
-[Answer]: Approve Plan
+[Approval Fingerprint]: sha256:v3:38fe64ad277defd22bc2a71db42fca3e47a02caf0533f041c4d92247de7f112e
+[Planned Source]: 41cf225e60cb74182261dfb4feff16c994be439b7d3d2bcabe7e873982b1959c
+
+- A. Approve Plan
+- B. Request Changes
+- C. I'll edit the files
+
+[Answer]:

@@ -77,11 +77,8 @@
 
 
 
-- **Active Unit**: u1-walking-skeleton
 
-- **Unit Stage**: code-generation
 
-- **Unit State**: in-progress
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -144,7 +141,7 @@ Per unit: [TBD]
 - **Current Stage**: code-generation
 - **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-10-10T02:30:56Z
+- **Last Updated**: 2026-10-10T02:50:51Z
 
 - **Construction Autonomy Mode**: autonomous
 

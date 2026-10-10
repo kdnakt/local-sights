@@ -1,0 +1,33 @@
+<!-- INVARIANT: examples are single-line HTML comments so a fresh template parses to total=0 (MEMORY_EMPTY). Do NOT un-comment or split across lines. t100 guards this. -->
+> This file is kept up to date automatically while the stage runs. Add observations at the review step, not by editing here directly.
+
+## Interpretations
+<!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] functional-spec で「Code Generation で決める」とした画面とライブラリのつなぎ方を、計画の前に質問して決めた（Q1：Tauri のコマンドとイベント）; project.md Corrections の「先送りした技術選定は必要になった時点で質問する」に従った。
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] Testing Contract の custom の順序を、ライブラリ側は純粋なロジックをテスト先行・AWS 接続と取得の流れと AppSession を実装後テスト、画面側はすべて実装後テストと解釈した。
+
+## Deviations
+<!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] 計画にないファイル（src/format.ts など 5 つ）と、Tauri の feature `custom-protocol`、`FetchSink::on_batch` の job_id 引数を足した; 詳細と理由は code-summary.md。
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] 再レビュー（上限の 2 回目）で出た R-06 を人間の判断で直したが、骨組みのチェックポイントがレビュー済みの内容との一致を求めたため、人間の判断で R-06 と機能設計の R-08（rules.md の applies_to の名前）をいったん戻した; どちらも U3（取得の作り込み）で直す。
+
+## Tradeoffs
+<!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
+- 2026-10-04T14:30:00Z — [u2-connection-selection] 設定ファイルは寛容に読み、解釈できない行だけを読み飛ばす（機能設計の BR1.3 からの意図した逸脱、人間の判断）; 1 行の崩れで全プロファイルが消えるのを避ける代わりに、崩れたプロファイルは知らせなしに一覧から消える。
+- 2026-10-04T14:30:00Z — [u2-connection-selection] リージョンの一覧は組み込みの静的な一覧にした; ネットワークを使わない代わりに、新しいリージョンは手で足す必要がある。
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] 伏せ字は、利用者が入力した名前にはアクセスキー ID の形だけ、SDK 由来の項目には 40 文字・100 文字以上の判定も使う形にした（R-02）; 失敗した対象が読めることと、秘密を出さないことの両立。
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] `src-tauri` には自動テストを置かず、判断をライブラリ側（AppSession）に寄せてテストした; つなぎの部分は GUI の目視で確かめる。
+
+## Open questions
+<!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->
+- 2026-10-04T08:30:00Z — [u1-walking-skeleton] 画面側のテスト（`npm test`）と `cargo-deny` を CI でどう回すかは CI Pipeline ステージで決める。
+- 2026-10-04T14:30:00Z — [u2-connection-selection] 再レビュー（上限の 2 回目）の R-06（絞り込みと一覧の選択が async コマンドになり、到着順の保証が弱まる）は、project.md の決まりに従い U3 で扱う（同期コマンドに戻すか連番を付ける）。U1 から持ち越した R-06（取得開始時に前回の行を消す）・R-08 も U3 で扱う。
+- 2026-10-04T14:30:00Z — [u2-connection-selection] 作業単位ごとのチェックポイントは、後の単位が前の単位のファイルを変えるたびに前の単位の承認が古くなる仕組みのため、人間の承認で無効にした。以降はステージごとの承認で進む。
+- 2026-10-05T01:00:00Z — [u3-fetch-robustness] U1・U2・U3 の持ち越し（U1 の R-06・R-08、U2 の R-06、U3 機能設計の R-09・R-10）はすべて U3 で解決した。残る確認は開発者本人の手元：実際の AWS での取得、時刻を持たないストリームの並び（BR1.2 の仮定）、100 万件近いときの取得中の画面の引っかかり（1 万件のページの追加で約 163 ms 保持ログのロックを握る）。
+- 2026-10-05T16:30:00Z — [u4-time-range] レビュー 1 回目（READY、Minor 3 件）は人間の判断で直さない：R-01（切替直後の一瞬、行が前のタイムゾーンの文字列のまま）は許容、R-02（Tauri のコマンド層の実機確認）は README の U4 の手元確認に回す、R-03（OS のタイムゾーン名が読めず UTC に落ちたときの見え方、chrono-tz の同梱データの古さ）は MVP では許容。
+- 2026-10-05T16:30:00Z — [u4-time-range] ローカルのタイムゾーンは iana-time-zone と chrono-tz（Q1）。作業中にディスクが一杯になり、target/debug/incremental と target/release を消した。以降のビルドは CARGO_INCREMENTAL=0 で行う。
+- 2026-10-05T01:00:00Z — [u3-fetch-robustness] 仮想スクロールは自前で作った（Q1）。行の高さ 22 px 固定、スクロールの高さの上限 1,000 万 px を超えると位置を比例で縮める。
+- 2026-10-06T00:30:00Z — [u5-filter] レビュー 1 回目（READY、Minor 4 件）の扱いは人間が決めた。project.md の「レビュー後の修正は次の作業単位に回す」に従い、U5 では直さず U6 で直す。R-01：U1:BR6.2（どの入力欄でも Enter で取得）の例外として、絞り込み欄の Enter は取得ではなく絞り込みとし、0.3 秒待たずにすぐ反映する。R-02：set_log_filter が失敗したとき、または確認ダイアログが閉じたときに、SessionView.logFilter と比べて送り直す。R-03：走査中の知らせの間引きと「最後の Ready は必ず送る」の判断を、ライブラリ側の純粋な関数に移してテストする。R-04：traceability.json にテストファイルと lib.rs（BR1.5・BR2.5）を足し、code-summary の「計画との違い」の誤り 1 件を正す。
+- 2026-10-07T09:00:00Z — [u6-disk-cache] レビュー 1 回目（READY、Minor 6 件）の扱いは人間が決めた。project.md の決まりに従い U6 では直さず、U7 で直す：R-01（[Save]・[Clear cache] のファイル操作をセッションのロックの外の別スレッドで行う）、R-02（取得のタスクが異常終了しても書き込み中の印で設定ダイアログを開けないようにし、全削除のあとの書き戻りを防ぐ）、R-03（ヘッダにイベントの件数を持たせ、行の切れ目で切れたファイルを見分ける）、R-04（保持ログからの写し取りもブロッキング用のスレッドで行う）、R-06（BR3.7 の「破棄 → on_started」の順、Hit のときの中断、readFailed のあとの Saved のテストを足す）。R-05（アプリを 2 つ同時に起動したときの一時ファイルの削除と更新の取りこぼし）は、1 人用のツールで安全側に倒れるため人間の判断で受け入れた。
+- 2026-10-07T09:00:00Z — [u6-disk-cache] U5 から持ち越した R-01〜R-04 は U6 で扱った（Enter ですぐ絞り込む、送り直し、走査の知らせの間引きを filter::should_report_progress に移す、U5 の記録の補足は U6 の code-summary.md に書いた）。リポジトリに deny.toml がないため cargo-deny は CI Pipeline ステージで扱う。キャッシュは app_cache_dir の下の log-cache に置く。
+- 2026-10-08T10:00:00Z — [u7-ui-polish] レビュー 1 回目（NOT-READY、R-01〜R-07）は人間の判断ですべて U7 の中で直し、2 回目（上限）は READY。2 回目の R-08（Dock の「終了」は取得中でも確認なしで終わる。tao の applicationWillTerminate 経由でアプリから止められない）は人間の判断で Accepted risk とし、README と code-summary.md の制約として残す。Build and Test に回す：R-14 の契約の確認（expandedRows は画面側に置く）、README の手元の確認項目、cargo-deny と deny.toml は CI Pipeline で扱う。

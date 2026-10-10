@@ -1,0 +1,33 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-10-04T11:52:48Z
+**Iteration:** 1
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Major | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR2.7 logic（U1 の BR1.1 のロググループ名の部分を「一覧からの選択に置き換える」） | U1 の BR1.8 は、BR1.1〜BR1.3 の検証を画面と確認用プログラムが共有するライブラリの共通の検証にまとめると定めている。U2 の UC6 と FetchRequest.logGroupName は、確認用プログラムではロググループ名を引数で受け取り続けると述べている。それなのに BR2.7 は手入力のロググループ名の検証を「置き換える」と書くため、共通の検証から空のロググループ名のチェックを外してよいのか、残すのかが読み取れない。外すと確認用プログラムが空のロググループ名を通してしまう。 | BR2.7 に、共通の検証（U1 の BR1.8）はロググループ名が空でないことを確かめ続けること、画面側の「未選択の項目を理由に示す」は AppSession が選択の状態から作る別の検証であることを明記する。画面の経路と確認用プログラムの経路のどちらで何を検証するかを分けて書く。 | New |
+| R-02 | Major | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR2.4 logic、aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/functional-spec.md > UC4 手順 4 と §3 の末尾の文（SessionState.phase は U1 のまま） | 接続の変更を適用すると、BR2.4 は選択・保持ログ・件数・直近の FetchJob の要約を消すが、SessionState.phase と validationErrors をどうするかが書かれていない。phase が Done や Failed のまま残ると、前の接続の取得の失敗（U1 の BR4.4 のステータス行の種類名と詳細）が新しい接続の画面に出続ける恐れがある。U2 は U1 の phase の遷移は変えないとするが、接続の変更による Done・Failed から Idle への戻りは U1 のどのルールにもなく、U2 が決める必要がある。 | BR2.4 と UC4 の手順 4 に、接続の変更を適用したら phase を Idle に戻し、直近の失敗の表示と validationErrors を作り直すことを書く。spec §3 の phase の記述に、この遷移（Done または Failed から Idle、接続の変更を契機とする）を足す。 | New |
+| R-03 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/functional-spec.md > §3 接続の選択の stateDiagram | spec は手順と状態遷移の正と自称するが、図には起こりうる遷移が足りない。Connected からの変更で既定のリージョンがないプロファイルに変えた場合の Connected から NoRegion（確認ありは Confirming から NoRegion）、NoRegion でプロファイルを変えたときの NoRegion の自己遷移と NoRegion から Connected、がない。テキストの代替文だけが「NoRegion に戻る」と述べており、図と食い違う。 | 図に Connected から NoRegion、Confirming から NoRegion、NoRegion から NoRegion の遷移を足し、代替文と一致させる。 | New |
+| R-04 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR3.6 と BR2.3 | BR3.6 は応答の listingId を「いまの LogGroupListing」と比べて捨てると書く。しかし BR2.3 は、どちらかが未選択のとき一覧を空にし、新しい LogGroupListing を作らない。変更で NoRegion や NoProfile になった直後は「いまの listing」が存在せず、前の接続の取得中の応答が届いたときの扱いが定義されない（空の一覧に前の接続のロググループが出る恐れがある）。 | BR2.3 か BR3.6 に、接続を変えたら進行中の一覧の取得を無効にする（現在の listingId を持たない状態にする）こと、現在の listing がない間に届いた応答は捨てることを書く。 | New |
+| R-05 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/entities.md > SessionState、LogGroupFilter、PendingConnectionChange | SessionState の属性に、直近の LogGroupListing への参照と filterText の置き場がなく（関係だけに LogGroupListing がある）、LogGroupFilter は持ち主が LogGroupBrowser なのに ER 図にもつながりにもない。BR3.7 は接続の変更でも絞り込みの文字列を残すと定めるため、置き場が要る。また PendingConnectionChange は proposedProfile と proposedRegionCode がどちらも任意で、少なくとも一方があること、プロファイルを変える場合の region は BR2.2 で適用時に決まることが書かれていない。 | SessionState に listing と filter の属性（または保持する場所）を足す。PendingConnectionChange に「どちらか一方は必須」「プロファイルの変更ではリージョンを適用時に BR2.2 で決める」を制約として足す。 | New |
+| R-06 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR1.5 logic | 「既定の設定」の既定のリージョンを「SDK と同じ順」と称して、AWS_REGION、AWS_DEFAULT_REGION、config の [default] の順に決めている。しかし SDK は環境変数 AWS_PROFILE があればそのプロファイルの region を使うため、AWS_PROFILE が設定されていると、画面に出る初期値が実際の既定の接続とずれる。AWS_DEFAULT_REGION を SDK が読むかも SDK により異なる。 | 「SDK と同じ順」の主張を、ここで決める順（AWS_REGION、AWS_DEFAULT_REGION、AWS_PROFILE が指すプロファイルまたは [default] の region）として明記し、それが表示用の初期値であることと、画面からの取得は選んだ regionCode を必ず渡す（BR2.8）ためずれても接続先は変わらないことを書く。 | New |
+| R-07 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR1.3、BR5.1、aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/functional-spec.md > §4 画面 | BR1.3 は設定ファイルを読めないとき「読めなかったことを文言キーで画面に知らせる」と定めるが、BR5.1 の文言キーの列挙にも、spec §4 の画面の部分にも、UC1 にもこの通知がない。どこに出すか、どう消えるかが決まらない。 | 通知の文言キーを BR5.1 に足し、spec §4 に表示位置（例：上部バーの近く）と UC1 の手順を足す。 | New |
+| R-08 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/traceability.json > reverse の BR2.8 と BR2.6 の target | reverse の target 文が U1 の ID（BR1.5・BR1.6・BR1.4）を挙げる。U2 の rules.md に BR1.6 はなく、BR1.4・BR1.5 は別の内容の U2 のルールとして存在する。U1 と U2 でルール ID の番号が衝突するため、ID を機械的に解決する検査では誤った対応づけや未解決になる恐れがある（機械的な確認で BR1.6 が未解決になった）。 | traceability の target の文で U1 のルールは「U1:BR1.6」のように単位名を前に付けて書き、U2 の ID と取り違えられない形にする。 | New |
+| R-09 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR1.2、BR1.4 | BR1.2 は認証情報の値を読み出さず保持しないと定めるが、credentials ファイルを読めば値を含む行を必ず通過する。値を取り出す手段を作らないための読み方（見出し行と region の行だけを見て他は捨てる）と、解釈に失敗したときのエラーに行の中身を引用しないことが書かれていない（BR1.3 の「中身は出さない」だけが近い）。BR1.4 の「SDK が持つ一覧」は、EC2 の DescribeRegions のような API の呼び出しではなく静的な一覧であることが書かれていない（NFR6、project.md Forbidden への抵触を防ぐ）。 | BR1.2 に、読む対象は見出し行と region の行に限り、ほかの行は値を保持せず、失敗時の詳細にもファイルの内容を含めないことを足す。BR1.4 に、リージョンの一覧は静的で、ネットワークを使わない（読み取り 3 API 以外を呼ばない）ことを足す。 | New |
+| R-10 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/rules.md > BR3.7 と aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u2-connection-selection/functional-design/functional-spec.md > §4 左ペイン | BR3.7 は、選んでいるロググループが絞り込みで隠れても選択を外さないとするため、一覧に見えないロググループで [Fetch] が押せる状態がありうる。選んでいるロググループの名前を一覧とは別に示すことが画面の部分にない（NFR13 の主な流れの確認にも関わる）。 | spec §4 に、選択中のロググループ名を常に見える形で示す（例：入力欄の近くに表示）ことを足す。 | New |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| traceability（自作の確認：rules の YAML の ID と traceability.json の target の突き合わせ） | OK の target の BR ID はすべて rules.md に存在する。rules.md の 26 件のルールのうち、どの OK にも reverse にも載らない孤立はない。reverse の target 文にだけ、U2 に存在しない BR1.6（U1 のルールへの言及）が出る | 構造としては通る。BR1.6 は U1 への言及で、ID の衝突の恐れとして R-08 に記録した |
+| mermaid（目視：flowchart、stateDiagram-v2 2 つ、erDiagram） | 構文の問題なし（ラベルに縦線なし、ER の関係の記号は有効） | 内容の不足は R-03 を参照 |
+| 回答の反映の確認（Q1〜Q6、Q6 の確認ダイアログ） | Q1〜Q6 と確認済みのまとめは entities、rules、spec に一貫して反映されている（Q6：ダイアログの文言、[変える]・[キャンセル]・Escape、ログなしでは出さない、を含む） | 指摘なし |
+
+### Summary
+
+Q1〜Q6 の回答（特に Q6 の確認ダイアログ）、FR1.1・FR1.3・FR1.4・FR2.1〜FR2.3 と受け入れ基準、project.md Forbidden、components.md の持ち主の区分は、一貫して満たされており、判断のルールも多くが IF/THEN でテストできる。主な懸念は、U1 の共通の検証（BR1.8）との食い違い（R-01）と、接続の変更を適用したときの phase の戻りの未定義（R-02）の 2 件の Major であり、どちらも小さな追記で直せる。Major が 2 件以下で Critical がないため READY とするが、承認の前に R-01 と R-02 を直すことを勧める。

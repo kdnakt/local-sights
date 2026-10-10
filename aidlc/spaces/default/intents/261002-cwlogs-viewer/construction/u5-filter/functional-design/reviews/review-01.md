@@ -1,0 +1,28 @@
+## Review
+
+**Verdict:** NOT-READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-10-05T22:43:32Z
+**Iteration:** 1
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Critical | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u5-filter/functional-design/rules.md > BR1.4, BR1.5, BR2.1, BR2.2 | 保持ログ全体への絞り込み（Filtering）と、ページの追加・破棄が並行して起きるときの整合を取る仕組みが書かれていない。BR2.1 は「Filtering の途中の追加分は全体の絞り込みに含めて取りこぼさない」とだけ言う。実装（timeline.rs の `append`）は、ページを保持ログの途中に差し込んで、それより後ろの位置を全部ずらす。全体の走査が位置 k まで進んだ後で k より前にページが差し込まれると、差し込まれた行は走査済みの範囲に入るため走査されず（取りこぼし）、k より後ろに差し込まれた行は走査と追加分の逐次処理の両方に当たる（重複）。走査が `matchedPositions` に入れた位置も、差し込みでずれる。また古さの判定は `filterId` だけ（BR1.4）で、走査中に [Fetch]・中断・接続先変更で保持ログが破棄されても filterId は変わらないため、古い保持ログに対する走査結果が、空になった（または新しく埋まり始めた）保持ログの結果として入る。さらに BR1.5 の「画面を止めない」は、走査の間 timeline の Mutex を持ち続けないことを前提にするが（`get_rows` と取得側の `append` が同じロックを使う）、どう分けて走査するか決まっていない。 | 全体の絞り込みの方式を決めて書く。例：走査は保持ログの版（timelineVersion）を固定した読み取りで、一定件数ずつロックを取り直して進める／走査中に届いたページは別に貯めて走査後に合流する／重複は eventKey で除く、など、取りこぼしと重複が起きない手順を 1 つ選ぶ。古さの判定は filterId に、保持ログの破棄ごとに増える番号（timeline の epoch か version）を組み合わせ、破棄後の古い走査結果を捨てる規則を BR1.4／BR2.2 に足す。走査のロック保持時間の上限（1 回の保持を短く区切る）を BR1.5 に書く。そのうえで、途中に差し込まれた場合・破棄された場合のテストを spec の「先にテストを書く」一覧に足す。 | New |
+| R-02 | Major | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u5-filter/functional-design/rules.md > BR1.5, BR2.1, BR3.1; functional-spec.md > UC1 5・7 | 絞り込み結果と保持ログの整合（どの保持ログの版に対する位置か）が定義されていない。(a) 保持ログへの追加（timeline のロック内）と FilterEngine の逐次更新は別の手順で、その間に `get_rows` が来ると、ずれる前の `matchedPositions` で新しい保持ログを読み、別の行を返す。FilterResult に「どの timelineVersion の結果か」の属性も、両方を 1 つの操作で更新するロック順（現状は session → timeline）の定めもない。(b) Filtering の間は「前の結果」を出し続けるが（BR1.5）、その前の結果には新しいページが入らず、位置がずれたまま読まれる。(c) BR3.1 は「filterText が空でない」で結果の行を返すと決めているが、Filtering 中は filterText（新）と画面に出す結果（旧、または全件）が一致しない。空→非空の最初の絞り込みでは結果がまだ無く、BR3.1 と BR1.5 が矛盾する。(d) Filtering 中の「絞り込み後 / 全件」と RowWindow の totalCount / allCount / filtered がどの結果の値かも決まっていない。 | FilterResult に基にした timelineVersion（または結果の版）を足し、RowWindow の取り出しは「保持ログと結果が同じ版のとき」だけ結果の行を返す形にするか、保持ログの追加と結果の更新を同じロックの中で行うと決めて、ロック順（session → timeline → filter など）を書く。BR3.1 の分岐条件を「filterText」ではなく「画面に出している結果が有るか（Ready の結果か、Filtering 中の直前の結果か）」に改め、Filtering 中の直前の結果を出し続けるなら、そこにも逐次の追加を適用するか、版が合わなければ全件表示に落とすかを決める。Filtering 中のステータス行・RowWindow の件数がどの結果のものかを表にして書く。 | New |
+| R-03 | Major | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u5-filter/functional-design/rules.md > BR3.2, BR3.3; entities.md > RowWindow, SessionState | 画面に「結果が入れ替わった」ことを知らせる契約がない。既存の `useRowWindow` が行を取り直す条件は firstRow・rowCount・timelineVersion・totalCount・timeZone だけで、絞り込みの文字列を変えて Ready になったとき（保持ログは変わらず timelineVersion も変わらない）、matchedCount が前と同じ（例：`foo` → `FOO` で同じ件数、0 件→0 件）だと取り直しが起きず、古い行が残る。Filtering から Ready への遷移も取得中のページ追加と無関係に非同期で起きるが、`fetch-progress` イベントに載る内容（版・件数）に matchedCount・status・filterId がなく、ステータス行（BR3.3）を更新する契機がない。BR3.2 の「一番上に戻る」の契機も定義されていない。位置の問い合わせ（U3:BR4.4）が返す timelineVersion も、絞り込み中は結果の版を含まないと、取得の途中での位置の保持（アンカー）が結果と食い違う。 | 結果の版（filterId と、追加ごとに増える番号の組）を RowWindow・位置の問い合わせ・`fetch-progress`（または新しい絞り込みの状態イベント）に足すと entities.md と rules.md に書く。画面は、その版が変わったら行を取り直す（useRowWindow の依存に加える）。matchedCount・totalCount・status を状態イベントで画面に渡す手順と、Filtering → Ready のときにイベントを出すことを BR3.3 に書く。 | New |
+| R-04 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u5-filter/functional-design/rules.md > BR3.2 | 「結果が入れ替わったとき（文字列が変わって Ready になったとき）は一番上に戻る」は、文字列を消して絞り込みを解いたときにも当てはまり、絞り込み結果の中で読んでいた行の位置を失う。一番上に見えていた行（stream, sequence）は保持ログに必ずあるため、解除時はその行へ移すこともできる。選択でないなら、意図した割り切りかどうかが分からない。 | 絞り込みを解いたとき（空になって全件に戻るとき）に一番上へ戻すのか、直前の一番上の行の位置を保つのかを決めて書く（戻すなら理由を 1 行足す）。 | New |
+| R-05 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u5-filter/functional-design/entities.md > FilterResult.totalCount, RowWindow.totalCount, SessionState.filter | `totalCount` が 2 つの意味で使われている。FilterResult.totalCount は保持ログの全件数、RowWindow.totalCount は絞り込み中は matchedCount（BR3.1）で、U3 のコード（`RowWindow.total_count`、フロントの `totalCount`）と読み違えやすい。Filtering 中の FilterResult の `matchedCount <= totalCount` の不変条件も、totalCount が「結果を作った時点の件数」のままだと、追加の逐次処理中は成り立つ時点が曖昧になる。また SessionState.filter が FilterCondition を 1..1 で持つとしたが、components.md は「0 か 1 つ参照する」で、空のときの扱いが違う。 | FilterResult の件数の名前を（例：`allCount`）に揃えるか、RowWindow.totalCount の意味を一覧の行数と明記して対応表を足す。components.md の 0..1 と entities.md の 1..1 のどちらかに揃える（空の条件を「持たない」か「空文字で持つ」か）。 | New |
+| R-06 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u5-filter/functional-design/rules.md > BR2.1; functional-spec.md > 7 テストの方針 | BR2.1 の「追加で後ろにずれた行の位置も合わせる」は、EventTimeline から FilterEngine への受け渡しが決まっていないと実装できない。現状の `EventTimeline::append` は版だけを返し、追加した行・差し込んだ位置を渡さない。結果の位置の並びを全部ずらす処理は、結果が 100 万件に近い（`matchedPositions` が大きい）と追加 1 回ごとに結果の件数に比例し、100 ページ超の取得で積み上がるが、計算量の目安が書かれていない。 | 追加のときに FilterEngine が受け取る情報（追加ページの行と差し込み位置の並び、または eventKey）を、部品の間のインターフェースとして 1〜2 行で書く。位置の持ち方（位置の並びにするか eventKey にするか）を決め、100 万件・追加 100 回程度の計算量の目安を足す。 | New |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| 成果物の読み合わせ（rules / entities / spec / traceability） | BR1.1〜BR3.5 はすべて traceability の forward か reverse に載り、FR6.1〜FR6.5・NFR1・NFR2 の対応は漏れなし | 追跡の整合は問題なし。指摘は並行処理の設計の抜けと、画面への契約の抜け |
+| 既存コードの確認（timeline.rs、useRowWindow.ts、src-tauri/src/lib.rs） | `append` は途中差し込み＋版の加算のみ返す、`useRowWindow` の依存に絞り込みの版なし、timeline は Mutex で `get_rows` と取得側が共有 | R-01、R-02、R-03、R-06 の根拠 |
+
+### Summary
+
+要件（FR6.x・NFR1・NFR2）の対応と質問票の回答の反映は漏れなく、機能の意図は明確だが、U3 の途中差し込み（位置のずれ）と並行して動く全体の絞り込みの整合、結果と保持ログの版の対応、画面に結果の入れ替えを知らせる契約が決まっていないため、そのままでは実装者が推測で決めることになる。Critical が 1 件あるため NOT-READY とする。

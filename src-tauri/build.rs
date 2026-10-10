@@ -1,0 +1,34 @@
+//! Build script: generates the Tauri context and an app manifest that turns
+//! each custom command into an explicit permission, so the capability file
+//! decides which commands the window may invoke.
+
+fn main() {
+    let attributes =
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
+            "get_session",
+            "update_input",
+            "start_fetch",
+            "select_profile",
+            "select_region",
+            "confirm_connection_change",
+            "cancel_connection_change",
+            "reload_log_groups",
+            "update_log_group_filter",
+            "select_log_group",
+            "get_rows",
+            "set_failure_list_open",
+            "select_time_zone",
+            "set_log_filter",
+            "open_settings",
+            "cancel_settings",
+            "save_settings",
+            "clear_cache",
+            "row_positions",
+            "cancel_close",
+            "confirm_close",
+        ]));
+    if let Err(error) = tauri_build::try_build(attributes) {
+        eprintln!("tauri-build failed: {error}");
+        std::process::exit(1);
+    }
+}

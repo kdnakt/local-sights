@@ -1,0 +1,40 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-10-08T14:53:16Z
+**Iteration:** 2
+
+場所の基点は `aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u6-disk-cache/functional-design/`（以下 `FD/`）。成果物（functional-spec.md、entities.md、rules.md、traceability.json）は前回の iteration 2 から変わっていないため、同じ判断を現在の内容に対して再確認した。Q1〜Q5 と BR5.4 は再検討していない。他の作業単位のディレクトリは開いていない。
+
+### Findings
+
+R-01〜R-09 は前回までに解消済みで、現在の成果物でも解消が保たれていることを確認した（BR3.7 と spec §4 の通知の順、BR2.3・BR4.1 の「全部検証してから 1 回で追加」、BR3.3 の作り直し、BR5.3 の文言の正本と併記、BR3.6 の認証情報の範囲、BR3.5 のロックを握らない書き込み、BR1.4・BR2.2・BR3.6 の名前の型・キー・権限、BR1.6・BR5.1 の注入と拒否）。R-10〜R-13 は今回の iteration 2 の指摘で、成果物が変わっていないため内容は同じ。いずれも Minor で、Critical・Major はない。人間の学習ルール（レビュー回数の上限後に出た指摘は次の作業単位で直す）に従い、R-10〜R-13 は Code Generation の計画で扱う。
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Major | FD/rules.md BR3.7、FD/functional-spec.md §4 | 通知の順と `on_saving`・`cacheSaving`・`cacheOutcome` の経路が定まっている | なし | Resolved |
+| R-02 | Major | FD/rules.md BR2.3・BR4.1 | 全部検証してから 1 回で追加する手順になっている | なし | Resolved |
+| R-03 | Major | FD/rules.md BR3.3・BR4.1 | 書き込み時に既存が読めないときと削除失敗時の扱いが定まっている | なし | Resolved |
+| R-04 | Minor | FD/entities.md FetchJob.readFailed、FD/rules.md BR5.3 | `readFailed` を別に持ち、ReadFailed と SaveFailed を併記できる | なし | Resolved |
+| R-05 | Minor | FD/rules.md BR5.3 | 文言の正本が BR5.3 に一本化されている | なし | Resolved |
+| R-06 | Minor | FD/rules.md BR3.6 | 認証情報の範囲とログ本文の扱いが明記されている | なし | Resolved |
+| R-07 | Minor | FD/rules.md BR3.5 | ロックを握らず、ブロッキング用のスレッドで行う | なし | Resolved |
+| R-08 | Minor | FD/rules.md BR1.4・BR2.2・BR3.6 | 名前の型・kind 付きのキー・SHA-256・権限が定まっている | なし | Resolved |
+| R-09 | Minor | FD/rules.md BR1.6・BR5.1、FD/entities.md CacheSettings | 場所の注入とダイアログ中の拒否が定まっている | なし | Resolved |
+| R-10 | Minor | FD/rules.md BR1.3、FD/functional-spec.md UC1 の 4・UC4 の 2 | 無効にして [Save] したときの手順が食い違う。BR1.3 と UC1 の 4 は「設定を書けたらダイアログを閉じる」、BR1.3 は「続けて全削除、削除に失敗したらダイアログに出す」、UC4 の 2 は「消せなかったときダイアログにその旨を出す」。閉じたあとなのか開いたままなのかが曖昧で、開発者が推測で決める。 | 順序を「設定を書く → 有効から無効なら全削除 → すべて成功したときだけ閉じる」に統一する。削除に失敗したときはダイアログを開いたまま（cacheEnabled は無効に更新済み）、消せなかった旨を出し、[Clear cache] で再試行するか閉じられるようにする。UC1 の 4・BR1.3・UC4 の 2・状態遷移図の説明をそろえる。Code Generation の計画で扱ってよい。 | New |
+| R-11 | Minor | FD/entities.md SessionState.cacheSaving・cacheNotices、FD/rules.md BR3.7 | `cacheSaving` を false に戻すのは `on_finished` だけと定めている。取得のタスクが結果を返さず異常終了して Failed に移る経路（既存の `abort_fetch_with_failure`）では `on_finished` が来ず、保存中や Hit の読み出し中にブロッキング用のスレッドが panic すると `cacheSaving = true` のまま残り、ステータス行に「保存中」が残りうる。`cacheNotices` も前回の値が残りうる。 | BR3.7 に、異常終了で取得を終えるときも `cacheSaving` を false にし `cacheNotices` を空にすることを足す（`on_finished` と同じ後始末）。テストの方針（§9）の AppSession に加える。 | New |
+| R-12 | Minor | FD/functional-spec.md UC2 の 6、FD/rules.md BR3.5・BR3.7、FD/functional-spec.md §5 | 既存の `run_fetch` は最後に自分で `on_finished` を呼ぶ。設計は「書き込みのあとに `on_finished`」としているが、`on_finished` を遅らせる位置（`run_fetch` を分けるか、シンクを包むか）と、`on_saving` に `job_id` を渡して AppSession が現在のジョブだけを受け付けることが書かれていない。また Hit のジョブでは計画ストリーム数・終了ストリーム数が 0 になり、U3 の件数の表示が「0 ストリーム」と出るかどうかが未定。 | `on_saving(job_id)` の形と古いジョブの無視を BR3.7 に一行で足す。`on_finished` を遅らせる方法は Code Generation の計画で決めると明記する。Hit のときの件数の表示（ストリーム数を出さない、または 0 のまま出す）を BR5.3 か spec §5 に決める。 | New |
+| R-13 | Minor | FD/rules.md BR4.1・BR4.2、FD/functional-spec.md UC2 の 4.1・UC3 の 2 | BR4.1 の検査は「ファイル全体」とも「指定範囲内のイベントだけ」（UC2 の 4.1）とも読める。Hit は範囲内だけを読む設計（BR4.2）のため、全体を検査するなら全部読むことになり NFR2 に響く。また、一時的な読み取りの失敗（権限・I/O）でも有効なキャッシュを消してしまう。 | Hit の確かめは、読んだイベント（指定範囲のもの）とヘッダの coveredRanges に対して行う、と範囲を明記する。ファイルが「ない」ことと「一時的に読めない」ことを区別し、削除は壊れたと判断できたもの（解釈できない・切れている・版・キー不一致・検査失敗）だけに限る旨を足す。 | New |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| なし（この単位に機能設計用の検証ツールの指定はなし） | 実行せず | 上流の FR7.1〜FR7.9・NFR2・NFR5・NFR8・NFR12・NFR13・NFR15 が traceability.json の coverage で BR に対応していることを確認した。FR1.5・FR4.9・FR5・FR8 系は U7 へ Deferred、U1〜U5 の実装済みの項目は N/A で、孤立した ID はない。reverse の 8 件も rules.md に存在する。rules.md の BR 参照（BR1.1〜BR5.5）は entities.md・functional-spec.md の参照先と食い違いがない。 |
+
+### Summary
+
+通知の順・検証してからの追加・破損時の作り直し・ロックを握らない書き込みが、開発者が推測せずに実装できる粒度まで定まっており、Critical・Major はない。残りは [Save] で無効にしたときの手順の食い違い（R-10）、異常終了時の後始末（R-11）、実装の細部（R-12、R-13）の Minor だけで、Code Generation の計画で扱える。
+
+READY

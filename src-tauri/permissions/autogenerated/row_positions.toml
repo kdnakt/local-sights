@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-row-positions"
+description = "Enables the row_positions command without any pre-configured scope."
+commands.allow = ["row_positions"]
+
+[[permission]]
+identifier = "deny-row-positions"
+description = "Denies the row_positions command without any pre-configured scope."
+commands.deny = ["row_positions"]

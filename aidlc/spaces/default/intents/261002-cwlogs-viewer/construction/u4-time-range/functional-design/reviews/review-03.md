@@ -1,0 +1,30 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Date:** 2026-10-08T14:51:22Z
+**Iteration:** 2
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Major | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/rules.md > BR3.4、BR3.1、BR1.2；entities.md > RowWindow | 成果物が前回から変わっていないことを確認し、再度解消と判断した。入力の解釈・作り直し・一覧の時刻の文字列化はすべてライブラリの TimeRangeModel が持ち、画面は変換をしない。ローカルのタイムゾーンを差し替える境界とそのテスト方針が BR3.4 と spec §7 にあり、Rust と webview でローカルの解釈が分かれる経路は残っていない。 | なし | Resolved |
+| R-02 | Major | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/rules.md > BR1.4；entities.md > DateTimeInput.error；functional-spec.md > UC1、§3 状態遷移 | 解消を再確認した。瞬間を持たない空でない入力は文字列を残して新しいタイムゾーンで解釈し直し、存在しない日時は UTC で正しい日時になる。NonexistentLocalTime は Local のときだけ取り得るという不変条件、UC1 の受け入れ条件、状態遷移図（Nonexistent → Valid）が一致している。 | なし | Resolved |
+| R-03 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/rules.md > BR3.2；functional-spec.md > §4 画面 | 解消を再確認した。入力欄のラベルと形式の誤りの文言がいまのタイムゾーンを出す規則が BR3.2・spec §4・UC1 手順 6 に揃っている。 | なし | Resolved |
+| R-04 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/rules.md > BR2.1 | 解消を再確認した。条件に確認待ちが入り、取得中と確認待ちは既存の表示を理由とすることが明記されている。UC3 手順 2 も一致している。 | なし | Resolved |
+| R-05 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/rules.md > BR1.4、BR3.1 | 解消を再確認した。4 桁の年に表せない瞬間は文字列を残して解釈し直し、行の時刻は表せなければ数値で出す。entities と spec にも反映されている。 | なし | Resolved |
+| R-06 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/rules.md > BR1.5；functional-spec.md > UC2、UC1 受け入れ条件 | 解消を再確認した。同じ文字列が届いても解釈し直さないことが BR1.5・UC2・entities に揃い、往復で元に戻る受け入れ条件もある。 | なし | Resolved |
+| R-07 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/traceability.json > coverage FR3.1、FR3.5 | 解消を再確認した。FR3.1 は BR1.2・BR1.5、FR3.5 は BR1.6 を target とする OK になっている。 | なし | Resolved |
+| R-08 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/entities.md > RowWindow（owner: EventTimeline）；rules.md > BR3.4；functional-spec.md > UC1 手順 6 | 成果物は未変更のため、前回の指摘が残っている。components.md では EventTimeline の依存先は「—」で、TimeRangeModel を呼ぶ辺は存在せず、依存を持つのは AppSession（TimeRangeModel と EventTimeline の両方に依存）だけである。したがって displayTime の合成担当は AppSession とするのが整合的だが、どの成果物にも明記されていない。また、タイムゾーンの切替では U3 の timelineVersion が変わらないため、offset と timelineVersion で行をキャッシュする実装には、切替後に取り寄せ直す合図がない。実装者が推測する余地が残るが、実装を妨げる欠陥ではない。 | 合成の担当を明記する（AppSession が EventTimeline から行を、TimeRangeModel から文字列を得て RowWindow を組み立てる。EventTimeline に新しい依存は足さない）。timeZone が変わったら表示範囲を取り寄せ直す（またはキャッシュのキーに timeZone を含める）ことを 1 行足す。project.md の Corrections（レビュー上限後の指摘は次の作業単位に回す）に従い、この単位では直さず Code Generation の実装メモか次の作業単位で扱ってよい。 | Unresolved |
+| R-09 | Minor | aidlc/spaces/default/intents/261002-cwlogs-viewer/construction/u4-time-range/functional-design/functional-spec.md > §3 DateTimeInput 状態遷移；entities.md > DateTimeInput.instant | 成果物は未変更のため、前回の指摘が残っている。(a) 状態遷移図に、切替で Valid から FormatError または Nonexistent に変わる経路（4 桁の年に表せない瞬間を文字列を残して解釈し直した結果。BR1.4）がない。(b) instant の制約「text を選んだタイムゾーンで解釈できたときだけ持つ」は、2 回現れる時刻の遅い方を作り直した文字列（解釈すると早い方になる）では成り立たず、BR1.4・BR1.5 の例外が entities 側に書かれていない。実装のずれには直結しないが、図と属性の説明が規則と食い違う。 | 状態遷移図に Valid から FormatError・Nonexistent への切替の矢印を足す（またはテキスト補足で触れる）。instant の制約に「切替で作り直した文字列は解釈すると別の瞬間になる場合があるが、利用者が書き換えるまで instant を保つ（BR1.4、BR1.5）」を足す。この単位では直さず、次の作業単位か Code Generation のメモで扱ってよい。 | Unresolved |
+
+### Validation Tool Results
+
+| Tool | Result | Interpretation |
+|---|---|---|
+| なし（この単位の functional-design にはスキーマ検証ツールの指定がなく、実行していない） | - | 参照整合は手作業で確認した。BR1.1〜BR3.5 は rules.md・entities.md・functional-spec.md・traceability.json の間で一致し、ValidationError の種類と BR の参照先も解決する。components.md の依存表（EventTimeline の依存先なし、AppSession が TimeRangeModel と EventTimeline に依存）と照合し、R-08 が残ることを確認した。 |
+
+### Summary
+
+成果物は前回の READY 時点から変わっておらず、R-01〜R-07 は解消のままで、Critical と Major は存在しない。残る R-08（RowWindow.displayTime の合成担当と切替時の取り寄せ直しの合図）と R-09（状態遷移図と instant の説明の小さな不整合）は Minor で、実装を妨げないため READY とする。

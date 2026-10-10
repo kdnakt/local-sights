@@ -1,0 +1,1 @@
+"ローカルで動くRust製クライアントアプリ。CloudWatch LogsのGetLogEvents APIを使ってロググループ/ログストリームのログを閲覧する（マネコンのFilterLogEventsやLogs Insightsでは古いロググループの過去ログが見えないケースがあるため）。まずはログ表示とフィルター、最終的にはLogs Insightsのような複雑なクエリも実装したい。"

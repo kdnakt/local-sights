@@ -1,0 +1,32 @@
+[package]
+name = "local-sights"
+description = "Desktop app (Tauri) of local-sights, a local CloudWatch Logs viewer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "local_sights_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "local-sights"
+path = "src/main.rs"
+
+[features]
+# Embeds the built screen (`dist/`) instead of loading the Vite dev server.
+# `npm run tauri build` enables it automatically; enable it yourself for a
+# plain `cargo build --release` or `cargo install` (see README.md).
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+local-sights-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri.workspace = true
+tokio.workspace = true

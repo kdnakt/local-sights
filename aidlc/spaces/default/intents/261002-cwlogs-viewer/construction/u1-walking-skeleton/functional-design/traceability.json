@@ -1,0 +1,409 @@
+{
+  "stage": "functional-design",
+  "unit":  "u1-walking-skeleton",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR4",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR4.6",
+    "FR4.7",
+    "FR4.8",
+    "FR4.9",
+    "FR4.10",
+    "FR4.11",
+    "FR5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR6",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR6.4",
+    "FR6.5",
+    "FR7",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3",
+    "FR7.4",
+    "FR7.5",
+    "FR7.6",
+    "FR7.7",
+    "FR7.8",
+    "FR7.9",
+    "FR8",
+    "FR8.1",
+    "FR8.2",
+    "FR8.3"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR1.1",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "BR1.5, BR1.7"
+    },
+    {
+      "id": "FR1.3",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR1.4",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR1.5",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR2",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR2.1",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR2.2",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR2.3",
+      "status": "Deferred",
+      "target": "U2"
+    },
+    {
+      "id": "FR3",
+      "status": "Deferred",
+      "target": "U4"
+    },
+    {
+      "id": "FR3.1",
+      "status": "OK",
+      "target": "BR1.2, BR2.1, BR5.3"
+    },
+    {
+      "id": "FR3.2",
+      "status": "Deferred",
+      "target": "U4"
+    },
+    {
+      "id": "FR3.3",
+      "status": "Deferred",
+      "target": "U4"
+    },
+    {
+      "id": "FR3.4",
+      "status": "Deferred",
+      "target": "U4"
+    },
+    {
+      "id": "FR3.5",
+      "status": "OK",
+      "target": "BR2.2"
+    },
+    {
+      "id": "FR3.6",
+      "status": "Deferred",
+      "target": "U4"
+    },
+    {
+      "id": "FR4",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.1",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.2",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.3",
+      "status": "OK",
+      "target": "BR3.1"
+    },
+    {
+      "id": "FR4.4",
+      "status": "OK",
+      "target": "BR3.2"
+    },
+    {
+      "id": "FR4.5",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.6",
+      "status": "OK",
+      "target": "BR3.3, BR5.1"
+    },
+    {
+      "id": "FR4.7",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.8",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.9",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR4.10",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR4.11",
+      "status": "Deferred",
+      "target": "U3"
+    },
+    {
+      "id": "FR5",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "BR5.2"
+    },
+    {
+      "id": "FR5.2",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR5.3",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR5.4",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR6",
+      "status": "Deferred",
+      "target": "U5"
+    },
+    {
+      "id": "FR6.1",
+      "status": "Deferred",
+      "target": "U5"
+    },
+    {
+      "id": "FR6.2",
+      "status": "Deferred",
+      "target": "U5"
+    },
+    {
+      "id": "FR6.3",
+      "status": "Deferred",
+      "target": "U5"
+    },
+    {
+      "id": "FR6.4",
+      "status": "Deferred",
+      "target": "U5"
+    },
+    {
+      "id": "FR6.5",
+      "status": "Deferred",
+      "target": "U5"
+    },
+    {
+      "id": "FR7",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.1",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.2",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.3",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.4",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.5",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.6",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.7",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.8",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR7.9",
+      "status": "Deferred",
+      "target": "U6"
+    },
+    {
+      "id": "FR8",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR8.1",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR8.2",
+      "status": "Deferred",
+      "target": "U7"
+    },
+    {
+      "id": "FR8.3",
+      "status": "OK",
+      "target": "BR4.3"
+    }
+  ],
+  "reverse": [
+    {
+      "id": "BR1.1",
+      "status": "N/A",
+      "target": "U1 の手入力の最小検証（FR3.4 の本体は U4）"
+    },
+    {
+      "id": "BR1.3",
+      "status": "N/A",
+      "target": "U1 の手入力の最小検証（FR3.4 の本体は U4）"
+    },
+    {
+      "id": "BR1.4",
+      "status": "N/A",
+      "target": "取得中のロックの最小版（FR4.8 の本体は U3）"
+    },
+    {
+      "id": "BR1.8",
+      "status": "N/A",
+      "target": "検証と範囲の算出を画面と確認用プログラムで共通にする設計上のルール（レビュー R-06）"
+    },
+    {
+      "id": "BR4.5",
+      "status": "N/A",
+      "target": "取得の進み具合とログの受け渡しの設計上のルール（レビュー R-01、ADR-007）"
+    },
+    {
+      "id": "BR1.6",
+      "status": "N/A",
+      "target": "U1 の接続先の決め方（Q1）"
+    },
+    {
+      "id": "BR3.4",
+      "status": "N/A",
+      "target": "読み取り API の制限（NFR6、project.md Forbidden）"
+    },
+    {
+      "id": "BR4.1",
+      "status": "N/A",
+      "target": "U1 の途中エラーの扱い（Q3。FR4.10 の本体は U3）"
+    },
+    {
+      "id": "BR4.2",
+      "status": "N/A",
+      "target": "エラーの分類（ADR-006）"
+    },
+    {
+      "id": "BR4.4",
+      "status": "N/A",
+      "target": "U1 の暫定のエラー表示（unit-of-work）"
+    },
+    {
+      "id": "BR5.4",
+      "status": "N/A",
+      "target": "件数表示の最小版（FR4.11 の本体は U3）"
+    },
+    {
+      "id": "BR6.1",
+      "status": "N/A",
+      "target": "英日の文言の土台（NFR12）"
+    },
+    {
+      "id": "BR6.2",
+      "status": "N/A",
+      "target": "キーボード操作の土台（NFR13）"
+    },
+    {
+      "id": "BR7.1",
+      "status": "N/A",
+      "target": "確認用プログラム（team.md Walking Skeleton、Q5）"
+    },
+    {
+      "id": "BR7.2",
+      "status": "N/A",
+      "target": "確認用プログラムの制約（project.md Forbidden）"
+    }
+  ]
+}

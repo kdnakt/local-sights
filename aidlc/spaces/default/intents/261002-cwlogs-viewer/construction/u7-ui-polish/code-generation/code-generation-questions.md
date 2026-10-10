@@ -8,8 +8,8 @@ U7 では、機能設計で決めた振る舞いを実現するのに新しく�
 
 対象：`code-generation-plan.md`（埋め込みの Testing Contract を含む）と `unit-test-instructions.md`。
 
-[Approval Fingerprint]: sha256:v3:93fbf4380dafa9bbdc8a7dc310cc8634cf6058a284ad5b6da24044479507e80c
-[Planned Source]: 79acfb5273895f4e34650680fbf40348860fb339341d7589b7b30b25703c4bd2
+[Approval Fingerprint]: sha256:v3:fbc035c2e1eba072094c1d87d8f8e6272d8fb03da7889aefd637ae2ec7ddc01f
+[Planned Source]: 328ce8d44136ce248e2b4b70c1570dee5a51b1ac17201f400b48acec77d61610
 
 - Approve Plan
 - Request Changes

@@ -1,6 +1,6 @@
 # Evidence
 
-> 下書き（リードの初版、Step 2）。協力エージェントなしの実行（collaborators: off）のため、調べたのはリード 1 人。逆解析（reverse-engineering）の成果物はこの記録にないので、ワークスペースそのものを証拠として使った。
+> 統合版（リード、Step 5）。協力エージェントなしの実行（collaborators: off）のため、調べたのはリード 1 人で、寄稿ファイルはない。逆解析（reverse-engineering）の成果物はこの記録にないので、ワークスペースそのものを証拠として使った。
 
 ## 調べたもの・推論したこと（リード：aidlc-pipeline-deploy-agent）
 
@@ -11,7 +11,7 @@
 | `aidlc/spaces/default/memory/org.md` | トランクベース・スクワッシュマージ、マージでステージングへ・本番は手動承認、の既定。サーバーがないため Deployment の既定はそのままでは当てはまらない（team.md の記述と同じ）。 |
 | `aidlc-state.md`（261011-local-release） | Brownfield。スコープ `bugfix`、プラン `local-release`。Test Strategy `Standard`。実行するのは practices-discovery → requirements-analysis → code-generation → build-and-test → ci-pipeline。Operation の段階（deployment-pipeline ほか）はすべて SKIP。 |
 | 261002-cwlogs-viewer の `inception/practices-discovery/evidence.md` | 前回の決定（Q6：MVP はソースビルドのみ、Releases は後で）と、未解決として残した「配布の後続：GitHub Releases、タグ規約、macOS の署名・公証は MVP 後に決める」。前回の initiative brief の要約では対象は macOS のみ（D-16）、個人開発・OSS。 |
-| `git log`（12 コミット、2026-10-03〜2026-10-10） | すべて PR 番号付きのスクワッシュコミット（`(#1)`〜`(#12)`）。`main` への直接 push の跡はない。Dependabot の PR も同じ流れでマージされている。タグは 1 つもない（`git tag --list` が空）。HEAD は `e722b0a`。 |
+| `git log`（12 コミット、2026-10-03〜2026-10-10） | すべて PR 番号付きのスクワッシュコミット（`(#1)`〜`(#12)`）。`main` への直接 push の跡はない。Dependabot の PR も同じ流れでマージされている。タグは 1 つもない（`git tag --list` が空）。下書きの時点の HEAD は `e722b0a`。統合の時点の HEAD は `d1cdac8` で、その間の 2 コミット（`bb6b21e`、`d1cdac8`）は AI-DLC の記録だけの変更のため、上の調査結果は変わらない。 |
 | `.github/workflows/ci.yml` | `pull_request` と `main` への push で実行。ジョブは `rust-core`（`cargo fmt --all --check`、`cargo clippy -p local-sights-core --all-targets`、`cargo test -p local-sights-core`）、`frontend`（`tsc --noEmit`、`eslint`、`prettier --check`、`vitest run`、`vite build`、`npm audit --audit-level=high`）、`cargo-deny`、`tauri-app`（ubuntu と macOS で `npm run build`、`cargo clippy --workspace --all-targets`、`cargo build -p local-sights`）。`permissions: contents: read`。リリース用のワークフロー、タグを合図にするジョブ、成果物（`.app` / `.dmg`）を作るジョブはない。AWS の認証情報は使っていない。 |
 | `.github/dependabot.yml` | cargo・npm・github-actions を毎週更新。aws-sdk・tauri・テスト関連をまとめる。 |
 | `deny.toml` | 脆弱性・unmaintained は失敗。許可するライセンスを列挙。取得元は crates.io のみ。例外は RUSTSEC-2024-0370（tauri → gtk 経由、Linux のみ）。 |
@@ -36,9 +36,27 @@
 - `git log`、`git tag --list`、`git rev-parse --short HEAD`
 - `.github/workflows/ci.yml`、`.github/dependabot.yml`、`deny.toml`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`Cargo.toml`、`crates/local-sights-core/Cargo.toml`、`package.json`、`README.md`、`.gitignore`
 
-## インタビューで決める点
+- インタビューの回答：`aidlc/spaces/default/intents/261011-local-release/inception/practices-discovery/practices-discovery-questions.md`（Q1〜Q7、すべて回答済み）
 
-各項目に、下書きの既定案と、その理由を書く。決めるのは人間で、既定案は答えではない。
+## インタビューでの決定
+
+人間が Q1〜Q7 で決めたこと。`team-practices.md` にはこれ以外の新しい決定を加えていない。
+
+| 質問 | 回答 | 決定 | 反映先 |
+|------|------|------|--------|
+| [Q1] 会社 PC の OS と CPU | A | macOS（Apple Silicon）だけに配る | `## Deployment`（配布の対象） |
+| [Q2] 会社 PC に何を入れるか | A | Tauri のインストーラ（`.app` を入れた `.dmg`）を作って入れる。`cargo install` は開発用に残す。回答の前に人間から「インストーラにすると版の更新が大変にならないか」と質問があり、更新は「新しい `.dmg` を取得し、`.app` を『アプリケーション』にドラッグして置き換える」、設定とキャッシュは `.app` の外にあるので残る、戻すときは前の `.dmg` を入れ直す、と説明したうえで A が選ばれた | `## Deployment`（配布の形、更新、戻し方） |
+| [Q3] どこでビルドして、どこに置くか | A | `main` に `vX.Y.Z` のタグを付けると GitHub Actions がビルドし、GitHub Releases に下書きとして置く。会社 PC はそこから取得する。手でファイルを運ぶ予備の手順（B）は選ばれなかった | `## Deployment`（作る場所と置き場所） |
+| [Q4] 署名と公証 | A | 今はしない。初回起動時の警告を開く方法を手順書に書く。会社のルールで未署名アプリが禁止と分かったら見直す | `## Deployment`（署名と公証）。署名用の秘密情報を扱わないため、R1 は `discovered-rules.md` に加えない |
+| [Q5] バージョンと更新・巻き戻し | A | セマンティックバージョニング（`v0.1.0` から）。3 か所の版をそろえ、タグと合わなければリリースのビルドを失敗させる。自動更新は付けず手で入れ替え、巻き戻しは前の版を入れ直す（前の版は Releases に残す） | `## Deployment`（バージョン、更新、戻し方） |
+| [Q6] 記述を CI の実態に合わせるか | A | 画面側のテスト（Vitest）と、Prettier・ESLint・`tsc --noEmit`・`npm audit --audit-level=high` を書き足す。下限の説明は「スコープ `local-tool`」ではなく「org.md のスコープ別の決まりに従う」に書き直す | `## Testing Posture`、`## Code Style` |
+| [Q7] GitHub 側の設定 | A | `main` の保護と秘密情報スキャンはどちらも有効にしてある | `## Way of Working` と `## Code Style` は文面を変えずに確定 |
+
+下書きで挙げた D7（リリース前とインストール後の確認）は質問に含めなかったため、`team-practices.md` には書いていない。D8（会社 PC の条件）は慣行ではないため質問に含めず、下の「未解決」として requirements-analysis に引き継ぐ。
+
+## 下書きで挙げた検討項目（記録として残す）
+
+各項目に、下書きの既定案と、その理由を書いた。最終的な決定は上の「インタビューでの決定」を正とする。
 
 ### Deployment（今回の中心）
 
@@ -70,8 +88,10 @@
 
 ## Assumptions & Open Questions
 
-- [assumption] 会社の PC は macOS で、使うのは開発者本人 1 人だけ（D1・D4・D8 で確かめる）。
-- [assumption] 会社の PC から GitHub Releases の成果物をダウンロードできる（D3 で確かめる）。
-- [assumption] 今回の作業では Operation の段階はすべて SKIP のため、配布の手順（リリース用のワークフローと README の手順）は ci-pipeline と code-generation で作る前提で考えた。
-- 未解決：`identifier` が `dev.local-sights.app` と `.app` で終わっている。Tauri は macOS のバンドルの拡張子と紛らわしいとして勧めていない。ただし変えると、キャッシュや設定の置き場所（`~/Library/Caches/dev.local-sights.app/` など）も変わる。慣行の話ではないため、requirements-analysis で扱うかどうかを決める。
-- 未解決：上の D1〜D8、T1・T2・C1・W1、R1 はすべてインタビューで人間が決める。
+- [Q1] 会社の PC は macOS（Apple Silicon）。使うのは開発者本人 1 人だけ、という点は前回の記録からの推論で、今回の質問では確かめていない。
+- [assumption] 今回の作業では Operation の段階はすべて SKIP のため、配布の手順（リリース用のワークフローと手順書）は code-generation と ci-pipeline で作る前提で考えた。
+- 未解決（requirements-analysis に引き継ぐ）：会社の PC で管理者権限があるか。ない場合に `.app` をどこに入れるか（例：`~/Applications`）。
+- 未解決（requirements-analysis に引き継ぐ）：会社でアプリのインストールに社内承認が要るか。また、未署名のアプリが会社のルールや MDM で禁止されていないか（禁止なら [Q4] の見直しが要る）。
+- 未解決（requirements-analysis に引き継ぐ）：社内ネットワークのプロキシの有無と、アプリから AWS への接続がプロキシ越しに通るか。
+- 未解決（requirements-analysis に引き継ぐ）：会社のネットワークから GitHub Releases に届くか。[Q3] で手で運ぶ予備の手順を選ばなかったため、届かない場合は配布の経路がなくなる。
+- 未解決（requirements-analysis に引き継ぐ）：`identifier` が `dev.local-sights.app` と `.app` で終わっている。Tauri は macOS のバンドルの拡張子と紛らわしいとして勧めていない。ただし変えると、キャッシュや設定の置き場所（`~/Library/Caches/dev.local-sights.app/` など）も変わり、[Q2] で説明した「置き換えても設定とキャッシュが残る」に影響する。慣行の話ではないため、requirements-analysis で扱うかどうかを決める。

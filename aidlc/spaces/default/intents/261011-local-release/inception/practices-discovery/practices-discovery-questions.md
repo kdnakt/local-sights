@@ -21,7 +21,7 @@ B. 今までどおりソースから `cargo install` / `npm run tauri build` し
 C. ビルドした `.app` だけを zip にして渡す
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q3. どこでビルドして、どこに置くか
 
@@ -30,7 +30,7 @@ B. A と同じだが、会社のネットワークから GitHub に届かない�
 C. 自分の手元の PC でビルドし、ファイルを手で会社 PC に運ぶ（GitHub Releases は使わない）
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q4. 署名と公証（notarization）
 
@@ -41,7 +41,7 @@ B. 署名と公証を行う（Apple Developer Program に加入する）
 C. 会社のルールをまだ確認していないので、要件定義の時点で決める
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q5. バージョンの付け方と更新・巻き戻し
 
@@ -52,7 +52,7 @@ B. A と同じだが、自動更新（Tauri の updater）も付ける
 C. バージョンは気にせず、日付などで区別する
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q6. チームの進め方の記述を、今の CI の実態に合わせるか
 
@@ -62,7 +62,7 @@ A. 実態に合わせて書き足す（画面側のテストとチェックを�
 B. 今のまま変えない
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q7. GitHub 側の設定
 
@@ -73,4 +73,4 @@ B. どちらか、または両方がまだ。今回の作業で有効にする�
 C. 分からない
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A

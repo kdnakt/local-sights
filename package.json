@@ -14,7 +14,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "icon:render": "node scripts/render-icon.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:version": "node scripts/release/check-version.mjs"
   },
   "dependencies": {
     "@cloudscape-design/components": "^3.0.1396",

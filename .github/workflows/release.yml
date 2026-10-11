@@ -1,0 +1,140 @@
+name: Release
+
+# Builds the macOS (Apple Silicon) .dmg for a tag vX.Y.Z pushed on a commit of
+# main and publishes it on GitHub Releases (not a draft). See docs/releasing.md.
+#
+# - verify: the tag has the form vX.Y.Z, matches the version in Cargo.toml,
+#   Cargo.lock, package.json and src-tauri/tauri.conf.json, and its commit is
+#   on main. Nothing else runs when this fails.
+# - test: the library tests and the screen tests, on the tagged commit.
+# - build-and-publish: runs only after both succeed. It builds the .dmg, checks
+#   that exactly one exists, and only then creates the Release (or, when the
+#   tag's Release already exists after a re-run, replaces the .dmg on it).
+#
+# The app is not signed or notarized. Only the automatic GITHUB_TOKEN is used:
+# no AWS credentials, no Apple certificates, no other secrets. No job talks to
+# AWS.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per tag at a time; a second run waits instead of cancelling the
+  # first, so a Release is never left half-made by a cancellation.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  verify:
+    name: Verify tag, versions and main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: tag form and version consistency
+        run: npm run check:version -- --tag "$TAG"
+      - name: tagged commit is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          commit="$(git rev-parse "refs/tags/$TAG^{commit}")"
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::Tag $TAG points to $commit, which is not on main. Tag a commit of main."
+            exit 1
+          fi
+          echo "Tag $TAG points to $commit on main."
+
+  test:
+    name: Tests (library and screen)
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: tests (library, unit + integration)
+        run: cargo test -p local-sights-core
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: vitest
+        run: npx vitest run
+
+  build-and-publish:
+    name: Build .dmg and publish the Release
+    needs: [verify, test]
+    runs-on: macos-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Apple Silicon runner
+        run: |
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::This runner is $(uname -m); the release .dmg is built for Apple Silicon (arm64) only."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: build the .dmg (unsigned)
+        run: npm run tauri build -- --bundles dmg
+      - name: exactly one Apple Silicon .dmg
+        id: dmg
+        run: |
+          shopt -s nullglob
+          dmgs=(target/release/bundle/dmg/*.dmg)
+          if [ "${#dmgs[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .dmg in target/release/bundle/dmg/, found ${#dmgs[@]}."
+            exit 1
+          fi
+          case "${dmgs[0]}" in
+            *aarch64*.dmg) ;;
+            *)
+              echo "::error::${dmgs[0]} is not an aarch64 (Apple Silicon) .dmg."
+              exit 1
+              ;;
+          esac
+          # GitHub rewrites spaces in asset names, so upload a copy whose name has
+          # none; a re-run then replaces the same asset name with --clobber.
+          upload="$RUNNER_TEMP/Local-Sights_${TAG#v}_aarch64.dmg"
+          cp "${dmgs[0]}" "$upload"
+          echo "Built ${dmgs[0]}; uploading as $(basename "$upload")"
+          echo "path=$upload" >> "$GITHUB_OUTPUT"
+      - name: publish the Release (or replace the .dmg on a re-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DMG: ${{ steps.dmg.outputs.path }}
+          NOTES: "Built from commit ${{ github.sha }} (tag ${{ github.ref_name }}) by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Unsigned macOS (Apple Silicon) build: see docs/install.md."
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists: replacing its .dmg."
+            gh release upload "$TAG" "$DMG" --clobber
+          else
+            gh release create "$TAG" "$DMG" --verify-tag --title "Local Sights $TAG" \
+              --notes "$NOTES" --generate-notes
+          fi

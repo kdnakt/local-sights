@@ -31,6 +31,16 @@ no telemetry or crash reports anywhere.
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
 
+## Install
+
+To use the app on a Mac with Apple Silicon (for example a company PC), install
+the released `.dmg` from
+[GitHub Releases](https://github.com/kdnakt/local-sights/releases): see
+[docs/install.md](docs/install.md) for installing, the first-launch warning of
+the unsigned app, updating and going back to an earlier version. The AWS
+preparation in [Prerequisites](#prerequisites) is needed there too. The rest of
+this README is for development.
+
 ## Layout
 
 | Path                                               | What it is                                                                                                           |
@@ -39,6 +49,8 @@ and `logs:GetLogEvents`.
 | `crates/local-sights-core/examples/fetch_check.rs` | Developer-only command-line check against real AWS                                                                   |
 | `src-tauri/`                                       | Tauri app (`local-sights`): commands and events only                                                                 |
 | `src/`                                             | Screen (Vite + React + TypeScript)                                                                                   |
+| `scripts/release/`                                 | Release version check (`npm run check:version`)                                                                      |
+| `docs/`                                            | Installing the released app and making a release                                                                     |
 
 ## Prerequisites
 
@@ -67,7 +79,8 @@ npm run tauri dev      # development window with hot reload
 npm run tauri build    # release bundle under target/release/bundle/
 ```
 
-Or install the binary from source (builds the screen first):
+Or, for development, install the binary from source (builds the screen
+first):
 
 ```bash
 npm ci && npm run build
@@ -302,7 +315,15 @@ cargo fmt --check
 cargo clippy --workspace
 npm run typecheck && npm run lint && npm run format:check
 npm audit
+npm run check:version           # same version in Cargo.toml, Cargo.lock, package.json, tauri.conf.json
 ```
+
+## Releasing
+
+A tag `vX.Y.Z` pushed on a commit of `main` builds the Apple Silicon `.dmg`
+and publishes it on GitHub Releases. See [docs/releasing.md](docs/releasing.md)
+for raising the version, tagging, and what happens when a run fails or is run
+again.
 
 ## Secrets
 

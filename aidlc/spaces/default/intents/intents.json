@@ -13,5 +13,13 @@
     "scope": "bugfix",
     "status": "complete",
     "request": "4e96ca27"
+  },
+  {
+    "uuid": "01a12a44-db44-7e0c-9eb6-9cc0e86c171e",
+    "slug": "local-release",
+    "dirName": "261011-local-release",
+    "scope": "bugfix",
+    "status": "complete",
+    "request": "2e6d1582"
   }
 ]

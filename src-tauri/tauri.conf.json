@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "local-sights",
+  "productName": "Local Sights",
   "version": "0.1.0",
   "identifier": "dev.local-sights.app",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "local-sights",
+        "title": "Local Sights",
         "width": 1200,
         "height": 800,
         "minWidth": 1024,

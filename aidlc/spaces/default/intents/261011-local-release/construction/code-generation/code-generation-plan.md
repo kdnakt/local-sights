@@ -88,16 +88,16 @@
 
 ### Step 1: 構成の土台 [FR2]
 
-- [ ] `scripts/release/` を新しく作る。純粋なロジックは `scripts/release/versions.ts`（Node の API を使わない）に置き、ファイルを読んで結果を表示する入口は `scripts/release/check-version.mjs` に分ける。
-- [ ] `tsconfig.json` の `include` に `scripts` を足し、`vitest.config.ts` の `include` に `scripts/**/*.test.ts` を足す（既存の `src/**/*.test.{ts,tsx}` は残す）。ESLint は既存の設定のまま `.ts` を対象にする。
+- [x] `scripts/release/` を新しく作る。純粋なロジックは `scripts/release/versions.ts`（Node の API を使わない）に置き、ファイルを読んで結果を表示する入口は `scripts/release/check-version.mjs` に分ける。
+- [x] `tsconfig.json` の `include` に `scripts` を足し、`vitest.config.ts` の `include` に `scripts/**/*.test.ts` を足す（既存の `src/**/*.test.{ts,tsx}` は残す）。ESLint は既存の設定のまま `.ts` を対象にする。
 
 ### Step 2: テストの実行環境を確かめる
 
-- [ ] 既存の Vitest で、この作業のテストだけを実行するコマンドが動くことを確かめ、`unit-test-instructions.md` に記録する：`npx vitest run scripts/release/versions.test.ts src/App.title.test.tsx`（Step 3 の時点ではファイルがまだないため、まず `npx vitest run scripts/release` が「テストなし」で終わることを確かめる）。
+- [x] 既存の Vitest で、この作業のテストだけを実行するコマンドが動くことを確かめ、`unit-test-instructions.md` に記録する：`npx vitest run scripts/release/versions.test.ts src/App.title.test.tsx`（Step 3 の時点ではファイルがまだないため、まず `npx vitest run scripts/release` が「テストなし」で終わることを確かめる）。
 
 ### Step 3: 版番号の検査ロジックのテストを先に書く（失敗を確かめる）[FR2.1〜FR2.5]
 
-- [ ] `scripts/release/versions.test.ts` に次のテストを書く。`versions.ts` がまだないため、すべて失敗することを確かめて記録する。
+- [x] `scripts/release/versions.test.ts` に次のテストを書く。`versions.ts` がまだないため、すべて失敗することを確かめて記録する。
   1. `parseTag("v0.1.0")` が `0.1.0` を返す。
   2. `parseTag` が `v1.2`、`1.2.3`、`release-1`、`v01.2.3`（先頭のゼロ）、`v1.2.3-rc.1`（今回は扱わない）を、理由つきで拒む。
   3. `readCargoWorkspaceVersion` が `Cargo.toml` の `[workspace.package]` の `version` を取り出す（他の節の `version` は拾わない）。
@@ -113,45 +113,45 @@
 
 ### Step 4: 版番号の検査ロジックを実装する（テストを通す）[FR2.1〜FR2.5]
 
-- [ ] `scripts/release/versions.ts` に `parseTag`・`readCargoWorkspaceVersion`・`readCargoLockVersions`・`readJsonVersion`・`checkVersions` を実装する。外部のライブラリは足さない（TOML は必要な部分だけを行単位で読む）。
-- [ ] `npx vitest run scripts/release/versions.test.ts` がすべて通ることを確かめる。通ったあと、読みやすさを整える。
+- [x] `scripts/release/versions.ts` に `parseTag`・`readCargoWorkspaceVersion`・`readCargoLockVersions`・`readJsonVersion`・`checkVersions` を実装する。外部のライブラリは足さない（TOML は必要な部分だけを行単位で読む）。
+- [x] `npx vitest run scripts/release/versions.test.ts` がすべて通ることを確かめる。通ったあと、読みやすさを整える。
 
 ### Step 5: 検査の入口と npm のコマンドを足す [FR2.2、FR2.5]
 
-- [ ] `scripts/release/check-version.mjs` を実装する：リポジトリの 4 つのファイル（`Cargo.toml`、`Cargo.lock`、`package.json`、`src-tauri/tauri.conf.json`）を読み、`versions.ts` の `checkVersions` を呼ぶ。`--tag vX.Y.Z` を受け取ったときはタグとも比べる。成功なら版を 1 行表示して終了コード 0、失敗なら理由を標準エラーに出して終了コード 1。ファイルが読めないときもファイル名を示して 1 で終わる。
-- [ ] `package.json` に `"check:version": "node scripts/release/check-version.mjs"` を足す（Node 22.18 以降は `.ts` をそのまま読み込める。必要な Node の版を手順書に書く）。
-- [ ] 手元で `npm run check:version` が成功すること、`npm run check:version -- --tag v9.9.9` が失敗することを確かめる。
+- [x] `scripts/release/check-version.mjs` を実装する：リポジトリの 4 つのファイル（`Cargo.toml`、`Cargo.lock`、`package.json`、`src-tauri/tauri.conf.json`）を読み、`versions.ts` の `checkVersions` を呼ぶ。`--tag vX.Y.Z` を受け取ったときはタグとも比べる。成功なら版を 1 行表示して終了コード 0、失敗なら理由を標準エラーに出して終了コード 1。ファイルが読めないときもファイル名を示して 1 で終わる。
+- [x] `package.json` に `"check:version": "node scripts/release/check-version.mjs"` を足す（Node 22.18 以降は `.ts` をそのまま読み込める。必要な Node の版を手順書に書く）。
+- [x] 手元で `npm run check:version` が成功すること、`npm run check:version -- --tag v9.9.9` が失敗することを確かめる。
 
 ### Step 6: 表示名を `Local Sights` にする（実装してからテスト）[FR1.1〜FR1.3]
 
-- [ ] `src-tauri/tauri.conf.json` の `productName` を `Local Sights`、`app.windows[0].title` を `Local Sights` にする。`identifier` は `dev.local-sights.app` のまま変えない。
-- [ ] `index.html` の `<title>` と、`src/i18n/messages.ts` の `app.title`（英語・日本語とも）を `Local Sights` にする。
-- [ ] 表示名の画面テスト `src/App.title.test.tsx` を書く：アプリの見出しが `Local Sights` と表示される。既存の画面テストに `local-sights` の見出しを前提にしたものがあれば合わせて直す。
+- [x] `src-tauri/tauri.conf.json` の `productName` を `Local Sights`、`app.windows[0].title` を `Local Sights` にする。`identifier` は `dev.local-sights.app` のまま変えない。
+- [x] `index.html` の `<title>` と、`src/i18n/messages.ts` の `app.title`（英語・日本語とも）を `Local Sights` にする。
+- [x] 表示名の画面テスト `src/App.title.test.tsx` を書く：アプリの見出しが `Local Sights` と表示される。既存の画面テストに `local-sights` の見出しを前提にしたものがあれば合わせて直す。
 
 ### Step 7: 通常の CI に版の検査を足す [FR2.5、NFR6]
 
-- [ ] `.github/workflows/ci.yml` の `frontend` ジョブに `npm run check:version` の手順を足す。ほかのジョブ・権限（`contents: read`）は変えない。
+- [x] `.github/workflows/ci.yml` の `frontend` ジョブに `npm run check:version` の手順を足す。ほかのジョブ・権限（`contents: read`）は変えない。
 
 ### Step 8: リリース用ワークフローを作る [FR3.1〜FR3.8、NFR1〜NFR4、NFR7]
 
-- [ ] `.github/workflows/release.yml` を作る。
+- [x] `.github/workflows/release.yml` を作る。
   - きっかけ：`push` の `tags: ["v*"]` だけ。全体の権限は `contents: read`。同じタグで重ならないよう `concurrency` を設定する（取り消しはしない）。
   - ジョブ `verify`（ubuntu、タイムアウト 10 分）：全履歴を取得し、タグの形を確かめ（`npm run check:version -- --tag "$GITHUB_REF_NAME"`）、タグのコミットが `origin/main` に含まれることを `git merge-base --is-ancestor` で確かめる。含まれなければ理由を出して失敗する。
   - ジョブ `test`（ubuntu、タイムアウト 20 分、`needs: verify`）：`cargo test -p local-sights-core` と `npm ci` → `npx vitest run` を実行する。
   - ジョブ `build-and-publish`（`macos-latest` の Apple Silicon、タイムアウト 40 分、`needs: [verify, test]`）：このジョブだけ `contents: write`。`npm ci` → `npm run tauri build -- --bundles dmg` で `.dmg` を作り、`target/release/bundle/dmg/` に `.dmg` がちょうど 1 つあることを確かめる。そのタグの Release があれば `gh release upload "$TAG" <dmg> --clobber` で置き換え、なければ `gh release create "$TAG" <dmg> --verify-tag --generate-notes --title "Local Sights $TAG"` で作って公開する。`GITHUB_TOKEN` だけを使う。
   - 既存の CI と同じ版の actions（`actions/checkout@v7`、`actions/setup-node@v7`、`dtolnay/rust-toolchain@stable`、`Swatinem/rust-cache@v2`）を使う。AWS の認証情報や他の秘密情報は使わない。
-- [ ] 失敗したときは Release を作らないこと（`build-and-publish` は前のジョブがすべて成功したときだけ動き、Release の作成は `.dmg` の確認の後に置く）を、ワークフローの並びで確かめる。
+- [x] 失敗したときは Release を作らないこと（`build-and-publish` は前のジョブがすべて成功したときだけ動き、Release の作成は `.dmg` の確認の後に置く）を、ワークフローの並びで確かめる。
 
 ### Step 9: 手順書を書く [FR4.2、FR4.3、FR5.1〜FR5.8]
 
-- [ ] `docs/install.md`（英語）：必要なもの（macOS Apple Silicon、`~/.aws/config` の準備は README を参照）、入れる前に会社のルールを確かめること、GitHub Releases からの取得、`/Applications` と `~/Applications` の 2 通りの入れ方、初回起動の警告の開き方（「システム設定」→「プライバシーとセキュリティ」→「このまま開く」、および `xattr -dr com.apple.quarantine "<path>/Local Sights.app"`）、更新、前の版への戻し方、版の確かめ方、古い版で設定やキャッシュが読めないときにキャッシュのフォルダ（`~/Library/Caches/dev.local-sights.app/`）を消す方法。秘密情報の例は書かない。
-- [ ] `docs/releasing.md`（英語）：3 か所の版を上げる → `cargo update -w` で `Cargo.lock` を更新 → `npm run check:version` → プルリクエストを `main` にスクワッシュマージ → `main` を取り込んでタグ `vX.Y.Z` を付けて push → ワークフローの成功と Release の公開を確かめる → 公開された `.dmg` を手元の Mac に入れて起動する。同じタグで再実行したときの扱い（`.dmg` を置き換える）と、失敗したときに Release が作られないことも書く。
-- [ ] `README.md`：見出しと冒頭を `Local Sights` に合わせ、「インストール」の節から `docs/install.md` へ、開発者向けの節から `docs/releasing.md` へ案内する。`cargo install` の手順は開発用として残す。
+- [x] `docs/install.md`（英語）：必要なもの（macOS Apple Silicon、`~/.aws/config` の準備は README を参照）、入れる前に会社のルールを確かめること、GitHub Releases からの取得、`/Applications` と `~/Applications` の 2 通りの入れ方、初回起動の警告の開き方（「システム設定」→「プライバシーとセキュリティ」→「このまま開く」、および `xattr -dr com.apple.quarantine "<path>/Local Sights.app"`）、更新、前の版への戻し方、版の確かめ方、古い版で設定やキャッシュが読めないときにキャッシュのフォルダ（`~/Library/Caches/dev.local-sights.app/`）を消す方法。秘密情報の例は書かない。
+- [x] `docs/releasing.md`（英語）：3 か所の版を上げる → `cargo update -w` で `Cargo.lock` を更新 → `npm run check:version` → プルリクエストを `main` にスクワッシュマージ → `main` を取り込んでタグ `vX.Y.Z` を付けて push → ワークフローの成功と Release の公開を確かめる → 公開された `.dmg` を手元の Mac に入れて起動する。同じタグで再実行したときの扱い（`.dmg` を置き換える）と、失敗したときに Release が作られないことも書く。
+- [x] `README.md`：見出しと冒頭を `Local Sights` に合わせ、「インストール」の節から `docs/install.md` へ、開発者向けの節から `docs/releasing.md` へ案内する。`cargo install` の手順は開発用として残す。
 
 ### Step 10: 整形・静的検査・テストの通しと記録
 
-- [ ] `npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`cargo fmt --all --check`、`cargo test -p local-sights-core` を実行し、すべて通ることを確かめる。
-- [ ] `code-summary.md` と `traceability.json` を書く。
+- [x] `npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`cargo fmt --all --check`、`cargo test -p local-sights-core` を実行し、すべて通ることを確かめる。
+- [x] `code-summary.md` と `traceability.json` を書く。
 
 ## 確かめ方（要件ごと）
 

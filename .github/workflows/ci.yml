@@ -49,6 +49,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: version consistency (Cargo.toml, Cargo.lock, package.json, tauri.conf.json)
+        run: npm run check:version
       - name: typecheck
         run: npx tsc --noEmit
       - name: eslint

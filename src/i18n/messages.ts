@@ -26,7 +26,7 @@ export type Locale = "en" | "ja";
 
 /** Every screen text by message key, in English and Japanese (NFR12). */
 export const messages = {
-  "app.title": { en: "local-sights", ja: "local-sights" },
+  "app.title": { en: "Local Sights", ja: "Local Sights" },
   "form.label": { en: "Fetch conditions", ja: "取得条件" },
   "form.selectedLogGroup.label": { en: "Log group", ja: "ロググループ" },
   "form.selectedLogGroup.none": { en: "Not selected", ja: "未選択" },

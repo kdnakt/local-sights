@@ -44,6 +44,12 @@ and the Release workflow runs the second before building anything.
 3. Check: `npm run check:version` must print the new version.
 4. Commit, open a pull request to `main`, wait until every CI job is green,
    and squash-merge it.
+   - Optional, recommended before the first release or after changing the
+     bundle settings: in the **Actions** tab, run **Release dry run** ("Run
+     workflow") on the branch or on `main`. It builds the `.dmg` on the macOS
+     runner without a tag and without publishing anything, and keeps it as the
+     `local-sights-dmg-dry-run` artifact for 7 days. A failure here is found
+     before you tag.
 5. Tag the merged commit of `main` and push the tag:
 
    ```bash

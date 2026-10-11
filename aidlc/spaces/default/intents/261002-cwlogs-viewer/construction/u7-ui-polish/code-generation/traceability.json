@@ -42,7 +42,9 @@
     "NFR11",
     "NFR12",
     "NFR13",
-    "NFR16"
+    "NFR16",
+    "NFR7",
+    "NFR9"
   ],
   "coverage": [
     {
@@ -247,6 +249,16 @@
     },
     {
       "id": "NFR16",
+      "status": "OK",
+      "target": "src-tauri/src/lib.rs"
+    },
+    {
+      "id": "NFR7",
+      "status": "OK",
+      "target": "src-tauri/tauri.conf.json"
+    },
+    {
+      "id": "NFR9",
       "status": "OK",
       "target": "src-tauri/src/lib.rs"
     }

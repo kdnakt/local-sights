@@ -9,7 +9,7 @@
     "BR5.1", "BR5.2", "BR5.3", "BR5.4",
     "BR6.1", "BR6.2",
     "BR7.1", "BR7.2",
-    "FR1.2", "FR3.1", "FR3.5", "FR4.3", "FR4.4", "FR4.6", "FR5.1", "FR8.3"
+    "FR1.2", "FR3.1", "FR3.5", "FR4.3", "FR4.4", "FR4.6", "FR5.1", "FR8.3", "NFR14"
   ],
   "coverage": [
     { "id": "BR1.1", "status": "OK", "target": "crates/local-sights-core/src/request.rs" },
@@ -46,6 +46,7 @@
     { "id": "FR4.4", "status": "OK", "target": "crates/local-sights-core/src/paging.rs" },
     { "id": "FR4.6", "status": "OK", "target": "crates/local-sights-core/src/timeline.rs" },
     { "id": "FR5.1", "status": "OK", "target": "src/components/LogTable.tsx" },
-    { "id": "FR8.3", "status": "OK", "target": "crates/local-sights-core/src/failure.rs" }
+    { "id": "FR8.3", "status": "OK", "target": "crates/local-sights-core/src/failure.rs" },
+    { "id": "NFR14", "status": "OK", "target": "crates/local-sights-core/src/gateway/mod.rs" }
   ]
 }

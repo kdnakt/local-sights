@@ -21,9 +21,9 @@ use support::fake_gateway::{FakeGateway, failure, page, stream_page};
 use support::recording_sink::{Delivered, RecordingSink};
 use tokio::time::Instant;
 
-/// 2024-01-02 03:04:05 UTC in epoch milliseconds (start of the range).
+/// 2024/01/02 03:04:05 UTC in epoch milliseconds (start of the range).
 const START: i64 = 1_704_164_645_000;
-/// 2024-01-02 03:05:05.999 UTC (end of the range).
+/// 2024/01/02 03:05:05.999 UTC (end of the range).
 const END: i64 = START + 60_999;
 /// One millisecond older than the listing margin (BR1.2).
 const TOO_OLD: i64 = START - 3_600_000 - 1;
@@ -32,8 +32,8 @@ fn validated() -> ValidatedFetch {
     validate_fetch_input(&FetchInput {
         profile_name: "dev".to_string(),
         log_group_name: "/aws/lambda/orders".to_string(),
-        start_text: "2024-01-02 03:04:05".to_string(),
-        end_text: "2024-01-02 03:05:05".to_string(),
+        start_text: "2024/01/02 03:04:05".to_string(),
+        end_text: "2024/01/02 03:05:05".to_string(),
     })
     .expect("test input is valid")
 }

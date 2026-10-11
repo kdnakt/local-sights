@@ -7,6 +7,14 @@
     "status": "complete"
   },
   {
+    "uuid": "01a125ae-1d05-7e5a-bc15-bb7cef21b5d3",
+    "slug": "console-ui-polish",
+    "dirName": "261010-console-ui-polish",
+    "scope": "bugfix",
+    "status": "complete",
+    "request": "4e96ca27"
+  },
+  {
     "uuid": "01a12a44-db44-7e0c-9eb6-9cc0e86c171e",
     "slug": "local-release",
     "dirName": "261011-local-release",

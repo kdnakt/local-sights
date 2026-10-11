@@ -22,6 +22,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { perfRows } from "./dev/perfRows";
 
 export type Phase = "Idle" | "Fetching" | "Done" | "Failed";
 
@@ -378,13 +379,23 @@ export function startFetch(generation: number): Promise<void> {
   return invoke<void>("start_fetch", { generation });
 }
 
-/** Reads at most `limit` rows of the timeline from `offset`. */
+/**
+ * Reads at most `limit` rows of the timeline from `offset`. With the
+ * developer-only measurement harness on (`VITE_LOCAL_SIGHTS_PERF_ROWS`,
+ * `dev/perfRows.ts`) the rows are generated here instead.
+ */
 export function getRows(offset: number, limit: number): Promise<RowWindow> {
+  if (perfRows.enabled) {
+    return Promise.resolve(perfRows.getRows(offset, limit));
+  }
   return invoke<RowWindow>("get_rows", { offset, limit });
 }
 
 /** U7:BR1.7: the current positions of several rows in one call. */
 export function rowPositions(keys: RowKeyParts[]): Promise<RowPositions> {
+  if (perfRows.enabled) {
+    return Promise.resolve(perfRows.rowPositions(keys));
+  }
   return invoke<RowPositions>("row_positions", { keys });
 }
 
@@ -411,6 +422,9 @@ export function selectTimeZone(timeZone: TimeZoneChoice): Promise<void> {
  * too. The new state arrives through `session-changed` and `filter-progress`.
  */
 export function setLogFilter(text: string): Promise<void> {
+  if (perfRows.enabled) {
+    perfRows.setFilter(text);
+  }
   return invoke<void>("set_log_filter", { text });
 }
 

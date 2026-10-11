@@ -92,3 +92,4 @@ None. (affirmed 2026-10-11)
 - [u2-connection-selection] 接続を変えるとき、表示中のログがあるときだけ確認ダイアログを出す（Q6 の利用者の追加要望） (learned 2026-10-08) <!-- cid:261002-cwlogs-viewer:functional-design:57ebd43fe68119647b5a71a8683754a87a0c2c60db85c4cbc69814e4ca83a126 -->
 - [u2-connection-selection] 起動時は何も選ばず、前回の選択も覚えない（Q2） (learned 2026-10-08) <!-- cid:261002-cwlogs-viewer:functional-design:d5aff9e10d6a4f59eaceca08a07e1c016d4ee722af07db2db6449de11e2be4c9 -->
 - [u3-fetch-robustness] ストリームは 1 つずつ順に取得し、再試行は要求ごとに最大 5 回、使い切りが 3 ストリーム続いたら残りを失敗とする（Q1、レビュー R-03） (learned 2026-10-08) <!-- cid:261002-cwlogs-viewer:functional-design:6d59d767a9363c5268cead56212e8b6684687044cf966255c1ab8c4d6c10c221 -->
+- 依頼文の中の「〜したほうがいいかも？」のような相談は、根拠（例：マネジメントコンソールの振る舞い）を添えた推奨つきの追加質問で確認して決める (learned 2026-10-10) <!-- cid:261010-console-ui-polish:intent-capture:40f367fe7c8d1469208a6ccd7773a65f6136edd66a4f4e530d8b7778a4154bd5 -->

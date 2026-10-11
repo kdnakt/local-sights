@@ -118,14 +118,119 @@ describe("message catalog", () => {
       }
     }
     const local = translate("ja", timeZoneLabelKey("Local"));
-    expect(translate("ja", "form.start.label", { zone: local })).toBe("開始日時（ローカル）");
+    expect(translate("ja", "form.start.label", { zone: local })).toBe("開始（ローカル）");
     expect(translate("ja", "table.time", { zone: local })).toBe("時刻（ローカル）");
     expect(translate("en", "table.time", { zone: translate("en", timeZoneLabelKey("Utc")) })).toBe(
       "Time (UTC)",
     );
     expect(translate("ja", "validation.startFormat", { zone: local })).toBe(
-      "開始日時は yyyy-mm-dd hh:mm:ss の形で入力してください（ローカル）。",
+      "開始は yyyy/mm/dd hh:mm:ss の形で入力してください（ローカル）。",
     );
+  });
+
+  // ---- console-style screen (261010-console-ui-polish, interaction-spec §9) ----
+
+  it("has the console-style texts in both languages", () => {
+    for (const key of [
+      "form.start.date",
+      "form.start.time",
+      "form.end.date",
+      "form.end.time",
+      "form.date.placeholder",
+      "form.time.placeholder",
+      "form.date.required",
+      "form.date.format",
+      "form.time.format",
+      "logGroups.column.name",
+      "logGroups.selection",
+      "logGroups.filter.clear",
+      "logFilter.clear",
+      "table.empty",
+      "table.noMatches",
+      "failures.column.stream",
+      "failures.column.reason",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    // Gate fix 15c: the heading states the selection; the prompt is the reason line's.
+    expect(messages["form.selectedLogGroup.none"]).toEqual({
+      en: "Log group: none",
+      ja: "ロググループ: 未選択",
+    });
+    for (const locale of ["en", "ja"] as const) {
+      expect(messages["form.selectedLogGroup.none"][locale]).not.toBe(
+        messages["selection.logGroupRequired"][locale],
+      );
+    }
+    expect(messages["logGroups.filter.label"]).toEqual({
+      en: "Find log groups",
+      ja: "ロググループを検索",
+    });
+    // Gate fix 15e: the field filters messages, not "events".
+    expect(messages["logFilter.label"]).toEqual({
+      en: "Filter messages",
+      ja: "メッセージを絞り込み",
+    });
+    expect(messages["logFilter.placeholder"]).toEqual(messages["logFilter.label"]);
+    expect(messages["form.date.format"]).toEqual({
+      en: "Enter the date as yyyy/mm/dd.",
+      ja: "日付は yyyy/mm/dd の形で入力してください。",
+    });
+    expect(messages["form.time.format"]).toEqual({
+      en: "Enter the time as hh:mm:ss.",
+      ja: "時刻は hh:mm:ss の形で入力してください。",
+    });
+    expect(messages["form.date.required"]).toEqual({
+      en: "Enter a date.",
+      ja: "日付を入力してください。",
+    });
+    expect(messages["validation.rangeOrder"]).toEqual({
+      en: "End must be after start.",
+      ja: "終了は開始より後にしてください。",
+    });
+    expect(messages["table.empty"]).toEqual({
+      en: "No events. Select a log group, set a time range, then choose Fetch.",
+      ja: "イベントがありません。ロググループを選び、期間を指定して [取得] を押してください。",
+    });
+  });
+
+  it("writes every date as yyyy/mm/dd and keeps no hyphenated format text (FR2.3)", () => {
+    for (const gone of ["form.reasons.title", "form.dateTime.placeholder"]) {
+      expect(isMessageKey(gone), gone).toBe(false);
+    }
+    for (const [key, texts] of Object.entries(messages)) {
+      expect(texts.en, key).not.toMatch(/yyyy-mm-dd/);
+      expect(texts.ja, key).not.toMatch(/yyyy-mm-dd/);
+    }
+    for (const key of ["validation.startFormat", "validation.endFormat"] as const) {
+      expect(messages[key].en).toContain("yyyy/mm/dd hh:mm:ss");
+      expect(messages[key].ja).toContain("yyyy/mm/dd hh:mm:ss");
+    }
+    expect(translate("en", "validation.endFormat", { zone: "UTC" })).toBe(
+      "Enter the end as a valid yyyy/mm/dd hh:mm:ss (UTC).",
+    );
+  });
+
+  it("names the SDK default profile Default in both languages (gate fixes 14b, 15a)", () => {
+    expect(messages["connection.profile.sdkDefault"]).toEqual({
+      en: "Default",
+      ja: "デフォルト",
+    });
+    expect(translate("ja", "connection.profile.sdkDefault").length).toBeLessThan(10);
+    expect(translate("en", "connection.profile.sdkDefault")).not.toMatch(/SDK/);
+  });
+
+  it("names the app Local Sights in both languages and has the pane texts (gate fixes 14h, 14d, 15b)", () => {
+    expect(messages["app.title"]).toEqual({ en: "Local Sights", ja: "Local Sights" });
+    expect(isMessageKey("pane.resizer")).toBe(true);
+    expect(messages["pane.collapse"]).toEqual({
+      en: "Close the log group list",
+      ja: "ロググループ一覧を閉じる",
+    });
+    expect(messages["pane.expand"]).toEqual({
+      en: "Open the log group list",
+      ja: "ロググループ一覧を開く",
+    });
   });
 
   it("has distinct daylight saving reasons in both languages", () => {

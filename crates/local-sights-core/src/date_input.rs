@@ -29,7 +29,7 @@ use crate::time_range::{DateTimeParseError, format_input_in_zone, parse_in_zone}
 /// Why a non-empty input has no instant (U4:BR1.2, BR2.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum DateTimeInputError {
-    /// Not a valid `yyyy-mm-dd hh:mm:ss`.
+    /// Not a valid `yyyy/mm/dd hh:mm:ss`.
     Format,
     /// Skipped by the start of daylight saving time in the local zone; only
     /// possible while the local zone is chosen.
@@ -158,18 +158,23 @@ mod tests {
 
     #[test]
     fn valid_text_holds_the_instant_in_the_chosen_zone() {
-        let input = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
-        assert_eq!(input.text(), "2024-03-01 10:00:00");
-        assert_eq!(input.instant(), Some(utc("2024-03-01 01:00:00")));
+        let input = DateTimeInput::parse("2024/03/01 10:00:00", TOKYO);
+        assert_eq!(input.text(), "2024/03/01 10:00:00");
+        assert_eq!(input.instant(), Some(utc("2024/03/01 01:00:00")));
         assert_eq!(input.error(), None);
     }
 
     #[test]
     fn invalid_text_holds_an_error_and_no_instant() {
-        let malformed = DateTimeInput::parse("2024-13-01 00:00:00", Tz::UTC);
+        let malformed = DateTimeInput::parse("2024/13/01 00:00:00", Tz::UTC);
         assert_eq!(malformed.error(), Some(DateTimeInputError::Format));
         assert_eq!(malformed.instant(), None);
-        let skipped = DateTimeInput::parse("2024-03-10 02:30:00", NEW_YORK);
+        // FR2.4: the hyphen-separated date of the MVP is a format error.
+        let hyphenated = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
+        assert_eq!(hyphenated.error(), Some(DateTimeInputError::Format));
+        assert_eq!(hyphenated.instant(), None);
+        assert_eq!(hyphenated.text(), "2024-03-01 10:00:00");
+        let skipped = DateTimeInput::parse("2024/03/10 02:30:00", NEW_YORK);
         assert_eq!(
             skipped.error(),
             Some(DateTimeInputError::NonexistentLocalTime)
@@ -179,14 +184,15 @@ mod tests {
 
     #[test]
     fn switching_zones_rewrites_the_text_and_keeps_the_instant() {
-        // Acceptance criterion: Tokyo 10:00:00 <-> UTC 01:00:00.
-        let mut input = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
+        // Acceptance criterion: Tokyo 10:00:00 <-> UTC 01:00:00, written
+        // with slashes (FR1.5, FR2.1).
+        let mut input = DateTimeInput::parse("2024/03/01 10:00:00", TOKYO);
         let instant = input.instant();
         input.switch_zone(Tz::UTC);
-        assert_eq!(input.text(), "2024-03-01 01:00:00");
+        assert_eq!(input.text(), "2024/03/01 01:00:00");
         assert_eq!(input.instant(), instant);
         input.switch_zone(TOKYO);
-        assert_eq!(input.text(), "2024-03-01 10:00:00");
+        assert_eq!(input.text(), "2024/03/01 10:00:00");
         assert_eq!(input.instant(), instant);
     }
 
@@ -194,20 +200,20 @@ mod tests {
     fn the_later_of_two_repeated_times_survives_a_round_trip() {
         // 06:30 UTC is the second 01:30 in New York (EST); the rewritten
         // text would parse to the first one, so it is not re-parsed (R-09).
-        let mut input = DateTimeInput::parse("2024-11-03 06:30:00", Tz::UTC);
+        let mut input = DateTimeInput::parse("2024/11/03 06:30:00", Tz::UTC);
         input.switch_zone(NEW_YORK);
-        assert_eq!(input.text(), "2024-11-03 01:30:00");
-        assert_eq!(input.instant(), Some(utc("2024-11-03 06:30:00")));
+        assert_eq!(input.text(), "2024/11/03 01:30:00");
+        assert_eq!(input.instant(), Some(utc("2024/11/03 06:30:00")));
         input.switch_zone(Tz::UTC);
-        assert_eq!(input.text(), "2024-11-03 06:30:00");
-        assert_eq!(input.instant(), Some(utc("2024-11-03 06:30:00")));
+        assert_eq!(input.text(), "2024/11/03 06:30:00");
+        assert_eq!(input.instant(), Some(utc("2024/11/03 06:30:00")));
     }
 
     #[test]
     fn a_format_error_keeps_its_text_and_error_across_switches() {
-        let mut input = DateTimeInput::parse("2024-13-01 00:00:00", NEW_YORK);
+        let mut input = DateTimeInput::parse("2024/13/01 00:00:00", NEW_YORK);
         input.switch_zone(Tz::UTC);
-        assert_eq!(input.text(), "2024-13-01 00:00:00");
+        assert_eq!(input.text(), "2024/13/01 00:00:00");
         assert_eq!(input.error(), Some(DateTimeInputError::Format));
         assert_eq!(input.instant(), None);
     }
@@ -215,33 +221,33 @@ mod tests {
     #[test]
     fn a_nonexistent_local_time_becomes_valid_in_utc() {
         // R-02: the text stays and is parsed again in the new zone.
-        let mut input = DateTimeInput::parse("2024-03-10 02:30:00", NEW_YORK);
+        let mut input = DateTimeInput::parse("2024/03/10 02:30:00", NEW_YORK);
         input.switch_zone(Tz::UTC);
-        assert_eq!(input.text(), "2024-03-10 02:30:00");
-        assert_eq!(input.instant(), Some(utc("2024-03-10 02:30:00")));
+        assert_eq!(input.text(), "2024/03/10 02:30:00");
+        assert_eq!(input.instant(), Some(utc("2024/03/10 02:30:00")));
         assert_eq!(input.error(), None);
     }
 
     #[test]
     fn an_instant_beyond_year_9999_keeps_its_text_and_is_parsed_again() {
-        // R-05: 9999-12-31 23:00:00 UTC is year 10000 in Tokyo.
-        let mut input = DateTimeInput::parse("9999-12-31 23:00:00", Tz::UTC);
+        // R-05: 9999/12/31 23:00:00 UTC is year 10000 in Tokyo.
+        let mut input = DateTimeInput::parse("9999/12/31 23:00:00", Tz::UTC);
         input.switch_zone(TOKYO);
-        assert_eq!(input.text(), "9999-12-31 23:00:00");
-        assert_eq!(input.instant(), Some(utc("9999-12-31 14:00:00")));
+        assert_eq!(input.text(), "9999/12/31 23:00:00");
+        assert_eq!(input.instant(), Some(utc("9999/12/31 14:00:00")));
         assert_eq!(input.error(), None);
     }
 
     #[test]
     fn the_same_text_is_not_parsed_again() {
         // R-06: a re-sent, unchanged text keeps the later repeated instant.
-        let mut input = DateTimeInput::parse("2024-11-03 06:30:00", Tz::UTC);
+        let mut input = DateTimeInput::parse("2024/11/03 06:30:00", Tz::UTC);
         input.switch_zone(NEW_YORK);
-        assert!(!input.edit("2024-11-03 01:30:00".to_string(), NEW_YORK));
-        assert_eq!(input.instant(), Some(utc("2024-11-03 06:30:00")));
+        assert!(!input.edit("2024/11/03 01:30:00".to_string(), NEW_YORK));
+        assert_eq!(input.instant(), Some(utc("2024/11/03 06:30:00")));
         // A changed text is parsed: the repeated time takes the earlier one.
-        assert!(input.edit("2024-11-03 01:30:00 ".to_string(), NEW_YORK));
-        assert_eq!(input.instant(), Some(utc("2024-11-03 05:30:00")));
+        assert!(input.edit("2024/11/03 01:30:00 ".to_string(), NEW_YORK));
+        assert_eq!(input.instant(), Some(utc("2024/11/03 05:30:00")));
         assert!(input.edit(String::new(), NEW_YORK));
         assert_eq!((input.instant(), input.error()), (None, None));
     }

@@ -18,6 +18,16 @@
  * it is put inside a sentence (`errorLines` capitalizes it when the next
  * action starts with it).
  * `failure.kind.*` stay because the core names the kinds with them.
+ * Since the console-style screen (261010-console-ui-polish, interaction-spec
+ * §9): the date and time are written `yyyy/mm/dd` and `hh:mm:ss` (FR2.3),
+ * the start and end are split into a date and a time field with their own
+ * reasons (`form.date.*`, `form.time.*`, FR3.1), the heading says "Log
+ * group: none" when none is selected (gate fix 15c: the prompt "Choose a log
+ * group." is said once, by the reason line), the two filter fields read "Find
+ * log groups" and "Filter messages" (gate fix 15e), the log list has an empty state and a
+ * no-match text (`table.empty`, `table.noMatches`), and the "Fetch is
+ * unavailable because:" list is gone (FR3.1). `error.what.*` / `error.next.*`
+ * are unchanged (FR3.4).
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -29,12 +39,25 @@ export const messages = {
   "app.title": { en: "Local Sights", ja: "Local Sights" },
   "form.label": { en: "Fetch conditions", ja: "取得条件" },
   "form.selectedLogGroup.label": { en: "Log group", ja: "ロググループ" },
-  "form.selectedLogGroup.none": { en: "Not selected", ja: "未選択" },
-  "form.start.label": { en: "Start ({zone})", ja: "開始日時（{zone}）" },
-  "form.end.label": { en: "End ({zone})", ja: "終了日時（{zone}）" },
-  "form.dateTime.placeholder": { en: "yyyy-mm-dd hh:mm:ss", ja: "yyyy-mm-dd hh:mm:ss" },
+  "form.selectedLogGroup.none": { en: "Log group: none", ja: "ロググループ: 未選択" },
+  "form.start.label": { en: "Start ({zone})", ja: "開始（{zone}）" },
+  "form.end.label": { en: "End ({zone})", ja: "終了（{zone}）" },
+  "form.start.date": { en: "Start date", ja: "開始日" },
+  "form.start.time": { en: "Start time", ja: "開始時刻" },
+  "form.end.date": { en: "End date", ja: "終了日" },
+  "form.end.time": { en: "End time", ja: "終了時刻" },
+  "form.date.placeholder": { en: "yyyy/mm/dd", ja: "yyyy/mm/dd" },
+  "form.time.placeholder": { en: "hh:mm:ss", ja: "hh:mm:ss" },
+  "form.date.required": { en: "Enter a date.", ja: "日付を入力してください。" },
+  "form.date.format": {
+    en: "Enter the date as yyyy/mm/dd.",
+    ja: "日付は yyyy/mm/dd の形で入力してください。",
+  },
+  "form.time.format": {
+    en: "Enter the time as hh:mm:ss.",
+    ja: "時刻は hh:mm:ss の形で入力してください。",
+  },
   "form.fetch": { en: "Fetch", ja: "取得" },
-  "form.reasons.title": { en: "Fetch is unavailable because:", ja: "取得できない理由：" },
   "validation.logGroupRequired": {
     en: "Enter a log group name.",
     ja: "ロググループ名を入力してください。",
@@ -44,24 +67,24 @@ export const messages = {
     ja: "ロググループ名は 512 文字以内にしてください。",
   },
   "validation.startFormat": {
-    en: "Enter the start as a valid yyyy-mm-dd hh:mm:ss ({zone}).",
-    ja: "開始日時は yyyy-mm-dd hh:mm:ss の形で入力してください（{zone}）。",
+    en: "Enter the start as a valid yyyy/mm/dd hh:mm:ss ({zone}).",
+    ja: "開始は yyyy/mm/dd hh:mm:ss の形で入力してください（{zone}）。",
   },
   "validation.startNonexistentLocalTime": {
     en: "The start does not exist because of the daylight saving time change.",
     ja: "開始日時は夏時間の切り替えで存在しない日時です。",
   },
   "validation.endFormat": {
-    en: "Enter the end as a valid yyyy-mm-dd hh:mm:ss ({zone}).",
-    ja: "終了日時は yyyy-mm-dd hh:mm:ss の形で入力してください（{zone}）。",
+    en: "Enter the end as a valid yyyy/mm/dd hh:mm:ss ({zone}).",
+    ja: "終了は yyyy/mm/dd hh:mm:ss の形で入力してください（{zone}）。",
   },
   "validation.endNonexistentLocalTime": {
     en: "The end does not exist because of the daylight saving time change.",
     ja: "終了日時は夏時間の切り替えで存在しない日時です。",
   },
   "validation.rangeOrder": {
-    en: "The start must be before the end.",
-    ja: "開始日時は終了日時より前にしてください。",
+    en: "End must be after start.",
+    ja: "終了は開始より後にしてください。",
   },
   "session.busy": { en: "A fetch is in progress.", ja: "取得中です。" },
   "session.confirmationPending": {
@@ -105,10 +128,7 @@ export const messages = {
   "connection.label": { en: "Connection", ja: "接続" },
   "connection.profile.label": { en: "Profile", ja: "プロファイル" },
   "connection.profile.placeholder": { en: "Choose a profile", ja: "プロファイルを選択" },
-  "connection.profile.sdkDefault": {
-    en: "Default settings (left to the SDK)",
-    ja: "既定の設定（SDK に任せる）",
-  },
+  "connection.profile.sdkDefault": { en: "Default", ja: "デフォルト" },
   "connection.region.label": { en: "Region", ja: "リージョン" },
   "connection.region.placeholder": { en: "Choose a region", ja: "リージョンを選択" },
   "timeZone.label": { en: "Time zone", ja: "タイムゾーン" },
@@ -123,8 +143,14 @@ export const messages = {
     ja: "AWS の credentials ファイルを読めませんでした。そのプロファイルは一覧にありません。",
   },
   "logGroups.label": { en: "Log groups", ja: "ロググループ" },
-  "logGroups.filter.label": { en: "Filter", ja: "絞り込み" },
-  "logGroups.filter.placeholder": { en: "Part of a name", ja: "名前の一部" },
+  "pane.resizer": { en: "Log group pane width", ja: "ロググループ一覧の幅" },
+  "pane.collapse": { en: "Close the log group list", ja: "ロググループ一覧を閉じる" },
+  "pane.expand": { en: "Open the log group list", ja: "ロググループ一覧を開く" },
+  "logGroups.column.name": { en: "Name", ja: "名前" },
+  "logGroups.selection": { en: "Log group selection", ja: "ロググループの選択" },
+  "logGroups.filter.label": { en: "Find log groups", ja: "ロググループを検索" },
+  "logGroups.filter.placeholder": { en: "Find log groups", ja: "ロググループを検索" },
+  "logGroups.filter.clear": { en: "Clear", ja: "消去" },
   "logGroups.reload": { en: "Reload", ja: "再読み込み" },
   "logGroups.loading": { en: "Loading…", ja: "読み込み中…" },
   "logGroups.partial": {
@@ -195,6 +221,14 @@ export const messages = {
   "table.stream": { en: "Stream", ja: "ストリーム名" },
   "table.message": { en: "Message", ja: "メッセージ" },
   "table.expanded": { en: "Full message", ja: "メッセージの全文" },
+  "table.empty": {
+    en: "No events. Select a log group, set a time range, then choose Fetch.",
+    ja: "イベントがありません。ロググループを選び、期間を指定して [取得] を押してください。",
+  },
+  "table.noMatches": {
+    en: "No events match the filter.",
+    ja: "絞り込みに一致するイベントがありません。",
+  },
   "rows.tooManyKeys": {
     en: "Too many rows were asked for at once, so the list was not updated.",
     ja: "一度に問い合わせた行が多すぎるため、一覧を更新できませんでした。",
@@ -205,17 +239,20 @@ export const messages = {
   },
   "failures.title": { en: "Failures", ja: "失敗の一覧" },
   "failures.listing": { en: "Stream listing", ja: "ストリームの列挙" },
+  "failures.column.stream": { en: "Stream", ja: "ストリーム" },
+  "failures.column.reason": {
+    en: "What happened / what to do",
+    ja: "何が起きたか／次の行動",
+  },
   "failures.close": { en: "Close (Esc)", ja: "閉じる（Esc）" },
   "error.command": {
     en: "The operation failed: {detail}",
     ja: "操作に失敗しました：{detail}",
   },
   "error.dismiss": { en: "Dismiss (Esc)", ja: "閉じる（Esc）" },
-  "logFilter.label": { en: "Filter logs", ja: "ログの絞り込み" },
-  "logFilter.placeholder": {
-    en: "Part of a message (case-insensitive)",
-    ja: "メッセージの一部（大文字・小文字を区別しない）",
-  },
+  "logFilter.label": { en: "Filter messages", ja: "メッセージを絞り込み" },
+  "logFilter.placeholder": { en: "Filter messages", ja: "メッセージを絞り込み" },
+  "logFilter.clear": { en: "Clear", ja: "消去" },
   "status.filter.count": {
     en: "Filtered: {matched} of {all} events",
     ja: "絞り込み後 {matched} 件 / 全 {all} 件",

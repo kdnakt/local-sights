@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { JobSummary } from "../api";
+import { createTranslator } from "../i18n/messages";
 import { sessionView, t } from "../test/fixtures";
 import { FetchErrorBanner } from "./FetchErrorBanner";
 
@@ -14,8 +16,8 @@ const failedJob: JobSummary = {
   failure: { kind: "RegionMissing", safeDetail: "profile=prod", retryable: false },
 };
 
-describe("FetchErrorBanner", () => {
-  it("shows the failure of the whole fetch in words as an alert", () => {
+describe("FetchErrorBanner (FR3.2, mockups screen 5b)", () => {
+  it("shows the failure of the whole fetch as an error alert: what happened, what to do, the detail", () => {
     render(
       <FetchErrorBanner session={sessionView({ phase: "Failed", lastJob: failedJob })} t={t} />,
     );
@@ -28,6 +30,27 @@ describe("FetchErrorBanner", () => {
       "Choose a region in the top bar.",
     );
     expect(screen.getByTestId("fetch-error-detail")).toHaveTextContent("Details: profile=prod");
+    // Not by color alone (FR3.5): the error icon carries a name.
+    expect(screen.getByRole("img", { name: "Other error" })).toBeInTheDocument();
+  });
+
+  it("leaves out the detail line when there is none, in Japanese too", () => {
+    render(
+      <FetchErrorBanner
+        session={sessionView({
+          phase: "Failed",
+          lastJob: { ...failedJob, failure: { kind: "Network", safeDetail: "", retryable: true } },
+        })}
+        t={createTranslator("ja")}
+      />,
+    );
+    expect(screen.getByTestId("fetch-error-what")).toHaveTextContent(
+      "AWS に接続できませんでした。",
+    );
+    expect(screen.getByTestId("fetch-error-next")).toHaveTextContent(
+      "接続を確認してから、[取得] でもう一度取得してください。",
+    );
+    expect(screen.queryByTestId("fetch-error-detail")).not.toBeInTheDocument();
   });
 
   it("shows nothing unless the fetch failed as a whole", () => {
@@ -44,5 +67,39 @@ describe("FetchErrorBanner", () => {
       />,
     );
     expect(screen.queryByTestId("fetch-error-banner")).not.toBeInTheDocument();
+  });
+
+  it("regression (FR3.2): the three-line alert closes with its button and comes back for the next failure", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <FetchErrorBanner session={sessionView({ phase: "Failed", lastJob: failedJob })} t={t} />,
+    );
+    const banner = screen.getByTestId("fetch-error-banner");
+    expect(banner).toHaveTextContent("This profile has no default region.");
+    expect(banner).toHaveTextContent("Choose a region in the top bar.");
+    expect(banner).toHaveTextContent("Details: profile=prod");
+    await user.click(screen.getByRole("button", { name: "Dismiss (Esc)" }));
+    expect(screen.queryByTestId("fetch-error-banner")).not.toBeInTheDocument();
+    // The same failed job stays closed; another failed fetch is shown again.
+    rerender(
+      <FetchErrorBanner session={sessionView({ phase: "Failed", lastJob: failedJob })} t={t} />,
+    );
+    expect(screen.queryByTestId("fetch-error-banner")).not.toBeInTheDocument();
+    rerender(
+      <FetchErrorBanner
+        session={sessionView({ phase: "Failed", lastJob: { ...failedJob, jobId: 2 } })}
+        t={t}
+      />,
+    );
+    expect(screen.getByTestId("fetch-error-banner")).toBeInTheDocument();
+  });
+
+  it("does not close with Escape (R-06: the close button only)", async () => {
+    const user = userEvent.setup();
+    render(
+      <FetchErrorBanner session={sessionView({ phase: "Failed", lastJob: failedJob })} t={t} />,
+    );
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("fetch-error-banner")).toBeInTheDocument();
   });
 });

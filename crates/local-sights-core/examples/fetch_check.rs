@@ -10,7 +10,7 @@
 //! ```text
 //! cargo run -p local-sights-core --example fetch_check -- \
 //!   [--profile NAME] --log-group NAME \
-//!   --start "yyyy-mm-dd hh:mm:ss" --end "yyyy-mm-dd hh:mm:ss"
+//!   --start "yyyy/mm/dd hh:mm:ss" --end "yyyy/mm/dd hh:mm:ss"
 //! ```
 //!
 //! Connection (U2, review R-11): without `--profile` the fetch uses the
@@ -41,7 +41,7 @@ use local_sights_core::time_range::format_utc_millis;
 use local_sights_core::timeline::EventTimeline;
 
 const USAGE: &str = "usage: fetch_check [--profile NAME] --log-group NAME \
---start \"yyyy-mm-dd hh:mm:ss\" --end \"yyyy-mm-dd hh:mm:ss\"   (times in UTC)";
+--start \"yyyy/mm/dd hh:mm:ss\" --end \"yyyy/mm/dd hh:mm:ss\"   (times in UTC)";
 
 const EXIT_FETCH_FAILED: u8 = 1;
 const EXIT_USAGE: u8 = 2;
@@ -145,8 +145,8 @@ fn describe(error: ValidationError) -> &'static str {
     match error {
         ValidationError::LogGroupRequired => "--log-group is required",
         ValidationError::LogGroupTooLong => "--log-group must be 512 characters or fewer",
-        ValidationError::StartFormat => "--start must be a valid yyyy-mm-dd hh:mm:ss (UTC)",
-        ValidationError::EndFormat => "--end must be a valid yyyy-mm-dd hh:mm:ss (UTC)",
+        ValidationError::StartFormat => "--start must be a valid yyyy/mm/dd hh:mm:ss (UTC)",
+        ValidationError::EndFormat => "--end must be a valid yyyy/mm/dd hh:mm:ss (UTC)",
         // The arguments are always UTC (U4:BR3.5), which skips no local
         // time; these reasons only arise for the screen's local zone.
         ValidationError::StartNonexistentLocalTime => "--start does not exist in local time",

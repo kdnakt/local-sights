@@ -155,7 +155,10 @@ impl AppState {
     /// zone (U4:BR1.1) once at startup. When the OS zone cannot be used,
     /// Local falls back to UTC and only the zone name is logged. Since U6 it
     /// also takes the cache location and reads the cache setting from it;
-    /// without a location the cache stays disabled (U6:BR1.6).
+    /// without a location the cache stays disabled (U6:BR1.6). Since gate
+    /// fix 16a the start and end inputs begin as yesterday 00:00:00 and
+    /// today 23:59:59 in the local zone, from the system clock; when the
+    /// clock cannot be read as epoch milliseconds they stay empty.
     fn load(cache_location: Option<CacheLocation>) -> Self {
         let time_zones = TimeZoneContext::detect();
         if let Some(fallback) = &time_zones.fallback {
@@ -163,6 +166,9 @@ impl AppState {
         }
         let mut session =
             AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context);
+        if let Some(now_ms) = current_epoch_ms() {
+            session = session.with_default_time_range(now_ms);
+        }
         if let Some(location) = cache_location {
             session = session.with_cache_location(location);
         }
@@ -672,6 +678,14 @@ fn begin_and_spawn_fetch(
     Ok(())
 }
 
+/// The current time in epoch milliseconds for the default time range at
+/// startup (gate fix 16a), or `None` when the clock is before 1970 or does
+/// not fit; the inputs then stay empty rather than show a made-up day.
+fn current_epoch_ms() -> Option<i64> {
+    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
+    i64::try_from(elapsed.as_millis()).ok()
+}
+
 /// The current time in epoch milliseconds, the base of the five-minute
 /// margin of the cache (U6:BR3.1). A clock before 1970 counts as 0, which
 /// only makes less recordable.
@@ -1113,6 +1127,14 @@ pub fn run() -> Result<(), tauri::Error> {
             // here, where the app's paths are known.
             let location = cache_location(app.handle());
             app.manage(AppState::load(location));
+            // Gate fix 14c: the session starts on the SDK default profile;
+            // when the SDK has a default region, its log group listing has
+            // already started and is run here like any other listing.
+            let state = app.state::<AppState>();
+            let startup_listing = lock(&state.session).startup_listing();
+            if let Some(request) = startup_listing {
+                start_listing(app.handle(), &state, request);
+            }
             // Review R-03: a write that outlived its fetch tells the screen.
             watch_cache_writes(app.handle());
             Ok(())

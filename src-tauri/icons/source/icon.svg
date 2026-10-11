@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Local Sights app icon (gate fix 14i): a dark navy tile with a few log lines,
+  one of them in the console's blue, and a magnifying glass looking at them.
+  Simple shapes only, no text.
+
+  Size (gate fix 16b): the canvas is 1024 x 1024, but the tile follows the
+  macOS app icon grid: an 824 x 824 rounded square (corner radius 185) centred
+  with a transparent margin of 100 on every side, so the icon is as big as the
+  other apps' in the Dock. Everything drawn inside the tile is scaled by
+  824 / 1024 = 0.8046875 from the original 1024 drawing.
+  Rendered to source/icon.png and then to the Tauri icon set with
+  `tauri icon`; see README.md ("App icon") and the code summary.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16263d"/>
+      <stop offset="1" stop-color="#0f1b2d"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tile: 824 x 824 at (100, 100), corner radius 185 (the macOS grid) -->
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="url(#tile)"/>
+
+  <!-- The drawing of the original 1024 tile, scaled into the 824 tile -->
+  <g transform="translate(100 100) scale(0.8046875)">
+    <rect x="24" y="24" width="976" height="976" rx="208" ry="208" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="8"/>
+
+    <!-- Log lines: left-aligned bars of varying length; one highlighted -->
+    <g fill="#9ba7b4">
+      <rect x="152" y="208" width="392" height="40" rx="20"/>
+      <rect x="152" y="296" width="296" height="40" rx="20"/>
+      <rect x="152" y="384" width="440" height="40" rx="20" fill="#0972d3"/>
+      <rect x="152" y="472" width="248" height="40" rx="20"/>
+      <rect x="152" y="560" width="344" height="40" rx="20" fill-opacity="0.7"/>
+      <rect x="152" y="648" width="200" height="40" rx="20" fill-opacity="0.5"/>
+    </g>
+
+    <!-- Magnifying glass looking at the lines -->
+    <g transform="translate(596 456)">
+      <circle cx="0" cy="0" r="176" fill="url(#lens)" stroke="#e9eef4" stroke-width="40"/>
+      <circle cx="0" cy="0" r="176" fill="none" stroke="#0972d3" stroke-opacity="0.35" stroke-width="12"/>
+      <!-- A short highlighted line seen through the lens -->
+      <rect x="-96" y="-72" width="192" height="40" rx="20" fill="#0972d3"/>
+      <rect x="-96" y="8" width="128" height="40" rx="20" fill="#e9eef4" fill-opacity="0.85"/>
+      <!-- Handle -->
+      <line x1="128" y1="128" x2="292" y2="292" stroke="#e9eef4" stroke-width="56" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

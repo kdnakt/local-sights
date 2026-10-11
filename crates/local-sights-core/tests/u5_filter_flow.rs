@@ -21,15 +21,15 @@ use local_sights_core::streams::planner::ListingProgress;
 use support::fake_gateway::{FakeGateway, page, stream_page};
 use support::recording_sink::RecordingSink;
 
-/// 2024-01-02 03:04:05 UTC in epoch milliseconds (start of the range).
+/// 2024/01/02 03:04:05 UTC in epoch milliseconds (start of the range).
 const START: i64 = 1_704_164_645_000;
 
 fn validated() -> ValidatedFetch {
     validate_fetch_input(&FetchInput {
         profile_name: "dev".to_string(),
         log_group_name: "/aws/lambda/orders".to_string(),
-        start_text: "2024-01-02 03:04:05".to_string(),
-        end_text: "2024-01-02 03:05:05".to_string(),
+        start_text: "2024/01/02 03:04:05".to_string(),
+        end_text: "2024/01/02 03:05:05".to_string(),
     })
     .expect("test input is valid")
 }

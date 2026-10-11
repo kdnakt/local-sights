@@ -7,21 +7,26 @@
 //! rewritten from their instants ([`format_input_in_zone`], U4:BR1.4) and log
 //! rows are formatted for display ([`format_display_in_zone`], U4:BR3.1). The
 //! screen converts nothing; it shows the strings made here.
+//!
+//! Since the console-style screen (261010-console-ui-polish, FR2.1, FR2.2,
+//! FR2.4) the date is written and read with slashes, `yyyy/mm/dd hh:mm:ss`
+//! (display `yyyy/mm/dd hh:mm:ss.SSS`), like the console's date field; the
+//! hyphen-separated date of the MVP is a format error.
 
 use chrono::{DateTime, Datelike, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use serde::Serialize;
 
-/// Length of `yyyy-mm-dd hh:mm:ss`.
+/// Length of `yyyy/mm/dd hh:mm:ss`.
 const INPUT_LEN: usize = 19;
 /// Milliseconds added to the end second so the whole second is included.
 const LAST_MS_OF_SECOND: i64 = 999;
 /// Years that `yyyy` can write (U4:BR1.4, BR3.1).
 const WRITABLE_YEARS: std::ops::RangeInclusive<i32> = 0..=9999;
-/// Input format `yyyy-mm-dd hh:mm:ss`.
-const INPUT_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
-/// Display format `yyyy-mm-dd hh:mm:ss.mmm`.
-const DISPLAY_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f";
+/// Input format `yyyy/mm/dd hh:mm:ss` (FR2.1).
+const INPUT_FORMAT: &str = "%Y/%m/%d %H:%M:%S";
+/// Display format `yyyy/mm/dd hh:mm:ss.SSS` (FR2.2).
+const DISPLAY_FORMAT: &str = "%Y/%m/%d %H:%M:%S%.3f";
 
 /// Millisecond range of one fetch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -31,16 +36,16 @@ pub struct TimeRange {
     end_instant: i64,
 }
 
-/// The text is not a valid `yyyy-mm-dd hh:mm:ss` date and time.
+/// The text is not a valid `yyyy/mm/dd hh:mm:ss` date and time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("expected a valid date and time in the form yyyy-mm-dd hh:mm:ss")]
+#[error("expected a valid date and time in the form yyyy/mm/dd hh:mm:ss")]
 pub struct DateTimeFormatError;
 
 /// Why a wall-clock text has no instant in the chosen time zone (U4:BR1.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum DateTimeParseError {
-    /// Not a valid `yyyy-mm-dd hh:mm:ss` date and time.
-    #[error("expected a valid date and time in the form yyyy-mm-dd hh:mm:ss")]
+    /// Not a valid `yyyy/mm/dd hh:mm:ss` date and time.
+    #[error("expected a valid date and time in the form yyyy/mm/dd hh:mm:ss")]
     Format,
     /// A valid date and time that the zone skips at the start of daylight
     /// saving time, so no instant shows it (U4:BR2.2).
@@ -53,14 +58,14 @@ pub enum DateTimeParseError {
 #[error("the start must be before the end")]
 pub struct RangeOrderError;
 
-/// Parses `yyyy-mm-dd hh:mm:ss` as UTC and returns the epoch milliseconds of
+/// Parses `yyyy/mm/dd hh:mm:ss` as UTC and returns the epoch milliseconds of
 /// millisecond 0 of that second (U1:BR1.2; the `fetch_check` example keeps
 /// using it, U4:BR3.5).
 pub fn parse_utc_seconds(text: &str) -> Result<i64, DateTimeFormatError> {
     parse_wall_clock(text).map(|naive| naive.and_utc().timestamp_millis())
 }
 
-/// Parses `yyyy-mm-dd hh:mm:ss` as the wall-clock time of `zone` and returns
+/// Parses `yyyy/mm/dd hh:mm:ss` as the wall-clock time of `zone` and returns
 /// the epoch milliseconds of millisecond 0 of that second (U4:BR1.2).
 ///
 /// Surrounding whitespace is ignored. A time shown twice (the end of
@@ -78,19 +83,48 @@ pub fn parse_in_zone(text: &str, zone: Tz) -> Result<i64, DateTimeParseError> {
     }
 }
 
-/// Writes an instant as the `yyyy-mm-dd hh:mm:ss` wall-clock time of `zone`
+/// Writes an instant as the `yyyy/mm/dd hh:mm:ss` wall-clock time of `zone`
 /// for an input field (U4:BR1.4), dropping the milliseconds. Returns `None`
 /// when the instant falls outside the years 0000-9999 in that zone.
 pub fn format_input_in_zone(instant: i64, zone: Tz) -> Option<String> {
     format_in_zone(instant, zone, INPUT_FORMAT)
 }
 
-/// Writes a log timestamp as the `yyyy-mm-dd hh:mm:ss.mmm` wall-clock time
+/// Writes a log timestamp as the `yyyy/mm/dd hh:mm:ss.SSS` wall-clock time
 /// of `zone`, using the offset in force at that instant (U4:BR3.1).
 /// Timestamps outside the years 0000-9999 in that zone are returned as the
 /// raw number, as in U1, so that nothing is silently dropped.
 pub fn format_display_in_zone(timestamp: i64, zone: Tz) -> String {
     format_in_zone(timestamp, zone, DISPLAY_FORMAT).unwrap_or_else(|| timestamp.to_string())
+}
+
+/// The calendar day of `instant` in `zone` (gate fix 16a: "today" for the
+/// default time range), or `None` when the instant has no calendar date.
+pub(crate) fn date_in_zone(instant: i64, zone: Tz) -> Option<NaiveDate> {
+    Some(
+        DateTime::from_timestamp_millis(instant)?
+            .with_timezone(&zone)
+            .date_naive(),
+    )
+}
+
+/// Writes the first and the last second of the calendar day `date` as
+/// `yyyy/mm/dd hh:mm:ss` input texts, `00:00:00` and `23:59:59` (gate fix
+/// 16a, the same completion the screen applies to an empty time). `None`
+/// when the year has no four digits (U4:BR1.4), like
+/// [`format_input_in_zone`].
+pub(crate) fn format_day_bounds(date: NaiveDate) -> Option<(String, String)> {
+    if !WRITABLE_YEARS.contains(&date.year()) {
+        return None;
+    }
+    let bound = |hour, minute, second| {
+        NaiveTime::from_hms_opt(hour, minute, second).map(|time| {
+            NaiveDateTime::new(date, time)
+                .format(INPUT_FORMAT)
+                .to_string()
+        })
+    };
+    Some((bound(0, 0, 0)?, bound(23, 59, 59)?))
 }
 
 /// Formats an instant in `zone` with `format`, if its year has four digits.
@@ -101,7 +135,7 @@ fn format_in_zone(instant: i64, zone: Tz, format: &str) -> Option<String> {
         .then(|| local.format(format).to_string())
 }
 
-/// Parses the fixed `yyyy-mm-dd hh:mm:ss` shape into a calendar date and
+/// Parses the fixed `yyyy/mm/dd hh:mm:ss` shape into a calendar date and
 /// time, checking that both exist (U1:BR1.2).
 fn parse_wall_clock(text: &str) -> Result<NaiveDateTime, DateTimeFormatError> {
     let text = text.trim();
@@ -124,17 +158,18 @@ fn parse_wall_clock(text: &str) -> Result<NaiveDateTime, DateTimeFormatError> {
     }
 }
 
-/// Checks the fixed `dddd-dd-dd dd:dd:dd` shape (digits and separators only).
+/// Checks the fixed `dddd/dd/dd dd:dd:dd` shape (digits and separators only).
+/// A hyphen between the date parts is not a separator (FR2.4).
 fn has_input_shape(bytes: &[u8]) -> bool {
     bytes.iter().enumerate().all(|(index, byte)| match index {
-        4 | 7 => *byte == b'-',
+        4 | 7 => *byte == b'/',
         10 => *byte == b' ',
         13 | 16 => *byte == b':',
         _ => byte.is_ascii_digit(),
     })
 }
 
-/// Formats epoch milliseconds as UTC `yyyy-mm-dd hh:mm:ss.mmm`.
+/// Formats epoch milliseconds as UTC `yyyy/mm/dd hh:mm:ss.SSS`.
 ///
 /// Timestamps outside the representable calendar range are returned as the
 /// raw number so that nothing is silently dropped. The screen uses
@@ -183,19 +218,19 @@ impl TimeRange {
 mod tests {
     use super::*;
 
-    // 2024-01-02 03:04:05 UTC
+    // 2024/01/02 03:04:05 UTC
     const JAN_2_030405: i64 = 1_704_164_645_000;
 
     #[test]
     fn parses_utc_text_at_millisecond_zero() {
-        assert_eq!(parse_utc_seconds("2024-01-02 03:04:05"), Ok(JAN_2_030405));
-        assert_eq!(parse_utc_seconds("1970-01-01 00:00:00"), Ok(0));
+        assert_eq!(parse_utc_seconds("2024/01/02 03:04:05"), Ok(JAN_2_030405));
+        assert_eq!(parse_utc_seconds("1970/01/01 00:00:00"), Ok(0));
     }
 
     #[test]
     fn trims_surrounding_whitespace() {
         assert_eq!(
-            parse_utc_seconds("  2024-01-02 03:04:05 \t"),
+            parse_utc_seconds("  2024/01/02 03:04:05 \t"),
             Ok(JAN_2_030405)
         );
     }
@@ -204,13 +239,30 @@ mod tests {
     fn rejects_wrong_shapes() {
         for text in [
             "",
-            "2024-01-02",
-            "2024-01-02T03:04:05",
-            "2024-1-02 03:04:05",
-            "2024-01-02 3:04:05",
-            "2024-01-02 03:04:05.000",
-            "2024/01/02 03:04:05",
-            "abcd-ef-gh ij:kl:mn",
+            "2024/01/02",
+            "2024/01/02T03:04:05",
+            "2024/1/02 03:04:05",
+            "2024/01/02 3:04:05",
+            "2024/01/02 03:04:05.000",
+            "2024.01.02 03:04:05",
+            "abcd/ef/gh ij:kl:mn",
+        ] {
+            assert_eq!(
+                parse_utc_seconds(text),
+                Err(DateTimeFormatError),
+                "{text:?}"
+            );
+        }
+    }
+
+    /// FR2.4: the hyphen-separated date of the MVP is no longer accepted;
+    /// the console's date field takes `yyyy/mm/dd` only.
+    #[test]
+    fn rejects_hyphen_separated_dates() {
+        for text in [
+            "2024-01-02 03:04:05",
+            "2024-01/02 03:04:05",
+            "2024/01-02 03:04:05",
         ] {
             assert_eq!(
                 parse_utc_seconds(text),
@@ -223,12 +275,12 @@ mod tests {
     #[test]
     fn rejects_dates_and_times_that_do_not_exist() {
         for text in [
-            "2024-13-01 00:00:00",
-            "2024-02-30 00:00:00",
-            "2023-02-29 00:00:00",
-            "2024-01-02 24:00:00",
-            "2024-01-02 23:60:00",
-            "2024-01-02 23:59:60",
+            "2024/13/01 00:00:00",
+            "2024/02/30 00:00:00",
+            "2023/02/29 00:00:00",
+            "2024/01/02 24:00:00",
+            "2024/01/02 23:60:00",
+            "2024/01/02 23:59:60",
         ] {
             assert_eq!(
                 parse_utc_seconds(text),
@@ -240,9 +292,9 @@ mod tests {
 
     #[test]
     fn accepts_february_29_in_leap_years() {
-        // 2024-02-29 12:00:00 UTC
+        // 2024/02/29 12:00:00 UTC
         assert_eq!(
-            parse_utc_seconds("2024-02-29 12:00:00"),
+            parse_utc_seconds("2024/02/29 12:00:00"),
             Ok(1_709_208_000_000)
         );
     }
@@ -273,12 +325,12 @@ mod tests {
     fn formats_utc_with_milliseconds() {
         assert_eq!(
             format_utc_millis(JAN_2_030405 + 7),
-            "2024-01-02 03:04:05.007"
+            "2024/01/02 03:04:05.007"
         );
-        assert_eq!(format_utc_millis(0), "1970-01-01 00:00:00.000");
+        assert_eq!(format_utc_millis(0), "1970/01/01 00:00:00.000");
         assert_eq!(
             format_utc_millis(1_709_208_000_999),
-            "2024-02-29 12:00:00.999"
+            "2024/02/29 12:00:00.999"
         );
     }
 
@@ -299,9 +351,9 @@ mod tests {
     #[test]
     fn utc_zone_parses_exactly_like_u1() {
         for text in [
-            "2024-01-02 03:04:05",
-            "1970-01-01 00:00:00",
-            " 2024-02-29 12:00:00 ",
+            "2024/01/02 03:04:05",
+            "1970/01/01 00:00:00",
+            " 2024/02/29 12:00:00 ",
         ] {
             assert_eq!(
                 parse_in_zone(text, Tz::UTC),
@@ -313,20 +365,20 @@ mod tests {
 
     #[test]
     fn tokyo_wall_clock_is_nine_hours_ahead_of_utc() {
-        // Acceptance criterion: 2024-03-01 10:00:00 (UTC+9) is 01:00:00 UTC.
+        // Acceptance criterion: 2024/03/01 10:00:00 (UTC+9) is 01:00:00 UTC.
         assert_eq!(
-            parse_in_zone("2024-03-01 10:00:00", TOKYO),
-            Ok(utc("2024-03-01 01:00:00"))
+            parse_in_zone("2024/03/01 10:00:00", TOKYO),
+            Ok(utc("2024/03/01 01:00:00"))
         );
     }
 
     #[test]
     fn times_skipped_by_the_dst_start_are_nonexistent_not_format_errors() {
-        // New York jumps from 02:00 to 03:00 on 2024-03-10.
+        // New York jumps from 02:00 to 03:00 on 2024/03/10.
         for text in [
-            "2024-03-10 02:00:00",
-            "2024-03-10 02:30:00",
-            "2024-03-10 02:59:59",
+            "2024/03/10 02:00:00",
+            "2024/03/10 02:30:00",
+            "2024/03/10 02:59:59",
         ] {
             assert_eq!(
                 parse_in_zone(text, NEW_YORK),
@@ -336,22 +388,22 @@ mod tests {
         }
         // The seconds around the gap exist (EST before, EDT after).
         assert_eq!(
-            parse_in_zone("2024-03-10 01:59:59", NEW_YORK),
-            Ok(utc("2024-03-10 06:59:59"))
+            parse_in_zone("2024/03/10 01:59:59", NEW_YORK),
+            Ok(utc("2024/03/10 06:59:59"))
         );
         assert_eq!(
-            parse_in_zone("2024-03-10 03:00:00", NEW_YORK),
-            Ok(utc("2024-03-10 07:00:00"))
+            parse_in_zone("2024/03/10 03:00:00", NEW_YORK),
+            Ok(utc("2024/03/10 07:00:00"))
         );
     }
 
     #[test]
     fn times_repeated_by_the_dst_end_take_the_earlier_instant() {
-        // 01:00-02:00 occurs twice on 2024-11-03; the first (EDT, UTC-4)
+        // 01:00-02:00 occurs twice on 2024/11/03; the first (EDT, UTC-4)
         // is the earlier instant.
         assert_eq!(
-            parse_in_zone("2024-11-03 01:30:00", NEW_YORK),
-            Ok(utc("2024-11-03 05:30:00"))
+            parse_in_zone("2024/11/03 01:30:00", NEW_YORK),
+            Ok(utc("2024/11/03 05:30:00"))
         );
     }
 
@@ -360,9 +412,11 @@ mod tests {
         for zone in [Tz::UTC, NEW_YORK, TOKYO] {
             for text in [
                 "",
-                "2024-13-01 00:00:00",
-                "2024-01-02T03:04:05",
-                "2024-02-30 00:00:00",
+                "2024/13/01 00:00:00",
+                "2024/01/02T03:04:05",
+                "2024/02/30 00:00:00",
+                // FR2.4: the hyphen-separated date is a format error too.
+                "2024-03-01 10:00:00",
             ] {
                 assert_eq!(
                     parse_in_zone(text, zone),
@@ -377,20 +431,20 @@ mod tests {
     fn input_text_uses_the_offset_at_each_instant() {
         // One second apart across the DST start: the offset changes.
         assert_eq!(
-            format_input_in_zone(utc("2024-03-10 06:59:59"), NEW_YORK),
-            Some("2024-03-10 01:59:59".to_string())
+            format_input_in_zone(utc("2024/03/10 06:59:59"), NEW_YORK),
+            Some("2024/03/10 01:59:59".to_string())
         );
         assert_eq!(
-            format_input_in_zone(utc("2024-03-10 07:00:00"), NEW_YORK),
-            Some("2024-03-10 03:00:00".to_string())
+            format_input_in_zone(utc("2024/03/10 07:00:00"), NEW_YORK),
+            Some("2024/03/10 03:00:00".to_string())
         );
         assert_eq!(
-            format_input_in_zone(utc("2024-03-01 01:00:00"), TOKYO),
-            Some("2024-03-01 10:00:00".to_string())
+            format_input_in_zone(utc("2024/03/01 01:00:00"), TOKYO),
+            Some("2024/03/01 10:00:00".to_string())
         );
         assert_eq!(
             format_input_in_zone(JAN_2_030405, Tz::UTC),
-            Some("2024-01-02 03:04:05".to_string())
+            Some("2024/01/02 03:04:05".to_string())
         );
     }
 
@@ -399,11 +453,11 @@ mod tests {
         // Winter (EST, UTC-5) and summer (EDT, UTC-4).
         assert_eq!(
             format_display_in_zone(JAN_2_030405 + 7, NEW_YORK),
-            "2024-01-01 22:04:05.007"
+            "2024/01/01 22:04:05.007"
         );
         assert_eq!(
-            format_display_in_zone(utc("2024-07-01 12:00:00") + 999, NEW_YORK),
-            "2024-07-01 08:00:00.999"
+            format_display_in_zone(utc("2024/07/01 12:00:00") + 999, NEW_YORK),
+            "2024/07/01 08:00:00.999"
         );
         assert_eq!(
             format_display_in_zone(JAN_2_030405 + 7, Tz::UTC),
@@ -411,18 +465,76 @@ mod tests {
         );
     }
 
+    /// FR2.1, FR2.2: the texts written for the screen use slashes, never
+    /// the hyphens of the MVP: `yyyy/mm/dd hh:mm:ss` for an input field and
+    /// `yyyy/mm/dd hh:mm:ss.SSS` for the log list.
+    #[test]
+    fn written_texts_use_slashes_and_no_hyphen() {
+        // Acceptance criterion of FR2.2: 2024-03-01T01:00:00.123Z in UTC+9.
+        let instant = utc("2024/03/01 01:00:00") + 123;
+        assert_eq!(
+            format_display_in_zone(instant, TOKYO),
+            "2024/03/01 10:00:00.123"
+        );
+        assert_eq!(
+            format_input_in_zone(instant, TOKYO),
+            Some("2024/03/01 10:00:00".to_string())
+        );
+        for text in [
+            format_display_in_zone(instant, TOKYO),
+            format_input_in_zone(instant, TOKYO).unwrap(),
+            format_utc_millis(instant),
+        ] {
+            assert!(!text.contains('-'), "{text:?}");
+            assert_eq!(text.matches('/').count(), 2, "{text:?}");
+        }
+        // What is written can be read back as the same second.
+        let written = format_input_in_zone(instant, TOKYO).unwrap();
+        assert_eq!(
+            parse_in_zone(&written, TOKYO),
+            Ok(utc("2024/03/01 01:00:00"))
+        );
+    }
+
+    /// Gate fix 16a: the day bounds the session fills in at startup are the
+    /// input format with `00:00:00` and `23:59:59`; the calendar day comes
+    /// from the zone, and a year without four digits writes nothing.
+    #[test]
+    fn day_bounds_are_written_in_the_input_format_for_the_zone_s_calendar_day() {
+        // 2024/03/14 16:00:00 UTC is 2024/03/15 in Tokyo, 2024/03/14 in UTC.
+        let now = utc("2024/03/14 16:00:00");
+        let tokyo_day = date_in_zone(now, TOKYO).unwrap();
+        assert_eq!(tokyo_day, NaiveDate::from_ymd_opt(2024, 3, 15).unwrap());
+        assert_eq!(
+            date_in_zone(now, Tz::UTC),
+            NaiveDate::from_ymd_opt(2024, 3, 14)
+        );
+        assert_eq!(date_in_zone(i64::MAX, Tz::UTC), None);
+        assert_eq!(
+            format_day_bounds(tokyo_day),
+            Some((
+                "2024/03/15 00:00:00".to_string(),
+                "2024/03/15 23:59:59".to_string()
+            ))
+        );
+        // Year 10000 in Tokyo (R-05): nothing is written.
+        let late = date_in_zone(utc("9999/12/31 23:00:00"), TOKYO).unwrap();
+        assert_eq!(late.year(), 10_000);
+        assert_eq!(format_day_bounds(late), None);
+    }
+
     #[test]
     fn instants_outside_four_digit_years_cannot_be_written() {
-        // 9999-12-31 23:00:00 UTC is year 10000 in Tokyo (R-05).
-        let late = utc("9999-12-31 23:00:00");
+        // 9999/12/31 23:00:00 UTC is year 10000 in Tokyo (R-05).
+        let late = utc("9999/12/31 23:00:00");
         assert_eq!(format_input_in_zone(late, TOKYO), None);
         assert_eq!(format_display_in_zone(late, TOKYO), late.to_string());
         assert_eq!(
             format_input_in_zone(late, Tz::UTC),
-            Some("9999-12-31 23:00:00".to_string())
+            Some("9999/12/31 23:00:00".to_string())
         );
-        // 0000-01-01 00:00:00 UTC is year -1 in New York.
-        let early = utc("0000-01-01 00:00:00");
+        // 0000/01/01 00:00:00 UTC is year -1 in New York.
+        let early = utc("0000/01/01 00:00:00");
         assert_eq!(format_input_in_zone(early, NEW_YORK), None);
         assert_eq!(format_display_in_zone(early, NEW_YORK), early.to_string());
         assert_eq!(

@@ -23,7 +23,7 @@ use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, abort_pair};
 use support::fake_gateway::{FakeGateway, page, stream_page};
 use support::recording_sink::RecordingSink;
 
-/// 2024-01-02 03:04:05 UTC in epoch milliseconds.
+/// 2024/01/02 03:04:05 UTC in epoch milliseconds.
 const T_030405: i64 = 1_704_164_645_000;
 /// One minute in milliseconds.
 const MINUTE: i64 = 60_000;
@@ -31,7 +31,7 @@ const MINUTE: i64 = 60_000;
 const A_DAY_LATER: i64 = T_030405 + 1_440 * MINUTE;
 
 /// `dev` in ap-northeast-1, `/aws/lambda/orders`, from `start` to `end`
-/// (`yyyy-mm-dd hh:mm:ss` UTC, the end second included).
+/// (`yyyy/mm/dd hh:mm:ss` UTC, the end second included).
 fn validated(start: &str, end: &str) -> ValidatedFetch {
     let validated = validate_fetch_input(&FetchInput {
         profile_name: "dev".to_string(),
@@ -105,7 +105,7 @@ fn covered(cache: &LogCache, request: &ValidatedFetch) -> Vec<CoveredRange> {
 async fn the_same_range_again_is_served_from_the_cache_without_aws_and_filtered() {
     let dir = tempfile::tempdir().unwrap();
     let cache = LogCache::new(dir.path().join("cache"));
-    let request = validated("2024-01-02 03:04:05", "2024-01-02 03:05:05");
+    let request = validated("2024/01/02 03:04:05", "2024/01/02 03:05:05");
     let gateway = gateway(
         1,
         vec![vec![
@@ -149,9 +149,9 @@ async fn the_same_range_again_is_served_from_the_cache_without_aws_and_filtered(
 async fn a_following_range_joins_the_cached_one_and_the_joined_range_hits() {
     let dir = tempfile::tempdir().unwrap();
     let cache = LogCache::new(dir.path().join("cache"));
-    let first = validated("2024-01-02 03:04:05", "2024-01-02 03:05:05");
-    let next = validated("2024-01-02 03:05:06", "2024-01-02 03:06:05");
-    let joined = validated("2024-01-02 03:04:05", "2024-01-02 03:06:05");
+    let first = validated("2024/01/02 03:04:05", "2024/01/02 03:05:05");
+    let next = validated("2024/01/02 03:05:06", "2024/01/02 03:06:05");
+    let joined = validated("2024/01/02 03:04:05", "2024/01/02 03:06:05");
     let gateway = gateway(
         2,
         vec![
@@ -195,7 +195,7 @@ async fn the_last_five_minutes_before_the_fetch_are_not_recorded() {
     let cache = LogCache::new(dir.path().join("cache"));
     // Ten minutes fetched at 03:16:05, two minutes after their end: only
     // the part up to five minutes before that, 03:11:05.000, is recorded.
-    let ten_minutes = validated("2024-01-02 03:04:05", "2024-01-02 03:14:05");
+    let ten_minutes = validated("2024/01/02 03:04:05", "2024/01/02 03:14:05");
     let started_at = T_030405 + 12 * MINUTE;
     let gateway = gateway(
         2,
@@ -222,7 +222,7 @@ async fn the_last_five_minutes_before_the_fetch_are_not_recorded() {
         }]
     );
 
-    let older = validated("2024-01-02 03:04:05", "2024-01-02 03:09:05");
+    let older = validated("2024/01/02 03:04:05", "2024/01/02 03:09:05");
     let job = fetch(&gateway, &view, &cache, &older, started_at).await;
     assert_eq!(job.cache_outcome, CacheOutcome::Hit);
     assert_eq!(messages(&view), ["old enough"]);

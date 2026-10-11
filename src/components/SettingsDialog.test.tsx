@@ -1,33 +1,33 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
+import type { ButtonProps } from "@cloudscape-design/components/button";
 import type { SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 import { sessionView, t } from "../test/fixtures";
 import { SettingsDialog } from "./SettingsDialog";
 
 function renderDialog(view: SessionView = sessionView({ settingsDialog: "Open" })) {
-  const returnFocusRef = createRef<HTMLButtonElement>();
+  const returnFocusRef = { current: { focus: vi.fn() } as ButtonProps.Ref };
   const handlers = { onSave: vi.fn(), onCancel: vi.fn(), onClear: vi.fn() };
   const result = render(
-    <>
-      <button type="button" ref={returnFocusRef} data-testid="settings-button">
-        *
-      </button>
-      <SettingsDialog session={view} t={t} returnFocusRef={returnFocusRef} {...handlers} />
-    </>,
+    <SettingsDialog session={view} t={t} returnFocusRef={returnFocusRef} {...handlers} />,
   );
   return { ...handlers, returnFocusRef, ...result };
 }
 
-describe("SettingsDialog", () => {
-  it("starts on the checkbox with the saved setting", () => {
+const checkbox = () => screen.getByRole("checkbox");
+
+/** Cloudscape's modal reads the key code; user-event sends none, so Escape is fired by hand. */
+const pressEscape = () =>
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape", keyCode: 27 });
+
+describe("SettingsDialog (U6:BR5.1, mockups screen 6)", () => {
+  it("is a modal that starts on the checkbox with the saved setting", () => {
     renderDialog(sessionView({ settingsDialog: "Open", cacheEnabled: true }));
-    const checkbox = screen.getByTestId("settings-dialog-cache-checkbox");
-    expect(checkbox).toHaveFocus();
-    expect(checkbox).toBeChecked();
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+    expect(checkbox()).toHaveFocus();
+    expect(checkbox()).toBeChecked();
   });
 
   it("always shows the cache location and the warning, checked or not", async () => {
@@ -39,35 +39,45 @@ describe("SettingsDialog", () => {
     expect(screen.getByTestId("settings-dialog-warning")).toHaveTextContent(
       "Logs may contain confidential information.",
     );
-    await user.click(screen.getByTestId("settings-dialog-cache-checkbox"));
+    await user.click(checkbox());
+    expect(checkbox()).toBeChecked();
     expect(screen.getByTestId("settings-dialog-location")).toBeInTheDocument();
     expect(screen.getByTestId("settings-dialog-warning")).toBeInTheDocument();
   });
 
-  it("saves the choice made with Space and Enter only", async () => {
+  it("saves the choice made with Space and Enter, with the primary Save at the right end", async () => {
     const user = userEvent.setup();
     const { onSave, onCancel } = renderDialog();
     await user.keyboard(" ");
-    expect(screen.getByTestId("settings-dialog-cache-checkbox")).toBeChecked();
+    expect(checkbox()).toBeChecked();
     await user.tab();
     expect(screen.getByTestId("settings-dialog-clear-button")).toHaveFocus();
     await user.tab();
+    expect(screen.getByTestId("settings-dialog-cancel-button")).toHaveFocus();
     await user.tab();
-    expect(screen.getByTestId("settings-dialog-save-button")).toHaveFocus();
-    await user.tab();
-    expect(screen.getByTestId("settings-dialog-cache-checkbox")).toHaveFocus();
-    await user.tab({ shift: true });
     expect(screen.getByTestId("settings-dialog-save-button")).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(onSave).toHaveBeenCalledWith(true);
     expect(onCancel).not.toHaveBeenCalled();
   });
 
+  it("keeps Tab inside the dialog", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    for (let step = 0; step < 7; step += 1) {
+      await user.tab();
+      expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    }
+    await user.tab({ shift: true });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
+
   it("closes without saving on Escape and on [Cancel]", async () => {
     const user = userEvent.setup();
     const { onSave, onCancel } = renderDialog();
-    await user.click(screen.getByTestId("settings-dialog-cache-checkbox"));
-    await user.keyboard("{Escape}");
+    await user.click(checkbox());
+    pressEscape();
     expect(onCancel).toHaveBeenCalledTimes(1);
     await user.click(screen.getByTestId("settings-dialog-cancel-button"));
     expect(onCancel).toHaveBeenCalledTimes(2);
@@ -85,38 +95,29 @@ describe("SettingsDialog", () => {
       ["SaveFailed", "The setting could not be saved."],
     ] as const) {
       rerender(
-        <>
-          <button type="button" ref={returnFocusRef} data-testid="settings-button">
-            *
-          </button>
-          <SettingsDialog
-            session={sessionView({ settingsDialog: "Open", settingsNotice: notice })}
-            t={t}
-            returnFocusRef={returnFocusRef}
-            onSave={vi.fn()}
-            onCancel={vi.fn()}
-            onClear={onClear}
-          />
-        </>,
+        <SettingsDialog
+          session={sessionView({ settingsDialog: "Open", settingsNotice: notice })}
+          t={t}
+          returnFocusRef={returnFocusRef}
+          onSave={vi.fn()}
+          onCancel={vi.fn()}
+          onClear={onClear}
+        />,
       );
       expect(screen.getByTestId("settings-dialog-notice")).toHaveTextContent(text);
     }
   });
 
-  it("gives the focus back to [*] when it closes, and has Japanese texts", () => {
-    const { rerender, returnFocusRef } = renderDialog();
-    rerender(
-      <button type="button" ref={returnFocusRef} data-testid="settings-button">
-        *
-      </button>,
-    );
-    expect(screen.getByTestId("settings-button")).toHaveFocus();
+  it("gives the focus back to the settings button when it closes, and has Japanese texts", () => {
+    const { unmount, returnFocusRef } = renderDialog();
+    unmount();
+    expect(returnFocusRef.current.focus).toHaveBeenCalledTimes(1);
 
-    rerender(
+    render(
       <SettingsDialog
         session={sessionView({ settingsDialog: "Open", cacheDirectory: "/c" })}
         t={createTranslator("ja")}
-        returnFocusRef={returnFocusRef}
+        returnFocusRef={{ current: null }}
         onSave={vi.fn()}
         onCancel={vi.fn()}
         onClear={vi.fn()}

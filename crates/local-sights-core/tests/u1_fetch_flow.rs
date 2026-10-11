@@ -19,15 +19,15 @@ use local_sights_core::timeline::EventTimeline;
 use support::fake_gateway::{FakeGateway, failure, page};
 use support::recording_sink::{Delivered, RecordingSink};
 
-/// 2024-01-02 03:04:05 UTC in epoch milliseconds.
+/// 2024/01/02 03:04:05 UTC in epoch milliseconds.
 const START: i64 = 1_704_164_645_000;
 
 fn validated(profile: &str) -> ValidatedFetch {
     validate_fetch_input(&FetchInput {
         profile_name: profile.to_string(),
         log_group_name: "/aws/lambda/orders".to_string(),
-        start_text: "2024-01-02 03:04:05".to_string(),
-        end_text: "2024-01-02 03:05:05".to_string(),
+        start_text: "2024/01/02 03:04:05".to_string(),
+        end_text: "2024/01/02 03:05:05".to_string(),
     })
     .expect("test input is valid")
 }

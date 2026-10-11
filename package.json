@@ -13,15 +13,20 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "icon:render": "node scripts/render-icon.mjs",
     "test": "vitest run"
   },
   "dependencies": {
+    "@cloudscape-design/components": "^3.0.1396",
+    "@cloudscape-design/design-tokens": "^3.0.114",
+    "@cloudscape-design/global-styles": "^1.0.71",
     "@tauri-apps/api": "^2.12.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@resvg/resvg-js": "^2.6.2",
     "@tauri-apps/cli": "^2.12.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",

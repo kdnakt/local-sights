@@ -490,4 +490,35 @@ describe("LogTable", () => {
     view.rerender({ totalCount: 1_000, filterId: 7, resultVersion: 5 });
     await waitFor(() => expect(viewport().scrollTop).toBe(0));
   });
+
+  // ---- console-style screen: the empty state inside the list (mockups screen 1, R-06) ----
+
+  it("says in the list that there are no events, and what to do, when it is empty", () => {
+    serveRows(0);
+    renderTable({
+      totalCount: 0,
+      emptyText: "No events. Select a log group, set a time range, then choose Fetch.",
+    });
+    expect(screen.getByTestId("log-table-empty")).toHaveTextContent(
+      "No events. Select a log group, set a time range, then choose Fetch.",
+    );
+    expect(screen.getByRole("grid", { name: "Log events" })).toContainElement(
+      screen.getByTestId("log-table-empty"),
+    );
+    expect(api.getRows).not.toHaveBeenCalled();
+  });
+
+  it("shows the no-match text while a filter hides every row, and nothing once rows exist", async () => {
+    serveRows(3);
+    const view = renderTable({
+      totalCount: 0,
+      filterId: 1,
+      resultVersion: 1,
+      emptyText: "No events match the filter.",
+    });
+    expect(screen.getByTestId("log-table-empty")).toHaveTextContent("No events match the filter.");
+    view.rerender({ totalCount: 3, emptyText: "No events match the filter." });
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    expect(screen.queryByTestId("log-table-empty")).not.toBeInTheDocument();
+  });
 });

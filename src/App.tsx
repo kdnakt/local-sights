@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import Alert from "@cloudscape-design/components/alert";
+import Button, { type ButtonProps } from "@cloudscape-design/components/button";
 import {
   cancelClose,
   cancelConnectionChange,
@@ -32,16 +34,21 @@ import {
   type TimeZoneChoice,
 } from "./api";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
+import { ConditionArea } from "./components/ConditionArea";
 import { ConfirmDialog } from "./components/ConfirmDialog";
-import { ConnectionBar } from "./components/ConnectionBar";
 import { FailureList } from "./components/FailureList";
 import { FetchErrorBanner } from "./components/FetchErrorBanner";
-import { FetchForm } from "./components/FetchForm";
 import { LogGroupPane } from "./components/LogGroupPane";
 import { LogTable } from "./components/LogTable";
+import { LogTableCloudscape } from "./components/LogTableCloudscape";
+import { PaneResizer } from "./components/PaneResizer";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { StatusLine } from "./components/StatusLine";
+import { TopBar } from "./components/TopBar";
+import { LOG_TABLE_VARIANT, usePerfRows } from "./dev/perfRows";
+import { useColorScheme } from "./hooks/useColorScheme";
 import { useEscapeKey } from "./hooks/useEscapeKey";
+import { usePaneWidth } from "./hooks/usePaneWidth";
 import { createTranslator, type Locale } from "./i18n/messages";
 
 export interface AppProps {
@@ -49,23 +56,35 @@ export interface AppProps {
 }
 
 /**
- * The single window. It holds no state of its own beyond mirroring the
- * session view the core pushes (ADR-001); the log rows are read from the
- * core by the table itself (U3:BR4.3). Operations that depend on the
- * connection carry the connection generation of the last view (U3:BR6.7).
- * Since U5 it keeps the log filter field's text (so a remount of the form
- * loses nothing), forwards the text after the typing pause, and shows the
- * filter result: the table counts the matching rows while a filter is in
- * force. Filter messages older than the shown result are ignored (U5:BR3.6).
- * Since U6 it opens the settings dialog from the [*] button and returns the
- * focus to it when the dialog closes (U6:BR5.1, BR5.2), and counts refused
- * log filter hand-overs so the field can send its text again (U5 review R-02).
- * Since U7 it shows the failure of a whole fetch in words above the list
- * (U7:BR2.4), hands the list the discard generation (U7:BR1.6) and shows
- * the close confirmation while the session says it is pending, forwarding
- * the answer (U7:BR3.1-BR3.3). The Tab order is the order of the screen:
- * profile, region, time zone, [*], log group filter, log group list,
- * start, end, [Fetch], log filter, then the log list (U7:BR4.4).
+ * The single window, laid out like the console's log events page (mockups
+ * screen 1, FR4.2): the black top navigation, the log group pane on the
+ * left and, on the right, one container with the conditions, the error
+ * area, the log list and the status line. It holds no state of its own
+ * beyond mirroring the session view the core pushes (ADR-001); the log rows
+ * are read from the core by the table itself (U3:BR4.3). Operations that
+ * depend on the connection carry the connection generation of the last view
+ * (U3:BR6.7). Since U5 it keeps the log filter field's text (so a remount of
+ * the form loses nothing), forwards the text after the typing pause, and
+ * shows the filter result: the table counts the matching rows while a
+ * filter is in force. Filter messages older than the shown result are
+ * ignored (U5:BR3.6). Since U6 it opens the settings dialog from the gear
+ * button and returns the focus to it when the dialog closes (U6:BR5.1,
+ * BR5.2), and counts refused log filter hand-overs so the field can send its
+ * text again (U5 review R-02). Since U7 it shows the failure of a whole
+ * fetch in words above the list (U7:BR2.4), hands the list the discard
+ * generation (U7:BR1.6) and shows the close confirmation while the session
+ * says it is pending, forwarding the answer (U7:BR3.1-BR3.3). The Tab order
+ * is the order of the screen: profile, region, time zone, settings, log
+ * group search, log group list, [Reload], [Fetch], log filter, start date,
+ * start time, end date, end time, then the log list (mockups screen 1).
+ * The OS light or dark mode is followed with Cloudscape's theme (FR4.5).
+ * The width of the log group pane is the user's, dragged or keyed on the
+ * handle between the panes and remembered in the browser (gate fix 14d), as
+ * a share of the app body (gate fix 15b); the pane can also be closed from
+ * its heading, leaving only a slim strip with the button that opens it again
+ * (the closed state is remembered too). Closing moves the focus to that
+ * button, opening moves it back to the close button, so the keyboard never
+ * loses its place.
  */
 export function App({ locale }: AppProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
@@ -73,7 +92,33 @@ export function App({ locale }: AppProps) {
   const [commandError, setCommandError] = useState<string | null>(null);
   const [filterDraft, setFilterDraft] = useState<string | null>(null);
   const [filterFailures, setFilterFailures] = useState(0);
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsButtonRef = useRef<ButtonProps.Ref>(null);
+  const perf = usePerfRows();
+  const pane = usePaneWidth();
+  const collapseButtonRef = useRef<ButtonProps.Ref>(null);
+  const expandButtonRef = useRef<ButtonProps.Ref>(null);
+  // Which pane button takes the focus after the next collapse or expand.
+  const paneFocusRef = useRef<"collapse" | "expand" | null>(null);
+  useColorScheme();
+
+  const { setCollapsed: setPaneCollapsed } = pane;
+  const collapsePane = useCallback(() => {
+    paneFocusRef.current = "expand";
+    setPaneCollapsed(true);
+  }, [setPaneCollapsed]);
+  const expandPane = useCallback(() => {
+    paneFocusRef.current = "collapse";
+    setPaneCollapsed(false);
+  }, [setPaneCollapsed]);
+  useEffect(() => {
+    const target = paneFocusRef.current;
+    paneFocusRef.current = null;
+    if (target === "expand") {
+      expandButtonRef.current?.focus();
+    } else if (target === "collapse") {
+      collapseButtonRef.current?.focus();
+    }
+  }, [pane.collapsed]);
 
   const reportError = useCallback(
     (error: unknown) => {
@@ -185,11 +230,25 @@ export function App({ locale }: AppProps) {
     startFetch(generation).catch(reportError);
   }, [reportError, generation]);
 
+  // The list: the core's rows, or the measurement harness's (dev only).
+  const tableProps = {
+    totalCount: perf.enabled
+      ? perf.total
+      : (session?.filterSummary?.matchedCount ?? session?.eventCount ?? 0),
+    timelineVersion: perf.enabled ? perf.version : (session?.timelineVersion ?? 0),
+    timeZone: session?.timeZone ?? "Local",
+    filterId: session?.filterSummary?.filterId ?? null,
+    resultVersion: perf.enabled ? perf.version : (session?.filterResultVersion ?? 0),
+    discardGeneration: session?.discardGeneration ?? 0,
+    t,
+    onError: reportError,
+    emptyText: session?.filterSummary ? t("table.noMatches") : t("table.empty"),
+  };
+
   return (
     <main className="app" data-testid="app">
-      <h1 className="app-title">{t("app.title")}</h1>
       {session && (
-        <ConnectionBar
+        <TopBar
           session={session}
           t={t}
           onSelectProfile={handleSelectProfile}
@@ -199,8 +258,23 @@ export function App({ locale }: AppProps) {
           settingsButtonRef={settingsButtonRef}
         />
       )}
-      <div className="app-body">
-        {session && (
+      <div
+        className="app-body"
+        style={{ "--ls-log-group-pane-width": `${pane.width}%` } as CSSProperties}
+      >
+        {session && pane.collapsed && (
+          <div className="log-group-pane-collapsed" data-testid="log-group-pane-collapsed">
+            <Button
+              ref={expandButtonRef}
+              variant="icon"
+              iconName="angle-right"
+              ariaLabel={t("pane.expand")}
+              onClick={expandPane}
+              data-testid="log-group-pane-expand-button"
+            />
+          </div>
+        )}
+        {session && !pane.collapsed && (
           <LogGroupPane
             key={session.sessionId}
             session={session}
@@ -208,23 +282,49 @@ export function App({ locale }: AppProps) {
             onFilterChange={handleFilter}
             onReload={handleReload}
             onSelect={handleSelectLogGroup}
+            onCollapse={collapsePane}
+            collapseButtonRef={collapseButtonRef}
           />
+        )}
+        {session && !pane.collapsed && (
+          <PaneResizer value={pane.width} onChange={pane.setWidth} t={t} />
         )}
         <section className="app-main">
           {session && (
-            <FetchForm
+            <ConditionArea
               key={`${session.sessionId}:${session.timeZone}`}
               session={session}
               t={t}
+              locale={locale}
               onChange={handleChange}
               onFetch={handleFetch}
               filterText={filterDraft ?? session.logFilter}
               onFilterTextChange={setFilterDraft}
               onLogFilterChange={handleLogFilter}
               filterFailureCount={filterFailures}
-            />
+            >
+              {commandError && (
+                <div role="alert" data-testid="command-error">
+                  <Alert
+                    type="error"
+                    dismissible
+                    dismissAriaLabel={t("error.dismiss")}
+                    statusIconAriaLabel={t("failure.kind.Other")}
+                    onDismiss={dismissError}
+                  >
+                    {commandError}
+                  </Alert>
+                </div>
+              )}
+              <FetchErrorBanner session={session} t={t} />
+              {LOG_TABLE_VARIANT === "cloudscape" ? (
+                <LogTableCloudscape {...tableProps} />
+              ) : (
+                <LogTable {...tableProps} />
+              )}
+              <StatusLine session={session} t={t} onOpenFailures={handleOpenFailures} />
+            </ConditionArea>
           )}
-          <StatusLine session={session} t={t} onOpenFailures={handleOpenFailures} />
           {session?.failureListOpen && (
             <FailureList
               failedStreams={session.failedStreams}
@@ -233,29 +333,6 @@ export function App({ locale }: AppProps) {
               onClose={handleCloseFailures}
             />
           )}
-          {commandError && (
-            <div className="command-error" role="alert" data-testid="command-error">
-              <span>{commandError}</span>{" "}
-              <button
-                type="button"
-                data-testid="command-error-dismiss-button"
-                onClick={dismissError}
-              >
-                {t("error.dismiss")}
-              </button>
-            </div>
-          )}
-          <FetchErrorBanner session={session} t={t} />
-          <LogTable
-            totalCount={session?.filterSummary?.matchedCount ?? session?.eventCount ?? 0}
-            timelineVersion={session?.timelineVersion ?? 0}
-            timeZone={session?.timeZone ?? "Local"}
-            filterId={session?.filterSummary?.filterId ?? null}
-            resultVersion={session?.filterResultVersion ?? 0}
-            discardGeneration={session?.discardGeneration ?? 0}
-            t={t}
-            onError={reportError}
-          />
         </section>
       </div>
       {session?.pendingChange && (

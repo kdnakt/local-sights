@@ -3,7 +3,9 @@
 
 mod support;
 
-use local_sights_core::catalog::ProfileSelector;
+use local_sights_core::catalog::{
+    ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileSelector,
+};
 use local_sights_core::failure::{ApiFailure, FailureKind};
 use local_sights_core::log_groups::listing::{
     ListingEnd, ListingRequest, ListingSink, run_listing,
@@ -13,6 +15,7 @@ use local_sights_core::log_groups::{
     apply_page_if_current, empty_state,
 };
 use local_sights_core::paging::PageDecision;
+use local_sights_core::session::AppSession;
 use support::fake_gateway::{FakeGateway, failure, group_page};
 
 /// Holds the current listing like AppSession does. Optionally replaces it
@@ -245,6 +248,68 @@ async fn auth_and_permission_failures_do_not_stop_the_app() {
         );
         assert_eq!(sink.listing().failure().map(ApiFailure::kind), Some(kind));
     }
+}
+
+/// Holds an [`AppSession`] like the app does, so the listing the session
+/// started at startup can run through the fake gateway.
+struct SessionSink(AppSession);
+
+impl ListingSink for SessionSink {
+    fn is_current(&self, listing_id: &str) -> bool {
+        self.0.is_current_listing(listing_id)
+    }
+
+    fn on_page(
+        &mut self,
+        listing_id: &str,
+        groups: Vec<LogGroup>,
+        next_token: Option<&str>,
+    ) -> Option<PageDecision> {
+        self.0.apply_listing_page(listing_id, groups, next_token)
+    }
+
+    fn on_failure(&mut self, listing_id: &str, failure: ApiFailure) -> bool {
+        self.0.apply_listing_failure(listing_id, failure)
+    }
+}
+
+/// Gate fix 14c: at startup the session selects the SDK default profile and,
+/// when the SDK has a default region, starts its listing; the app runs that
+/// listing against the gateway with no profile name, like any other.
+#[tokio::test]
+async fn startup_selects_the_sdk_default_and_its_listing_fills_the_log_groups() {
+    let sdk_default = ConnectionProfile {
+        kind: ProfileKind::SdkDefault,
+        profile_name: None,
+        default_region: Some("us-east-1".to_string()),
+    };
+    let session = AppSession::with_catalog(ConnectionCatalog::new(vec![sdk_default], Vec::new()));
+    let request = session.startup_listing().expect("a startup listing");
+    assert_eq!(request.profile, ProfileSelector::SdkDefault);
+    assert_eq!(request.region, "us-east-1");
+
+    let gateway = FakeGateway::with_log_group_pages(vec![
+        group_page(&["/aws/lambda/b"], Some("t1")),
+        group_page(&["/aws/lambda/a"], None),
+    ]);
+    let mut sink = SessionSink(session);
+    assert_eq!(
+        run_listing(&gateway, &request, &mut sink).await,
+        ListingEnd::Complete
+    );
+
+    let calls = gateway.group_calls();
+    assert_eq!(calls[0].profile_name, None);
+    assert_eq!(calls[0].region.as_deref(), Some("us-east-1"));
+    let view = sink.0.view();
+    assert_eq!(view.connection.region.as_deref(), Some("us-east-1"));
+    let groups = view.log_groups.expect("the list");
+    assert_eq!(groups.status, ListingStatus::Complete);
+    assert_eq!(
+        groups.visible_groups,
+        vec!["/aws/lambda/a", "/aws/lambda/b"]
+    );
+    assert!(sink.0.startup_listing().is_none());
 }
 
 #[tokio::test]

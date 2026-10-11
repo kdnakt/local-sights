@@ -1,0 +1,214 @@
+{
+  "stage": "code-generation",
+  "unit": null,
+  "upstream_ids": [
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR1.7",
+    "FR1.8",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR4.6",
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR6",
+    "NFR7",
+    "GATE-1",
+    "GATE-2",
+    "GATE-3",
+    "GATE-4",
+    "GATE-5",
+    "GATE-6",
+    "GATE-7",
+    "GATE-8",
+    "GATE-9",
+    "GATE-10",
+    "GATE-11",
+    "GATE-12",
+    "GATE-13",
+    "GATE-14",
+    "GATE-15",
+    "GATE-16",
+    "REV-R01",
+    "REV-R03"
+  ],
+  "coverage": [
+    { "id": "FR1.1", "status": "OK", "target": "src/components/ConditionArea.tsx" },
+    { "id": "FR1.2", "status": "OK", "target": "src/components/ConditionArea.test.tsx" },
+    { "id": "FR1.3", "status": "OK", "target": "src/dateTime.ts" },
+    {
+      "id": "FR1.4",
+      "status": "OK",
+      "target": "src/dateTime.ts",
+      "justification": "画面案 Q4（R-01）で置き換え：空の時刻は不正ではなく自動で補う（開始 00:00:00・終了 23:59:59）。日付が空・不正なときは [取得] を押せず、理由を日付欄の直下に出す。"
+    },
+    { "id": "FR1.5", "status": "OK", "target": "src/App.test.tsx" },
+    { "id": "FR1.6", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "FR1.7", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "FR1.8", "status": "OK", "target": "src/components/ConditionArea.test.tsx" },
+    { "id": "FR2.1", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "FR2.2", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "FR2.3", "status": "OK", "target": "src/i18n/messages.test.ts" },
+    { "id": "FR2.4", "status": "OK", "target": "crates/local-sights-core/src/time_range.rs" },
+    { "id": "FR3.1", "status": "OK", "target": "src/components/ConditionArea.test.tsx" },
+    { "id": "FR3.2", "status": "OK", "target": "src/components/FetchErrorBanner.test.tsx" },
+    { "id": "FR3.3", "status": "OK", "target": "src/components/FailureList.tsx" },
+    { "id": "FR3.4", "status": "OK", "target": "src/errorText.ts" },
+    { "id": "FR3.5", "status": "OK", "target": "src/components/FetchErrorBanner.test.tsx" },
+    {
+      "id": "FR4.1",
+      "status": "OK",
+      "target": "src/components/TopBar.tsx",
+      "justification": "見える部品は Cloudscape に置き換えた。ログ一覧だけは NFR2 の但し書きどおり自前の仮想スクロールにデザイントークンを当てて残した（SM1 の例外。性能測定の結果で入れ替え可：LogTableCloudscape.tsx）。"
+    },
+    { "id": "FR4.2", "status": "OK", "target": "src/App.tsx" },
+    { "id": "FR4.3", "status": "OK", "target": "src/components/LogTable.tsx" },
+    { "id": "FR4.4", "status": "OK", "target": "src/App.test.tsx" },
+    { "id": "FR4.5", "status": "OK", "target": "src/hooks/useColorScheme.test.ts" },
+    { "id": "FR4.6", "status": "OK", "target": "src/main.tsx" },
+    { "id": "NFR1", "status": "OK", "target": "package.json" },
+    {
+      "id": "NFR2",
+      "status": "Deferred",
+      "target": "src/dev/perfRows.ts",
+      "justification": "100 万行の測定は Tauri 実機で開発者が行う（README「Performance check of the log list」）。測定までは既存の仮想スクロール LogTable.tsx を保つ（計画の安全側）。Cloudscape 表の試作 LogTableCloudscape.tsx は VITE_LOCAL_SIGHTS_LOG_TABLE=cloudscape で切り替え可。"
+    },
+    { "id": "NFR3", "status": "OK", "target": "src/components/ConditionArea.test.tsx" },
+    { "id": "NFR4", "status": "OK", "target": "src/i18n/messages.test.ts" },
+    { "id": "NFR5", "status": "OK", "target": "package-lock.json" },
+    { "id": "NFR6", "status": "OK", "target": "src/components/LogTable.test.tsx" },
+    {
+      "id": "NFR7",
+      "status": "Deferred",
+      "target": "src/styles.css",
+      "justification": "1024×640 の最小ウィンドウは CSS（min-width 1024px、条件行の折り返し）で対応したが、崩れないことの確認は Tauri 実機で開発者が目で行う（README の手動確認）。"
+    },
+    {
+      "id": "GATE-1",
+      "status": "OK",
+      "target": "src/components/ConditionArea.test.tsx",
+      "justification": "ゲートの指摘「カレンダーが狭くて全部見えない」：日付欄を DatePicker の最大幅 234px に（styles.css）。見え方の合否は実機確認。"
+    },
+    {
+      "id": "GATE-2",
+      "status": "OK",
+      "target": "src/i18n/messages.ts",
+      "justification": "ゲートの指摘「プロファイル名が長い」：SDK default／SDK デフォルト。"
+    },
+    {
+      "id": "GATE-3",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs",
+      "justification": "ゲートの指摘「このプロファイル設定で起動してほしい」：起動時に SDK デフォルトを選び、既定リージョンがあれば一覧を始める（テスト先行）。"
+    },
+    {
+      "id": "GATE-4",
+      "status": "OK",
+      "target": "src/components/PaneResizer.tsx",
+      "justification": "ゲートの指摘「ロググループ名の幅を可変に」：つまみで 10〜40rem、既定 14rem、localStorage に保持。"
+    },
+    {
+      "id": "GATE-5",
+      "status": "OK",
+      "target": "src-tauri/tauri.conf.json",
+      "justification": "追加依頼「アプリ名は Local Sights」：productName・ウィンドウタイトル・app.title。"
+    },
+    {
+      "id": "GATE-6",
+      "status": "OK",
+      "target": "src-tauri/icons/source/icon.svg",
+      "justification": "追加依頼「ログを見る感じのアイコン」：SVG から PNG と Tauri のアイコン一式を生成。"
+    },
+    {
+      "id": "GATE-7",
+      "status": "OK",
+      "target": "src/i18n/messages.ts",
+      "justification": "ゲートの指摘（2 回目）「プロファイル名は「デフォルト」に」：Default／デフォルト（TopBar.test.tsx、messages.test.ts、App.test.tsx で確認）。"
+    },
+    {
+      "id": "GATE-8",
+      "status": "OK",
+      "target": "src/hooks/usePaneWidth.ts",
+      "justification": "ゲートの指摘「ロググループ名がここまでしか小さくできない／完全に閉じたい／最小 20%」：.log-group-pane に min-width 0、幅を % に（既定 25、20〜50）、閉じる・開くの帯（App.tsx、LogGroupPane.tsx、PaneResizer.tsx、styles.css；usePaneWidth.test.ts、PaneResizer.test.tsx、LogGroupPane.test.tsx、App.test.tsx で確認）。"
+    },
+    {
+      "id": "GATE-9",
+      "status": "OK",
+      "target": "src/components/ConditionArea.test.tsx",
+      "justification": "ゲートの指摘「ロググループを選択してくださいが 2 箇所」：見出しを「Log group: none」に変え、案内は理由行だけ（同じ文言が 1 か所にしか出ないテスト）。"
+    },
+    {
+      "id": "GATE-10",
+      "status": "OK",
+      "target": "src/components/ConditionArea.tsx",
+      "justification": "ゲートの指摘「絞り込み欄と日付欄の y 座標が揃ってない」：絞り込み欄にも awsui-key-label のラベルを置き、3 つの欄を同じ構造にした（ConditionArea.test.tsx のラベルのテスト）。実機での見え方は手動確認。"
+    },
+    {
+      "id": "GATE-11",
+      "status": "OK",
+      "target": "src/components/LogFilterInput.test.tsx",
+      "justification": "ゲートの指摘「イベントを絞り込みじゃなくてメッセージを絞り込み」：Filter messages／メッセージを絞り込み。"
+    },
+    {
+      "id": "GATE-12",
+      "status": "OK",
+      "target": "scripts/render-icon.mjs",
+      "justification": "ゲートの指摘「アイコンの四隅が白い」：resvg で背景透明に描き出し、四隅のアルファ 0 をスクリプトで検証してから tauri icon で一式を作り直した。Dock・Finder での見え方は手動確認。"
+    },
+    {
+      "id": "GATE-13",
+      "status": "OK",
+      "target": "crates/local-sights-core/src/session.rs",
+      "justification": "ゲートの指摘（3 回目）「デフォルトの日付を埋めて欲しい。開始日は昨日、終了日は今日」：with_default_time_range が起動時にローカルゾーンの暦日で昨日 00:00:00〜今日 23:59:59 を入力欄に入れる（テスト先行：session.rs 5、time_range.rs 1、App.test.tsx 1；src-tauri/src/lib.rs が SystemTime::now() を渡す）。実機での見え方は手動確認。"
+    },
+    {
+      "id": "GATE-14",
+      "status": "OK",
+      "target": "src-tauri/icons/source/icon.svg",
+      "justification": "ゲートの指摘「アイコンが少しデカくない？」：板を macOS の規則（1024px のうち中央 824×824、余白 100px、角の半径 185px）に縮め、scripts/render-icon.mjs で余白の透明を検証してから tauri icon で一式を作り直した。Dock での大きさは手動確認。"
+    },
+    {
+      "id": "GATE-15",
+      "status": "OK",
+      "target": "src/components/ConditionArea.tsx",
+      "justification": "ゲートの指摘（4 回目）「カレンダーで未来の日付が選べるのはおかしい」：開始・終了の両方の DatePicker に isDateEnabled を渡し、表示中のタイムゾーン（session.timeZone）の今日より後の日を無効にした（純粋ロジック src/dateTime.ts の todayInZone・isFutureDate はテスト先行で dateTime.test.ts 5、部品は ConditionArea.test.tsx 3）。手入力の未来日は対象外（承認済みの前提）。実機での見え方は手動確認。"
+    },
+    {
+      "id": "GATE-16",
+      "status": "OK",
+      "target": "src/styles.css",
+      "justification": "ゲートの指摘（4 回目の追加）「フッター付近のこのメッセージは常に見えるようにしておいてほしい」：原因は Cloudscape の Container（fitHeight）の content-inner が min-height: auto のため中身（仮想スクロールの全行分の高さ）より縮まず、条件エリア全体が Container の中でスクロールしてステータス行が窓の外に出ていたこと。ConditionArea.tsx で中身を .condition-area-frame（position: relative; height: 100%）で包み、列 .condition-area を position: absolute; inset: 0 で重ねて、ログ一覧（.log-table: flex: 1; min-height: 0）だけが残りの高さでスクロールし、ステータス行（flex: 0 0 auto）が常に枠の下端に見えるようにした。テストは実装後に App.test.tsx 1（同じ列の最後の子、エラーのアラート表示中も）と ConditionArea.test.tsx 1（構造とスタイルシートの規則）。実機での見え方は手動確認。"
+    },
+    {
+      "id": "REV-R01",
+      "status": "OK",
+      "target": "src-tauri/tauri.conf.json",
+      "justification": "レビュー R-01：CSP に font-src 'self' data: を追加（Cloudscape の埋め込みフォント）。"
+    },
+    {
+      "id": "REV-R03",
+      "status": "OK",
+      "target": "src/dev/perfRows.test.ts",
+      "justification": "レビュー R-03：性能ハーネスは import.meta.env.DEV でも条件づけ、本番ビルドでは無効。"
+    }
+  ]
+}

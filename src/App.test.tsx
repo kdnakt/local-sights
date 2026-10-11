@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -67,8 +67,22 @@ function push(view: SessionView) {
   });
 }
 
+/** The trigger button of the top bar dropdown with `testId`. */
+const dropdown = (testId: string) => within(screen.getByTestId(testId)).getByRole("button");
+const logFilter = () => screen.getByRole("searchbox", { name: "Filter messages" });
+const dateInput = (side: "start" | "end") =>
+  within(screen.getByTestId(`fetch-form-${side}-date`)).getByRole("textbox");
+const timeInput = (side: "start" | "end") =>
+  within(screen.getByTestId(`fetch-form-${side}-time`)).getByRole("textbox");
+
+/** Cloudscape's modal reads the key code; user-event sends none, so Escape is fired by hand. */
+const pressEscape = () =>
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape", keyCode: 27 });
+
 describe("App", () => {
   beforeEach(() => {
+    // The pane's width and collapsed state are remembered per browser.
+    window.localStorage.clear();
     vi.mocked(api.getSession).mockResolvedValue(sessionView());
     vi.mocked(api.startFetch).mockResolvedValue(undefined);
     vi.mocked(api.updateInput).mockResolvedValue(sessionView());
@@ -113,9 +127,12 @@ describe("App", () => {
     expect(screen.getByText("middle")).toBeInTheDocument();
     expect(screen.getByText("stream-b")).toBeInTheDocument();
 
-    // A connection change discards the logs: count 0, new version.
+    // A connection change discards the logs: count 0, new version, empty state.
     push(connectedView({ phase: "Idle", eventCount: 0, timelineVersion: 2 }));
     await waitFor(() => expect(screen.queryAllByTestId("log-table-row")).toHaveLength(0));
+    expect(screen.getByTestId("log-table-empty")).toHaveTextContent(
+      "No events. Select a log group, set a time range, then choose Fetch.",
+    );
   });
 
   it("applies the light progress messages of the running job only", async () => {
@@ -156,7 +173,12 @@ describe("App", () => {
 
   it("sends the connection generation with fetch, reload and log group selection", async () => {
     vi.mocked(api.getSession).mockResolvedValue(
-      connectedView({ connectionGeneration: 4, canFetch: true }),
+      connectedView({
+        connectionGeneration: 4,
+        canFetch: true,
+        startInput: { text: "2024/03/01 10:00:00", instant: 1, error: null },
+        endInput: { text: "2024/03/01 12:00:00", instant: 2, error: null },
+      }),
     );
     const user = userEvent.setup();
     render(<App locale="en" />);
@@ -188,19 +210,36 @@ describe("App", () => {
 
     push({ ...done, failureListOpen: true });
     expect(screen.getByTestId("failure-list-close-button")).toHaveFocus();
-    await user.keyboard("{Escape}");
+    pressEscape();
     expect(api.setFailureListOpen).toHaveBeenLastCalledWith(false);
     push({ ...done, failureListOpen: false });
     expect(screen.queryByTestId("failure-list")).not.toBeInTheDocument();
+    // The focus goes back to the button that opened the list.
+    expect(screen.getByTestId("status-line-failures-button")).toHaveFocus();
   });
 
-  it("shows a refused command as a message and dismisses it with Escape", async () => {
+  it("shows a refused command as an error alert and dismisses it with Escape or its button", async () => {
     vi.mocked(api.startFetch).mockRejectedValue({ key: "session.busy" });
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({
+        canFetch: true,
+        startInput: { text: "2024/03/01 10:00:00", instant: 1, error: null },
+        endInput: { text: "2024/03/01 12:00:00", instant: 2, error: null },
+      }),
+    );
     const user = userEvent.setup();
     render(<App locale="en" />);
     await user.click(await screen.findByTestId("fetch-form-submit-button"));
     expect(await screen.findByTestId("command-error")).toHaveTextContent("A fetch is in progress.");
+    expect(screen.getByTestId("command-error")).toHaveAttribute("role", "alert");
     await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("command-error")).not.toBeInTheDocument());
+    await user.click(screen.getByTestId("fetch-form-submit-button"));
+    await user.click(
+      within(await screen.findByTestId("command-error")).getByRole("button", {
+        name: "Dismiss (Esc)",
+      }),
+    );
     await waitFor(() => expect(screen.queryByTestId("command-error")).not.toBeInTheDocument());
   });
 
@@ -209,6 +248,8 @@ describe("App", () => {
     expect(await screen.findByTestId("fetch-form-submit-button")).toHaveTextContent("取得");
     expect(screen.getByRole("columnheader", { name: "時刻（ローカル）" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "ストリーム名" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "ロググループ" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "メッセージを絞り込み" })).toBeInTheDocument();
   });
 
   it("asks before a connection change and forwards the answer", async () => {
@@ -222,7 +263,7 @@ describe("App", () => {
       }),
     );
     expect(screen.getByTestId("confirm-dialog-cancel-button")).toHaveFocus();
-    await user.keyboard("{Escape}");
+    pressEscape();
     expect(api.cancelConnectionChange).toHaveBeenCalledTimes(1);
     await user.click(screen.getByTestId("confirm-dialog-change-button"));
     expect(api.confirmConnectionChange).toHaveBeenCalledTimes(1);
@@ -230,34 +271,85 @@ describe("App", () => {
     expect(screen.queryByTestId("confirm-dialog")).not.toBeInTheDocument();
   });
 
-  it("forwards profile, region and filter choices", async () => {
+  it("forwards profile, region and log group search choices from the top bar and the pane", async () => {
     vi.mocked(api.getSession).mockResolvedValue(connectedView());
     const user = userEvent.setup();
     render(<App locale="en" />);
-    await user.selectOptions(
-      await screen.findByTestId("connection-bar-profile-select"),
-      "named:prod",
+    await user.click(
+      await screen.findByTestId("top-bar-profile").then(() => dropdown("top-bar-profile")),
     );
+    await user.click(screen.getByRole("menuitem", { name: "prod" }));
     expect(api.selectProfile).toHaveBeenCalledWith({ kind: "Named", profileName: "prod" });
-    await user.selectOptions(screen.getByTestId("connection-bar-region-select"), "us-east-1");
+    await user.click(dropdown("top-bar-region"));
+    await user.click(screen.getByRole("menuitem", { name: "us-east-1" }));
     expect(api.selectRegion).toHaveBeenCalledWith("us-east-1");
-    await user.type(screen.getByTestId("log-group-pane-filter-input"), "w");
+    await user.type(screen.getByRole("searchbox", { name: "Find log groups" }), "w");
     expect(api.updateLogGroupFilter).toHaveBeenCalledWith("w");
   });
 
-  it("switches the time zone through the core and re-reads the rows without fetching", async () => {
+  it("shows at startup the SDK default profile, its region and the loading list the core selected, without any click (gate fix 14c)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({
+        connection: { profile: { kind: "SdkDefault" }, region: "us-east-1" },
+        canReload: true,
+        logGroups: {
+          status: "Loading",
+          visibleGroups: [],
+          totalCount: 0,
+          emptyState: null,
+          failure: null,
+        },
+      }),
+    );
+    render(<App locale="en" />);
+    expect(await screen.findByTestId("top-bar-profile")).toHaveTextContent("Profile: Default");
+    expect(screen.getByTestId("top-bar-region")).toHaveTextContent("us-east-1");
+    expect(screen.getByRole("table", { name: "Log groups" })).toHaveTextContent("Loading…");
+    // The selection is the core's: the screen sends nothing at startup.
+    expect(api.selectProfile).not.toHaveBeenCalled();
+    expect(api.selectRegion).not.toHaveBeenCalled();
+    expect(api.reloadLogGroups).not.toHaveBeenCalled();
+  });
+
+  it("shows at startup the default range the core filled in, yesterday to today, split into the date and time fields (gate fix 16a)", async () => {
+    // The core fills yesterday 00:00:00 to today 23:59:59 in the local zone;
+    // the screen only splits each text into its date and time field.
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({
+        startInput: { text: "2024/02/29 00:00:00", instant: 1_709_132_400_000, error: null },
+        endInput: { text: "2024/03/01 23:59:59", instant: 1_709_305_199_000, error: null },
+        validationErrors: ["selection.regionRequired", "selection.logGroupRequired"],
+        canFetch: false,
+      }),
+    );
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    expect(dateInput("start")).toHaveValue("2024/02/29");
+    expect(timeInput("start")).toHaveValue("00:00:00");
+    expect(dateInput("end")).toHaveValue("2024/03/01");
+    expect(timeInput("end")).toHaveValue("23:59:59");
+    // No date or time reason: the filled values are valid input.
+    expect(screen.queryByText(/yyyy\/mm\/dd/)).not.toBeInTheDocument();
+    // The values are the core's: the screen sends nothing back at startup.
+    expect(api.updateInput).not.toHaveBeenCalled();
+    expect(api.startFetch).not.toHaveBeenCalled();
+  });
+
+  it("switches the time zone through the core, rewrites the date and time fields and re-reads the rows without fetching", async () => {
     const user = userEvent.setup();
-    const startInput = { text: "2024-03-01 10:00:00", instant: 1_709_254_800_000, error: null };
+    const startInput = { text: "2024/03/01 10:00:00", instant: 1_709_254_800_000, error: null };
     vi.mocked(api.getSession).mockResolvedValue(
       connectedView({ phase: "Done", eventCount: 3, timelineVersion: 1, startInput }),
     );
     render(<App locale="en" />);
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
     expect(screen.getAllByRole("gridcell")[0]).toHaveTextContent("core time 0");
-    expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 10:00:00");
+    expect(dateInput("start")).toHaveValue("2024/03/01");
+    expect(timeInput("start")).toHaveValue("10:00:00");
     const readsBefore = vi.mocked(api.getRows).mock.calls.length;
 
-    await user.click(screen.getByTestId("time-zone-toggle-utc-radio"));
+    await user.click(dropdown("top-bar-time-zone"));
+    await user.click(screen.getByRole("menuitem", { name: "UTC" }));
     expect(api.selectTimeZone).toHaveBeenCalledWith("Utc");
 
     // The core answers with the new zone, the rewritten input and the same
@@ -275,15 +367,16 @@ describe("App", () => {
         eventCount: 3,
         timelineVersion: 1,
         timeZone: "Utc",
-        startInput: { ...startInput, text: "2024-03-01 01:00:00" },
+        startInput: { ...startInput, text: "2024/03/01 01:00:00" },
       }),
     );
     await waitFor(() => expect(screen.getAllByRole("gridcell")[0]).toHaveTextContent("utc 0"));
     expect(vi.mocked(api.getRows).mock.calls.length).toBeGreaterThan(readsBefore);
     expect(screen.getByRole("columnheader", { name: "Time (UTC)" })).toBeInTheDocument();
-    expect(screen.getByTestId("time-zone-toggle-utc-radio")).toBeChecked();
-    expect(screen.getByTestId("fetch-form-start-input")).toHaveValue("2024-03-01 01:00:00");
-    expect(screen.getByText("Start (UTC)")).toBeInTheDocument();
+    expect(dropdown("top-bar-time-zone")).toHaveTextContent("Time zone: UTC");
+    expect(dateInput("start")).toHaveValue("2024/03/01");
+    expect(timeInput("start")).toHaveValue("01:00:00");
+    expect(screen.getByRole("group", { name: "Start (UTC)" })).toBeInTheDocument();
     expect(api.startFetch).not.toHaveBeenCalled();
   });
 
@@ -334,7 +427,7 @@ describe("App", () => {
     render(<App locale="en" />);
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(2));
     expect(screen.getByTestId("status-line-filter")).toHaveTextContent("Filtered: 2 of 3 events");
-    expect(screen.getByTestId("log-filter-input")).toHaveValue("error");
+    expect(logFilter()).toHaveValue("error");
     const reads = vi.mocked(api.getRows).mock.calls.length;
 
     vi.mocked(api.getRows).mockResolvedValue(filteredRows(["other error", "second error"], 6));
@@ -369,10 +462,28 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("fresh row")).toBeInTheDocument());
   });
 
+  it("says in the list when the filter matches nothing (R-06)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({
+        phase: "Done",
+        eventCount: 3,
+        timelineVersion: 1,
+        logFilter: "zzz",
+        filterSummary: filterSummary({ matchedCount: 0, resultVersion: 2 }),
+        filterResultVersion: 2,
+      }),
+    );
+    render(<App locale="en" />);
+    expect(await screen.findByTestId("log-table-empty")).toHaveTextContent(
+      "No events match the filter.",
+    );
+  });
+
   it("hands the log filter text to the core after the typing pause", async () => {
     vi.mocked(api.getSession).mockResolvedValue(sessionView({ phase: "Fetching" }));
     render(<App locale="en" />);
-    const input = await screen.findByTestId("log-filter-input");
+    await screen.findByTestId("fetch-form");
+    const input = logFilter();
     expect(input).toBeEnabled();
     vi.useFakeTimers();
     try {
@@ -393,11 +504,11 @@ describe("App", () => {
     expect(api.startFetch).not.toHaveBeenCalled();
   });
 
-  it("opens the settings dialog from [*], saves through the core and returns the focus", async () => {
+  it("opens the settings dialog from the gear button, saves through the core and returns the focus", async () => {
     const user = userEvent.setup();
     render(<App locale="en" />);
     await screen.findByTestId("fetch-form");
-    const settingsButton = screen.getByTestId("connection-bar-settings-button");
+    const settingsButton = screen.getByTestId("top-bar-settings-button");
     await user.click(settingsButton);
     expect(api.openSettings).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
@@ -405,8 +516,8 @@ describe("App", () => {
     push(sessionView({ settingsDialog: "Open" }));
     expect(screen.getByTestId("settings-dialog")).toBeInTheDocument();
     expect(screen.getByTestId("fetch-form-submit-button")).toBeDisabled();
-    expect(screen.getByTestId("log-filter-input")).toBeDisabled();
-    await user.click(screen.getByTestId("settings-dialog-cache-checkbox"));
+    expect(logFilter()).toBeDisabled();
+    await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByTestId("settings-dialog-save-button"));
     expect(api.saveSettings).toHaveBeenCalledWith(true);
 
@@ -422,7 +533,7 @@ describe("App", () => {
     push(sessionView({ settingsDialog: "Open" }));
     await user.click(screen.getByTestId("settings-dialog-clear-button"));
     expect(api.clearCache).toHaveBeenCalledTimes(1);
-    await user.keyboard("{Escape}");
+    pressEscape();
     expect(api.cancelSettings).toHaveBeenCalledTimes(1);
     expect(api.saveSettings).not.toHaveBeenCalled();
   });
@@ -433,7 +544,7 @@ describe("App", () => {
       .mockResolvedValue(undefined);
     render(<App locale="en" />);
     await screen.findByTestId("fetch-form");
-    const input = screen.getByTestId("log-filter-input");
+    const input = logFilter();
     fireEvent.change(input, { target: { value: "error" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(api.setLogFilter).toHaveBeenCalledWith("error");
@@ -455,7 +566,7 @@ describe("App", () => {
     expect(screen.getByTestId("close-confirm-keep-button")).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(api.cancelClose).toHaveBeenCalledTimes(1);
-    await user.keyboard("{Escape}");
+    pressEscape();
     expect(api.cancelClose).toHaveBeenCalledTimes(2);
     expect(api.confirmClose).not.toHaveBeenCalled();
     // The fetch ended meanwhile: the dialog stays while the session asks (BR3.4).
@@ -466,7 +577,7 @@ describe("App", () => {
     expect(screen.queryByTestId("close-confirm-dialog")).not.toBeInTheDocument();
   });
 
-  it("shows a failed fetch in words above the list and only what happened in the status line", async () => {
+  it("shows a failed fetch as an error alert above the list and only what happened in the status line", async () => {
     render(<App locale="ja" />);
     await screen.findByTestId("fetch-form");
     push(
@@ -498,8 +609,51 @@ describe("App", () => {
       "AWS に接続できませんでした。",
     );
     expect(screen.getByTestId("status-line")).not.toHaveTextContent("詳細");
-    // The rows fetched before the failure stay listed below.
+    // The rows fetched before the failure stay listed below, and the alert sits above the list.
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    expect(
+      banner.compareDocumentPosition(screen.getByTestId("log-table")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the status line the last part of the list's column, with or without the error alert (gate fix 18a)", async () => {
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", eventCount: 3, timelineVersion: 1 }));
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    const column = screen.getByTestId("condition-area");
+    const checkColumn = () => {
+      // The list and the status line are siblings in the one flex column,
+      // the status line last, so nothing below the list can push it away.
+      expect(screen.getByTestId("log-table").parentElement).toBe(column);
+      expect(screen.getByTestId("status-line").parentElement).toBe(column);
+      expect(column.lastElementChild).toBe(screen.getByTestId("status-line"));
+      expect(screen.getByTestId("log-table")).toHaveClass("log-table");
+      // The column sits in the frame inside the Cloudscape container.
+      expect(column.parentElement).toBe(screen.getByTestId("condition-area-frame"));
+      expect(screen.getByTestId("fetch-form")).toContainElement(column);
+    };
+    checkColumn();
+    // A failed fetch adds the alert above the list, in the same column.
+    push(
+      sessionView({
+        phase: "Failed",
+        eventCount: 3,
+        timelineVersion: 1,
+        lastJob: {
+          jobId: 1,
+          status: "Failed",
+          eventCount: 3,
+          plannedStreamCount: 0,
+          finishedStreamCount: 0,
+          failedStreamCount: 0,
+          failure: { kind: "Network", safeDetail: "kind=Network", retryable: true },
+        },
+      }),
+    );
+    expect(screen.getByTestId("fetch-error-banner").parentElement).toBe(column);
+    checkColumn();
   });
 
   it("closes every expanded row when the session says the logs were discarded", async () => {
@@ -514,41 +668,118 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByTestId("log-table-expanded")).not.toBeInTheDocument());
   });
 
-  it("moves through the screen with Tab in the order of BR4.4", async () => {
+  it("moves through the screen with Tab in the order of mockups screen 1, the pane handle after Reload (14d)", async () => {
     vi.mocked(api.getSession).mockResolvedValue(
-      connectedView({ selectedLogGroupName: "/aws/ecs/web", eventCount: 3, phase: "Done" }),
+      connectedView({
+        selectedLogGroupName: "/aws/ecs/web",
+        eventCount: 3,
+        phase: "Done",
+        startInput: { text: "2024/03/01 10:00:00", instant: 1, error: null },
+        endInput: { text: "2024/03/01 12:00:00", instant: 2, error: null },
+      }),
     );
     const user = userEvent.setup();
     render(<App locale="en" />);
-    await screen.findByTestId("log-group-pane-list");
+    await screen.findByTestId("log-group-pane-table");
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
-    const seen: string[] = [];
-    for (let step = 0; step < 16; step += 1) {
-      await user.tab();
-      const active = document.activeElement;
-      const name = active?.getAttribute("data-testid") ?? active?.tagName ?? "";
-      if (seen.at(-1) !== name) {
-        seen.push(name);
-      }
-    }
-    const order = [
-      "connection-bar-profile-select",
-      "connection-bar-region-select",
-      "time-zone-toggle-local-radio",
-      "connection-bar-settings-button",
-      "log-group-pane-filter-input",
-      "log-group-pane-list",
-      "fetch-form-start-input",
-      "fetch-form-end-input",
+    // Tab until the start date (the masked date and time inputs swallow
+    // user-event's keyCode-less Tab, so the rest is checked on the DOM order).
+    const expected = [
+      "top-bar-profile",
+      "top-bar-region",
+      "top-bar-time-zone",
+      "top-bar-settings-button",
+      // Gate fix 15b: the pane's close button sits in its heading.
+      "log-group-pane-collapse-button",
+      "log-group-pane-filter",
+      "log-group-pane-table",
+      "log-group-pane-reload-button",
+      // Gate fix 14d: the handle between the panes is keyboard-resizable.
+      "pane-resizer",
       "fetch-form-submit-button",
-      "log-filter-input",
-      "log-table",
+      "log-filter",
+      "fetch-form-start-date",
     ];
-    const positions = order.map((name) => seen.indexOf(name));
-    expect(
-      positions.every((position) => position >= 0),
-      seen.join(", "),
-    ).toBe(true);
-    expect([...positions].sort((x, y) => x - y)).toEqual(positions);
+    for (const testId of expected) {
+      await user.tab();
+      const active = document.activeElement as HTMLElement;
+      expect(active.closest("[data-testid]")?.getAttribute("data-testid"), testId).toBe(testId);
+    }
+    const after = (first: HTMLElement, second: HTMLElement) =>
+      (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(after(dateInput("start"), timeInput("start"))).toBe(true);
+    expect(after(timeInput("start"), dateInput("end"))).toBe(true);
+    expect(after(dateInput("end"), timeInput("end"))).toBe(true);
+    expect(after(timeInput("end"), screen.getByTestId("log-table"))).toBe(true);
+    expect(screen.getByTestId("log-table")).toHaveAttribute("tabindex", "0");
+  });
+
+  // ---- gate fix 15b: the log group pane closes to a strip and opens again ----
+
+  it("closes the log group pane to a strip, then opens it again at the same width (15b)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(connectedView());
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("log-group-pane");
+    const body = screen.getByTestId("app").querySelector<HTMLElement>(".app-body")!;
+    const widthVar = () => body.style.getPropertyValue("--ls-log-group-pane-width");
+    expect(widthVar()).toBe("25%");
+    // Narrow the pane by three steps, then close it.
+    screen.getByRole("separator", { name: "Log group pane width" }).focus();
+    await user.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}");
+    expect(widthVar()).toBe("22%");
+    await user.click(screen.getByRole("button", { name: "Close the log group list" }));
+    expect(screen.queryByTestId("log-group-pane")).not.toBeInTheDocument();
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    const strip = screen.getByTestId("log-group-pane-collapsed");
+    const openButton = screen.getByRole("button", { name: "Open the log group list" });
+    expect(strip).toContainElement(openButton);
+    // Only the open button is in the strip, and it has the focus.
+    expect(strip.querySelectorAll("button, input")).toHaveLength(1);
+    expect(openButton).toHaveFocus();
+    expect(window.localStorage.getItem("local-sights.logGroupPaneCollapsed")).toBe("true");
+    // The rest of the screen is still there.
+    expect(screen.getByTestId("fetch-form")).toBeInTheDocument();
+    // Open it again: the same width, the focus on the close button.
+    await user.click(openButton);
+    expect(screen.getByTestId("log-group-pane")).toBeInTheDocument();
+    expect(screen.queryByTestId("log-group-pane-collapsed")).not.toBeInTheDocument();
+    expect(widthVar()).toBe("22%");
+    expect(screen.getByRole("separator", { name: "Log group pane width" })).toHaveAttribute(
+      "aria-valuenow",
+      "22",
+    );
+    expect(screen.getByRole("button", { name: "Close the log group list" })).toHaveFocus();
+    expect(window.localStorage.getItem("local-sights.logGroupPaneCollapsed")).toBe("false");
+  });
+
+  it("starts with the pane closed when it was closed last time (15b)", async () => {
+    window.localStorage.setItem("local-sights.logGroupPaneCollapsed", "true");
+    window.localStorage.setItem("local-sights.logGroupPaneWidthPercent", "40");
+    vi.mocked(api.getSession).mockResolvedValue(connectedView());
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("log-group-pane-collapsed");
+    expect(screen.queryByTestId("log-group-pane")).not.toBeInTheDocument();
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    // Tab reaches the open button right after the top bar.
+    for (const testId of [
+      "top-bar-profile",
+      "top-bar-region",
+      "top-bar-time-zone",
+      "top-bar-settings-button",
+      "log-group-pane-expand-button",
+      "fetch-form-submit-button",
+    ]) {
+      await user.tab();
+      const active = document.activeElement as HTMLElement;
+      expect(active.closest("[data-testid]")?.getAttribute("data-testid"), testId).toBe(testId);
+    }
+    await user.click(screen.getByTestId("log-group-pane-expand-button"));
+    expect(screen.getByTestId("log-group-pane")).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Log group pane width" })).toHaveAttribute(
+      "aria-valuenow",
+      "40",
+    );
   });
 });

@@ -33,8 +33,10 @@ function Harness({
   );
 }
 
+const input = () => screen.getByRole("searchbox");
+
 function type(text: string) {
-  fireEvent.change(screen.getByTestId("log-filter-input"), { target: { value: text } });
+  fireEvent.change(input(), { target: { value: text } });
 }
 
 function wait(ms: number) {
@@ -64,13 +66,13 @@ describe("LogFilterInput", () => {
     wait(1);
     expect(onFilterChange).toHaveBeenCalledTimes(1);
     expect(onFilterChange).toHaveBeenCalledWith("err");
-    expect(screen.getByTestId("log-filter-input")).toHaveValue("err");
+    expect(input()).toHaveValue("err");
   });
 
   it("hands on clearing too, and nothing when the text comes back unchanged", () => {
     const onFilterChange = vi.fn();
     render(<Harness onFilterChange={onFilterChange} appliedText="error" />);
-    expect(screen.getByTestId("log-filter-input")).toHaveValue("error");
+    expect(input()).toHaveValue("error");
     wait(FILTER_DELAY_MS);
     expect(onFilterChange).not.toHaveBeenCalled();
     type("");
@@ -83,36 +85,36 @@ describe("LogFilterInput", () => {
     expect(onFilterChange).toHaveBeenCalledTimes(1);
   });
 
-  it("does not submit the form with Enter and can be disabled", () => {
+  it("does not submit a form with Enter and can be disabled", () => {
     const onSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
     const { rerender } = render(
       <form onSubmit={onSubmit}>
         <Harness onFilterChange={vi.fn()} />
       </form>,
     );
-    const input = screen.getByTestId("log-filter-input");
-    expect(input).toBeEnabled();
-    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input()).toBeEnabled();
+    fireEvent.keyDown(input(), { key: "Enter" });
     expect(onSubmit).not.toHaveBeenCalled();
     rerender(
       <form onSubmit={onSubmit}>
         <Harness onFilterChange={vi.fn()} disabled />
       </form>,
     );
-    expect(screen.getByTestId("log-filter-input")).toBeDisabled();
+    expect(input()).toBeDisabled();
   });
 
-  it("has an English and a Japanese label and placeholder", () => {
+  it("is a Cloudscape text filter named Filter messages in English and Japanese (gate fix 15e)", () => {
     const { unmount } = render(<Harness onFilterChange={vi.fn()} />);
-    expect(screen.getByRole("searchbox", { name: "Filter logs" })).toHaveAttribute(
+    expect(screen.getByRole("searchbox", { name: "Filter messages" })).toHaveAttribute(
       "placeholder",
-      "Part of a message (case-insensitive)",
+      "Filter messages",
     );
+    expect(screen.queryByRole("searchbox", { name: /events/ })).not.toBeInTheDocument();
     unmount();
     render(<Harness onFilterChange={vi.fn()} locale="ja" />);
-    expect(screen.getByRole("searchbox", { name: "ログの絞り込み" })).toHaveAttribute(
+    expect(screen.getByRole("searchbox", { name: "メッセージを絞り込み" })).toHaveAttribute(
       "placeholder",
-      "メッセージの一部（大文字・小文字を区別しない）",
+      "メッセージを絞り込み",
     );
   });
 
@@ -120,11 +122,11 @@ describe("LogFilterInput", () => {
     const onFilterChange = vi.fn();
     render(<Harness onFilterChange={onFilterChange} />);
     type("timeout");
-    fireEvent.keyDown(screen.getByTestId("log-filter-input"), { key: "Enter" });
+    fireEvent.keyDown(input(), { key: "Enter" });
     expect(onFilterChange).toHaveBeenCalledTimes(1);
     expect(onFilterChange).toHaveBeenCalledWith("timeout");
     wait(FILTER_DELAY_MS);
-    fireEvent.keyDown(screen.getByTestId("log-filter-input"), { key: "Enter" });
+    fireEvent.keyDown(input(), { key: "Enter" });
     expect(onFilterChange).toHaveBeenCalledTimes(1);
   });
 

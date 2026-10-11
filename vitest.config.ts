@@ -8,5 +8,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Stylesheets stay empty modules in tests, except the two the
+    // ConditionArea test reads as text (`?raw`) to check that the date field
+    // is as wide as Cloudscape's DatePicker allows (gate fix 14a).
+    css: { include: [/styles\.css\?raw$/, /date-picker\/styles\.scoped\.css\?raw$/] },
   },
 });

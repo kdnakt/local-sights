@@ -30,9 +30,9 @@ pub struct FetchInput {
     pub profile_name: String,
     /// Log group name (required).
     pub log_group_name: String,
-    /// Start date and time, `yyyy-mm-dd hh:mm:ss` in UTC (U4:BR3.5).
+    /// Start date and time, `yyyy/mm/dd hh:mm:ss` in UTC (U4:BR3.5).
     pub start_text: String,
-    /// End date and time, `yyyy-mm-dd hh:mm:ss` in UTC (U4:BR3.5).
+    /// End date and time, `yyyy/mm/dd hh:mm:ss` in UTC (U4:BR3.5).
     pub end_text: String,
 }
 
@@ -43,12 +43,12 @@ pub enum ValidationError {
     LogGroupRequired,
     /// The log group name is longer than [`MAX_NAME_LEN`].
     LogGroupTooLong,
-    /// BR1.2: the start is not a valid `yyyy-mm-dd hh:mm:ss`.
+    /// BR1.2: the start is not a valid `yyyy/mm/dd hh:mm:ss`.
     StartFormat,
     /// U4:BR2.2: the start is skipped by a daylight saving change in the
     /// local time zone.
     StartNonexistentLocalTime,
-    /// BR1.2: the end is not a valid `yyyy-mm-dd hh:mm:ss`.
+    /// BR1.2: the end is not a valid `yyyy/mm/dd hh:mm:ss`.
     EndFormat,
     /// U4:BR2.2: the end is skipped by a daylight saving change in the
     /// local time zone.
@@ -283,8 +283,8 @@ mod tests {
         FetchInput {
             profile_name: "dev".to_string(),
             log_group_name: "/aws/lambda/orders".to_string(),
-            start_text: "2024-01-02 03:04:05".to_string(),
-            end_text: "2024-01-02 03:05:05".to_string(),
+            start_text: "2024/01/02 03:04:05".to_string(),
+            end_text: "2024/01/02 03:05:05".to_string(),
         }
     }
 
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn malformed_or_nonexistent_dates_are_format_errors() {
         let mut input = valid_input();
-        input.start_text = "2024-02-30 00:00:00".to_string();
+        input.start_text = "2024/02/30 00:00:00".to_string();
         input.end_text = "tomorrow".to_string();
         assert_eq!(
             validate_fetch_input(&input),
@@ -393,7 +393,7 @@ mod tests {
             validate_fetch_input(&input),
             Err(vec![ValidationError::RangeOrder])
         );
-        input.end_text = "2024-01-02 03:04:04".to_string();
+        input.end_text = "2024/01/02 03:04:04".to_string();
         assert_eq!(
             validate_fetch_input(&input),
             Err(vec![ValidationError::RangeOrder])
@@ -439,22 +439,22 @@ mod tests {
     #[test]
     fn the_range_comes_from_the_instants_whatever_the_zone() {
         // As text the start sorts after the end; as instants it is earlier.
-        let start = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
-        let end = DateTimeInput::parse("2024-03-01 01:00:01", Tz::UTC);
+        let start = DateTimeInput::parse("2024/03/01 10:00:00", TOKYO);
+        let end = DateTimeInput::parse("2024/03/01 01:00:01", Tz::UTC);
         let validated = validate_session_input(GROUP, &start, &end).unwrap();
         assert_eq!(validated.request.log_group_name(), GROUP);
-        assert_eq!(validated.range.start_instant(), utc("2024-03-01 01:00:00"));
+        assert_eq!(validated.range.start_instant(), utc("2024/03/01 01:00:00"));
         assert_eq!(
             validated.range.end_instant(),
-            utc("2024-03-01 01:00:01") + 999
+            utc("2024/03/01 01:00:01") + 999
         );
     }
 
     #[test]
     fn the_order_is_checked_on_instants() {
         // The same instant written in two zones is not "before".
-        let start = DateTimeInput::parse("2024-03-01 01:00:00", Tz::UTC);
-        let end = DateTimeInput::parse("2024-03-01 10:00:00", TOKYO);
+        let start = DateTimeInput::parse("2024/03/01 01:00:00", Tz::UTC);
+        let end = DateTimeInput::parse("2024/03/01 10:00:00", TOKYO);
         assert_eq!(
             validate_session_input(GROUP, &start, &end),
             Err(vec![ValidationError::RangeOrder])
@@ -463,8 +463,8 @@ mod tests {
 
     #[test]
     fn nonexistent_local_times_are_reasons_of_their_own() {
-        let skipped_start = DateTimeInput::parse("2024-03-10 02:30:00", NEW_YORK);
-        let skipped_end = DateTimeInput::parse("2024-03-10 02:45:00", NEW_YORK);
+        let skipped_start = DateTimeInput::parse("2024/03/10 02:30:00", NEW_YORK);
+        let skipped_end = DateTimeInput::parse("2024/03/10 02:45:00", NEW_YORK);
         assert_eq!(
             validate_session_input(GROUP, &skipped_start, &skipped_end),
             Err(vec![
@@ -472,7 +472,7 @@ mod tests {
                 ValidationError::EndNonexistentLocalTime
             ])
         );
-        let malformed = DateTimeInput::parse("2024-13-01 00:00:00", NEW_YORK);
+        let malformed = DateTimeInput::parse("2024/13/01 00:00:00", NEW_YORK);
         assert_eq!(
             validate_session_input(GROUP, &malformed, &skipped_end),
             Err(vec![
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn an_input_error_hides_the_order_reason_and_empty_inputs_are_format_errors() {
-        let later = DateTimeInput::parse("2024-03-01 10:00:00", Tz::UTC);
+        let later = DateTimeInput::parse("2024/03/01 10:00:00", Tz::UTC);
         let malformed = DateTimeInput::parse("tomorrow", Tz::UTC);
         assert_eq!(
             validate_session_input(GROUP, &later, &malformed),

@@ -192,7 +192,7 @@ mod tests {
     use super::*;
     use crate::failure::{FailureKind, SafeDetailFields};
 
-    /// 2024-01-02 03:04:05 UTC to 03:05:05.999.
+    /// 2024/01/02 03:04:05 UTC to 03:05:05.999.
     fn range() -> TimeRange {
         TimeRange::from_seconds(1_704_164_645, 1_704_164_705).unwrap()
     }

@@ -191,6 +191,40 @@ describe("StatusLine", () => {
     expect(screen.queryByTestId("status-line-filter")).not.toBeInTheDocument();
   });
 
+  it("is a live status region drawn with status indicators, the failures as a link button", async () => {
+    const onOpen = renderStatus(
+      sessionView({
+        phase: "Done",
+        eventCount: 9,
+        failedStreams: [{ logStreamName: "s1", failure: throttled }],
+        progress: null,
+      }),
+    );
+    const line = screen.getByRole("status");
+    expect(line).toHaveAttribute("aria-live", "polite");
+    const button = screen.getByRole("button", { name: "Failed in 1 streams" });
+    await userEvent.keyboard("{Tab}");
+    expect(button).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // The error of a failed fetch carries an icon with a name, not a color alone (FR3.5).
+    renderStatus(
+      sessionView({
+        phase: "Failed",
+        lastJob: {
+          jobId: 2,
+          status: "Failed",
+          eventCount: 0,
+          plannedStreamCount: 0,
+          finishedStreamCount: 0,
+          failedStreamCount: 0,
+          failure: throttled,
+        },
+      }),
+    );
+    expect(screen.getAllByRole("img", { name: "Other error" }).length).toBeGreaterThan(0);
+  });
+
   it("says the logs are being saved to the cache while a fetch writes them", () => {
     renderStatus(
       sessionView({
@@ -226,8 +260,9 @@ describe("StatusLine", () => {
         },
       }),
     );
-    expect(screen.getByTestId("status-line")).toHaveTextContent(
-      "12 events Shown from cache (AWS was not called)",
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("12 events");
+    expect(screen.getByTestId("status-line-cache-Hit")).toHaveTextContent(
+      "Shown from cache (AWS was not called)",
     );
     expect(screen.getByTestId("status-line").textContent).not.toMatch(/stream/i);
   });

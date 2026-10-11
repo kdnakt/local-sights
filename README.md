@@ -1,13 +1,18 @@
-# local-sights
+# Local Sights
 
-A local desktop viewer for Amazon CloudWatch Logs, written in Rust (Tauri 2)
-with a React + TypeScript screen. It calls only the read-only
+A local desktop viewer for Amazon CloudWatch Logs (the app is named "Local
+Sights"; the package, crate and binary are `local-sights`), written in Rust
+(Tauri 2) with a React + TypeScript screen. It calls only the read-only
 `DescribeLogGroups`, `DescribeLogStreams` and `GetLogEvents` APIs and sends
 no telemetry or crash reports anywhere.
 
-> Status: units U1 to U7. You choose a profile and a region, pick a log
-> group from the list (with a filter), enter a time range in local time or
-> UTC (switch in the top bar) and press
+> Status: units U1 to U7, plus the console-style screen. The screen is drawn
+> with the [Cloudscape Design System](https://cloudscape.design/) (the
+> components of the AWS Management Console) and follows the OS light or dark
+> mode. You choose a profile and a region in the black top navigation, pick a
+> log group from the table on the left (with a search field), set the start
+> and end as a date (`yyyy/mm/dd`, typed or picked from a calendar) and a
+> time (`hh:mm:ss`) in local time or UTC and press
 > **Fetch**: every stream of the group that matters for the range is read,
 > one after another, and the events are listed in time order as they arrive
 > ("time / stream / message"). Throttling and network errors are retried;
@@ -15,11 +20,13 @@ no telemetry or crash reports anywhere.
 > The list draws only the visible rows, so a million events scroll smoothly.
 > The log filter narrows the fetched events to those whose message contains
 > a text (ignoring case), on your machine, without calling AWS again.
-> An optional disk cache (off by default, **[\*]** in the top bar) keeps
-> fully successful fetches on your machine and shows a range it already
+> An optional disk cache (off by default, the gear button in the top bar)
+> keeps fully successful fetches on your machine and shows a range it already
 > holds without calling AWS. A row opens below itself to show its whole
-> message; errors say what happened and what to do next; closing the window
-> while fetching asks first.
+> message; the reason why **Fetch** is unavailable is shown under the field
+> it belongs to, a failed fetch is an error alert above the list that says
+> what happened and what to do next; closing the window while fetching asks
+> first.
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -67,11 +74,29 @@ npm ci && npm run build
 cargo install --path src-tauri --features custom-protocol
 ```
 
-Choose a profile ("Default settings (left to the SDK)" uses the SDK default
-chain) and a region (the profile's default region is filled in when it has
-one), pick a log group in the left pane, then enter the times
-(`yyyy-mm-dd hh:mm:ss` in the time zone chosen in the top bar; the end
-second is included up to its last millisecond) and press **Fetch** or Enter.
+At launch the "Default" profile (the SDK's default credential chain) is
+selected, and when the SDK has a default region (`AWS_REGION`,
+`AWS_DEFAULT_REGION` or the `[default]` section of `~/.aws/config`) that
+region is selected too and its log groups are listed at once; the previous
+session's choice is not remembered. The start and the end begin as yesterday
+`00:00:00` and today `23:59:59` in the local time zone (the calendar day of
+the OS clock, so the range is whole days also across a daylight saving
+change); change them as needed. Choose another profile and a region (the
+profile's default region is filled in when it has one) from the dropdowns in
+the top navigation, pick a log group in the left pane (its width can be
+dragged, or changed with the arrow keys on the handle between the panes),
+then set the start and the end: a date (`yyyy/mm/dd`, typed in the
+field or picked from its calendar, which offers no day after today in the
+time zone shown; a date typed by hand is not limited, and a future range
+simply finds no events; a hyphen-separated date is not accepted)
+and a time (`hh:mm:ss`, in the time zone chosen in the top navigation; the
+end second is included up to its last millisecond). A time typed as `hh:mm`
+is completed when the field loses focus (`:00` for the start, `:59` for the
+end), and an empty time becomes `00:00:00` for the start and `23:59:59` for
+the end; the field shows the completed value. Then press **Fetch** or Enter.
+What keeps **Fetch** unavailable is shown in red under the field concerned
+(the log group under the heading, the order of the range under the end
+date). The log list shows the times as `yyyy/mm/dd hh:mm:ss.SSS`.
 The time zone is Local (the OS setting, with its daylight saving rules) at
 every launch and can be switched to UTC at any time, also while fetching;
 the choice is not saved. Switching keeps the entered instants (the texts are
@@ -93,7 +118,7 @@ Run these on your own machine with your own AWS credentials (`npm run tauri dev`
 - [ ] The app starts and shows the profile and region selectors, the log group pane, the selected log group ("Not selected"), the time inputs, the **Fetch** button and the reasons why Fetch is unavailable.
 - [ ] With valid conditions, pressing Enter in any input starts the fetch (same as clicking **Fetch**).
 - [ ] While fetching, every input and **Fetch** are disabled and the status line says it is fetching.
-- [ ] The fetched rows appear with the time to the millisecond (`yyyy-mm-dd hh:mm:ss.mmm`) in the chosen time zone (Local at launch, U4).
+- [ ] The fetched rows appear with the time to the millisecond (`yyyy/mm/dd hh:mm:ss.SSS`) in the chosen time zone (Local at launch, U4).
 - [ ] A long message, or one with line breaks, is shown on one line and cut with an ellipsis (…) at the edge of the column.
 - [ ] The status line shows the event count, and for a range with no logs says explicitly that there are 0 events.
 - [ ] On an error (for example a misspelled log group, or a profile without a default region), the error area above the list says what happened, what to do next and the safe detail, which contains no secret or access key ID; the status line says only what happened (U7); rows fetched before the error stay visible.
@@ -101,7 +126,7 @@ Run these on your own machine with your own AWS credentials (`npm run tauri dev`
 
 Connection and log groups (U2):
 
-- [ ] Profile and region start unselected and the pane asks for a profile. The profile list starts with "Default settings (left to the SDK)", followed by your profiles in name order.
+- [ ] At launch the profile is "Default" (the SDK's default credential chain; the top bar reads "Profile: Default"); with a default region in the SDK's settings the region is selected and the log groups are listed without any click, otherwise the region is unselected and the pane asks for a region. The profile list starts with "Default", followed by your profiles in name order. The previous launch's choice is not restored.
 - [ ] Choosing a profile with a default region fills in the region and the log group list loads ("Loading…" while pages arrive; groups can be selected meanwhile).
 - [ ] Choosing a profile without a default region leaves the region unselected and the pane asks for a region; choosing one loads the list.
 - [ ] The filter narrows the list case-insensitively (e.g. `myfunc` finds `/aws/lambda/MyFunction`); a filter with no match says so; an account without log groups says there are none.
@@ -142,7 +167,7 @@ Log filter (U5):
 
 Disk cache (U6):
 
-- [ ] **[\*]** in the top bar opens the settings dialog with focus on the checkbox; it shows the cache location (on macOS under `~/Library/Caches/dev.local-sights.app/log-cache`) and the warning that logs may contain confidential information, checked or not. Tab cycles inside the dialog, Space toggles the checkbox, Escape or **Cancel** closes it without saving and focus returns to **[\*]**. **[\*]** cannot be pressed while fetching or while the connection-change dialog is open.
+- [ ] The gear button in the top navigation opens the settings dialog with focus on the checkbox; it shows the cache location (on macOS under `~/Library/Caches/dev.local-sights.app/log-cache`) and the warning that logs may contain confidential information, checked or not. Tab cycles inside the dialog, Space toggles the checkbox, Escape or **Cancel** closes it without saving and focus returns to the gear button. The gear button cannot be pressed while fetching or while the connection-change dialog is open.
 - [ ] Enable the cache and **Save**; restart the app and open the dialog again: it is still enabled (the settings file is under `~/Library/Application Support/dev.local-sights.app/`, owner-only, holding only the setting). The cache folder and its files are owner-only (`ls -ld` shows `drwx------`, files `-rw-------`).
 - [ ] Fetch a range that ended more than five minutes ago: the status line says "Saving to cache" before the fetch ends. Fetch the same profile, region, log group and range again: the rows appear with "Shown from cache (AWS was not called)" and no stream counts, and no AWS call is made (for example, CloudTrail or a proxy shows none). The log filter works on these rows too.
 - [ ] Fetch a range whose end is within five minutes of now: fetching it again goes to AWS (the newest five minutes are never cached); a part of it older than five minutes is served from the cache.
@@ -165,8 +190,57 @@ Screen polish (U7):
 - [ ] After **Close** during "Saving to cache", the next launch shows the previous cache unchanged (fetching the same range is served as before, or fetched again); a leftover `*.cache.tmp-*` file in the cache folder goes away with the next save or **Clear cache**.
 - [ ] Switching the OS between light and dark mode recolors the open window at once (no restart); dialogs and the selected row stay readable.
 - [ ] At the minimum window size, 1024×640, the top bar, the log group pane, the conditions, the list and the status line do not overlap and there is no horizontal scroll bar; the window cannot be made smaller.
-- [ ] With the OS language set to Japanese every text is Japanese, otherwise English; Tab goes profile → region → time zone → **[\*]** → log group filter → log group list → start → end → **Fetch** → log filter → list, with the focus always visible.
+- [ ] With the OS language set to Japanese every text is Japanese, otherwise English; Tab goes profile → region → time zone → gear button → the pane's "<" button → log group search → log group table → **Reload** → the pane handle → **Fetch** → log filter → start date → its calendar → start time → end date → its calendar → end time → list, with the focus always visible (with the pane closed: gear button → the ">" button → **Fetch**).
 - [ ] Diagnostics appear only on standard error when the app is started from a terminal (`npm run tauri dev`); no log file is written anywhere.
+
+Console-style screen (261010-console-ui-polish):
+
+- [ ] Every visible control is a Cloudscape component: the black top navigation with the profile, region and time zone dropdowns and the gear button; the "Log groups" container with its search field, single-selection table and **Reload**; the right container headed by the selected log group (or "Log group: none"; the prompt "Choose a log group." appears once, on the line below the heading) with the primary **Fetch**, the "Filter messages" field (its label on the same line as the "Start" and "End" labels, so the three fields share one top edge) and the start / end date and time fields; the log list; the status line with its status indicators; the dialogs as modals; the alerts.
+- [ ] The calendar button of a date field opens a calendar (`Tab` to it, Enter, arrow keys, Enter, Escape all work); a picked day lands in the field as `yyyy/mm/dd`, and typing `2024/03/01` works too. Type `2024-03-01`: the field normalizes it to `2024/03/01` (the hyphen is taken as a separator); note what happens and record it in the code summary (R-07).
+- [ ] Type `10:00` in the start time and leave the field: it reads `10:00:00`; the same in the end time reads `10:00:59`. Leave a time empty and press Enter or **Fetch**: the start becomes `00:00:00`, the end `23:59:59`, and the fetch starts when the rest is valid.
+- [ ] Without a log group the reason sits under the heading; a start after the end puts "End must be after start." under the end date; a daylight-saving gap time puts its reason under the time field. The old "Fetch is unavailable because:" list is gone.
+- [ ] A failed fetch (for example, a profile without permission) shows an error alert above the list with three lines (what happened, what to do, details) and a close button; closing it keeps the status line's short sentence. The alert does not close with Escape.
+- [ ] Switching the OS between light and dark mode recolors the whole window at once, the log list included; the top navigation stays dark.
+- [ ] With the OS language set to Japanese, the calendar's month and weekday names and the modal close buttons are Japanese too.
+- [ ] At 1024×640 the two panes and the condition row (filter left, start and end right) fit without overlap; if the date and time fields wrap below the filter, that is the intended fallback.
+- [ ] The calendar of a date field opens with all seven weekday columns and both month buttons (previous, next) visible; nothing is cut at its right edge.
+- [ ] Started from a terminal (`npm run tauri dev`) with the WebView inspector open, no Content-Security-Policy violation is reported at startup or when a calendar, a dropdown or a dialog opens (the CSP allows the embedded fonts of Cloudscape with `font-src 'self' data:`).
+- [ ] The Dock, the window title and the window switcher (Cmd+Tab) say "Local Sights", and the Dock and the Finder show the new icon (a dark blue tile with log lines and a magnifying glass); the first launch after the change may need the Dock to refresh its icon cache.
+- [ ] The log group pane starts at about a quarter of the window; the handle between the panes can be dragged narrower (down to 20% of the window, where long names are cut with "…" and show in full on hover) or wider (up to 50%), and with the focus on it the Left and Right arrow keys move it by 1%; the width is the same after a restart.
+- [ ] The "<" button in the pane's heading closes the pane: only a slim strip with a ">" button remains at the left edge, the log list takes the rest of the width, and the focus is on that button. The ">" button opens the pane again at its previous width, with the focus on the "<" button. A pane closed when the app is quit is still closed at the next launch.
+- [ ] At launch the start date is yesterday with the time `00:00:00` and the end date is today with the time `23:59:59`, in the local time zone (the days follow the local calendar day of the OS clock; try it around midnight too); switching to UTC rewrites both, and choosing a log group is all **Fetch** still needs.
+- [ ] In the Dock the icon is the same size as the other apps' icons: its rounded tile fills the central 824 of the 1024 px with a transparent margin of 100 px on every side, like Apple's app icon grid (the Dock may need a restart to drop its cached icon).
+- [ ] In the calendar of the start date and of the end date, tomorrow and every later day are dimmed and cannot be picked (clicking them does nothing), while today and earlier days can; with **UTC** selected, "today" is the UTC date (around local midnight it differs from the local date by a day). A future date typed by hand is still accepted.
+- [ ] With 1,000 or more rows held (or a fetch running and adding rows), the status line ("Fetching… n/m streams…", the event count, "Filtered: N of M events") stays visible at the bottom edge of the right container; only the log list scrolls, inside the space left between the condition row and the status line. Check it at the minimum window size, 1024×640, with a failed fetch's error alert shown above the list, and while making the window taller and shorter.
+
+## Performance check of the log list
+
+The log list is still the app's own virtual-scroll list, styled with
+Cloudscape's design tokens (NFR2: Cloudscape's Table draws every row). A
+Cloudscape Table prototype exists for measuring, and a developer-only
+harness feeds generated rows through the screen's `getRows` boundary without
+the core. Run on your own machine:
+
+```bash
+# one million generated rows in the current list (virtual scroll)
+VITE_LOCAL_SIGHTS_PERF_ROWS=1000000 npm run tauri dev
+# the same rows in the Cloudscape Table prototype
+VITE_LOCAL_SIGHTS_PERF_ROWS=1000000 VITE_LOCAL_SIGHTS_LOG_TABLE=cloudscape npm run tauri dev
+# rows arriving 100,000 at a time every two seconds, like a running fetch
+VITE_LOCAL_SIGHTS_PERF_ROWS=1000000 VITE_LOCAL_SIGHTS_PERF_GROW=1 npm run tauri dev
+```
+
+With the harness on, the list shows the generated rows (messages of 80 to
+400 characters, plain text and JSON) and the "Filter messages" field filters
+them on the screen side; the status line keeps showing the real (empty)
+session. The harness exists only in development builds: a production build
+(`vite build`, `npm run tauri build`) ignores these variables. Measure, with a stopwatch where needed: typing a filter until the
+result appears (target: within 100 s), one wheel notch, Page Down, End and
+opening a row until the screen changes (target: within 1 s), typing into the
+filter field while rows arrive (target: within 1 s), and that the app does
+not run out of memory. Record the numbers in
+`aidlc/spaces/default/intents/261010-console-ui-polish/construction/code-generation/code-summary.md`
+("性能測定"). The prototype replaces the list only if it meets every target.
 
 ## Check against real AWS from the terminal
 
@@ -179,7 +253,7 @@ credentials; tests and CI never run it.
 ```bash
 cargo run -p local-sights-core --example fetch_check -- \
   --profile dev --log-group /aws/lambda/my-function \
-  --start '2024-01-02 03:00:00' --end '2024-01-02 03:59:59'
+  --start '2024/01/02 03:00:00' --end '2024/01/02 03:59:59'
 ```
 
 Events go to standard output in time order
@@ -187,6 +261,30 @@ Events go to standard output in time order
 counts, then each failed stream (or an incomplete stream listing) with its
 failure kind and safe detail, go to standard error. Exit code 0 means
 success, 1 that something failed, 2 invalid arguments.
+
+## App icon
+
+The icon is drawn in `src-tauri/icons/source/icon.svg` (a rounded dark blue
+tile with log lines and a magnifying glass). Its dimensions follow Apple's
+app icon grid: on the 1024 × 1024 canvas the rounded tile is 824 × 824,
+centred, with a transparent margin of 100 px on every side and a corner
+radius of 185 px; the drawing inside the tile is the original 1024 drawing
+scaled by 824 / 1024. A tile that filled the whole canvas looked larger than
+the other apps' icons in the Dock. The files Tauri bundles are generated from
+the SVG; do not edit them by hand:
+
+```bash
+npm run icon:render   # icon.svg -> src-tauri/icons/source/icon.png (1024x1024, transparent corners and margin)
+npm run tauri icon src-tauri/icons/source/icon.png -o /tmp/local-sights-icons
+cp /tmp/local-sights-icons/{32x32.png,128x128.png,128x128@2x.png,icon.icns,icon.ico,icon.png} src-tauri/icons/
+```
+
+`icon:render` draws the SVG with `@resvg/resvg-js` (a dev dependency) and
+refuses to write the PNG unless the four corner pixels and the middle of each
+100 px margin band are fully transparent and the centre is opaque; macOS's
+`qlmanage` is not used because it fills the transparent corners with white.
+Only the six files `tauri.conf.json` refers to are copied back; the Android,
+iOS and Windows Store images `tauri icon` also writes are not kept.
 
 ## Tests and checks
 

@@ -5,5 +5,13 @@
     "dirName": "261002-cwlogs-viewer",
     "scope": "local-tool",
     "status": "complete"
+  },
+  {
+    "uuid": "01a125ae-1d05-7e5a-bc15-bb7cef21b5d3",
+    "slug": "console-ui-polish",
+    "dirName": "261010-console-ui-polish",
+    "scope": "bugfix",
+    "status": "complete",
+    "request": "4e96ca27"
   }
 ]

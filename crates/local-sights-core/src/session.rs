@@ -63,7 +63,7 @@ use crate::paging::PageDecision;
 use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
 use crate::streams::StreamListingStatus;
 use crate::streams::planner::ListingProgress;
-use crate::time_range::format_display_in_zone;
+use crate::time_range::{date_in_zone, format_day_bounds, format_display_in_zone};
 use crate::time_zone::{TimeZoneChoice, TimeZoneContext};
 use crate::timeline::RowWindow;
 
@@ -511,7 +511,7 @@ pub struct DisplayRow {
     /// The event as held by the EventTimeline.
     #[serde(flatten)]
     pub event: LogEvent,
-    /// `yyyy-mm-dd hh:mm:ss.mmm` in the chosen zone, or the raw number when
+    /// `yyyy/mm/dd hh:mm:ss.SSS` in the chosen zone, or the raw number when
     /// that cannot be written; the screen shows it as is.
     pub display_time: String,
 }
@@ -609,16 +609,20 @@ impl AppSession {
         Self::with_catalog(ConnectionCatalog::new(vec![sdk_default], Vec::new()))
     }
 
-    /// A new session in phase Idle with nothing selected (U2:BR2.1) whose
-    /// local time zone is UTC. The app passes the OS time zone with
-    /// [`AppSession::with_catalog_and_time_zones`].
+    /// A new session in phase Idle with the SDK default profile selected
+    /// (gate fix 14c) whose local time zone is UTC. The app passes the OS
+    /// time zone with [`AppSession::with_catalog_and_time_zones`].
     pub fn with_catalog(catalog: ConnectionCatalog) -> Self {
         Self::with_catalog_and_time_zones(catalog, TimeZoneContext::utc())
     }
 
-    /// A new session in phase Idle with nothing selected (U2:BR2.1), the
-    /// time zone Local (U4:BR1.1) and `time_zones` saying which zone that is
-    /// (U4:BR3.4).
+    /// A new session in phase Idle, the time zone Local (U4:BR1.1) and
+    /// `time_zones` saying which zone that is (U4:BR3.4). The SDK default
+    /// profile is selected from the start (gate fix 14c, replacing "nothing
+    /// selected at startup" of U2:BR2.1): with its default region the
+    /// region is selected too and its listing starts, which the app runs
+    /// with [`AppSession::startup_listing`]; without one the region stays
+    /// unselected. No earlier session's choice is read (U2 Q2 still holds).
     pub fn with_catalog_and_time_zones(
         catalog: ConnectionCatalog,
         time_zones: TimeZoneContext,
@@ -662,8 +666,57 @@ impl AppSession {
             close_confirmation: CloseConfirmation::None,
             close_confirmed: false,
         };
+        session.select_startup_profile();
         session.revalidate();
         session
+    }
+
+    /// Gate fix 14c: selects the SDK default profile when the catalog has it,
+    /// with its default region, and starts the listing when the connection
+    /// is complete. Not a connection change: the generation stays 0 and no
+    /// logs are discarded.
+    fn select_startup_profile(&mut self) {
+        let Some(profile) = self.catalog.find(&ProfileSelector::SdkDefault) else {
+            return;
+        };
+        let default_region = profile.default_region.clone();
+        let outcome =
+            self.connection
+                .request_profile(ProfileSelector::SdkDefault, default_region, false);
+        if let ChangeOutcome::Applied(command) = outcome {
+            self.start_listing(command);
+        }
+    }
+
+    /// The same session with the time range of a first launch filled in
+    /// (gate fix 16a): in the local zone, the start is yesterday `00:00:00`
+    /// and the end is today `23:59:59`, as `yyyy/mm/dd hh:mm:ss` texts read
+    /// like typed input, and the conditions are checked again. "Today" is
+    /// the calendar day of `now_ms` (epoch milliseconds, the app passes the
+    /// system clock) in the local zone, and "yesterday" the calendar day
+    /// before it, so the range is whole calendar days also on a daylight
+    /// saving change (that day then has 23 or 25 hours). The times are the
+    /// ones the screen completes an empty time to (start `00:00:00`, end
+    /// `23:59:59`). Nothing is filled when `now_ms` has no calendar date or
+    /// its year has no four digits; the inputs then stay empty as before.
+    /// The other constructors keep starting with empty inputs.
+    pub fn with_default_time_range(mut self, now_ms: i64) -> Self {
+        let zone = self.time_zones.zone(self.time_zone);
+        let Some(today) = date_in_zone(now_ms, zone) else {
+            return self;
+        };
+        let Some(yesterday) = today.pred_opt() else {
+            return self;
+        };
+        let (Some((start, _)), Some((_, end))) =
+            (format_day_bounds(yesterday), format_day_bounds(today))
+        else {
+            return self;
+        };
+        self.start_input = DateTimeInput::parse(start, zone);
+        self.end_input = DateTimeInput::parse(end, zone);
+        self.revalidate();
+        self
     }
 
     /// The same session with the settings file and the cache folder the app
@@ -1048,6 +1101,21 @@ impl AppSession {
         self.selected_log_group = Some(name);
         self.revalidate();
         Ok(())
+    }
+
+    /// The listing the session started by itself at startup (gate fix 14c),
+    /// for the app to run: the SDK default profile's listing while it is
+    /// still Loading. `None` once a page or a failure arrived, when the SDK
+    /// default has no default region, or when the catalog has no SDK default.
+    pub fn startup_listing(&self) -> Option<ListingRequest> {
+        self.listing
+            .as_ref()
+            .filter(|listing| listing.status() == ListingStatus::Loading)
+            .map(|listing| ListingRequest {
+                listing_id: listing.listing_id().to_string(),
+                profile: listing.profile().clone(),
+                region: listing.region().to_string(),
+            })
     }
 
     /// Whether `listing_id` is the current listing (U2:BR3.6).
@@ -1654,8 +1722,10 @@ mod tests {
     }
 
     /// U1's "valid input" now also needs the connection and a log group.
+    /// The session starts on the SDK default (gate fix 14c), so the `dev`
+    /// connection is selected unless it already is.
     fn fill_valid(session: &mut AppSession) {
-        if session.connection().profile.is_none() {
+        if session.connection().profile.as_ref() != Some(&dev()) {
             let listing = session.select_profile(dev()).unwrap().listing.unwrap();
             session.apply_listing_page(
                 &listing.listing_id,
@@ -1670,8 +1740,8 @@ mod tests {
             )
             .unwrap();
         let values = [
-            (InputField::StartText, "2024-01-02 03:04:05"),
-            (InputField::EndText, "2024-01-02 03:05:05"),
+            (InputField::StartText, "2024/01/02 03:04:05"),
+            (InputField::EndText, "2024/01/02 03:05:05"),
         ];
         for (field, value) in values {
             session.update_input(field, value.to_string()).unwrap();
@@ -1723,6 +1793,8 @@ mod tests {
             view.validation_errors
                 .contains(&"selection.logGroupRequired".to_string())
         );
+        // Gate fix 14c: the SDK default profile is selected from the start.
+        assert_eq!(view.connection.profile, Some(ProfileSelector::SdkDefault));
         assert!(!view.session_id.is_empty());
         assert_ne!(AppSession::new().session_id(), session.session_id());
     }
@@ -1732,7 +1804,7 @@ mod tests {
         let mut session = AppSession::with_catalog(catalog());
         fill_valid(&mut session);
         session
-            .update_input(InputField::EndText, "2024-01-02 03:04:05".to_string())
+            .update_input(InputField::EndText, "2024/01/02 03:04:05".to_string())
             .unwrap();
         assert_eq!(
             session.view().validation_errors,
@@ -1757,10 +1829,10 @@ mod tests {
         assert_eq!(session.phase(), Phase::Fetching);
         assert!(!session.view().can_fetch);
         assert_eq!(
-            session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
+            session.update_input(InputField::StartText, "2024/01/01 00:00:00".to_string()),
             Err(SessionError::Busy)
         );
-        assert_eq!(session.start_input().text(), "2024-01-02 03:04:05");
+        assert_eq!(session.start_input().text(), "2024/01/02 03:04:05");
         assert_eq!(
             session.begin_fetch(session.connection_generation()),
             Err(SessionError::Busy)
@@ -1834,7 +1906,7 @@ mod tests {
         let job = finished_job(&mut session, 1, None);
         session.finish_fetch(&job, 0);
         session
-            .update_input(InputField::StartText, "2024-01-02 03:04:00".to_string())
+            .update_input(InputField::StartText, "2024/01/02 03:04:00".to_string())
             .unwrap();
         assert!(session.begin_fetch(session.connection_generation()).is_ok());
         assert_eq!(session.view().event_count, 0);
@@ -1880,7 +1952,7 @@ mod tests {
         assert_eq!(failure.safe_detail(), "kind=Other; api=GetLogEvents");
         assert!(
             session
-                .update_input(InputField::StartText, "2024-01-02 03:04:00".to_string())
+                .update_input(InputField::StartText, "2024/01/02 03:04:00".to_string())
                 .is_ok()
         );
     }
@@ -1927,16 +1999,87 @@ mod tests {
         session
     }
 
+    // --- Gate fix 14c: the SDK default profile is selected at startup ---
+
     #[test]
-    fn starts_with_nothing_selected_and_no_list() {
+    fn starts_with_the_sdk_default_profile_and_no_region_when_it_has_none() {
         let session = AppSession::with_catalog(catalog());
         let view = session.view();
-        assert_eq!(view.connection, ConnectionSelection::default());
+        assert_eq!(
+            view.connection,
+            ConnectionSelection {
+                profile: Some(ProfileSelector::SdkDefault),
+                region: None,
+            }
+        );
         assert!(view.log_groups.is_none());
+        assert!(session.startup_listing().is_none());
         assert!(!view.can_reload);
         assert!(view.can_change_connection);
+        assert_eq!(view.connection_generation, 0, "startup is not a change");
         assert_eq!(view.profiles.len(), 3);
         assert!(view.regions.contains(&"ap-northeast-1".to_string()));
+    }
+
+    #[test]
+    fn starts_with_the_sdk_default_profile_and_its_region_and_lists_its_log_groups() {
+        let sdk_default = ConnectionProfile {
+            kind: ProfileKind::SdkDefault,
+            profile_name: None,
+            default_region: Some("us-west-2".to_string()),
+        };
+        let mut session =
+            AppSession::with_catalog(ConnectionCatalog::new(vec![sdk_default], Vec::new()));
+        let view = session.view();
+        assert_eq!(
+            view.connection,
+            ConnectionSelection {
+                profile: Some(ProfileSelector::SdkDefault),
+                region: Some("us-west-2".to_string()),
+            }
+        );
+        let listing = view.log_groups.expect("a listing has started");
+        assert_eq!(listing.status, ListingStatus::Loading);
+        assert!(view.can_reload);
+        assert_eq!(view.connection_generation, 0);
+
+        // The app runs the listing the session started.
+        let request = session.startup_listing().expect("the startup listing");
+        assert_eq!(request.profile, ProfileSelector::SdkDefault);
+        assert_eq!(request.region, "us-west-2");
+        assert!(session.is_current_listing(&request.listing_id));
+        session.apply_listing_page(&request.listing_id, vec![group("/aws/lambda/a")], None);
+        let groups = session.view().log_groups.unwrap();
+        assert_eq!(groups.status, ListingStatus::Complete);
+        assert_eq!(groups.visible_groups, vec!["/aws/lambda/a"]);
+        // Once the listing has left Loading, it is no longer a startup listing.
+        assert!(session.startup_listing().is_none());
+    }
+
+    #[test]
+    fn a_catalog_without_the_sdk_default_starts_with_nothing_selected() {
+        let only_dev = ConnectionProfile {
+            kind: ProfileKind::Named,
+            profile_name: Some("dev".to_string()),
+            default_region: Some("ap-northeast-1".to_string()),
+        };
+        let session = AppSession::with_catalog(ConnectionCatalog::new(vec![only_dev], Vec::new()));
+        assert_eq!(session.view().connection, ConnectionSelection::default());
+        assert!(session.startup_listing().is_none());
+    }
+
+    #[test]
+    fn startup_selection_is_not_remembered_between_sessions() {
+        // "The previous choice is not remembered" (U2 Q2) still holds: a new
+        // session starts from the catalog, never from an older session.
+        let mut first = AppSession::with_catalog(catalog());
+        first.select_profile(dev()).unwrap();
+        assert_eq!(first.view().connection.profile, Some(dev()));
+        let second = AppSession::with_catalog(catalog());
+        assert_eq!(
+            second.view().connection.profile,
+            Some(ProfileSelector::SdkDefault)
+        );
     }
 
     #[test]
@@ -1944,13 +2087,14 @@ mod tests {
         let session = AppSession::with_catalog(catalog());
         let reasons = session.view().validation_errors;
         for key in [
-            "selection.profileRequired",
             "selection.regionRequired",
             "selection.logGroupRequired",
             "validation.startFormat",
         ] {
             assert!(reasons.contains(&key.to_string()), "{key}: {reasons:?}");
         }
+        // The SDK default profile is selected at startup (gate fix 14c).
+        assert!(!reasons.contains(&"selection.profileRequired".to_string()));
         assert!(!reasons.contains(&"validation.logGroupRequired".to_string()));
         assert!(
             !reasons.iter().any(|key| key.contains("logStream")),
@@ -1961,6 +2105,8 @@ mod tests {
     #[test]
     fn profile_without_default_region_asks_for_a_region_and_lists_nothing() {
         let mut session = AppSession::with_catalog(catalog());
+        // Leave the SDK default (selected at startup) and come back to it.
+        session.select_profile(dev()).unwrap();
         let effect = session.select_profile(ProfileSelector::SdkDefault).unwrap();
         assert!(effect.listing.is_none());
         let view = session.view();
@@ -2070,7 +2216,7 @@ mod tests {
             Err(SessionError::ConfirmationPending)
         );
         assert_eq!(
-            session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
+            session.update_input(InputField::StartText, "2024/01/01 00:00:00".to_string()),
             Err(SessionError::ConfirmationPending)
         );
         assert_eq!(
@@ -2078,7 +2224,7 @@ mod tests {
             Err(SessionError::ConfirmationPending)
         );
         let view = session.view();
-        assert_eq!(view.end_input.text(), "2024-01-02 03:05:05");
+        assert_eq!(view.end_input.text(), "2024/01/02 03:05:05");
         assert_eq!(view.log_group_filter, "orders");
         assert!(!view.can_change_connection && !view.can_fetch && !view.can_reload);
 
@@ -2397,8 +2543,8 @@ mod tests {
     fn fetch_is_possible_without_a_stream_name_but_not_without_a_log_group() {
         let (mut session, _) = connected_session();
         for (field, value) in [
-            (InputField::StartText, "2024-01-02 03:04:05"),
-            (InputField::EndText, "2024-01-02 03:05:05"),
+            (InputField::StartText, "2024/01/02 03:04:05"),
+            (InputField::EndText, "2024/01/02 03:05:05"),
         ] {
             session.update_input(field, value.to_string()).unwrap();
         }
@@ -2627,16 +2773,17 @@ mod tests {
     fn every_reason_is_listed_in_the_order_of_the_conditions() {
         let mut session = new_york_session();
         session
-            .update_input(InputField::StartText, "2024-03-10 02:30:00".to_string())
+            .update_input(InputField::StartText, "2024/03/10 02:30:00".to_string())
             .unwrap();
         session
             .update_input(InputField::EndText, "bad".to_string())
             .unwrap();
         let view = session.view();
+        // The SDK default profile is selected at startup (gate fix 14c), so
+        // no profile reason; the test catalog's SDK default has no region.
         assert_eq!(
             view.validation_errors,
             vec![
-                "selection.profileRequired",
                 "selection.regionRequired",
                 "selection.logGroupRequired",
                 "validation.startNonexistentLocalTime",
@@ -2651,17 +2798,17 @@ mod tests {
         let mut session = new_york_session();
         fill_valid(&mut session);
         session
-            .update_input(InputField::StartText, "2024-01-02 03:05:05".to_string())
+            .update_input(InputField::StartText, "2024/01/02 03:05:05".to_string())
             .unwrap();
         session
-            .update_input(InputField::EndText, "2024-01-02 03:04:05".to_string())
+            .update_input(InputField::EndText, "2024/01/02 03:04:05".to_string())
             .unwrap();
         assert_eq!(
             session.view().validation_errors,
             vec!["validation.rangeOrder"]
         );
         session
-            .update_input(InputField::EndText, "2024-03-10 02:30:00".to_string())
+            .update_input(InputField::EndText, "2024/03/10 02:30:00".to_string())
             .unwrap();
         assert_eq!(
             session.view().validation_errors,
@@ -2673,7 +2820,7 @@ mod tests {
     fn valid_new_york_input_can_fetch_with_the_instants_as_range() {
         let mut session = new_york_session();
         fill_valid(&mut session);
-        // 2024-01-02 03:04:05 EST is 08:04:05 UTC.
+        // 2024/01/02 03:04:05 EST is 08:04:05 UTC.
         assert!(session.can_fetch());
         let validated = session
             .begin_fetch(session.connection_generation())
@@ -2738,17 +2885,17 @@ mod tests {
         let mut session = tokyo_session();
         fill_valid(&mut session);
         session
-            .update_input(InputField::StartText, "2024-03-01 10:00:00".to_string())
+            .update_input(InputField::StartText, "2024/03/01 10:00:00".to_string())
             .unwrap();
         session
-            .update_input(InputField::EndText, "2024-03-01 11:00:00".to_string())
+            .update_input(InputField::EndText, "2024/03/01 11:00:00".to_string())
             .unwrap();
         let range = session.validation.clone().unwrap().range;
         session.select_time_zone(TimeZoneChoice::Utc);
         let view = session.view();
         assert_eq!(view.time_zone, TimeZoneChoice::Utc);
-        assert_eq!(view.start_input.text(), "2024-03-01 01:00:00");
-        assert_eq!(view.end_input.text(), "2024-03-01 02:00:00");
+        assert_eq!(view.start_input.text(), "2024/03/01 01:00:00");
+        assert_eq!(view.end_input.text(), "2024/03/01 02:00:00");
         assert!(view.can_fetch);
         let validated = session
             .begin_fetch(session.connection_generation())
@@ -2761,10 +2908,10 @@ mod tests {
         let mut session = new_york_session();
         fill_valid(&mut session);
         session
-            .update_input(InputField::StartText, "2024-03-10 02:30:00".to_string())
+            .update_input(InputField::StartText, "2024/03/10 02:30:00".to_string())
             .unwrap();
         session
-            .update_input(InputField::EndText, "2024-03-10 04:00:00".to_string())
+            .update_input(InputField::EndText, "2024/03/10 04:00:00".to_string())
             .unwrap();
         assert_eq!(
             session.view().validation_errors,
@@ -2772,7 +2919,7 @@ mod tests {
         );
         session.select_time_zone(TimeZoneChoice::Utc);
         let view = session.view();
-        assert_eq!(view.start_input.text(), "2024-03-10 02:30:00");
+        assert_eq!(view.start_input.text(), "2024/03/10 02:30:00");
         assert!(view.validation_errors.is_empty());
         assert!(view.can_fetch);
     }
@@ -2787,13 +2934,13 @@ mod tests {
         session.select_time_zone(TimeZoneChoice::Utc);
         assert_eq!(session.phase(), Phase::Fetching);
         assert_eq!(session.time_zone(), TimeZoneChoice::Utc);
-        // 2024-01-02 03:04:05 in Tokyo is 2024-01-01 18:04:05 UTC.
-        assert_eq!(session.start_input().text(), "2024-01-01 18:04:05");
+        // 2024/01/02 03:04:05 in Tokyo is 2024/01/01 18:04:05 UTC.
+        assert_eq!(session.start_input().text(), "2024/01/01 18:04:05");
         assert_eq!(
-            session.update_input(InputField::StartText, "2024-01-01 00:00:00".to_string()),
+            session.update_input(InputField::StartText, "2024/01/01 00:00:00".to_string()),
             Err(SessionError::Busy)
         );
-        assert_eq!(session.start_input().text(), "2024-01-01 18:04:05");
+        assert_eq!(session.start_input().text(), "2024/01/01 18:04:05");
     }
 
     #[test]
@@ -2811,7 +2958,7 @@ mod tests {
     #[test]
     fn display_rows_carry_times_in_the_chosen_zone() {
         let mut session = new_york_session();
-        // 2024-01-02 03:04:05.007 UTC: 22:04:05.007 the day before in New York.
+        // 2024/01/02 03:04:05.007 UTC: 22:04:05.007 the day before in New York.
         let window = RowWindow {
             offset: 4,
             rows: vec![held_row(1_704_164_645_007, 0), held_row(i64::MAX, 1)],
@@ -2825,16 +2972,16 @@ mod tests {
         assert_eq!(local.offset, 4);
         assert_eq!(local.total_count, 9);
         assert_eq!(local.timeline_version, 3);
-        assert_eq!(local.rows[0].display_time, "2024-01-01 22:04:05.007");
+        assert_eq!(local.rows[0].display_time, "2024/01/01 22:04:05.007");
         assert_eq!(local.rows[1].display_time, i64::MAX.to_string());
         assert_eq!(local.rows[0].event, window.rows[0]);
 
         session.select_time_zone(TimeZoneChoice::Utc);
         let utc = session.display_rows(window);
-        assert_eq!(utc.rows[0].display_time, "2024-01-02 03:04:05.007");
+        assert_eq!(utc.rows[0].display_time, "2024/01/02 03:04:05.007");
         assert_eq!(utc.timeline_version, 3, "switching keeps the version");
         let json = serde_json::to_value(&utc).unwrap();
-        assert_eq!(json["rows"][0]["displayTime"], "2024-01-02 03:04:05.007");
+        assert_eq!(json["rows"][0]["displayTime"], "2024/01/02 03:04:05.007");
         assert_eq!(json["rows"][0]["timestamp"], 1_704_164_645_007_i64);
         assert_eq!(json["rows"][0]["logStreamName"], "stream-a");
         assert_eq!(json["totalCount"], 9);
@@ -2843,20 +2990,20 @@ mod tests {
     #[test]
     fn selecting_the_current_zone_changes_nothing() {
         let mut session = new_york_session();
-        // The later 01:30 of 2024-11-03, typed in UTC, shown in New York.
+        // The later 01:30 of 2024/11/03, typed in UTC, shown in New York.
         session.select_time_zone(TimeZoneChoice::Utc);
         session
-            .update_input(InputField::StartText, "2024-11-03 06:30:00".to_string())
+            .update_input(InputField::StartText, "2024/11/03 06:30:00".to_string())
             .unwrap();
         session.select_time_zone(TimeZoneChoice::Local);
-        assert_eq!(session.start_input().text(), "2024-11-03 01:30:00");
+        assert_eq!(session.start_input().text(), "2024/11/03 01:30:00");
         session.select_time_zone(TimeZoneChoice::Local);
         // The screen re-sends the unchanged text: the instant is kept (R-06).
         session
-            .update_input(InputField::StartText, "2024-11-03 01:30:00".to_string())
+            .update_input(InputField::StartText, "2024/11/03 01:30:00".to_string())
             .unwrap();
         session.select_time_zone(TimeZoneChoice::Utc);
-        assert_eq!(session.start_input().text(), "2024-11-03 06:30:00");
+        assert_eq!(session.start_input().text(), "2024/11/03 06:30:00");
     }
 
     // ---- U5: the log filter (BR1.1, BR1.4, BR3.3, BR3.6) ----
@@ -3003,7 +3150,7 @@ mod tests {
         assert!(shown.filtered);
         assert_eq!((shown.total_count, shown.all_count), (2, 40));
         assert_eq!(shown.result_version, Some(8));
-        assert_eq!(shown.rows[0].display_time, "2024-01-02 03:04:05.007");
+        assert_eq!(shown.rows[0].display_time, "2024/01/02 03:04:05.007");
         let json = serde_json::to_value(&shown).unwrap();
         assert_eq!(json["filtered"], true);
         assert_eq!(json["allCount"], 40);
@@ -3122,7 +3269,7 @@ mod tests {
         let refused = SessionError::ConfirmationPending;
         assert_eq!(session.begin_fetch(generation), Err(refused));
         assert_eq!(
-            session.update_input(InputField::StartText, "2024-01-02 03:00:00".into()),
+            session.update_input(InputField::StartText, "2024/01/02 03:00:00".into()),
             Err(refused)
         );
         assert_eq!(session.select_profile(dev()), Err(refused));
@@ -3516,5 +3663,207 @@ mod tests {
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
         assert_eq!(session.view().settings_notice, None);
         assert!(session.begin_fetch(session.connection_generation()).is_ok());
+    }
+
+    // ---- Gate fix 16a: the default time range at startup ----
+
+    use crate::time_range::parse_utc_seconds;
+
+    /// Epoch milliseconds of a UTC `yyyy/mm/dd hh:mm:ss`.
+    fn utc_ms(text: &str) -> i64 {
+        parse_utc_seconds(text).unwrap()
+    }
+
+    /// A session whose local zone is `local`, made at the UTC instant
+    /// `now_utc` (the app passes `SystemTime::now()`).
+    fn started_at(local: chrono_tz::Tz, now_utc: &str) -> AppSession {
+        AppSession::with_catalog_and_time_zones(catalog(), TimeZoneContext::new(local))
+            .with_default_time_range(utc_ms(now_utc))
+    }
+
+    /// The texts of the start and end inputs as the screen shows them.
+    fn input_texts(session: &AppSession) -> (String, String) {
+        (
+            session.start_input().text().to_string(),
+            session.end_input().text().to_string(),
+        )
+    }
+
+    #[test]
+    fn starts_with_yesterday_to_today_in_the_local_zone_and_can_fetch_once_a_log_group_is_chosen() {
+        // 2024/03/14 16:00:00 UTC is already 2024/03/15 01:00:00 in Tokyo.
+        let mut session = started_at(chrono_tz::Asia::Tokyo, "2024/03/14 16:00:00");
+        let view = session.view();
+        assert_eq!(view.start_input.text(), "2024/03/14 00:00:00");
+        assert_eq!(view.end_input.text(), "2024/03/15 23:59:59");
+        // The texts are read in the local zone (UTC+9), like typed input.
+        assert_eq!(
+            view.start_input.instant(),
+            Some(utc_ms("2024/03/13 15:00:00"))
+        );
+        assert_eq!(
+            view.end_input.instant(),
+            Some(utc_ms("2024/03/15 14:59:59"))
+        );
+        assert_eq!(view.start_input.error(), None);
+        assert_eq!(view.end_input.error(), None);
+        assert!(
+            !view
+                .validation_errors
+                .iter()
+                .any(|key| key.starts_with("validation.")),
+            "{:?}",
+            view.validation_errors
+        );
+        assert!(!view.can_fetch, "a log group is still missing");
+
+        // Choosing the connection and a log group is all that is left.
+        let listing = session.select_profile(dev()).unwrap().listing.unwrap();
+        session.apply_listing_page(&listing.listing_id, vec![group("/aws/lambda/orders")], None);
+        session
+            .select_log_group(
+                "/aws/lambda/orders".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        let view = session.view();
+        assert!(view.can_fetch);
+        assert!(view.validation_errors.is_empty());
+        let validated = session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(
+            validated.range.start_instant(),
+            utc_ms("2024/03/13 15:00:00")
+        );
+        assert_eq!(
+            validated.range.end_instant(),
+            utc_ms("2024/03/15 14:59:59") + 999
+        );
+    }
+
+    #[test]
+    fn the_default_range_follows_the_local_zone_not_utc() {
+        // The same instant as above with UTC as the local zone: still the
+        // 14th there, so the range is one day earlier than in Tokyo.
+        let session = started_at(chrono_tz::Tz::UTC, "2024/03/14 16:00:00");
+        assert_eq!(
+            input_texts(&session),
+            (
+                "2024/03/13 00:00:00".to_string(),
+                "2024/03/14 23:59:59".to_string()
+            )
+        );
+        assert_eq!(
+            session.start_input().instant(),
+            Some(utc_ms("2024/03/13 00:00:00"))
+        );
+        assert_eq!(
+            session.end_input().instant(),
+            Some(utc_ms("2024/03/14 23:59:59"))
+        );
+        assert_eq!(session.time_zone(), TimeZoneChoice::Local);
+    }
+
+    #[test]
+    fn yesterday_crosses_a_month_and_a_year_boundary_by_the_calendar() {
+        // 2024/03/01 01:00 in Tokyo: yesterday is the leap day.
+        let session = started_at(chrono_tz::Asia::Tokyo, "2024/02/29 16:00:00");
+        assert_eq!(
+            input_texts(&session),
+            (
+                "2024/02/29 00:00:00".to_string(),
+                "2024/03/01 23:59:59".to_string()
+            )
+        );
+        // 2024/01/01 00:30 in Tokyo: yesterday is in the previous year.
+        let session = started_at(chrono_tz::Asia::Tokyo, "2023/12/31 15:30:00");
+        assert_eq!(
+            input_texts(&session),
+            (
+                "2023/12/31 00:00:00".to_string(),
+                "2024/01/01 23:59:59".to_string()
+            )
+        );
+        // In UTC that instant is still 2023/12/31.
+        let session = started_at(chrono_tz::Tz::UTC, "2023/12/31 15:30:00");
+        assert_eq!(
+            input_texts(&session),
+            (
+                "2023/12/30 00:00:00".to_string(),
+                "2023/12/31 23:59:59".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn the_default_range_is_whole_calendar_days_across_a_daylight_saving_change() {
+        // New York, 2024/03/10 12:00 EDT (16:00 UTC): the clocks jumped from
+        // 02:00 to 03:00 that morning, so today has 23 hours. The range is
+        // still "yesterday 00:00:00 to today 23:59:59" by the calendar.
+        let session = started_at(chrono_tz::America::New_York, "2024/03/10 16:00:00");
+        assert_eq!(
+            input_texts(&session),
+            (
+                "2024/03/09 00:00:00".to_string(),
+                "2024/03/10 23:59:59".to_string()
+            )
+        );
+        // Midnight of the 9th is EST (UTC-5); the end of the 10th is EDT (UTC-4).
+        assert_eq!(
+            session.start_input().instant(),
+            Some(utc_ms("2024/03/09 05:00:00"))
+        );
+        assert_eq!(
+            session.end_input().instant(),
+            Some(utc_ms("2024/03/11 03:59:59"))
+        );
+        assert_eq!(session.start_input().error(), None);
+        assert_eq!(session.end_input().error(), None);
+
+        // The end of daylight saving time (2024/11/03, a 25-hour day) too:
+        // 12:00 UTC is 07:00 EST, after the clocks went back at 02:00 EDT.
+        let session = started_at(chrono_tz::America::New_York, "2024/11/03 12:00:00");
+        assert_eq!(
+            input_texts(&session),
+            (
+                "2024/11/02 00:00:00".to_string(),
+                "2024/11/03 23:59:59".to_string()
+            )
+        );
+        assert_eq!(
+            session.start_input().instant(),
+            Some(utc_ms("2024/11/02 04:00:00"))
+        );
+        assert_eq!(
+            session.end_input().instant(),
+            Some(utc_ms("2024/11/04 04:59:59"))
+        );
+    }
+
+    #[test]
+    fn without_a_now_the_inputs_start_empty_and_an_unwritable_now_fills_nothing() {
+        // The existing constructors are unchanged: no `now`, empty inputs.
+        let session = tokyo_session();
+        assert_eq!(input_texts(&session), (String::new(), String::new()));
+        assert!(
+            session
+                .view()
+                .validation_errors
+                .contains(&"validation.startFormat".to_string())
+        );
+        // An instant with no calendar date (beyond chrono's range) and one
+        // whose year has no four digits in the local zone fill nothing,
+        // rather than showing an error at startup.
+        for now_ms in [i64::MAX, utc_ms("9999/12/31 23:00:00")] {
+            let session = tokyo_session().with_default_time_range(now_ms);
+            assert_eq!(
+                input_texts(&session),
+                (String::new(), String::new()),
+                "{now_ms}"
+            );
+            assert_eq!(session.start_input().instant(), None);
+            assert_eq!(session.end_input().error(), None);
+        }
     }
 }

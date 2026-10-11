@@ -1,187 +1,287 @@
 /*
- * Standard controls only; visual polish is out of scope for the MVP.
- * U7:BR4.2: only system colors (Canvas, CanvasText, Highlight, GrayText...)
- * with `color-scheme: light dark`, so the screen follows the OS light or
- * dark mode without reopening; no fixed color anywhere.
+ * Layout and the parts the app still draws itself (261010-console-ui-polish).
+ * Every visible control is a Cloudscape component (FR4.1); this sheet only
+ * lays them out (two panes, the condition row, minimum 1024x640, NFR7) and
+ * styles the virtual-scroll log list (NFR2), whose colors, fonts and spacing
+ * come from the design tokens set on `body` by `designTokens.ts`
+ * (`--ls-*`): no fixed color anywhere, so the OS light or dark mode applies
+ * through Cloudscape's theme (FR4.5, accessibility C2).
  */
-:root {
-  font-family: system-ui, sans-serif;
-  font-size: 14px;
-  color-scheme: light dark;
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  background: Canvas;
-  color: CanvasText;
+  background: var(--ls-color-background-layout);
+  color: var(--ls-color-text);
+  font-family: var(--ls-font-family);
+  font-size: var(--ls-font-size);
+  line-height: var(--ls-line-height);
 }
 
 .app {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  height: 100vh;
+  height: 100%;
+  min-width: 1024px;
   box-sizing: border-box;
-  padding: 8px 12px;
+}
+
+/* The black top navigation (mockups screen 1): app name left, controls right. */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ls-space-m);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--ls-space-m);
+}
+
+.top-bar-title {
+  margin: 0;
+  font-size: var(--ls-font-size);
+  font-weight: var(--ls-font-weight-heading);
+  white-space: nowrap;
+}
+
+.top-bar-utilities {
+  display: flex;
+  align-items: center;
+  gap: var(--ls-space-xs);
+}
+
+.app-notices {
+  padding: var(--ls-space-xs) var(--ls-space-m) 0;
 }
 
 .app-body {
   display: flex;
-  gap: 12px;
+  gap: var(--ls-space-m);
   flex: 1;
   min-height: 0;
+  padding: var(--ls-space-m);
+  box-sizing: border-box;
 }
 
-.app-main {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.connection-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.connection-bar-field,
-.log-group-pane-filter {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.connection-bar-notice {
-  margin: 0;
-}
-
-/* U4:BR3.3: standard radio buttons, laid out in the top bar only. */
-.time-zone-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-
+/*
+ * Left pane: its width is the custom property `App` sets from the remembered
+ * choice (gate fix 14d), changed by the handle between the panes. Since gate
+ * fix 15b the value is a share of the app body (25% at first launch, 20% to
+ * 50%). `min-width: 0` lets the pane be narrower than its content: without
+ * it the log group names (`white-space: nowrap`) set the flex item's
+ * min-content width and the pane could not shrink below about 40% of the
+ * window. The table is laid out fixed so the name column takes the pane's
+ * width and the names are cut with an ellipsis instead of widening the table.
+ */
 .log-group-pane {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 18rem;
+  flex: 0 0 var(--ls-log-group-pane-width, 25%);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.log-group-pane-table table {
+  table-layout: fixed;
+}
+
+/*
+ * The pane when closed (gate fix 15b): a slim vertical strip at the left
+ * edge holding only the button that opens the pane again.
+ */
+.log-group-pane-collapsed {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 36px;
+  padding-top: var(--ls-space-xs);
+  border: 1px solid var(--ls-color-border);
+  border-radius: var(--ls-radius);
+  background: var(--ls-color-background);
+}
+
+/* The handle between the panes: a thin strip, the width cursor, visible focus. */
+.pane-resizer {
+  flex: 0 0 6px;
+  align-self: stretch;
+  margin: 0 calc(-1 * var(--ls-space-xs));
+  border-radius: 3px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane-resizer:hover,
+.pane-resizer:focus-visible {
+  background: var(--ls-color-border);
+}
+
+.pane-resizer:focus-visible {
+  outline: 2px solid var(--ls-color-focus);
+  outline-offset: 0;
+}
+
+.log-group-pane-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ls-space-s);
+  height: 100%;
   min-height: 0;
 }
 
-.log-group-pane-tools {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-
-.log-group-pane-list {
+.log-group-pane-table {
   flex: 1;
+  min-height: 0;
   overflow: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid GrayText;
 }
 
-.log-group-pane-option {
-  padding: 1px 6px;
-  cursor: default;
-  white-space: nowrap;
+.log-group-pane-name {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.log-group-pane-option.active {
-  outline: 1px dotted;
-}
-
-.log-group-pane-option[aria-selected="true"] {
-  background: Highlight;
-  color: HighlightText;
-}
-
-.confirm-backdrop {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, CanvasText 30%, transparent);
-}
-
-.confirm-dialog {
-  background: Canvas;
-  color: CanvasText;
-  padding: 12px 16px;
-  border: 1px solid GrayText;
-}
-
-.confirm-dialog-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.app-title {
-  font-size: 1.1rem;
-  margin: 0;
-}
-
-.fetch-form-fields {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.fetch-form-field {
+/* Right pane: the conditions, the error area, the list and the status line. */
+.app-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
-.fetch-form-reasons ul {
-  margin: 2px 0 0;
-  padding-left: 20px;
+/*
+ * Gate fix 18a: the status line stays at the bottom of the container. The
+ * Container (`fitHeight`) is as high as the right pane and its content area
+ * scrolls, but the box inside that area (Cloudscape's content-inner, a flex
+ * item without `min-height: 0`, not stylable through a public property)
+ * grows to the height of what it holds. The log list, as high as all its
+ * rows, made it grow, and the status line ended below the window.
+ *
+ * The frame fills that box (`height: 100%` of the flexed, definite box) and
+ * the column is laid over the frame (`position: absolute; inset: 0`), so the
+ * column's content no longer counts in the box's height. In the column the
+ * list takes what is left (`.log-table`: `flex: 1; min-height: 0`) and
+ * scrolls inside; the conditions, the alerts and the status line keep their
+ * own height. The frame's minimum keeps the conditions, a few rows and the
+ * status line usable in a very short window: below it the container's
+ * content area scrolls as before.
+ */
+.condition-area-frame {
+  position: relative;
+  height: 100%;
+  min-height: 15rem;
 }
 
-.status-line-error {
-  font-weight: bold;
+.condition-area {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ls-space-s);
+  min-height: 0;
+}
+
+/* Filter left, start and end right; wraps below 1024px of content (NFR7). */
+.condition-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--ls-space-s) var(--ls-space-m);
+}
+
+.condition-row-filter {
+  flex: 1 1 16em;
+  min-width: 12em;
+}
+
+.condition-row-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ls-space-s) var(--ls-space-m);
+}
+
+.condition-date-time {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ls-space-xs);
+}
+
+/*
+ * Gate fix 14a: Cloudscape's DatePicker opens its calendar in a Dropdown with
+ * minWidth and maxWidth "trigger", and with `expandToViewport` the dropdown's
+ * inline-size is set to exactly the trigger's width (dropdown-fit-handler
+ * `getWidths`, dropdown/internal `setDropdownPosition`). A narrow field
+ * therefore clipped the calendar (only Sunday to Thursday were visible). The
+ * field takes the DatePicker's own maximum width, 234px
+ * (`.date-picker-container { max-inline-size: 234px }`), the width the
+ * calendar is laid out for; ConditionArea.test.tsx checks the two agree.
+ */
+.condition-date {
+  width: 234px;
+}
+
+.condition-time {
+  width: 7.5em;
+}
+
+.condition-reason {
+  display: flex;
+  align-items: center;
+  gap: var(--ls-space-xxs);
 }
 
 /*
  * Virtual log table (U3:BR6.4, U7:BR1.4): each row is a 22 px line with
  * fixed column widths, and an expanded row also has its expansion below.
+ * Drawn by the app (NFR2) with Cloudscape's tokens (design-system-mapping).
  */
 .log-table {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border: 1px solid GrayText;
+  border: 1px solid var(--ls-color-border);
+  border-radius: var(--ls-radius);
+  background: var(--ls-color-background);
+  color: var(--ls-color-text);
 }
 
-/* U7:BR4.4: the focus is always visible. */
+/*
+ * The opt-in Cloudscape table prototype (plan Step 10, development only)
+ * takes the same place in the column and scrolls inside it (gate fix 18a).
+ */
+.log-table-cloudscape {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* U7:BR4.4: the focus is always visible (Cloudscape's focus ring color). */
 .log-table:focus-visible,
 .log-expanded-text:focus-visible {
-  outline: 2px solid Highlight;
+  outline: 2px solid var(--ls-color-focus);
   outline-offset: -2px;
 }
 
 /* Review R-04: no more rows can be opened. */
 .log-table-notice {
-  margin: 4px 0 0;
+  margin: var(--ls-space-xxs) 0 0;
 }
 
 .log-table-header {
-  font-weight: bold;
-  border-bottom: 1px solid GrayText;
+  font-weight: var(--ls-font-weight-heading);
+  color: var(--ls-color-heading);
+  background: var(--ls-color-background-header);
+  border-bottom: 1px solid var(--ls-color-border);
 }
 
 .log-table-viewport {
@@ -206,6 +306,7 @@ body {
   box-sizing: border-box;
   width: 100%;
   height: 22px;
+  border-bottom: 1px solid var(--ls-color-border-secondary);
 }
 
 .log-table-content .log-table-row {
@@ -218,10 +319,17 @@ body {
   cursor: default;
 }
 
-/* U7:BR1.5: the selected row in the standard selection colors (and aria-selected). */
+/* U7:BR1.5: the selected row in Cloudscape's selected-item colors (and aria-selected). */
 .log-table-row[aria-selected="true"] > .log-table-line {
-  background: Highlight;
-  color: HighlightText;
+  background: var(--ls-color-background-selected);
+  box-shadow: inset 2px 0 0 var(--ls-color-border-selected);
+}
+
+/* The empty state of the list (mockups screen 1, interaction-spec §4). */
+.log-table-empty {
+  padding: var(--ls-space-m);
+  text-align: center;
+  color: var(--ls-color-text-secondary);
 }
 
 /*
@@ -234,16 +342,16 @@ body {
   max-height: 372px;
   overflow-y: auto;
   padding: 6px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--ls-font-family-monospace);
   font-size: 12px;
   line-height: 18px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
   cursor: text;
-  background: Canvas;
-  color: CanvasText;
-  box-shadow: inset 0 1px 0 GrayText;
+  background: var(--ls-color-background);
+  color: var(--ls-color-text);
+  box-shadow: inset 0 1px 0 var(--ls-color-border);
 }
 
 /* U7:BR1.9: measures one monospace character once at startup. */
@@ -251,37 +359,24 @@ body {
   position: absolute;
   visibility: hidden;
   white-space: pre;
-  font-family: ui-monospace, monospace;
+  font-family: var(--ls-font-family-monospace);
   font-size: 12px;
-}
-
-/* U7:BR2.4, BR2.5: errors in words, one sentence per line. */
-.fetch-error-banner {
-  border: 1px solid GrayText;
-  padding: 6px 10px;
-}
-
-.error-message p {
-  margin: 0;
-}
-
-.error-message-what {
-  font-weight: bold;
 }
 
 .log-table-time,
 .log-table-stream,
 .log-table-message {
   box-sizing: border-box;
-  padding: 0 6px;
+  padding: 0 var(--ls-space-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .log-table-time {
-  flex: 0 0 13em;
-  font-family: ui-monospace, monospace;
+  flex: 0 0 15em;
+  font-family: var(--ls-font-family-monospace);
+  font-size: var(--ls-font-size-small);
 }
 
 .log-table-stream {
@@ -293,23 +388,15 @@ body {
   min-width: 0;
 }
 
-.failure-list {
-  border: 1px solid GrayText;
-  padding: 6px 10px;
-  max-height: 12rem;
-  overflow: auto;
-}
-
-.failure-list h2 {
-  font-size: 1rem;
-  margin: 0 0 4px;
-}
-
-.failure-list-items {
-  margin: 0 0 6px;
-  padding-left: 20px;
-}
-
-.failure-list-name {
-  font-weight: bold;
+/*
+ * The status line below the list (interaction-spec §7); it never shrinks, so
+ * it stays whole at the bottom of the column (gate fix 18a).
+ */
+.status-line {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ls-space-xs) var(--ls-space-s);
+  min-height: 1.5em;
 }

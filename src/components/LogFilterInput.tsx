@@ -1,4 +1,5 @@
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type Ref } from "react";
+import TextFilter, { type TextFilterProps } from "@cloudscape-design/components/text-filter";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import type { Translate } from "../i18n/messages";
 
@@ -23,19 +24,21 @@ export interface LogFilterInputProps {
   onChange: (value: string) => void;
   /** The text once typing paused for {@link FILTER_DELAY_MS}; only the last one. */
   onFilterChange: (text: string) => void;
+  /** The field itself, so the condition area can move the focus to it (R-06). */
+  inputRef?: Ref<TextFilterProps.Ref>;
 }
 
 /**
- * The log filter field of the condition area (U5:BR3.4): a standard search
- * field with an English or Japanese label and placeholder, reachable with
- * Tab and usable while fetching, since filtering is not a fetch condition.
- * The text goes to the core about 0.3 s after typing stops (U5:BR1.3); the
- * core trims it and decides whether anything changed (U5:BR1.1, BR1.4).
- * Enter does not submit the fetch form, so typing a filter never starts a
- * fetch; since U6 it hands the text on at once instead of waiting (U6:BR5.4).
- * When a hand-over failed, or when a dialog that disabled the field closes,
- * the field compares its text with the one the core holds and sends it again
- * when they differ (U5 review R-02).
+ * The log filter field of the condition area (U5:BR3.4, mockups screen 1):
+ * a Cloudscape TextFilter ("Filter messages", gate fix 15e) with an English
+ * or Japanese label and placeholder, reachable with Tab and usable while fetching, since
+ * filtering is not a fetch condition. The text goes to the core about 0.3 s
+ * after typing stops (U5:BR1.3); the core trims it and decides whether
+ * anything changed (U5:BR1.1, BR1.4). Enter never starts a fetch: it hands
+ * the text on at once instead of waiting (U6:BR5.4). When a hand-over
+ * failed, or when a dialog that disabled the field closes, the field
+ * compares its text with the one the core holds and sends it again when
+ * they differ (U5 review R-02).
  */
 export function LogFilterInput({
   value,
@@ -45,6 +48,7 @@ export function LogFilterInput({
   t,
   onChange,
   onFilterChange,
+  inputRef,
 }: LogFilterInputProps) {
   const debounced = useDebouncedValue(value, FILTER_DELAY_MS);
   const lastSent = useRef(appliedText);
@@ -70,11 +74,12 @@ export function LogFilterInput({
     }
   }, [disabled, failureCount, value, appliedText, onFilterChange]);
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter") {
       return;
     }
     event.preventDefault();
+    event.stopPropagation();
     // U6:BR5.4: hand the text on at once; the same text again does nothing.
     if (value !== lastSent.current) {
       lastSent.current = value;
@@ -83,20 +88,16 @@ export function LogFilterInput({
   };
 
   return (
-    <label className="fetch-form-field log-filter">
-      <span>{t("logFilter.label")}</span>
-      <input
-        type="search"
-        name="logFilter"
-        value={value}
-        placeholder={t("logFilter.placeholder")}
+    <div className="log-filter" onKeyDown={handleKeyDown} data-testid="log-filter">
+      <TextFilter
+        ref={inputRef}
+        filteringText={value}
+        filteringPlaceholder={t("logFilter.placeholder")}
+        filteringAriaLabel={t("logFilter.label")}
+        filteringClearAriaLabel={t("logFilter.clear")}
         disabled={disabled}
-        autoComplete="off"
-        spellCheck={false}
-        data-testid="log-filter-input"
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={handleKeyDown}
+        onChange={({ detail }) => onChange(detail.filteringText)}
       />
-    </label>
+    </div>
   );
 }

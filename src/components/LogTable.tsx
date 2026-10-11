@@ -69,6 +69,11 @@ export interface LogTableProps {
   charWidth?: number;
   /** Most rows open at once; `MAX_EXPANDED_ROWS` unless a test sets fewer. */
   maxExpandedRows?: number;
+  /**
+   * What the empty list says (mockups screen 1, interaction-spec §4): the
+   * console's empty state, or that nothing matches the filter (R-06).
+   */
+  emptyText?: string;
 }
 
 /** The scroll position and the layout it was taken with. */
@@ -135,6 +140,7 @@ export function LogTable({
   viewportWidth: fixedViewportWidth,
   charWidth,
   maxExpandedRows = MAX_EXPANDED_ROWS,
+  emptyText,
 }: LogTableProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -457,6 +463,13 @@ export function LogTable({
           data-testid="log-table-viewport"
           onScroll={handleScroll}
         >
+          {totalCount === 0 && emptyText !== undefined && (
+            <div className="log-table-empty" role="row" aria-rowindex={2}>
+              <div role="gridcell" aria-colspan={3} data-testid="log-table-empty">
+                {emptyText}
+              </div>
+            </div>
+          )}
           <div className="log-table-content" role="rowgroup" style={contentStyle}>
             {rows.map(({ event, position, top }) => {
               const key = keyOf(event);

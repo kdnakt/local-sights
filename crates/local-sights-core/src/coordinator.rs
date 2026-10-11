@@ -778,7 +778,7 @@ mod tests {
     use crate::request::{FetchInput, validate_fetch_input};
     use crate::retry::{FixedJitter, RetryPolicy, abort_pair};
 
-    /// 2024-01-02 03:04:05 UTC, the start of the fetched range.
+    /// 2024/01/02 03:04:05 UTC, the start of the fetched range.
     const START: i64 = 1_704_164_645_000;
     /// A fetch started a day later: the whole range is recordable.
     const A_DAY_LATER: i64 = START + 86_400_000;
@@ -920,8 +920,8 @@ mod tests {
         let validated = validate_fetch_input(&FetchInput {
             profile_name: "dev".to_string(),
             log_group_name: "/aws/lambda/orders".to_string(),
-            start_text: "2024-01-02 03:04:05".to_string(),
-            end_text: "2024-01-02 03:05:05".to_string(),
+            start_text: "2024/01/02 03:04:05".to_string(),
+            end_text: "2024/01/02 03:05:05".to_string(),
         })
         .unwrap();
         ValidatedFetch {

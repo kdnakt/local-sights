@@ -8,9 +8,10 @@ name: Release
 #   on main. Nothing else runs when this fails.
 # - test: the library tests and the screen tests, on the tagged commit.
 # - build-and-publish: runs only after both succeed. It builds the .dmg with
-#   the .app ad-hoc signed, verifies that signature, checks that exactly one
-#   .dmg exists, and only then creates the Release (or, when the tag's Release
-#   already exists after a re-run, replaces the .dmg on it).
+#   the .app ad-hoc signed, checks that exactly one .dmg exists, verifies the
+#   signature of the .app inside that .dmg, and only then creates the Release
+#   (or, when the tag's Release already exists after a re-run, replaces the
+#   .dmg on it).
 #
 # The app is ad-hoc signed in CI (APPLE_SIGNING_IDENTITY "-": no Apple
 # certificate) and not notarized; it is not signed with an Apple Developer ID.
@@ -109,27 +110,6 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: "-"
         run: npm run tauri build -- --bundles dmg
-      - name: the .app carries a valid ad-hoc signature
-        run: |
-          app="target/release/bundle/macos/Local Sights.app"
-          if [ ! -d "$app" ]; then
-            echo "::error::$app was not built; the signature cannot be checked."
-            exit 1
-          fi
-          if ! codesign --verify --deep --strict --verbose=2 "$app"; then
-            echo "::error::$app has no valid signature. The build step must run with APPLE_SIGNING_IDENTITY set to - so that Tauri ad-hoc signs the app."
-            exit 1
-          fi
-          # codesign -dvv writes its report to stderr.
-          details="$(codesign -dvv "$app" 2>&1)"
-          printf '%s\n' "$details"
-          case "$details" in
-            *"Signature=adhoc"*) echo "$app is ad-hoc signed." ;;
-            *)
-              echo "::error::$app is signed, but not ad-hoc: codesign -dvv reports no Signature=adhoc. The release must not use a certificate."
-              exit 1
-              ;;
-          esac
       - name: exactly one Apple Silicon .dmg
         id: dmg
         run: |
@@ -152,6 +132,39 @@ jobs:
           cp "${dmgs[0]}" "$upload"
           echo "Built ${dmgs[0]}; uploading as $(basename "$upload")"
           echo "path=$upload" >> "$GITHUB_OUTPUT"
+      - name: the .app in the .dmg carries a valid ad-hoc signature
+        # Tauri deletes target/release/bundle/macos/Local Sights.app once the
+        # .dmg is built, so check the .app inside the very .dmg that is
+        # published.
+        env:
+          DMG: ${{ steps.dmg.outputs.path }}
+        run: |
+          mnt="$RUNNER_TEMP/dmg-signature-check"
+          mkdir -p "$mnt"
+          if ! hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$mnt" "$DMG" > /dev/null; then
+            echo "::error::Could not open $DMG to check the signature of the app inside it."
+            exit 1
+          fi
+          trap 'hdiutil detach "$mnt" -quiet || hdiutil detach "$mnt" -force -quiet || true' EXIT
+          app="$mnt/Local Sights.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::$DMG does not contain Local Sights.app; the signature cannot be checked."
+            exit 1
+          fi
+          if ! codesign --verify --deep --strict --verbose=2 "$app"; then
+            echo "::error::Local Sights.app in $DMG has no valid signature. The build step must run with APPLE_SIGNING_IDENTITY set to - so that Tauri ad-hoc signs the app."
+            exit 1
+          fi
+          # codesign -dvv writes its report to stderr.
+          details="$(codesign -dvv "$app" 2>&1)"
+          printf '%s\n' "$details"
+          case "$details" in
+            *"Signature=adhoc"*) echo "Local Sights.app in $(basename "$DMG") is ad-hoc signed." ;;
+            *)
+              echo "::error::Local Sights.app in $DMG is signed, but not ad-hoc: codesign -dvv reports no Signature=adhoc. The release must not use a certificate."
+              exit 1
+              ;;
+          esac
       - name: publish the Release (or replace the .dmg on a re-run)
         env:
           GH_TOKEN: ${{ github.token }}

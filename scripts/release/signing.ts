@@ -126,6 +126,7 @@ function stepEnv(step: WorkflowStep): Map<string, string> {
 const TAURI_BUILD = "tauri build";
 const CODESIGN_VERIFY = "codesign --verify";
 const DMG_DIR = "target/release/bundle/dmg";
+const PUBLISH = "gh release";
 const ADHOC_SIGNATURE = "Signature=adhoc";
 
 /**
@@ -147,9 +148,11 @@ export interface SignatureCheckStep {
 
 /**
  * Finds the step whose `run:` contains `codesign --verify` and checks that it
- * comes after the `tauri build` step and before the step that looks at
- * `target/release/bundle/dmg`, so a signature failure stops the job before
- * the .dmg is accepted and published.
+ * comes after the step that picks the built .dmg from
+ * `target/release/bundle/dmg` (itself after `tauri build`) and before the
+ * step that publishes with `gh release`. Tauri deletes the intermediate .app
+ * once the .dmg is built, so the check has to open the .dmg; and a signature
+ * failure must stop the job before anything is published.
  */
 export function findSignatureCheckStep(workflowText: string): Result<SignatureCheckStep> {
   const steps = workflowSteps(workflowText);
@@ -160,13 +163,17 @@ export function findSignatureCheckStep(workflowText: string): Result<SignatureCh
   if (build < 0) return fail(`no step runs ${TAURI_BUILD}`);
   const dmg = index(DMG_DIR);
   if (dmg < 0) return fail(`no step checks ${DMG_DIR}`);
+  const publish = index(PUBLISH);
+  if (publish < 0) return fail(`no step publishes with ${PUBLISH}`);
 
   const step = steps[check];
   if (step === undefined) return fail(`no step runs ${CODESIGN_VERIFY}`);
   const name = stepName(step);
   const label = name === undefined ? `the step on line ${step.line}` : `step "${name}"`;
   if (check < build) return fail(`${label} runs ${CODESIGN_VERIFY} before the tauri build step`);
-  if (check > dmg) return fail(`${label} runs ${CODESIGN_VERIFY} after the .dmg check`);
+  if (check < dmg) return fail(`${label} runs ${CODESIGN_VERIFY} before the .dmg is picked`);
+  if (check > publish)
+    return fail(`${label} runs ${CODESIGN_VERIFY} after the Release is published`);
   return ok({ name, checksAdhoc: stepRun(step).includes(ADHOC_SIGNATURE) });
 }
 

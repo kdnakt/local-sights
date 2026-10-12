@@ -28,10 +28,12 @@ const BUILD_STEP = [
 
 const CHECK_STEP = [
   "      - name: verify the signature",
+  "        env:",
+  "          DMG: ${{ steps.dmg.outputs.path }}",
   "        run: |",
-  '          app="target/release/bundle/macos/Local Sights.app"',
-  '          codesign --verify --deep --strict --verbose=2 "$app"',
-  '          codesign -dvv "$app" 2>&1 | grep "Signature=adhoc"',
+  '          hdiutil attach -readonly -mountpoint "$mnt" "$DMG"',
+  '          codesign --verify --deep --strict --verbose=2 "$mnt/Local Sights.app"',
+  '          codesign -dvv "$mnt/Local Sights.app" 2>&1 | grep "Signature=adhoc"',
 ];
 
 const DMG_STEP = [
@@ -65,7 +67,7 @@ function workflow(steps: string[][]): string {
 describe("readTauriBuildSigningIdentity", () => {
   // 1
   it("returns APPLE_SIGNING_IDENTITY from the env of the step that runs tauri build", () => {
-    const text = workflow([BUILD_STEP, CHECK_STEP, DMG_STEP, PUBLISH_STEP]);
+    const text = workflow([BUILD_STEP, DMG_STEP, CHECK_STEP, PUBLISH_STEP]);
     expect(readTauriBuildSigningIdentity(text)).toBe("-");
 
     const unquoted = text.replace('APPLE_SIGNING_IDENTITY: "-"', "APPLE_SIGNING_IDENTITY: -");
@@ -96,14 +98,17 @@ describe("readTauriBuildSigningIdentity", () => {
 
 describe("findSignatureCheckStep", () => {
   // 3
-  it("finds the codesign --verify step between the build step and the .dmg check", () => {
-    expect(findSignatureCheckStep(workflow([BUILD_STEP, CHECK_STEP, DMG_STEP]))).toEqual({
+  it("finds the codesign --verify step between the .dmg step and the publish step", () => {
+    const steps = [BUILD_STEP, DMG_STEP, CHECK_STEP, PUBLISH_STEP];
+    expect(findSignatureCheckStep(workflow(steps))).toEqual({
       ok: true,
       value: { name: "verify the signature", checksAdhoc: true },
     });
 
     const withoutAdhoc = CHECK_STEP.filter((line) => !line.includes("Signature=adhoc"));
-    expect(findSignatureCheckStep(workflow([BUILD_STEP, withoutAdhoc, DMG_STEP]))).toEqual({
+    expect(
+      findSignatureCheckStep(workflow([BUILD_STEP, DMG_STEP, withoutAdhoc, PUBLISH_STEP])),
+    ).toEqual({
       ok: true,
       value: { name: "verify the signature", checksAdhoc: false },
     });
@@ -111,15 +116,30 @@ describe("findSignatureCheckStep", () => {
 
   // 4
   it.each([
-    ["no codesign step", [BUILD_STEP, DMG_STEP], "no step runs codesign --verify"],
-    ["no build step", [CHECK_STEP, DMG_STEP], "no step runs tauri build"],
-    ["no .dmg check", [BUILD_STEP, CHECK_STEP], "no step checks target/release/bundle/dmg"],
+    ["no codesign step", [BUILD_STEP, DMG_STEP, PUBLISH_STEP], "no step runs codesign --verify"],
+    ["no build step", [DMG_STEP, CHECK_STEP, PUBLISH_STEP], "no step runs tauri build"],
+    [
+      "no .dmg step",
+      [BUILD_STEP, CHECK_STEP, PUBLISH_STEP],
+      "no step checks target/release/bundle/dmg",
+    ],
+    ["no publish step", [BUILD_STEP, DMG_STEP, CHECK_STEP], "no step publishes with gh release"],
     [
       "codesign before the build",
-      [CHECK_STEP, BUILD_STEP, DMG_STEP],
+      [CHECK_STEP, BUILD_STEP, DMG_STEP, PUBLISH_STEP],
       "before the tauri build step",
     ],
-    ["codesign after the .dmg check", [BUILD_STEP, DMG_STEP, CHECK_STEP], "after the .dmg check"],
+    [
+      // The 2026-10-12 v0.1.1 failure: Tauri had already deleted the .app.
+      "codesign right after the build, before the .dmg is picked",
+      [BUILD_STEP, CHECK_STEP, DMG_STEP, PUBLISH_STEP],
+      "before the .dmg is picked",
+    ],
+    [
+      "codesign after publishing",
+      [BUILD_STEP, DMG_STEP, PUBLISH_STEP, CHECK_STEP],
+      "after the Release is published",
+    ],
   ])("fails with a reason: %s", (_label, steps, reason) => {
     const result = findSignatureCheckStep(workflow(steps));
     expect(result.ok).toBe(false);
@@ -230,14 +250,18 @@ describe("repository", () => {
   });
 
   // 11 (FR2.1, FR2.2)
-  it("release.yml verifies the ad-hoc signature after the build and before the .dmg check", () => {
+  it("release.yml verifies the ad-hoc signature of the .app in the .dmg before publishing", () => {
     const step = findSignatureCheckStep(releaseYml);
     expect(step).toEqual({
       ok: true,
-      value: { name: "the .app carries a valid ad-hoc signature", checksAdhoc: true },
+      value: { name: "the .app in the .dmg carries a valid ad-hoc signature", checksAdhoc: true },
     });
     expect(releaseYml).toContain('codesign --verify --deep --strict --verbose=2 "$app"');
-    expect(releaseYml).toContain('app="target/release/bundle/macos/Local Sights.app"');
+    // The .app is read from the mounted .dmg that is published, not from
+    // target/release/bundle/macos/, which Tauri deletes after building the .dmg.
+    expect(releaseYml).toContain("DMG: ${{ steps.dmg.outputs.path }}");
+    expect(releaseYml).toContain('app="$mnt/Local Sights.app"');
+    expect(releaseYml).not.toContain('app="target/release/bundle/macos/Local Sights.app"');
     expect(releaseYml).toContain("::error::");
   });
 

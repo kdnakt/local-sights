@@ -88,26 +88,26 @@
 
 ### Step 1: テストランナーの確認（契約の runner_step）
 
-- [ ] `cargo +stable test -p local-sights-core catalog` と `/Users/kdnakt/.nvm/versions/node/v22.21.1/bin/node node_modules/vitest/vitest.mjs run src/components/LogGroupPane.test.tsx` が今の状態で通ることを確認し、unit-test-instructions.md のコマンドと照合する
+- [x] `cargo +stable test -p local-sights-core catalog` と `/Users/kdnakt/.nvm/versions/node/v22.21.1/bin/node node_modules/vitest/vitest.mjs run src/components/LogGroupPane.test.tsx` が今の状態で通ることを確認し、unit-test-instructions.md のコマンドと照合する
 
 ### Step 2: 設定ファイルからの SSO の判定（コア、純粋ロジック：テスト先行）
 
-- [ ] Red：`crates/local-sights-core/src/catalog/mod.rs` のテストに足す：`[profile a]` に `sso_session = x` があれば SSO、`sso_start_url = ...` でも SSO、どちらもなければ SSO でない、`[default]` の SSO、`source_profile = b` の名前を持つ、SSO の値（開始 URL など）と credentials ファイルの行は保持しない、`[sso-session x]` はプロファイルにならない（既存）、キーの前後の空白・コメント行。`cargo +stable test -p local-sights-core catalog` が落ちることを確認する
-- [ ] Green：`ProfileSections` に `sso_profiles: BTreeSet<String>` と `source_profiles: BTreeMap<String, String>` を足し、`SectionReader::feed_line` で config ファイルの `sso_session`／`sso_start_url`（有無だけ、値は読まない）と `source_profile`（名前だけ）を記録する。`ConnectionCatalog` から `ProfileAuthInfo`（名前、hasSsoSettings、sourceProfile）を引けるようにする（BR1.1、BR1.2）
+- [x] Red：`crates/local-sights-core/src/catalog/mod.rs` のテストに足す：`[profile a]` に `sso_session = x` があれば SSO、`sso_start_url = ...` でも SSO、どちらもなければ SSO でない、`[default]` の SSO、`source_profile = b` の名前を持つ、SSO の値（開始 URL など）と credentials ファイルの行は保持しない、`[sso-session x]` はプロファイルにならない（既存）、キーの前後の空白・コメント行。`cargo +stable test -p local-sights-core catalog` が落ちることを確認する
+- [x] Green：`ProfileSections` に `sso_profiles: BTreeSet<String>` と `source_profiles: BTreeMap<String, String>` を足し、`SectionReader::feed_line` で config ファイルの `sso_session`／`sso_start_url`（有無だけ、値は読まない）と `source_profile`（名前だけ）を記録する。`ConnectionCatalog` から `ProfileAuthInfo`（名前、hasSsoSettings、sourceProfile）を引けるようにする（BR1.1、BR1.2）
 
 ### Step 3: ログイン先の決定と CLI 出力の取り出し（コア、純粋ロジック：テスト先行）
 
-- [ ] Red：新規 `crates/local-sights-core/src/sso_login.rs` のテストを書く：
+- [x] Red：新規 `crates/local-sights-core/src/sso_login.rs` のテストを書く：
   - `resolve_login_target(selector, catalog, aws_profile_env)`：Named の SSO プロファイル → そのまま・--profile 付き、SdkDefault で AWS_PROFILE なし・[default] が SSO → --profile なし、SdkDefault で AWS_PROFILE=x・x が SSO → --profile なし、AssumeRole（a → source_profile b が SSO）→ ログイン先 b・--profile b、SdkDefault で default → b → --profile b、2 段・5 段、6 段は対象外、循環は対象外、一覧にない source_profile は対象外、SSO でないプロファイルは対象外（BR1.3、BR1.4、BR2.3）
   - `cli_args(target)`：`["sso","login"]` または `["sso","login","--profile",name]`、名前が一覧にないときは作らない（BR2.2）
   - `extract_login_hints(line)`：`https://device.sso.us-east-1.amazonaws.com/` を採る、`https://my.awsapps.com/start/#/device` を採る、`https://oidc.us-east-1.amazonaws.com/authorize?...` を採る、`http://` は捨てる、`https://evil.example.com/` は捨てる、`https://amazonaws.com.evil.example/` は捨てる、確認コード `ABCD-EFGH` を採る、小文字や桁違いは捨てる、行に何もなければ何も返さない、4096 バイトを超える行は先頭だけを見る（BR3.1）
   - `is_allowed_login_url(url)`：上の URL 判定を単独で（Tauri 側の開く前の検証に使う）
   - `cargo +stable test -p local-sights-core sso_login` が落ちることを確認する
-- [ ] Green：`sso_login.rs` を実装し、`lib.rs` から公開する
+- [x] Green：`sso_login.rs` を実装し、`lib.rs` から公開する
 
 ### Step 4: ログインの状態（コア、純粋ロジック：テスト先行）
 
-- [ ] Red：`session.rs` のテストに足す（または `sso_login.rs` の状態の型に）：
+- [x] Red：`session.rs` のテストに足す（または `sso_login.rs` の状態の型に）：
   - 認証エラー（一覧・取得）でログイン先があれば `ssoLogin.available = true`、なければ false、認証以外のエラーでは false（BR1.5）
   - `start_sso_login()`：作業中（取得中・一覧の読み込み中・ログイン中）は拒否、そうでなければ試行番号を進めて Starting（BR2.5）
   - Starting → Waiting → Succeeded / Failed(code) / TimedOut / Cancelled、Starting → CliNotFound / Failed / Cancelled
@@ -117,43 +117,43 @@
   - `dismiss_sso_login()` で結果の状態から Idle に戻る
   - セッションの表示用データ `ssoLogin`（available、state、verificationUrl、userCode、exitCode、attemptId、profileOption）
   - `cargo +stable test -p local-sights-core session` が落ちることを確認する
-- [ ] Green：`AppSession` に実装する。既存の閉じる確認の条件は変えない
+- [x] Green：`AppSession` に実装する。既存の閉じる確認の条件は変えない
 
 ### Step 5: SDK クライアントの破棄（コアの AWS 境界：実装してからテスト）
 
-- [ ] `crates/local-sights-core/src/gateway/aws.rs` の `AwsCloudWatchLogsGateway` に `clear_clients(&self)` を足す（キャッシュを空にする）。テストを 1 つ足す（クライアントを入れた後に空になる。AWS には接続しない）
+- [x] `crates/local-sights-core/src/gateway/aws.rs` の `AwsCloudWatchLogsGateway` に `clear_clients(&self)` を足す（キャッシュを空にする）。テストを 1 つ足す（クライアントを入れた後に空になる。AWS には接続しない）
 
 ### Step 6: CLI の探索と起動（Tauri 側：実装してからテスト）
 
-- [ ] 新規 `src-tauri/src/sso_cli.rs`：
+- [x] 新規 `src-tauri/src/sso_cli.rs`：
   - `locate_cli(candidates)`：`/opt/homebrew/bin/aws`、`/usr/local/bin/aws` の順に、通常ファイルで実行権限があるものを返す（BR2.1）。候補はテストで差し替えられる引数にする
   - `spawn_login(cli_path, args)`：`std::process::Command`（シェルなし）、標準入力は null、標準出力・標準エラーはパイプ、環境変数はそのまま（BR2.4）、`process_group(0)` で新しいプロセスグループ
   - 出力の読み取り：標準出力と標準エラーをそれぞれのスレッドで 1 行ずつ読み、`extract_login_hints` に通した結果だけをコアへ渡す。行そのものは保持もログもしない（BR3.1、NFR3）
   - 時間切れ：5 分（テストでは短くできる引数）。キャンセル・時間切れ・アプリ終了で `stop_group()`：プロセスグループに SIGTERM、2 秒待って SIGKILL（`libc::killpg`。`libc` を src-tauri の直接の依存に足す）（BR3.2、BR3.3）
   - 終了コード 0 → Succeeded、それ以外 → Failed(code)、起動失敗 → Failed
-- [ ] `src-tauri/src/lib.rs`：コマンド `start_sso_login`、`cancel_sso_login`、`dismiss_sso_login`、`open_sso_url(url)` を足す。`open_sso_url` は今の試行の URL と一致し `is_allowed_login_url` を満たすときだけ `/usr/bin/open` を固定パスで起動する。成功時は `clear_clients()` → 一覧の再読み込みを既存の経路で始める。`RunEvent::ExitRequested`／`Exit` とウィンドウを閉じる経路で、ログイン中なら `stop_group()` を呼ぶ。AWS_PROFILE はプロセスの環境から読んでコアに渡す
-- [ ] テスト（`sso_cli.rs` のモジュール内、偽の CLI スクリプトを一時ディレクトリに作る）：探索（2 つ目だけある、どちらもない、実行権限なし）、成功（URL とコードを出して 0 で終わる → Succeeded・URL とコードが届く）、失敗（3 で終わる → Failed(3)）、時間切れ（眠り続ける → TimedOut・プロセスが残らない）、キャンセル（→ Cancelled・プロセスが残らない）、子プロセスを作るスクリプトでもグループごと止まる、許可されない URL は届かない。8 つ前後
+- [x] `src-tauri/src/lib.rs`：コマンド `start_sso_login`、`cancel_sso_login`、`dismiss_sso_login`、`open_sso_url(url)` を足す。`open_sso_url` は今の試行の URL と一致し `is_allowed_login_url` を満たすときだけ `/usr/bin/open` を固定パスで起動する。成功時は `clear_clients()` → 一覧の再読み込みを既存の経路で始める。`RunEvent::ExitRequested`／`Exit` とウィンドウを閉じる経路で、ログイン中なら `stop_group()` を呼ぶ。AWS_PROFILE はプロセスの環境から読んでコアに渡す
+- [x] テスト（`sso_cli.rs` のモジュール内、偽の CLI スクリプトを一時ディレクトリに作る）：探索（2 つ目だけある、どちらもない、実行権限なし）、成功（URL とコードを出して 0 で終わる → Succeeded・URL とコードが届く）、失敗（3 で終わる → Failed(3)）、時間切れ（眠り続ける → TimedOut・プロセスが残らない）、キャンセル（→ Cancelled・プロセスが残らない）、子プロセスを作るスクリプトでもグループごと止まる、許可されない URL は届かない。8 つ前後
 
 ### Step 7: 画面（React：実装してからテスト）
 
-- [ ] `src/api.ts`：`SessionView` に `ssoLogin` を足し、`startSsoLogin()`、`cancelSsoLogin()`、`dismissSsoLogin()`、`openSsoUrl(url)` を足す。`src/test/fixtures.ts` の既定値も足す
-- [ ] 新規 `src/components/SsoLoginButton.tsx`：Cloudscape の `Button`。`available` のときだけ出し、作業中・ログイン中は無効
-- [ ] 新規 `src/components/SsoLoginModal.tsx`：Cloudscape の `Modal`。Starting・Waiting：案内、`Spinner` と文字の状態、URL（押すと `openSsoUrl`）、確認コード（あれば）、[キャンセル]。Waiting の間は × と Escape で閉じない。TimedOut・Failed・CliNotFound：文言、代わりの手順（`aws sso login` とプロファイルの指定）、[閉じる]。Succeeded では閉じ、右ペインの上に `Alert type="success" dismissible` を出す
-- [ ] `LogGroupPane.tsx` の一覧のエラー表示と `FetchErrorBanner.tsx` のアラートに `SsoLoginButton` を置く。`TopBar.tsx` はログイン中にプロファイル・リージョン・設定を無効にする（既存の無効化の表に「ログイン中」の行を足す）。`App.tsx` でモーダルと成功の知らせを描く。焦点はモーダルを閉じたら押したボタン、なくなっていれば左ペインの再読み込みへ戻す
-- [ ] `src/i18n/messages.ts`：frontend-components.md の文言表の key を英・日で足す
-- [ ] テスト：`SsoLoginButton.test.tsx`（出る・出ない・無効・押すと呼ぶ、4 つ）、`SsoLoginModal.test.tsx`（待機の表示、コードなしで URL だけ、URL を押すと `openSsoUrl`、キャンセル、待機中は Escape で閉じない、時間切れ・失敗・CLI なしの文言と閉じる、6 つ）、`LogGroupPane.test.tsx`・`FetchErrorBanner.test.tsx`・`TopBar.test.tsx`・`App.test.tsx` に各 1〜2（ボタンの配置、ログイン中の無効化、成功の知らせ）、`messages.test.ts` に新しい key が両言語にあること
+- [x] `src/api.ts`：`SessionView` に `ssoLogin` を足し、`startSsoLogin()`、`cancelSsoLogin()`、`dismissSsoLogin()`、`openSsoUrl(url)` を足す。`src/test/fixtures.ts` の既定値も足す
+- [x] 新規 `src/components/SsoLoginButton.tsx`：Cloudscape の `Button`。`available` のときだけ出し、作業中・ログイン中は無効
+- [x] 新規 `src/components/SsoLoginModal.tsx`：Cloudscape の `Modal`。Starting・Waiting：案内、`Spinner` と文字の状態、URL（押すと `openSsoUrl`）、確認コード（あれば）、[キャンセル]。Waiting の間は × と Escape で閉じない。TimedOut・Failed・CliNotFound：文言、代わりの手順（`aws sso login` とプロファイルの指定）、[閉じる]。Succeeded では閉じ、右ペインの上に `Alert type="success" dismissible` を出す
+- [x] `LogGroupPane.tsx` の一覧のエラー表示と `FetchErrorBanner.tsx` のアラートに `SsoLoginButton` を置く。`TopBar.tsx` はログイン中にプロファイル・リージョン・設定を無効にする（既存の無効化の表に「ログイン中」の行を足す）。`App.tsx` でモーダルと成功の知らせを描く。焦点はモーダルを閉じたら押したボタン、なくなっていれば左ペインの再読み込みへ戻す
+- [x] `src/i18n/messages.ts`：frontend-components.md の文言表の key を英・日で足す
+- [x] テスト：`SsoLoginButton.test.tsx`（出る・出ない・無効・押すと呼ぶ、4 つ）、`SsoLoginModal.test.tsx`（待機の表示、コードなしで URL だけ、URL を押すと `openSsoUrl`、キャンセル、待機中は Escape で閉じない、時間切れ・失敗・CLI なしの文言と閉じる、6 つ）、`LogGroupPane.test.tsx`・`FetchErrorBanner.test.tsx`・`TopBar.test.tsx`・`App.test.tsx` に各 1〜2（ボタンの配置、ログイン中の無効化、成功の知らせ）、`messages.test.ts` に新しい key が両言語にあること
 
 ### Step 8: 全体の検査
 
-- [ ] `/Users/kdnakt/.nvm/versions/node/v22.21.1/bin/node` で prettier（--write）、eslint、tsc --noEmit、vitest run、vite build を通す
-- [ ] `cargo +stable fmt --all --check`、`cargo +stable clippy --workspace --all-targets`、`cargo +stable test --workspace` を通す。`npm audit --audit-level=high` を通す
-- [ ] コードに SSO・SSO-OIDC の API 呼び出しと `~/.aws/sso/cache` の読み書きがないことを `grep` で確かめ、結果を code-summary.md に書く（NFR1）
+- [x] `/Users/kdnakt/.nvm/versions/node/v22.21.1/bin/node` で prettier（--write）、eslint、tsc --noEmit、vitest run、vite build を通す
+- [x] `cargo +stable fmt --all --check`、`cargo +stable clippy --workspace --all-targets`、`cargo +stable test --workspace` を通す。`npm audit --audit-level=high` を通す
+- [x] コードに SSO・SSO-OIDC の API 呼び出しと `~/.aws/sso/cache` の読み書きがないことを `grep` で確かめ、結果を code-summary.md に書く（NFR1）
 
 ### Step 9: 文書と追跡
 
-- [ ] `README.md`：SSO ログインの使い方、AWS CLI の探索場所、手動確認のチェックリスト（直接の SSO プロファイルと AssumeRole のプロファイルでログインできる、ブラウザが開かないときに URL で入れる、キャンセル・時間切れ・ログイン中の Cmd+Q で `aws` のプロセスが残らない）
-- [ ] `construction/code-generation/code-summary.md`：変更したファイル、主な判断、計画からの逸脱、テストの数、手動確認の表
-- [ ] `construction/code-generation/traceability.json`：FR1.1〜FR4.2、NFR1〜NFR7 を実装ファイルかテストファイルに対応づける
+- [x] `README.md`：SSO ログインの使い方、AWS CLI の探索場所、手動確認のチェックリスト（直接の SSO プロファイルと AssumeRole のプロファイルでログインできる、ブラウザが開かないときに URL で入れる、キャンセル・時間切れ・ログイン中の Cmd+Q で `aws` のプロセスが残らない）
+- [x] `construction/code-generation/code-summary.md`：変更したファイル、主な判断、計画からの逸脱、テストの数、手動確認の表
+- [x] `construction/code-generation/traceability.json`：FR1.1〜FR4.2、NFR1〜NFR7 を実装ファイルかテストファイルに対応づける
 
 ## 要件・設計との対応
 

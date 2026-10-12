@@ -25,6 +25,7 @@ pub mod paging;
 pub mod request;
 pub mod retry;
 pub mod session;
+pub mod sso_login;
 pub mod streams;
 pub mod time_range;
 pub mod time_zone;

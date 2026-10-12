@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { connectedView, sessionView, t } from "../test/fixtures";
+import { connectedView, sessionView, ssoLoginView, t } from "../test/fixtures";
 import { TopBar } from "./TopBar";
 
 function renderBar(view = connectedView()) {
@@ -113,6 +113,30 @@ describe("TopBar (mockups screen 1, R-05)", () => {
     renderBar(connectedView({ settingsDialog: "Open", canOpenSettings: true }));
     expect(trigger("top-bar-time-zone")).toBeDisabled();
     expect(screen.getByTestId("top-bar-settings-button")).toBeDisabled();
+  });
+
+  it("disables the profile, the region and the settings while signing in, not the time zone (261011-sso-login BR3.4)", () => {
+    for (const state of ["Starting", "Waiting"] as const) {
+      const { unmount } = render(
+        <TopBar
+          // Even if the flags lagged behind, a running login disables them.
+          session={connectedView({ ssoLogin: ssoLoginView({ state }) })}
+          t={t}
+          onSelectProfile={vi.fn()}
+          onSelectRegion={vi.fn()}
+          onSelectTimeZone={vi.fn()}
+          onOpenSettings={vi.fn()}
+        />,
+      );
+      expect(trigger("top-bar-profile")).toBeDisabled();
+      expect(trigger("top-bar-region")).toBeDisabled();
+      expect(screen.getByTestId("top-bar-settings-button")).toBeDisabled();
+      expect(trigger("top-bar-time-zone")).toBeEnabled();
+      unmount();
+    }
+    renderBar(connectedView({ ssoLogin: ssoLoginView({ state: "Failed", exitCode: 1 }) }));
+    expect(trigger("top-bar-profile")).toBeEnabled();
+    expect(screen.getByTestId("top-bar-settings-button")).toBeEnabled();
   });
 
   it("shows a warning alert for each config file that could not be read (U2:BR1.3)", () => {

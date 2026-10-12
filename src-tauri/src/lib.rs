@@ -77,10 +77,27 @@
 //! view is pushed again if no fetch runs, so a write that outlived its fetch
 //! opens the settings dialog again on the screen (review R-03).
 //!
+//! Since 261011-sso-login [Sign in with SSO] runs `aws sso login` of the
+//! AWS CLI (`start_sso_login`): the core decides whether it may start and
+//! with which arguments, [`sso_cli`] finds and runs the CLI on a blocking
+//! thread and hands back only the allow-listed URL and code, and every
+//! change pushes `session-changed`. `cancel_sso_login` stops the CLI's
+//! process group, `dismiss_sso_login` puts a result away and
+//! `open_sso_url` opens the attempt's own URL with `/usr/bin/open`. A
+//! success drops the cached SDK clients and lists the log groups again
+//! (BR4.1). Closing the window or ending the app (`ExitRequested`, `Exit`,
+//! `Destroyed`) stops a running CLI; a login does not ask before closing.
+//! `AWS_PROFILE` is read once at startup and given to the session (BR1.3).
+//! The app itself calls no SSO API and never reads or writes the SSO token
+//! cache (BR4.3).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
 
+mod sso_cli;
+
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -102,13 +119,16 @@ use local_sights_core::paging::PageDecision;
 use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
 use local_sights_core::session::{
     AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, InputField,
-    Phase, SessionError, SessionView, SettingsWork,
+    Phase, SessionError, SessionView, SettingsWork, SsoLoginStart,
 };
+use local_sights_core::sso_login::{SsoLoginOutcome, is_allowed_login_url};
 use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_zone::{TimeZoneChoice, TimeZoneContext};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
+
+use crate::sso_cli::{CLI_CANDIDATES, LoginControl, LoginTimes, STOP_GRACE, locate_cli, run_login};
 
 /// Event carrying the latest [`SessionView`].
 pub const SESSION_CHANGED: &str = "session-changed";
@@ -135,6 +155,10 @@ const MAX_ROWS_PER_REQUEST: usize = 1_000;
 /// Id of this app's Quit menu item (Cmd+Q, code generation review R-01).
 const QUIT_MENU_ID: &str = "local-sights-quit";
 
+/// The running SSO login: its attempt number and the control that stops its
+/// CLI (261011-sso-login BR3.3).
+type RunningSsoLogin = Option<(u64, Arc<LoginControl>)>;
+
 /// Shared state of the app.
 #[derive(Debug)]
 struct AppState {
@@ -148,6 +172,9 @@ struct AppState {
     /// Set by [Close] (U7:BR3.2): the exit and window close that follow are
     /// not stopped again. Read without the session lock.
     exit_allowed: AtomicBool,
+    /// The running SSO login: its attempt number and the control that
+    /// stops its CLI (261011-sso-login BR3.3). Locked after the session.
+    sso_login: Arc<Mutex<RunningSsoLogin>>,
 }
 
 impl AppState {
@@ -164,8 +191,11 @@ impl AppState {
         if let Some(fallback) = &time_zones.fallback {
             eprintln!("local-sights: {}", fallback.diagnostic());
         }
+        // 261011-sso-login BR1.3: the SDK default profile is AWS_PROFILE
+        // when set; the CLI inherits the same environment (BR2.4).
         let mut session =
-            AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context);
+            AppSession::with_catalog_and_time_zones(load_catalog(), time_zones.context)
+                .with_aws_profile_env(std::env::var("AWS_PROFILE").ok());
         if let Some(now_ms) = current_epoch_ms() {
             session = session.with_default_time_range(now_ms);
         }
@@ -178,6 +208,7 @@ impl AppState {
             gateway: Arc::default(),
             abort: Arc::default(),
             exit_allowed: AtomicBool::new(false),
+            sso_login: Arc::default(),
         }
     }
 
@@ -186,6 +217,16 @@ impl AppState {
     fn abort_fetch(&self) {
         if let Some((_, handle)) = lock(&self.abort).as_ref() {
             handle.abort();
+        }
+    }
+
+    /// The app or its window ends: stops a running SSO login's CLI before
+    /// returning, waiting at most [`STOP_GRACE`] (261011-sso-login BR3.3,
+    /// NFR4). Does nothing when no login runs.
+    fn stop_sso_cli(&self) {
+        let running = lock(&self.sso_login).take();
+        if let Some((_, control)) = running {
+            control.stop_now(STOP_GRACE);
         }
     }
 }
@@ -984,6 +1025,196 @@ fn select_log_group(
     }))
 }
 
+/// [Sign in with SSO] (261011-sso-login FR2.1): the core decides whether a
+/// login may start and with which arguments (BR1.5, BR2.2, BR2.5); the CLI
+/// is then found and run on a blocking thread. Returns nothing: the state
+/// arrives through `session-changed`.
+#[tauri::command]
+fn start_sso_login(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    let control = LoginControl::new();
+    let (start, view) = {
+        let mut session = lock(&state.session);
+        let start = session.start_sso_login()?;
+        // Recorded under the session lock, so a [Cancel] that follows
+        // always finds the control (lock order: session, then sso_login).
+        *lock(&state.sso_login) = Some((start.attempt_id, Arc::clone(&control)));
+        (start, session.view())
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+    spawn_sso_login(&app, &state, start, control);
+    Ok(())
+}
+
+/// [Cancel] in the login dialog (FR2.4, BR3.3): the attempt becomes
+/// Cancelled at once and its CLI is stopped by the runner.
+#[tauri::command]
+fn cancel_sso_login(app: AppHandle, state: State<'_, AppState>) {
+    let view = {
+        let mut session = lock(&state.session);
+        if let Some(attempt_id) = session.cancel_sso_login() {
+            let running = lock(&state.sso_login);
+            if let Some((_, control)) = running.as_ref().filter(|(id, _)| *id == attempt_id) {
+                control.request_stop();
+            }
+        }
+        session.view()
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+}
+
+/// [Close] on a login result, or closing the success notice.
+#[tauri::command]
+fn dismiss_sso_login(app: AppHandle, state: State<'_, AppState>) {
+    let view = {
+        let mut session = lock(&state.session);
+        if !session.dismiss_sso_login() {
+            return;
+        }
+        session.view()
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+}
+
+/// Opens the sign-in URL of the running login in the browser
+/// (functional-design review: URL). Only the URL the CLI printed for the
+/// current attempt, and only when it passes the allow-list again, is handed
+/// to `/usr/bin/open` (a fixed path, no shell).
+///
+/// # Errors
+/// `ssoLogin.openFailed` when the URL is not the attempt's or cannot be
+/// opened.
+#[tauri::command]
+fn open_sso_url(url: String, state: State<'_, AppState>) -> Result<(), CommandError> {
+    let refused = || CommandError {
+        key: "ssoLogin.openFailed".to_string(),
+    };
+    let is_current = lock(&state.session).sso_login_url() == Some(url.as_str());
+    if !is_current || !is_allowed_login_url(&url) {
+        return Err(refused());
+    }
+    let child = Command::new("/usr/bin/open")
+        .arg(&url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            // `open` ends at once; reap it so no zombie is left.
+            std::thread::spawn(move || child.wait());
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!(
+                "local-sights: sso login: the browser could not be opened ({:?})",
+                error.kind()
+            );
+            Err(refused())
+        }
+    }
+}
+
+/// Runs one login on a blocking thread. If that thread ends abnormally,
+/// the attempt is ended as Failed, so the dialog never stays open.
+fn spawn_sso_login(
+    app: &AppHandle,
+    state: &AppState,
+    start: SsoLoginStart,
+    control: Arc<LoginControl>,
+) {
+    let attempt_id = start.attempt_id;
+    let task_app = app.clone();
+    let task_session = Arc::clone(&state.session);
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        run_sso_login(&task_app, &task_session, &start, &control)
+    });
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let outcome = match task.await {
+            Ok(outcome) => outcome,
+            Err(_) => {
+                eprintln!("local-sights: sso login: the login task ended abnormally");
+                SsoLoginOutcome::Failed { exit_code: None }
+            }
+        };
+        finish_sso_login(&app, attempt_id, outcome);
+    });
+}
+
+/// Finds the CLI (BR2.1) and runs it (BR2.2-BR3.3), reporting the start
+/// and every URL or code to the session as they come (BR3.1).
+fn run_sso_login(
+    app: &AppHandle,
+    session: &Mutex<AppSession>,
+    start: &SsoLoginStart,
+    control: &LoginControl,
+) -> SsoLoginOutcome {
+    let Some(cli) = locate_cli(&CLI_CANDIDATES) else {
+        return SsoLoginOutcome::CliNotFound;
+    };
+    let id = start.attempt_id;
+    run_login(
+        &cli,
+        &start.args,
+        control,
+        LoginTimes::default(),
+        || update_sso_login(app, session, |session| session.on_sso_cli_started(id)),
+        |hints| {
+            update_sso_login(app, session, |session| {
+                session.on_sso_login_hints(id, hints)
+            })
+        },
+    )
+}
+
+/// Applies one login report and pushes the view when it changed.
+fn update_sso_login(
+    app: &AppHandle,
+    session: &Mutex<AppSession>,
+    change: impl FnOnce(&mut AppSession) -> bool,
+) {
+    let view = {
+        let mut session = lock(session);
+        if !change(&mut session) {
+            return;
+        }
+        session.view()
+    };
+    emit_or_log(app, SESSION_CHANGED, view);
+}
+
+/// Ends the attempt (BR4.1, BR4.2): after a success the cached SDK clients
+/// are dropped first, so the listing that follows reads the new token, and
+/// the log groups are listed again; the fetch is not started. A report the
+/// session ignores (the attempt was cancelled) changes nothing.
+fn finish_sso_login(app: &AppHandle, attempt_id: u64, outcome: SsoLoginOutcome) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    {
+        let mut running = lock(&state.sso_login);
+        if running.as_ref().is_some_and(|(id, _)| *id == attempt_id) {
+            running.take();
+        }
+    }
+    if outcome == SsoLoginOutcome::Succeeded {
+        state.gateway.clear_clients();
+    }
+    let (finish, view) = {
+        let mut session = lock(&state.session);
+        let Some(finish) = session.finish_sso_login(attempt_id, outcome) else {
+            return;
+        };
+        (finish, session.view())
+    };
+    // The outcome only: no CLI output, URL or code is logged (NFR3).
+    eprintln!("local-sights: sso login {attempt_id} ended: {outcome:?}");
+    emit_or_log(app, SESSION_CHANGED, view);
+    if let Some(request) = finish.listing {
+        start_listing(app, &state, request);
+    }
+}
+
 /// Applies listing pages to the session and pushes the new state.
 struct TauriListingSink {
     app: AppHandle,
@@ -1148,10 +1379,12 @@ pub fn run() -> Result<(), tauri::Error> {
                     api.prevent_close();
                 }
             }
-            // U7:BR3.1 (3): the window is gone; stop a fetch just in case.
+            // U7:BR3.1 (3): the window is gone; stop a fetch just in case,
+            // and a running SSO login's CLI (261011-sso-login BR3.3).
             WindowEvent::Destroyed => {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.abort_fetch();
+                    state.stop_sso_cli();
                 }
             }
             _ => {}
@@ -1177,17 +1410,32 @@ pub fn run() -> Result<(), tauri::Error> {
             save_settings,
             clear_cache,
             cancel_close,
-            confirm_close
+            confirm_close,
+            start_sso_login,
+            cancel_sso_login,
+            dismiss_sso_login,
+            open_sso_url
         ])
         .build(tauri::generate_context!())?;
-    app.run(|app, event| {
+    app.run(|app, event| match event {
         // U7:BR3.1 (2): `app.exit` and the last window closing, stopped like
         // the window (Cmd+Q comes through `handle_menu_event`, review R-01).
-        if let RunEvent::ExitRequested { api, .. } = event {
+        // When the exit goes ahead, a running SSO login's CLI is stopped
+        // first (261011-sso-login BR3.3); a login never stops the exit.
+        RunEvent::ExitRequested { api, .. } => {
             if must_stop_closing(app) {
                 api.prevent_exit();
+            } else if let Some(state) = app.try_state::<AppState>() {
+                state.stop_sso_cli();
             }
         }
+        // The app ends (also the Dock menu's Quit): the last chance.
+        RunEvent::Exit => {
+            if let Some(state) = app.try_state::<AppState>() {
+                state.stop_sso_cli();
+            }
+        }
+        _ => {}
     });
     Ok(())
 }

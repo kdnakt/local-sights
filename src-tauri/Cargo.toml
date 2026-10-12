@@ -25,8 +25,16 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build.workspace = true
 
 [dependencies]
+# 261011-sso-login: `killpg` stops the whole process group of the AWS CLI
+# on cancel, time-out and exit (BR3.3). Already in the build through the
+# other crates; MIT OR Apache-2.0.
+libc = "0.2"
 local-sights-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+# Fake AWS CLI scripts of the sso_cli tests live in temporary folders.
+tempfile.workspace = true

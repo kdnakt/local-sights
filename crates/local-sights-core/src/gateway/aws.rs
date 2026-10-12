@@ -77,6 +77,19 @@ impl AwsCloudWatchLogsGateway {
         Ok(client)
     }
 
+    /// Drops every cached client (261011-sso-login BR4.1), so the next call
+    /// builds a new one that resolves the credentials again, for example
+    /// after `aws sso login` refreshed the SSO token. Calls in flight keep
+    /// the client they already hold.
+    pub fn clear_clients(&self) {
+        self.lock_clients().clear();
+    }
+
+    /// Number of cached clients.
+    pub fn cached_client_count(&self) -> usize {
+        self.lock_clients().len()
+    }
+
     /// A poisoned cache still holds valid clients, so it is recovered.
     fn lock_clients(&self) -> std::sync::MutexGuard<'_, HashMap<ClientKey, Client>> {
         self.clients.lock().unwrap_or_else(PoisonError::into_inner)
@@ -395,6 +408,35 @@ mod tests {
 
     fn dummy_access_key_id() -> String {
         format!("{}{}", "AKIA", "EXAMPLE0DUMMY000")
+    }
+
+    /// 261011-sso-login BR4.1: the cache is emptied. The clients are built
+    /// from a local config only; nothing is resolved and AWS is not called.
+    #[test]
+    fn clear_clients_empties_the_client_cache() {
+        let gateway = AwsCloudWatchLogsGateway::new();
+        let config = aws_sdk_cloudwatchlogs::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("ap-northeast-1"))
+            .build();
+        for profile in ["dev", "prod"] {
+            gateway.lock_clients().insert(
+                (
+                    Some(profile.to_string()),
+                    Some("ap-northeast-1".to_string()),
+                ),
+                Client::from_conf(config.clone()),
+            );
+        }
+        assert_eq!(gateway.cached_client_count(), 2);
+        gateway.clear_clients();
+        assert_eq!(gateway.cached_client_count(), 0);
+        gateway.clear_clients();
+        assert_eq!(
+            gateway.cached_client_count(),
+            0,
+            "clearing twice is harmless"
+        );
     }
 
     fn unhandled_service_error(code: &str, raw_message: &str) -> GetLogEventsSdkError {

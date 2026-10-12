@@ -10,6 +10,7 @@ import TextFilter from "@cloudscape-design/components/text-filter";
 import type { SessionView } from "../api";
 import { errorLines } from "../errorText";
 import type { Translate } from "../i18n/messages";
+import { SsoLoginButton, type SsoLoginButtonProps } from "./SsoLoginButton";
 
 export interface LogGroupPaneProps {
   session: SessionView;
@@ -21,6 +22,13 @@ export interface LogGroupPaneProps {
   onCollapse?: () => void;
   /** The close button, so the parent can focus it when the pane reopens. */
   collapseButtonRef?: Ref<ButtonProps.Ref>;
+  /** [Reload], to which the focus goes back after the SSO login dialog. */
+  reloadButtonRef?: Ref<ButtonProps.Ref>;
+  /**
+   * [Sign in with SSO] in an auth error of the list (261011-sso-login FR1.1);
+   * without it no such button is shown.
+   */
+  onSsoLogin?: SsoLoginButtonProps["onStart"];
 }
 
 /** One row of the table: a log group name. */
@@ -43,7 +51,10 @@ interface LogGroupRow {
  * that closes the pane (gate fix 15b: "close it completely so the messages are
  * easier to read"); the parent then shows a slim strip that opens it again.
  * The names are cut with an ellipsis when the pane is narrow (the full name
- * is the cell's title).
+ * is the cell's title). Since 261011-sso-login an auth error of the list
+ * carries [Sign in with SSO] below its text when the core says the selected
+ * profile can sign in (FR1.1, BR1.5); while a login runs the core disables
+ * the rows and [Reload] like during a fetch (BR3.4).
  */
 export function LogGroupPane({
   session,
@@ -53,6 +64,8 @@ export function LogGroupPane({
   onSelect,
   onCollapse,
   collapseButtonRef,
+  reloadButtonRef,
+  onSsoLogin,
 }: LogGroupPaneProps) {
   const [filter, setFilter] = useState(session.logGroupFilter);
   const disabled = !session.canChangeConnection;
@@ -116,6 +129,16 @@ export function LogGroupPane({
             data-testid="log-group-pane-error"
           >
             <ListingError failure={list.failure} t={t} />
+            {list.failure.kind === "AuthRequired" && onSsoLogin && (
+              <Box margin={{ top: "xs" }}>
+                <SsoLoginButton
+                  session={session}
+                  t={t}
+                  onStart={onSsoLogin}
+                  testId="log-group-pane-sso-login-button"
+                />
+              </Box>
+            )}
           </Alert>
         )}
         {loading && groups.length > 0 && (
@@ -169,6 +192,7 @@ export function LogGroupPane({
         </div>
         <Box>
           <Button
+            ref={reloadButtonRef}
             disabled={!session.canReload}
             onClick={onReload}
             data-testid="log-group-pane-reload-button"

@@ -3,9 +3,10 @@
 //! Files are located like the AWS CLI does: `AWS_CONFIG_FILE` and
 //! `AWS_SHARED_CREDENTIALS_FILE` when set, otherwise `~/.aws/config` and
 //! `~/.aws/credentials`. Each file is read line by line and every line is
-//! handed to a [`SectionReader`], which keeps only section names and
-//! `region` values; credential values are dropped as soon as they are read
-//! (BR1.2). A missing file yields no profiles and no notice; a file that
+//! handed to a [`SectionReader`], which keeps only section names, `region`
+//! values and (since 261011-sso-login) whether a profile has SSO settings
+//! and the name of its `source_profile`; credential values and SSO values
+//! are dropped as soon as they are read (BR1.2). A missing file yields no profiles and no notice; a file that
 //! exists but cannot be read yields no profiles and a notice naming only the
 //! file kind, never its path or content (BR1.3, R-12).
 
@@ -93,7 +94,7 @@ pub fn load_catalog() -> ConnectionCatalog {
     let config = sections(ConfigFileKind::Config);
     let credentials = sections(ConfigFileKind::Credentials);
     let profiles = build_profiles(&config, &credentials, &env_region_hints());
-    ConnectionCatalog::new(profiles, unreadable)
+    ConnectionCatalog::new(profiles, unreadable).with_auth_infos(config.auth_infos())
 }
 
 #[cfg(test)]

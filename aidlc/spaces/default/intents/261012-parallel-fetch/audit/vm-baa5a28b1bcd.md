@@ -8776,3 +8776,177 @@
 **Review File**: .aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.231585218a0340fccd300520d672a735.review.md
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T17:09:05Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: ae3491bb5ba66f3e5
+**Message**: レビューの指摘 R-01〜R-06 を約束の設計（`contract-summary.md`）に反映しました。いま 2 回目のレビュー中で、結果が届いたらもう一度承認をお願いします。直した分はコミットし、`claude/parallel-fetch` にプッシュ済みです。\n\n- **R-01（終わり方の区別）**：StreamSchedule には、今の `StreamFetch`（件数・状態の 
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T17:10:35Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.231585218a0340fccd300520d672a735.review.md
+**Context**: .aidlc-engine > reviews > contract-design > stage > a13a405228dd0a0b > 1.231585218a0340fccd300520d672a735.review.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:10:45Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T17:10:46Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: aaa45c5c26f6b0458
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-12T17:10:51Z
+**Event**: REVIEW_COMPLETED
+**Stage**: contract-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:479196e824c7c91b1d33519f5b7537c16f29d80dca270ba0fd41981ce45f6c5a
+**Artifact Fingerprint**: sha256:479196e824c7c91b1d33519f5b7537c16f29d80dca270ba0fd41981ce45f6c5a
+**Request Id**: review:231585218a0340fccd300520d672a735
+**Review Record**: .aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json
+**Review Record Digest**: sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-12T17:10:54Z
+**Event**: SENSOR_FIRED
+**Fire id**: cc597927
+**Sensor ID**: required-sections
+**Stage slug**: contract-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-12T17:10:55Z
+**Event**: SENSOR_PASSED
+**Fire id**: cc597927
+**Sensor ID**: required-sections
+**Stage slug**: contract-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md
+**Duration ms**: 1012
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-12T17:10:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7e8a7dad
+**Sensor ID**: upstream-coverage
+**Stage slug**: contract-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-12T17:10:57Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7e8a7dad
+**Sensor ID**: upstream-coverage
+**Stage slug**: contract-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md
+**Duration ms**: 1093
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-12T17:10:57Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: contract-design
+**Details**: Re-entering gate after revision
+
+---
+
+## Session End
+**Timestamp**: 2026-10-12T17:15:44Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-12T17:26:37Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:26:43Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Approve (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T17:26:43Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: 約束の設計をどうしますか？
+**Reply**: Approve (Recommended)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:26:45Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-12T17:26:55Z
+**Event**: GATE_APPROVED
+**Stage**: contract-design
+**User Input**: Approve
+**Person Reply**: Approve
+**Review Finding Dispositions**: {"version":1,"dispositions":[{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-01","fingerprint":"sha256:c001be29698b2fa9ce762b9a69b44ddd72da3c8f5866b12ef7b527886b14243b","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-02","fingerprint":"sha256:beedd1db80182bac4f8301dc02ce93b37d0ba83c1a60f4ccadb02dff029a0692","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-03","fingerprint":"sha256:9edeb7703f6e7cfe935c0d81ba0897ff878cd91c30b0f750e97188efd8a2fabd","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-04","fingerprint":"sha256:c225d368e49c5a0130c1986273ad5911c1e6cf9a5ef39196d53f8a4eeb9a1af5","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-05","fingerprint":"sha256:ad002c95644bdd32d2e4d79574b965c0ce6b303a6bc8cedb14fc1fb460d5dcd4","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-06","fingerprint":"sha256:71e3e765d6a8e971eee17ef8334e051ebd8616a4e9992b44d0254b4007fb90bf","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-07","fingerprint":"sha256:a4c2c7e08e5042ce6b5d27cc1c6f112edc9b8d09ecfbde4f469a41086ace3d20","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-08","fingerprint":"sha256:150c0e0fd29d4ed14b77428d91ec915e52fcb604b69c2b344dc4231b4f0f57d7","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-09","fingerprint":"sha256:9b62052e68f63ca88128583844ccb4f4c344c8842b657dfeb9a58d4b0008a73b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-10","fingerprint":"sha256:cd4da533b3459c170afccf2907acbaf04bd0e50833683a9c2e27395be44163e6","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md","id":"R-11","fingerprint":"sha256:03c9943088ab762dac0f08e092db38c5c064b64fc2f47ce59eeef9863702808e","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/contract-design/stage/a13a405228dd0a0b/1.json","digest":"sha256:f00ae2e55889d1de2cdd8380ca754391022246fa93b7eb7d6476d57ad4709454"}}]}
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-12T17:26:55Z
+**Event**: STAGE_COMPLETED
+**Stage**: contract-design
+**Validation Basis**: {"graphContract":"sha256:ad5599bf4da38de3dec2bfb4bf705de33d27113e18b6a160549a97c4b694fea3","inputs":[{"artifact":"components","contentHash":"sha256:99bdf60be076d11fb284fe8da292be5b3797553809208c9f8e867844e101c435","instanceCount":1,"presentCount":1,"producer":"domain-design","required":false,"structureHash":"sha256:2635290e8e0c07580030e080b9a3acdac6a78e635540744ad470c3be0740db9c"},{"artifact":"requirements","contentHash":"sha256:f655464fb2465070ea77118df95861c796b7d0433bd2ff27bd78b9874492c815","instanceCount":1,"presentCount":1,"producer":"requirements-analysis","required":false,"structureHash":"sha256:ae835753c6e6e91f488bb12ae94d75fb51e0cdbc988349e3cf4958877e7357b0"},{"artifact":"unit-of-work-dependency","contentHash":"sha256:b4d2aad335a2758af82cb3ca9e11d0a0bdf6fc8bb1368d24807d321dd57890e2","instanceCount":1,"presentCount":1,"producer":"units-generation","required":true,"structureHash":"sha256:89233ebae53044cf79520fde63f7a961bddab9bf679089a000b685eaf0aa6106"},{"artifact":"unit-of-work","contentHash":"sha256:0beacf88b6c504b47232a2465ecb98c91c739c0a1a35a3bd12d0d8a6ae96daf6","instanceCount":1,"presentCount":1,"producer":"units-generation","required":true,"structureHash":"sha256:635609cdde0d16c5825d0a446d61feb6caec8fb8c9a4d11301571c15481d70e9"}],"outputs":[{"artifact":"contract-summary","contentHash":"sha256:24ffabddd8e62ebc0090ce156fd1aee3c30bffaf14be6af9af1727a9d5f04bfa","instanceCount":1,"presentCount":1,"producer":"contract-design","required":true,"structureHash":"sha256:37d15f54fd334e9bbb54a12f424f9c300cc93bd244c73c82b34e9505c07be1b3"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Contract Design approved by gate
+**Tokens In**: 93
+**Tokens Out**: 29478
+**Cache Read**: 14353581
+**Cache Write**: 341463
+**Cost USD**: 4.73
+**By Model**: opus-5-5=3.69; sonnet-5-5=1.04
+**By Agent**: main=3.69; aidlc-architecture-reviewer-agent=1.04
+**Tokens By Model**: opus-5-5=61/28k/12.5M/79k; sonnet-5-5=32/1.4k/1.9M/262.5k
+**Tokens By Agent**: main=61/28k/12.5M/79k; aidlc-architecture-reviewer-agent=32/1.4k/1.9M/262.5k
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-12T17:26:55Z
+**Event**: STAGE_STARTED
+**Stage**: delivery-planning
+**Agent**: aidlc-delivery-agent
+**Answer Mode**: guide (reused from intent-capture)
+
+---

@@ -1,0 +1,1 @@
+"リリースの .dmg に含める Local Sights.app を CI でアドホック署名する（release.yml のビルドステップに APPLE_SIGNING_IDENTITY=\"-\" を渡す）。これにより macOS 15 Sequoia で「壊れているため開けません」と出ていたダイアログが「開発元を確認できません」系の警告に変わり、システム設定の「このまま開く」だけで起動できるようにする。docs/install.md の初回起動手順も実際のダイアログに合わせて更新する。Apple Developer Program には参加しない。"

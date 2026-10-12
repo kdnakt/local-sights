@@ -112,3 +112,7 @@ jobs:
         run: cargo clippy --workspace --all-targets
       - name: build the app
         run: cargo build -p local-sights
+      # The app crate's own tests: starting and stopping the AWS CLI for the
+      # SSO login, against a fake CLI script (no real AWS CLI, no AWS).
+      - name: tests (app)
+        run: cargo test -p local-sights

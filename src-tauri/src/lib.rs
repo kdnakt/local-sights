@@ -1202,7 +1202,15 @@ fn finish_sso_login(app: &AppHandle, attempt_id: u64, outcome: SsoLoginOutcome) 
     }
     let (finish, view) = {
         let mut session = lock(&state.session);
+        // The CLI is gone now. After a [Cancel] the attempt has already
+        // ended, so the only change is that a new login may start (FR2.6).
+        let freed = session.on_sso_cli_ended(attempt_id);
         let Some(finish) = session.finish_sso_login(attempt_id, outcome) else {
+            if freed {
+                let view = session.view();
+                drop(session);
+                emit_or_log(app, SESSION_CHANGED, view);
+            }
             return;
         };
         (finish, session.view())

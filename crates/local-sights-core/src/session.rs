@@ -688,6 +688,11 @@ pub struct AppSession {
     aws_profile_env: Option<String>,
     /// The current SSO login attempt (261011-sso-login).
     sso: SsoLoginAttempt,
+    /// The CLI of the latest attempt may still be running: from the start
+    /// until the app reports that its process is gone. A [Cancel] ends the
+    /// attempt at once, but its CLI takes up to the stop grace to end; no
+    /// new login starts before that, so two CLIs never run (FR2.6).
+    sso_cli_active: bool,
 }
 
 /// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
@@ -777,6 +782,7 @@ impl AppSession {
             close_confirmed: false,
             aws_profile_env: None,
             sso: SsoLoginAttempt::default(),
+            sso_cli_active: false,
         };
         session.select_startup_profile();
         session.revalidate();
@@ -1832,7 +1838,7 @@ impl AppSession {
     /// awaits an answer, and when no login is available. Otherwise a new
     /// attempt becomes Starting and the CLI arguments are returned.
     pub fn start_sso_login(&mut self) -> Result<SsoLoginStart, SessionError> {
-        if self.sso_login_running() {
+        if self.sso_login_running() || self.sso_cli_active {
             return Err(SessionError::SsoLoginInProgress);
         }
         if self.is_busy_for_sso_login() {
@@ -1852,6 +1858,7 @@ impl AppSession {
             target: Some(target),
             ..SsoLoginAttempt::default()
         };
+        self.sso_cli_active = true;
         Ok(SsoLoginStart {
             attempt_id: self.sso.attempt_id,
             args,
@@ -1895,6 +1902,7 @@ impl AppSession {
         attempt_id: u64,
         outcome: SsoLoginOutcome,
     ) -> Option<SsoLoginFinish> {
+        self.on_sso_cli_ended(attempt_id);
         if !self.is_current_attempt(attempt_id) {
             return None;
         }
@@ -1916,6 +1924,17 @@ impl AppSession {
             None
         };
         Some(SsoLoginFinish { succeeded, listing })
+    }
+
+    /// The CLI of `attempt_id` is gone (it ended, was stopped, or never
+    /// started): a new login may start again. Returns whether the state
+    /// changed, so the app pushes the view after a cancelled attempt.
+    pub fn on_sso_cli_ended(&mut self, attempt_id: u64) -> bool {
+        if !self.sso_cli_active || self.sso.attempt_id != attempt_id {
+            return false;
+        }
+        self.sso_cli_active = false;
+        true
     }
 
     /// [Cancel] (BR3.3): the running attempt becomes Cancelled; returns its
@@ -1998,6 +2017,7 @@ impl AppSession {
             available,
             can_start: available
                 && !self.sso_login_running()
+                && !self.sso_cli_active
                 && !self.is_busy_for_sso_login()
                 && !self.awaits_an_answer(),
             state: self.sso.state,
@@ -4474,6 +4494,54 @@ mod tests {
             assert_eq!(sso_view(&session).state, SsoLoginState::Cancelled);
             assert_eq!(session.cancel_sso_login(), None);
         }
+    }
+
+    #[test]
+    fn a_new_login_waits_until_the_cancelled_cli_is_gone() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.on_sso_cli_started(id);
+        assert_eq!(session.cancel_sso_login(), Some(id));
+        assert!(
+            !sso_view(&session).can_start,
+            "the old CLI is still stopping"
+        );
+        assert_eq!(
+            session.start_sso_login().unwrap_err(),
+            SessionError::SsoLoginInProgress
+        );
+        assert!(session.on_sso_cli_ended(id));
+        assert!(!session.on_sso_cli_ended(id), "reported once");
+        assert!(sso_view(&session).can_start);
+        assert!(session.start_sso_login().is_ok());
+    }
+
+    #[test]
+    fn a_dismissed_cancel_still_waits_for_its_cli() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.cancel_sso_login();
+        assert!(session.dismiss_sso_login());
+        assert!(!sso_view(&session).can_start);
+        // The runner's late report of the cancelled attempt frees the button.
+        assert_eq!(
+            session.finish_sso_login(id, SsoLoginOutcome::Cancelled),
+            None
+        );
+        assert!(sso_view(&session).can_start);
+    }
+
+    #[test]
+    fn the_end_of_an_older_attempts_cli_does_not_free_a_newer_one() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let old = session.start_sso_login().unwrap().attempt_id;
+        session.cancel_sso_login();
+        assert!(session.on_sso_cli_ended(old));
+        let new = session.start_sso_login().unwrap().attempt_id;
+        session.cancel_sso_login();
+        assert!(!session.on_sso_cli_ended(old));
+        assert!(!sso_view(&session).can_start);
+        assert!(session.on_sso_cli_ended(new));
     }
 
     #[test]

@@ -82,17 +82,17 @@ rules:
     category: constraint
     applies_to: SsoLoginAttempt
     trigger: ボタンの押下
-    logic: IF ログイン中 OR 取得中 OR 一覧の読み込み中 THEN ボタンを押せない
+    logic: IF ログイン中 OR 前の試行の CLI がまだ終わっていない（キャンセル後、止まるまでの最大 2 秒を含む） OR 取得中 OR 一覧の読み込み中 THEN ボタンを押せない
     violation: 押せない（無効表示）
     source: FR1.5、FR2.6
 
   # BR3: 待機
   - id: BR3.1
-    statement: CLI の出力から画面に出すのは、https:// で始まる URL と確認コードの形の文字列だけとする
+    statement: CLI の出力から画面に出すのは、AWS のサインインページの URL（許可リストに合うもの）と確認コードの形の文字列だけとする
     category: validation
     applies_to: SsoLoginAttempt.verificationUrl、userCode
     trigger: CLI が 1 行出力するたび
-    logic: IF 行に https:// で始まる語がある THEN 最初の 1 つを URL とする。IF 英大文字 4 字-英大文字 4 字の語がある THEN 最初の 1 つをコードとする。それ以外は捨てる
+    logic: 行の先頭 4096 バイトを空白で語に分け、各語の前の引用符・括弧と後ろの引用符・括弧・句読点（, . ; :）を取り除く。IF 語が許可リストに合う URL THEN 最初の 1 つを URL とする。許可リストに合う URL とは、https:// で始まり、ユーザー情報もポートも含まず、ホストが英数字・ドット・ハイフンだけで .amazonaws.com または .awsapps.com で終わり（そのものは不可）、全体が 2048 文字以内のもの。IF 英大文字 4 字-英大文字 4 字の語がある THEN 最初の 1 つをコードとする。それ以外は捨てる。URL を開く前にも同じ許可リストで確かめる
     violation: どちらも見つからなければ案内だけを出す
     source: FR2.3、NFR3、レビュー指摘（許可リスト）
   - id: BR3.2

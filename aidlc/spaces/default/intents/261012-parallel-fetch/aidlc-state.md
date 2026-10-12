@@ -44,6 +44,8 @@
 - **Construction Iteration**: unit-major
 - **Construction Execution**: serial
 
+- **Construction Verification Command**: cargo test --workspace && npx vitest run && cargo build -p local-sights
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -79,7 +81,7 @@
 - [x] domain-design — EXECUTE
 - [x] units-generation — EXECUTE
 - [x] contract-design — EXECUTE
-- [-] delivery-planning — EXECUTE
+- [?] delivery-planning — EXECUTE
 
 ### CONSTRUCTION PHASE
 Per unit: [TBD]
@@ -105,7 +107,7 @@ Per unit: [TBD]
 - **Current Stage**: delivery-planning
 - **Next Stage**: functional-design
 - **Status**: Running
-- **Last Updated**: 2026-10-12T17:26:55Z
+- **Last Updated**: 2026-10-12T22:30:14Z
 
 ## Session Resume Point
 - **Last Completed Stage**: contract-design

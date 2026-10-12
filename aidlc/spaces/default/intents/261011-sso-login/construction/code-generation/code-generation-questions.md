@@ -15,7 +15,7 @@ Full plan: aidlc/spaces/default/intents/261011-sso-login/construction/code-gener
 Test instructions: aidlc/spaces/default/intents/261011-sso-login/construction/code-generation/unit-test-instructions.md
 
 [Approval Fingerprint]: sha256:v3:496beb5f965f4747a99f1156569f7dbddc628a0b811fa815f89e16b256463a7b
-[Planned Source]: 29d6fae6da60d37d5491955d1b8afc00b5fc753b6de75f7d3aa04d21198b545f
+[Planned Source]: 69af334d5e4ef232db37c4ed212f4e3eec3eb7e680e037750bf0e7792d584195
 
 - A. Approve Plan
 - B. Request Changes

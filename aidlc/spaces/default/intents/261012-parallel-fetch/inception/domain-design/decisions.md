@@ -1,11 +1,11 @@
 # Architecture Decisions — ロググループ全体の取得の高速化
 
-上流：`domain-design-questions.md`（Q1〜Q5）、アーキテクチャレビューの指摘 R-01〜R-07（ゲートでの Request Changes を受けて推奨どおりに反映）、`components.md`、`inception/requirements-analysis/requirements.md`、`codekb/local-sights/component-inventory.md`。
+上流：`domain-design-questions.md`（Q1〜Q5）、アーキテクチャレビューの指摘 R-01〜R-07 と 2 回目の R-08〜R-11（いずれもゲートでの Request Changes を受けて反映）、`components.md`、`inception/requirements-analysis/requirements.md`、`codekb/local-sights/component-inventory.md`。
 
 ## ADR-001: 呼び出しの速さを抑える仕組みを新しい部品 CallPacer にする
 
 - **Context** — 同時に読むと GetLogEvents の呼び出しが増え、アカウントとリージョンで共有の上限（東京 1 秒 25 回、引き上げ不可）を他の利用者と取り合う。要件は「上限の半分程度に抑える」「再試行も数える」「制限を受けたら下げて戻す」（FR2.1〜FR2.4、NFR3）。今の RetryPolicy は 1 回の要求の再試行の待ちだけを持ち、取得全体の速さを扱う場所がない（Q1）。
-- **Decision** — 新しい純粋な部品 CallPacer を作る。取得 1 回につき 1 つ作って全ストリームの読み取りで共有し、EventFetcher が GetLogEvents の各試行（再試行を含む）の前に許可を待つ。リージョンごとの上限の表と、下げ方・戻し方を持つ。時計は差し替えられる形にする。
+- **Decision** — 新しい純粋な部品 CallPacer を作る。取得 1 回につき 1 つ作って全ストリームの読み取りで共有し、EventFetcher が GetLogEvents の各試行（再試行を含む）の前に許可を待つ。リージョンごとの上限の表と、下げ方・戻し方を持つ。時計は差し替えられる形にする。許可待ちは EventFetcher が Retrier に渡す 1 回の試行の先頭に置き、止める信号（RetryPolicy）が来たら許可を出さずに「止めた」を返す（CallPacer → RetryPolicy の依存）。
 - **Consequences** — 良い点：速さの決まりが 1 か所にまとまり、時間を進めるテストで先に書ける。再試行の前も通るので数え漏れがない。悪い点：EventFetcher に許可待ちの手順が 1 つ増える。SDK の中の再試行は CallPacer を通らないため、SDK の既定の再試行は止め、再試行はアプリ側に一本化する（ADR-008）。リージョンが取得の条件に無いときは、表にないリージョンと同じ 1 秒 5 回程度になる（手元の確認用プログラムではリージョンを必ず指定する）。
 - **Security / compliance** — 呼ぶ API は増えない（読み取り 3 つのまま）。速さを抑えることは同じアカウントの他の利用者への影響を減らす方向に働く。
 - **Alternatives Rejected** — (B) ゲートウェイを包む部品：呼ぶ側は何も知らずに済むが、「制限を受けた」の判断と再試行の数え方が RetryPolicy と包みの 2 か所に分かれる。(C) RetryPolicy を広げる：部品は増えないが、「1 回の要求」と「取得全体」の 2 つの関心が 1 つの部品に混ざる。
@@ -53,7 +53,7 @@
 ## ADR-007: 連続使い切りの数え（ExhaustionStreak）の持ち主を RetryPolicy から StreamSchedule に移す
 
 - **Context** — 今は RetryPolicy が ExhaustionStreak（既定 3）を持ち、直列の取得の中で使われている。同時に読むと「終わった順に数える」「成功で 0 に戻す」「3 本で未着手を失敗にする」が、ストリームの状態と切り離せない（FR3、ADR-002）。
-- **Decision** — 数えの持ち主を StreamSchedule にする。あきらめるまでの本数（今の `RetryPolicy.max_consecutive_exhausted`、既定 3）と、ストリームの終わり方の分け方（今の `StreamEnding` と `streak_ending` の対応）も StreamSchedule に移す。RetryPolicy は 1 回の要求の再試行と止める信号だけを持つ。
+- **Decision** — 数えの持ち主を StreamSchedule にする。あきらめるまでの本数（今の `RetryPolicy.max_consecutive_exhausted`、既定 3）と、ストリームの終わり方の分け方（今の `StreamEnding` と `streak_ending` の対応）も StreamSchedule に移す。RetryPolicy は 1 回の要求の再試行と止める信号だけを持つ。EventFetcher は自分の終わり方（StreamFetchOutcome の endReason）だけを返し、それを StreamEnding に分けるのは StreamSchedule が行う。依存は StreamSchedule → EventFetcher の片方向で、EventFetcher は StreamEnding を使わない（レビュー R-08：両方が互いの型を使う輪を避ける）。
 - **Consequences** — 良い点：1 つのデータの持ち主が 1 つの部品になる。悪い点：今の ExhaustionStreak のテストを StreamSchedule 側に移す必要があり、RetryPolicy の設定の項目が 1 つ減るため、それを使う呼び出し側（確認用プログラムを含む）も直す。
 - **Security / compliance** — 影響なし。
 - **Alternatives Rejected** — RetryPolicy に残し、StreamSchedule から呼ぶ：数えの決まりとストリームの状態が 2 つの部品に分かれ、終わった順の扱いを 2 か所で合わせることになる。
@@ -69,8 +69,8 @@
 ## ADR-009: 終わりの状態の型を FetchStatus に切り出し、決めるのは StreamSchedule だけにする
 
 - **Context** — 今の `cache/plan.rs` は FetchCoordinator の `JobStatus` を取り込み、FetchCoordinator も CachePlan を使うため、相互に依存している。AppSession も `FetchJob` と `JobStatus` を使う。今の `JobStatus` には「中断（取れたログを残す）」に当たる値がなく、`Aborted` は「捨てる」で、AppSession は `Aborted` を受けると Idle に戻す。また、終わりの状態が FetchJob.status・ScheduleOutcome.endState・画面の段階の 3 か所に重なって書かれていた（レビュー R-02、R-04）。
-- **Decision** — `JobStatus` を小さな共有の型の部品 FetchStatus に切り出し、新しい値「Cancelled」（利用者の中断。取れたログを残す）を足す。「Aborted」はウィンドウを閉じるときの中止（捨てる）のまま。終わりの状態を決めるのは StreamSchedule だけとし、FetchCoordinator はそれを FetchJob.status に写す。AppSession は FetchJob.status を見て、「Cancelled」なら取れたログを表示したまま終わった段階に移し、「Aborted」は今と同じく Idle に戻す。画面の段階（phase）は表示のための状態で、終わりの状態の持ち主ではない。
-- **Consequences** — 良い点：CachePlan↔FetchCoordinator の相互の依存が解ける。終わりの状態の持ち主が 1 つになり、「Cancelled はキャッシュに書かない」（Completed ではないため）が今の判断のまま成り立つ。悪い点：`JobStatus` を使う箇所（CachePlan、AppSession、TauriApp、確認用プログラム、テスト）の取り込み先が変わる。`JobStatus` の値が増えるため、それを網羅して分ける箇所はすべて直す必要がある（Rust の網羅の検査で漏れは見つかる）。
+- **Decision** — `JobStatus` を小さな共有の型の部品 FetchStatus に切り出し、新しい値「Cancelled」（利用者の中断。取れたログを残す）を足す。「Aborted」はウィンドウを閉じるときの中止（捨てる）のまま。ストリームを読む段の終わりの状態（Completed／CompletedWithFailures／Cancelled）は StreamSchedule が決める。取得 1 回の終わりの状態（FetchJob.status）を確定するのは FetchCoordinator で、一覧の段の結果と合わせる：一覧が最初のページで失敗して何も選べなければ Failed、一覧の前に止める信号が来たら Cancelled（一覧の前）か Aborted、一覧が途中までなら StreamSchedule の結果が Completed でも CompletedWithFailures、それ以外は StreamSchedule の結果をそのまま使う。閉じるときは常に Aborted（レビュー R-09：一覧の段は StreamSchedule ができる前に起きるため）。AppSession は FetchJob.status を見て、「Cancelled」なら取れたログを表示したまま終わった段階に移し、「Aborted」は今と同じく Idle に戻す。画面の段階（phase）は表示のための状態で、終わりの状態の持ち主ではない。
+- **Consequences** — 良い点：CachePlan↔FetchCoordinator の相互の依存が解ける。終わりの状態を決める場所が段ごとに 1 つずつになり、「Cancelled はキャッシュに書かない」（Completed ではないため）が今の判断のまま成り立つ。悪い点：`JobStatus` を使う箇所（CachePlan、AppSession、TauriApp、確認用プログラム、テスト）の取り込み先が変わる。`JobStatus` の値が増えるため、それを網羅して分ける箇所はすべて直す必要がある（Rust の網羅の検査で漏れは見つかる）。
 - **Security / compliance** — 影響なし。
 - **Alternatives Rejected** — `JobStatus` を FetchCoordinator に置いたままにする：相互の依存が残る。中断を `Aborted` に理由を足して表す：「捨てる」と「残す」が同じ値になり、CachePlan と AppSession が理由まで見て分ける必要が出る。
 

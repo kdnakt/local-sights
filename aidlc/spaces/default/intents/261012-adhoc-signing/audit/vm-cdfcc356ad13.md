@@ -1218,3 +1218,133 @@
 **Context**: operation > deployment-execution > deployment-execution-questions.md
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:28:21Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-adhoc-signing/operation/deployment-execution/deployment-log.md
+**Context**: operation > deployment-execution > deployment-log.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:28:34Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-adhoc-signing/operation/deployment-execution/smoke-test-results.md
+**Context**: operation > deployment-execution > smoke-test-results.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:28:45Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-adhoc-signing/operation/deployment-execution/health-check-report.md
+**Context**: operation > deployment-execution > health-check-report.md
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-12T11:28:54Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: deployment-execution
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T11:29:34Z
+**Event**: HUMAN_TURN
+**Session**: bcc93239-371b-5971-a8fe-b19311a597f1
+**Picked**: ["Approve"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T11:29:34Z
+**Event**: QUESTION_REPLIED
+**Session**: bcc93239-371b-5971-a8fe-b19311a597f1
+**Question**: Deployment Execution が完了しました。どう進めますか？
+**Reply**: Approve
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-12T11:29:39Z
+**Event**: GATE_APPROVED
+**Stage**: deployment-execution
+**User Input**: Approve
+**Person Reply**: Approve
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-12T11:29:39Z
+**Event**: STAGE_COMPLETED
+**Stage**: deployment-execution
+**Validation Basis**: {"graphContract":"sha256:9324fac9ed5362e892b6f0c448c7cd3701eec134e2e24178d842efc36efe955a","inputs":[{"artifact":"build-test-results","contentHash":"sha256:c2db0d65c92a9d9a1bab4d98cb3d209e152fe7b490b89d155a3e55d7356ae83b","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:6c610e6bbdb68e77116de1fc520ee28439f56eb5cd66d799261e8fb60878b1ec"},{"artifact":"cd-config","contentHash":"sha256:69424e219f5af78eb7f9c250ce405354fe0b44d13eba52678c45bf40e84c2e09","instanceCount":1,"presentCount":1,"producer":"deployment-pipeline","required":true,"structureHash":"sha256:3197531b7f4010f3cc5e2502b3f0fd98a5a6807f7c8bc01213322f3a3e310ff1"},{"artifact":"deployment-strategy","contentHash":"sha256:c24f236715df1e29c663c5f8dbc7d0c63baf3cc514bcee30f4a4a56c065cca0b","instanceCount":1,"presentCount":1,"producer":"deployment-pipeline","required":true,"structureHash":"sha256:8dd572ba926d4a803ce001718d137fb2fd4e5022f6664775d2798805c957739f"},{"artifact":"environment-inventory","contentHash":"sha256:fe5b688ca4c084282c89535a4389a9df74eac212a200842a51fb7a48129b0a0c","instanceCount":1,"presentCount":0,"producer":"environment-provisioning","required":true,"structureHash":"sha256:2aabd4d5aff40aa022ad08bd154f1a7a2b281f69df4469d2af58e6d5ed2a98de"}],"outputs":[{"artifact":"deployment-execution-questions","contentHash":"sha256:055f697c50cfbb9b1585f05e836d2f98db8f101e484bc42a18c2214d16ed2e93","instanceCount":1,"presentCount":1,"producer":"deployment-execution","required":true,"structureHash":"sha256:3882266d28d8a2594cd58ae31f0623c7e94e07b2e842254d644b41a876c6478c"},{"artifact":"deployment-log","contentHash":"sha256:88ee3ccf4fe6d1d2cbcd7dee7af6acbe71dd2eb16cd1c7d2109c41d0e843d576","instanceCount":1,"presentCount":1,"producer":"deployment-execution","required":true,"structureHash":"sha256:f1dfdec604f91686128f44e40c5411e4a323cfce387a4270e864fb3f14b28111"},{"artifact":"health-check-report","contentHash":"sha256:a3e706c0216c28c344702d451b92d6a8f4509ed4d25f7d08705e94ab4894591f","instanceCount":1,"presentCount":1,"producer":"deployment-execution","required":true,"structureHash":"sha256:792cfe05f04af60e82bef8671f84bc609c7fc70869b01d364ae0736bdeaead76"},{"artifact":"smoke-test-results","contentHash":"sha256:9ffce723a4a296b1b3147ea20e8bc6e822c2167e16c130cc0cccd66d4defeb92","instanceCount":1,"presentCount":1,"producer":"deployment-execution","required":true,"structureHash":"sha256:426e04af59b5edd6e1ac0220e3c105541918ffce69adb34c169e2cfc65fa75bc"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Deployment Execution approved by gate
+**Tokens In**: 576
+**Tokens Out**: 14946
+**Cache Read**: 9737329
+**Cache Write**: 48429
+**Cost USD**: 4.16
+**By Model**: fable-5-1=4.16
+**By Agent**: main=4.16
+**Tokens By Model**: fable-5-1=576/14.9k/9.7M/48.4k
+**Tokens By Agent**: main=576/14.9k/9.7M/48.4k
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-12T11:29:39Z
+**Event**: STAGE_STARTED
+**Stage**: observability-setup
+**Agent**: aidlc-operations-agent
+**Answer Mode**: guide (reused from requirements-analysis)
+
+---
+
+## Stage Skip
+**Timestamp**: 2026-10-12T11:30:18Z
+**Event**: STAGE_SKIPPED
+**Stage**: observability-setup
+**Reason**: Local desktop app distributed as a .dmg: no server, no deployed service, and the project forbids sending telemetry or crash reports (project.md Forbidden). There are no dashboards, alarms, SLOs, log pipelines or tracing to configure; the only operational signal is the Release workflow's own success or failure, already covered by health-check-report.md in deployment-execution.
+**Skip Kind**: conditional-runtime
+
+---
+
+## Phase Completion
+**Timestamp**: 2026-10-12T11:30:18Z
+**Event**: PHASE_COMPLETED
+**From phase**: operation
+**To phase**: (end)
+**Stages completed**: 9
+
+---
+
+## Phase Verification
+**Timestamp**: 2026-10-12T11:30:18Z
+**Event**: PHASE_VERIFIED
+**Phase boundary**: operation → end
+
+---
+
+## Workflow Completion
+**Timestamp**: 2026-10-12T11:30:18Z
+**Event**: WORKFLOW_COMPLETED
+**Scope**: express
+**Details**: Scope: express, final stage observability-setup skipped
+**Reason**: Local desktop app distributed as a .dmg: no server, no deployed service, and the project forbids sending telemetry or crash reports (project.md Forbidden). There are no dashboards, alarms, SLOs, log pipelines or tracing to configure; the only operational signal is the Release workflow's own success or failure, already covered by health-check-report.md in deployment-execution.
+**Tokens In**: 4840
+**Tokens Out**: 117212
+**Cache Read**: 48471373
+**Cache Write**: 1314075
+**Cost USD**: 37.70
+**By Model**: fable-5-1=37.70
+**By Agent**: main=23.50; aidlc-developer-agent=14.21
+**Tokens By Model**: fable-5-1=4.8k/117.2k/48.5M/1.3M
+**Tokens By Agent**: main=3.7k/93.8k/40.4M/433.3k; aidlc-developer-agent=1.2k/23.4k/8.1M/880.8k
+
+---

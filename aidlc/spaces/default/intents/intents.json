@@ -29,5 +29,13 @@
     "scope": "refactor",
     "status": "complete",
     "request": "e3514d11"
+  },
+  {
+    "uuid": "01a12ef4-71f6-7a92-afe0-2716a1cc1c7e",
+    "slug": "parallel-fetch",
+    "dirName": "261012-parallel-fetch",
+    "scope": "mvp",
+    "status": "in-flight",
+    "request": "22ebc7bc"
   }
 ]

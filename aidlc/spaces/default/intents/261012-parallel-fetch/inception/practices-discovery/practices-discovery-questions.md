@@ -34,7 +34,7 @@ B. 「すべての機能」を検査するように設定を変える（新し�
 C. Not yet defined
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q4. すでに動くアプリに機能を足すとき、最初に作る「薄い一本」を何にするか
 
@@ -45,7 +45,7 @@ B. 今の文面のまま残し、今回の一本は作業単位を決める段�
 C. Not yet defined
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q5. 配布の記述を今の仕組みに合わせて書き足すか
 
@@ -56,7 +56,7 @@ B. 今のまま変えない
 C. Not yet defined
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q6. `main` にないコミットに付いたタグ `v0.1.1` をどうするか
 
@@ -68,4 +68,20 @@ C. `v0.1.1` は残し、次のリリースは `v0.1.2` から付ける
 D. Not yet defined
 X. Other (please specify)
 
-[Answer]:
+[Answer]: C
+
+## Consolidated Summary Confirmation
+
+- リリース：下書きにせず、すぐ公開する（今の仕組みどおり）。開発ルールの「下書きとして置く」を「下書きにせず公開して置く」に直す（Q1）
+- カバレッジの下限 80%：CI で測り、80% を下回る PR はマージしない（例：ライブラリは `cargo-llvm-cov`、画面は Vitest のカバレッジ）（Q2）
+- 依存関係のチェック：「実際にビルドする機能だけ」が意図どおり。CI のコメントを直し、開発ルールの文面は変えない（Q3）
+- 薄い一本：書き方を一般化し、「各作業の最初の作業単位で、新しい振る舞いが画面から AWS まで通る最小の一本を作る」とする。確認の 3 つはそのまま（Q4）
+- 配布の記述：版をそろえる対象に 2 つのロックファイルを加え、dry run とリリース前のテストを書き足す（Q5）
+- タグ `v0.1.1`：残し、次のリリースは `v0.1.2` から付ける（Q6）
+
+Does this all look correct before I generate the artifact?
+
+- Looks correct
+- Request changes
+
+[Answer]: Looks correct

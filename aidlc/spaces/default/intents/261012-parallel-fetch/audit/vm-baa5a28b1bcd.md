@@ -3843,3 +3843,288 @@
 **Reply**: おすすめは？
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T12:54:04Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a98908d138665980d
+**Message**: Aで
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T12:55:26Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T12:55:31Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T12:55:32Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q3: A
+**Person Reply**: Aで
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T12:55:33Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q4
+**Options**: A,B,C,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T12:58:36Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A. 書き方を一般化する"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T12:58:37Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q4. すでに動くアプリに機能を足すとき、最初に「薄い一本」を作りますか？（薄い一本とは、画面から AWS まで端から端まで動く最小の版を最初に作り、部品のつながりを確かめてから機能を足していくやり方です。今の開発ルールの一本（GUI を起動して GetLogEvents の結果を表示）は、アプリを最初に作ったときのものです。今回の進め方も薄い一本を作る設定なので、何を一本にするかを決めます。その他の考えは「Type something」で書いてください）
+**Reply**: A. 書き方を一般化する
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T12:58:41Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T12:58:42Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q4: A
+**Picker Note**: Not what the person picked in the picker ("A. 書き方を一般化する").
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T12:58:43Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q5
+**Options**: A,B,C,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T12:59:06Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A. 書き足す"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T12:59:06Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q5. 配布の記述を、今の仕組みに合わせて書き足しますか？（版をそろえる検査は Cargo.lock と package-lock.json も対象にしています。タグを付ける前に「Release dry run」で .dmg の作成だけを試せること、タグで動くリリースの仕組みがビルドの前にテストを流すことも、開発ルールには書かれていません。その他の考えは「Type something」で書いてください）
+**Reply**: A. 書き足す
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T12:59:10Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T12:59:12Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q5: A
+**Picker Note**: Not what the person picked in the picker ("A. 書き足す").
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T12:59:12Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q6
+**Options**: A,B,C,D,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T13:00:16Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["あれ？mainにマージしてなかったっけ？まあどっちでも...次はv0.1.2で。"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T13:00:16Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q6. main にないコミットに付いたタグ v0.1.1 をどうしますか？（v0.1.1 は、main に入っていない sso-login ブランチ上のコミット（版は 0.1.0 のまま）に付いて残っています。リリースの仕組みが止めたので、Release は作られていません。タグを守る設定はありません。その他の考えは「Type something」で書いてください）
+**Reply**: あれ？mainにマージしてなかったっけ？まあどっちでも...次はv0.1.2で。
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T13:00:25Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T13:00:28Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q6: C
+**Person Reply**: あれ？mainにマージしてなかったっけ？まあどっちでも...次はv0.1.2で。
+**Picker Note**: Not what the person picked in the picker ("あれ？mainにマージしてなかったっけ？まあどっちでも...次はv0.1.2で。").
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T13:00:32Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T13:01:06Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T13:01:06Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: - リリース：下書きにせずすぐ公開する。開発ルールの「下書きとして置く」を直す（Q1）\n- カバレッジの下限 80%：CI で測り、80% を下回る PR はマージしない（Q2）\n- 依存関係のチェック：「実際にビルドする機能だけ」が意図どおり。CI のコメントを直す（Q3）\n- 薄い一本：「各作業の最初の作業単位で、新しい振る舞いが画面から AWS まで通る最小の一本を作る」に一般化。確認の 3 つはそのまま（Q4）\n- 配布の記述：版をそろえる対象に 2 つのロックファイルを加え、dry run とリリース前のテストを書き足す（Q5）\n- タグ v0.1.1：残し、次のリリースは v0.1.2 から（Q6）\n\nこの内容で、開発ルールの案を仕上げてよいですか？
+**Reply**: Looks correct
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T13:01:10Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-12T13:01:11Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: practices-discovery
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Questions SHA-256**: 2b9bd7e8a25e64eaa9c30a3331b529b97b4160d7bf88538175335c7b83a4dfca
+**Hash Scope**: confirmed-content-v2
+**Summary Authorization Id**: 461ae4034d7ac9041ca6b10c0a48f80cb2c58e0d6b2538cfffe12ccb41d96e15
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T13:02:12Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/team-practices.md
+**Context**: inception > practices-discovery > team-practices.md
+**Summary Authorization Id**: 461ae4034d7ac9041ca6b10c0a48f80cb2c58e0d6b2538cfffe12ccb41d96e15
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T13:02:14Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/discovered-rules.md
+**Context**: inception > practices-discovery > discovered-rules.md
+**Summary Authorization Id**: 461ae4034d7ac9041ca6b10c0a48f80cb2c58e0d6b2538cfffe12ccb41d96e15
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T13:03:15Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+**Summary Authorization Id**: 461ae4034d7ac9041ca6b10c0a48f80cb2c58e0d6b2538cfffe12ccb41d96e15
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T13:03:16Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-timestamp.md
+**Context**: inception > practices-discovery > practices-discovery-timestamp.md
+**Summary Authorization Id**: 461ae4034d7ac9041ca6b10c0a48f80cb2c58e0d6b2538cfffe12ccb41d96e15
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-12T13:03:19Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: state-transition
+**Authority**: instruction
+**Grant**: none
+**Actor**: subagent
+**Tool**: Bash
+**Details**: aidlc engine state practices-event
+
+---
+
+## Practices Discovered
+**Timestamp**: 2026-10-12T13:03:20Z
+**Event**: PRACTICES_DISCOVERED
+**Sources Scanned**: team.md, project.md, org.md, codekb/local-sights (6 artifacts), .github/workflows, deny.toml, docs/releasing.md, git history and tags, GitHub settings
+**Drafts**: team-practices.md, discovered-rules.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T13:03:33Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-pipeline-deploy-agent
+**Agent ID**: aef8288c74c8e3610
+
+---

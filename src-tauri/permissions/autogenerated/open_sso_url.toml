@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-sso-url"
+description = "Enables the open_sso_url command without any pre-configured scope."
+commands.allow = ["open_sso_url"]
+
+[[permission]]
+identifier = "deny-open-sso-url"
+description = "Denies the open_sso_url command without any pre-configured scope."
+commands.deny = ["open_sso_url"]

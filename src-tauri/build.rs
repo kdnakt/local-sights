@@ -26,6 +26,10 @@ fn main() {
             "row_positions",
             "cancel_close",
             "confirm_close",
+            "start_sso_login",
+            "cancel_sso_login",
+            "dismiss_sso_login",
+            "open_sso_url",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

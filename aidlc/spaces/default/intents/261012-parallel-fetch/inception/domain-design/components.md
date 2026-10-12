@@ -1,10 +1,14 @@
 # Components — ロググループ全体の取得の高速化
 
-上流の成果物：`inception/requirements-analysis/requirements.md`（FR1〜FR6、NFR1〜NFR10）、`inception/user-stories/stories.md`（US1.1〜US4.2）、`inception/refined-mockups/interaction-spec.md`、コードの知識ベース `codekb/local-sights/component-inventory.md`・`architecture.md`、`inception/practices-discovery/team-practices.md`。質問票の回答は `domain-design-questions.md` の Q1〜Q5。設計判断の記録は `decisions.md`（ADR-001〜ADR-007）。
+上流の成果物（ゲートでの Request Changes を受け、レビューの指摘 R-01〜R-07 を推奨どおりに反映済み）：`inception/requirements-analysis/requirements.md`（FR1〜FR6、NFR1〜NFR10）、`inception/user-stories/stories.md`（US1.1〜US4.2）、`inception/refined-mockups/interaction-spec.md`、コードの知識ベース `codekb/local-sights/component-inventory.md`・`architecture.md`、`inception/practices-discovery/team-practices.md`。質問票の回答は `domain-design-questions.md` の Q1〜Q5。設計判断の記録は `decisions.md`（ADR-001〜ADR-009）。
 
 ここで決めるのは「書くコードの部品」とその責任・依存・データの持ち主だけである。部品は書くコードに限り、AWS SDK・Tauri・React・Cloudscape・ファイルシステム・時計は外部依存として扱う（project.md Corrections）。同時に読む本数、速さの数値、下げ方と戻し方、リージョンの上限の表の中身、SDK の既定の再試行の扱いは機能設計で決める（requirements §7）。
 
-**この一覧の範囲**：既存アプリの拡張のため、一覧に載せるのは今回新しく作る部品（CallPacer、StreamSchedule、CancelNotice）と、今回変える部品、およびそれらが直接つながる部品である。ここに載せていない部品（TimeRangeModel、LogCache、FilterEngine、LogTable など）は `codekb/local-sights/component-inventory.md` のまま変えない。依存（`depends_on`）も、この一覧に載せた部品どうしのものだけを書き、載せていない部品への今の依存はそのまま残る。
+**この一覧の範囲**：既存アプリの拡張のため、一覧に載せるのは今回新しく作る部品（CallPacer、StreamSchedule、FetchStatus、CancelNotice）と、今回変える部品、およびそれらが直接つながる部品である。ここに載せていない部品（TimeRangeModel、LogCache、FilterEngine、LogTable など）は `codekb/local-sights/component-inventory.md` のまま変えない。依存（`depends_on`）も、この一覧に載せた部品どうしのものだけを書き、載せていない部品への今の依存はそのまま残る。
+
+EventTimeline（LogView の中の時刻順の保持）は変えないが、同時に読むと古い時刻のページが後から届き、混ぜ込みの費用が増えうる。NFR5（100 万件で滑らか）の確認対象として、既存の速度測定テスト（`--release --ignored`）で確かめる。
+
+**参照の書き方**：Entity の `references` は、ことわりが無ければ型の依存（`depends_on` にも載る）。`fetchJobId`・`logStreamName`・`regionCode` の値だけで指すものは「値だけの参照で、型の依存ではない」と書き、`depends_on` には載せない。
 
 **全部品に共通の決まり**：呼べるのは DescribeLogGroups / DescribeLogStreams / GetLogEvents だけ。新しい表示（中断の注意、経過、失敗）にも、秘密の認証情報とアクセスキー ID を出さない（今の ApiFailure の許可リストを通す）。自動テストと CI は実際の AWS に接続しない（project.md Forbidden）。
 
@@ -16,8 +20,8 @@ components:
     summary: GetLogEvents の呼び出しの速さを、接続先リージョンの上限の半分程度に抑え、制限を受けたら下げて戻す（新規）
     behaviour: >
       取得 1 回につき 1 つ作られ、その取得で同時に読む全ストリームが共有する。
-      GetLogEvents の試行の前（再試行の前も含む）に毎回呼ばれ、許可が出るまで待たせる。これで再試行も数に入る（FR2.3、NFR3）。
-      速さの上限は、接続先リージョンの GetLogEvents の上限の表から半分程度として決める（FR2.1）。表にないリージョンは 1 秒 5 回程度とする（FR2.2）。
+      GetLogEvents の試行の前（再試行の前も含む）に毎回呼ばれ、許可が出るまで待たせる。これで再試行も数に入る（FR2.3、NFR3）。AWS SDK の中の再試行は止めてあるため（AwsCloudWatchLogsGateway、ADR-008）、試行 1 回は実際の呼び出し 1 回にあたる。
+      速さの上限は、接続先リージョンの GetLogEvents の上限の表から半分程度として決める（FR2.1）。表にないリージョンは 1 秒 5 回程度とする（FR2.2）。リージョンは FetchCoordinator が取得の条件（FetchRequest）から渡す。条件にリージョンが無い（プロファイルの既定のリージョンに任せる）ときも、表にないリージョンと同じ 1 秒 5 回程度にする。画面からの取得では常にリージョンが渡される。
       制限（スロットリング）を受けたと知らされたら速さを下げ、しばらく制限を受けなければ上限まで戻す（FR2.4）。下げていることは画面に知らせない（FR2.6）。
       待っている間に中断・中止の信号が来たら、許可を出さずにすぐ戻る（NFR4）。
       時計は差し替えられる形にし、時間を進めるテストで速さを確かめる。テストを先に書く純粋なロジックとする（NFR6）。
@@ -46,10 +50,10 @@ components:
         references:
           - entity: FetchJob
             owned_by: FetchCoordinator
-            relationship: 取得 1 回に 1 つの速さの状態がある
+            relationship: 取得 1 回に 1 つの速さの状態がある（fetchJobId の値だけの参照で、型の依存ではない）
           - entity: ConnectionTarget
             owned_by: CloudWatchLogsGateway
-            relationship: 速さの上限は接続先のリージョンで決まる
+            relationship: 速さの上限は接続先のリージョンで決まる（regionCode の値だけを受け取る。型の依存ではない）
 
   - name: StreamSchedule
     summary: 同時に読むストリームごとの状態を持ち、次に読むもの・あきらめ・中断時の本数・終わりの状態を決める純粋な部品（新規）
@@ -60,13 +64,18 @@ components:
       使い切りが 3 本たまったら、未着手のストリームは呼ばずに失敗とし、失敗の内容は最後に使い切ったストリームのものを写す。読み途中のものは最後まで読ませる（FR3.2、FR3.3）。
       中断のときは、読み終えていない本数 N＝読み途中＋未着手（失敗は含めない）を出す（FR5.4）。一覧を読み終える前の中断は、本数の代わりに「一覧の前」と出す（FR5.6）。
       すべてのストリームが終わった後に中断が届いたら、中断ではなく終わった扱いにする（FR5.9）。
-      非同期の処理も入出力も持たず、テストを先に書く純粋なロジックとする（NFR6）。今の RetryPolicy の ExhaustionStreak の役割はここに移る。
+      非同期の処理も入出力も持たず、テストを先に書く純粋なロジックとする（NFR6）。今の RetryPolicy の ExhaustionStreak と、あきらめるまでの本数（max_consecutive_exhausted、既定 3）、ストリームの終わり方の分け方（成功・使い切り・使い切り以外の失敗。今の StreamEnding）はここに移る（ADR-007）。
+      取得 1 回の終わりの状態（JobStatus）を決める唯一の部品とする。FetchCoordinator はそれを FetchJob.status に写すだけにする（ADR-009）。
     responsibilities:
       - ストリームごとの状態（未着手・読み途中・成功・失敗）
       - 次に読むストリームの選び出し
       - 使い切りが続いたときのあきらめの決まり
       - 中断時の読み終えていない本数と、終わりの状態の判断
-    depends_on: []
+      - あきらめるまでの本数と、ストリームの終わり方の分け方
+    depends_on:
+      - component: FetchStatus
+        interaction: 終わりの状態（JobStatus）の型を使う
+        style: sync
     dependents:
       - component: FetchCoordinator
         interaction: 次に読むストリームを聞き、各ストリームの終わりを知らせ、終わりの状態と本数 N を受け取る
@@ -78,23 +87,24 @@ components:
         references:
           - entity: PlannedStream
             owned_by: StreamPlanner
-            relationship: 選ばれたストリーム 1 本に 1 つの状態がある
+            relationship: 選ばれたストリーム 1 本に 1 つの状態がある（logStreamName の値だけの参照で、型の依存ではない）
       - name: ScheduleOutcome
         identifier: fetchJobId
-        attributes: [fetchJobId, succeededStreams, failedStreams, unfinishedStreams, exhaustionStreak, endState]
+        attributes: [fetchJobId, unfinishedStreams, exhaustionStreak, endState]
         references:
           - entity: FetchJob
             owned_by: FetchCoordinator
-            relationship: 取得 1 回の終わり方を決める
+            relationship: 取得 1 回の終わり方を決める。FetchCoordinator が FetchJob.status と本数に写す（fetchJobId の値だけの参照で、型の依存ではない）
 
   - name: FetchCoordinator
     summary: ロググループ全体の取得 1 回を、複数のストリームを同時に読む形で進める（変更）
     behaviour: >
       ストリームの一覧（StreamPlanner）を読み終えたら、StreamSchedule から次に読むストリームを受け取り、複数のストリームの読み取り（EventFetcher）を同時に走らせる（FR1.1）。同時に走らせる本数は機能設計で決める。
-      取得 1 回ごとに CallPacer を接続先リージョンで作り、全ストリームの読み取りに共有させる（FR2.1）。
+      取得 1 回ごとに CallPacer を取得の条件のリージョン（無ければ表にないリージョン扱い）で作り、全ストリームの読み取りに共有させる（FR2.1）。
       各ストリームの読み取りはページを FetchCoordinator に送るだけにし、FetchCoordinator が届いた順に 1 つずつ FetchSink とログの保持先に渡す（FR1.2、FR1.3）。FetchSink の形（1 つずつ呼ばれる）は変えない。
-      ストリームが終わるたびに StreamSchedule に知らせ、未着手の扱い（あきらめ）と終わりの状態を受け取る（FR3）。
-      止める信号の理由が「中断」なら、新しいストリームも新しい呼び出しも始めず、出ている呼び出しの応答を待って止まり、取れたログを残して「中断」で終える（FR5.2、FR5.3、NFR4）。理由が「閉じる」なら今と同じく取れたログを捨てる（FR5.10）。
+      ストリームが終わるたびに StreamSchedule に知らせ、未着手の扱い（あきらめ）と終わりの状態を受け取り、FetchJob.status と読み終えていない本数に写す（FR3、ADR-009）。
+      各ストリームから FetchCoordinator への受け渡しの通り道を、上限のある形にするか無制限にするかは機能設計で決める。
+      止める信号の理由が「中断」なら、新しいストリームも新しい呼び出しも始めず、出ている呼び出しの応答を待って止まり、取れたログを残して新しい終わりの状態「Cancelled」で終える（FR5.2、FR5.3、NFR4）。理由が「閉じる」なら今と同じく取れたログを捨てて「Aborted」で終える（FR5.10）。
       中断で終えた取得は、キャッシュに書かない（FR5.8）。キャッシュを前段に置く流れ（照会、保存）は今と同じ。
     responsibilities:
       - 取得 1 回の流れ（一覧 → 同時の読み取り → 終わり）
@@ -123,9 +133,18 @@ components:
       - component: CachePlan
         interaction: キャッシュに書くかどうかを判断させる（中断は書かない）
         style: sync
+      - component: FetchStatus
+        interaction: 終わりの状態（JobStatus）の型を使う
+        style: sync
     dependents:
       - component: TauriApp
         interaction: 取得を始め、止める信号を渡す
+      - component: AppSession
+        interaction: FetchJob・失敗の一覧・進み具合の型を使う
+      - component: FetchCheck
+        interaction: 手元の確認で取得を走らせる
+      - component: RecordingSink
+        interaction: FetchSink を実装し、テストで届いた順を記録する
       - component: TauriSink
         interaction: FetchSink を実装し、ページと進み具合と終わりを受け取る
     external_dependencies:
@@ -135,7 +154,7 @@ components:
     entities:
       - name: FetchJob
         identifier: fetchJobId
-        attributes: [fetchJobId, plannedStreams, finishedStreams, eventCount, status]
+        attributes: [fetchJobId, plannedStreams, finishedStreams, failedStreams, unfinishedStreams, outcomes, eventCount, status]
 
   - name: EventFetcher
     summary: 1 ストリームを GetLogEvents でページの終わりまで読む（変更）
@@ -143,7 +162,7 @@ components:
       各試行（再試行を含む）の前に CallPacer の許可を待つ（FR2.3）。制限を受けたら CallPacer に知らせる（FR2.4）。
       再試行の待ちと回数は今と同じ（1・2・4・8・16 秒 ±20%、要求ごとに最大 5 回、FR2.5）。
       読んだページはストリーム内の順番を振って FetchCoordinator に送る。止める信号が来たら、新しい呼び出しを始めずに終わる（NFR4）。
-      終わり方（成功・使い切り・使い切り以外の失敗・止めた）を返す。
+      終わり方（成功・使い切り・使い切り以外の失敗・止めた）を返す。それを「あきらめ」の数えにどう使うかは StreamSchedule が決める（今の `streak_ending` の対応は StreamSchedule に移す）。
     responsibilities:
       - 1 ストリームのページの読み取りと順番の振り分け
       - 試行ごとの速さの許可待ちと、制限の報告
@@ -168,7 +187,7 @@ components:
         references:
           - entity: PlannedStream
             owned_by: StreamPlanner
-            relationship: 選ばれたストリーム 1 本を読んだ結果
+            relationship: 選ばれたストリーム 1 本を読んだ結果（logStreamName の値だけの参照で、型の依存ではない）
 
   - name: StreamPlanner
     summary: DescribeLogStreams で範囲に関わるストリームを選ぶ（今と同じ）
@@ -198,8 +217,8 @@ components:
     behaviour: >
       再試行の決まり（スロットリングと通信失敗だけ、1・2・4・8・16 秒 ±20%、最大 5 回）は今と同じ（FR2.5）。
       止める信号に理由を持たせる。理由は「中断（取れたログを残す）」と「閉じる（捨てる）」の 2 つ。どちらでも、再試行の待ちの間ならすぐ戻り、新しい呼び出しを始めさせない（NFR4）。
-      一度送った理由は変えない（先に届いた理由が勝つ。中断の後に閉じるが来たら「閉じる」に強める扱いは機能設計で決める）。
-      連続使い切りの数え（ExhaustionStreak）は StreamSchedule に移す。
+      理由の優先は「閉じる」が常に勝つ。中断の後に閉じるが来たら「閉じる」に強める。閉じるの後に中断が来ても「閉じる」のまま（ADR-004）。
+      連続使い切りの数え（ExhaustionStreak）、あきらめるまでの本数（max_consecutive_exhausted）、終わり方の分け方（StreamEnding）は StreamSchedule に移す（ADR-007）。
     responsibilities:
       - 1 回の要求の再試行の決まり
       - 理由つきの止める信号
@@ -213,6 +232,8 @@ components:
         interaction: 再試行と止める信号
       - component: TauriApp
         interaction: 止める信号を作り、中断・閉じるで送る
+      - component: FetchCheck
+        interaction: 再試行の決まりと、止めない信号を使う
     external_dependencies: []
     entities:
       - name: RetryRule
@@ -224,7 +245,7 @@ components:
         references:
           - entity: FetchJob
             owned_by: FetchCoordinator
-            relationship: 取得 1 回に 1 つの止める信号がある
+            relationship: 取得 1 回に 1 つの止める信号がある（fetchJobId の値だけの参照で、型の依存ではない）
 
   - name: CloudWatchLogsGateway
     summary: AWS への唯一の境界の trait（読み取り 3 操作だけ）（今と同じ）
@@ -251,7 +272,7 @@ components:
   - name: AwsCloudWatchLogsGateway
     summary: AWS SDK による境界の実装（変更）
     behaviour: >
-      SDK の中で行われる既定の再試行が、アプリの再試行と重なって呼び出しの数を増やさないようにする（NFR3）。止めるか数に入れるかは機能設計で決める。
+      SDK の中で行われる既定の再試行は止め（試行 1 回＝実際の呼び出し 1 回）、再試行はアプリの再試行（RetryPolicy の Retrier）に一本化する（NFR3、ADR-008）。今の `gateway/aws.rs` は再試行の設定を持たず SDK の既定が効いているため、ここを変える。具体的な設定の書き方は機能設計で決める。
       同時の最初の呼び出しで、同じ接続先のクライアントを二重に作らないようにする（codekb の指摘）。
       エラーは今と同じく安全な詳細に変える。
     responsibilities:
@@ -265,6 +286,8 @@ components:
     dependents:
       - component: TauriApp
         interaction: 取得と一覧に使う境界として渡す
+      - component: FetchCheck
+        interaction: 手元の確認で実際の AWS に接続する
     external_dependencies:
       - name: AWS SDK for Rust（CloudWatch Logs）
         kind: third-party-api
@@ -280,6 +303,62 @@ components:
     depends_on:
       - component: CloudWatchLogsGateway
         interaction: trait を実装する
+        style: sync
+    dependents: []
+    external_dependencies: []
+    entities: []
+
+  - name: FetchStatus
+    summary: 取得 1 回の終わりの状態の型（JobStatus）を置く小さな共有の型（新規・切り出し）
+    behaviour: >
+      今 FetchCoordinator にある JobStatus（Running／Completed／Failed／Partial／Aborted など）をここに出し、「Cancelled」（利用者の中断。取れたログを残す）を足す。「Aborted」はウィンドウを閉じるときの中止（捨てる）のまま。
+      振る舞いは持たない型だけの部品で、StreamSchedule・FetchCoordinator・CachePlan・AppSession が使う。CachePlan と FetchCoordinator の相互の依存を解くための切り出し（ADR-009）。
+    responsibilities:
+      - 終わりの状態の値の定義
+    depends_on: []
+    dependents:
+      - component: StreamSchedule
+        interaction: 終わりの状態を決める
+      - component: FetchCoordinator
+        interaction: FetchJob.status に写す
+      - component: CachePlan
+        interaction: 書くかどうかの判断に使う
+      - component: AppSession
+        interaction: 画面の段階と表示に使う
+    external_dependencies: []
+    entities: []
+
+  - name: FetchCheck
+    summary: 開発者の手元で実際の AWS に対して取得を試す確認用プログラム（変更・追従）
+    behaviour: >
+      team.md の薄い一本の確認 2 に使う。止める信号の理由、CallPacer の組み込み、JobStatus の場所が変わるのに合わせて直す。
+      速さを正しく確かめるため、リージョンを必ず指定して動かす（指定が無いと CallPacer は表にないリージョンと同じ 1 秒 5 回程度になる）。
+      自動テストと CI からは動かさない（project.md Forbidden）。
+    responsibilities:
+      - 手元での実際の AWS への取得の確認
+    depends_on:
+      - component: FetchCoordinator
+        interaction: 取得を走らせる
+        style: async
+      - component: AwsCloudWatchLogsGateway
+        interaction: 実際の AWS に接続する
+        style: sync
+      - component: RetryPolicy
+        interaction: 再試行の決まりと、止めない信号を使う
+        style: sync
+    dependents: []
+    external_dependencies: []
+    entities: []
+
+  - name: RecordingSink
+    summary: FetchSink に届いたものを順に記録するテスト用の受け口（変更・追従）
+    behaviour: >
+      FetchSink の形は変えないため（ADR-003）、中身はほぼそのまま。新しい終わりの状態（Cancelled）と読み終えていない本数を記録できるようにし、同時に読んでも受け口には 1 列で届くことをテストで確かめる。
+    responsibilities:
+      - 受け口に届いた順の記録（テスト用）
+    depends_on:
+      - component: FetchCoordinator
+        interaction: FetchSink を実装する
         style: sync
     dependents: []
     external_dependencies: []
@@ -305,10 +384,14 @@ components:
   - name: CachePlan
     summary: キャッシュに書くかどうかなどの純粋な判断（変更）
     behaviour: >
-      書くのは「すべてのストリームが成功して終わった」取得だけ、という今の判断に、「中断」で終えた取得は書かないことを加える（FR5.8）。利用者から見たキャッシュの動きは変えない。
+      書くのは「すべてのストリームが成功して終わった」（JobStatus が Completed で失敗 0）取得だけ、という今の判断を保つ。新しい「Cancelled」は Completed ではないので書かない（FR5.8）。利用者から見たキャッシュの動きは変えない。
+      今は JobStatus を FetchCoordinator から取り込んでおり、FetchCoordinator も CachePlan を使うため相互に依存している。JobStatus を FetchStatus に出して、この輪を解く（ADR-009）。
     responsibilities:
       - キャッシュの書き込みの判断
-    depends_on: []
+    depends_on:
+      - component: FetchStatus
+        interaction: 終わりの状態（JobStatus）の型を使う
+        style: sync
     dependents:
       - component: FetchCoordinator
         interaction: 書くかどうかを判断させる
@@ -324,6 +407,7 @@ components:
       取得の始まりと終わりを戻らない時計で記録し、最終のかかった時間を持つ。キャッシュから表示した場合も同じ（FR4.1〜FR4.4）。取得中の秒ごとの進みは画面に任せ、秒ごとには送らない。
       中断で終えたら、中断の注意（読み終えていない本数、または一覧の前）を持ち、失敗の一覧と件数は今と同じく持つ（FR5.4〜FR5.6）。注意は、次の取得を始めたとき、接続・ロググループを変えたときに消す（FR5.7）。
       中断で 0 件のときは「この範囲にログはありません」を出さない（refined Q3）。
+      取得の終わりで、「Cancelled」なら取れたログを表示したまま終わった段階に移る。「Aborted」（閉じる）は今と同じく Idle に戻す。段階（phase）は表示のための状態で、取得の終わりの状態そのものは FetchJob.status を写したものを使う（ADR-009）。
     responsibilities:
       - 取得の段階とボタンの状態
       - かかった時間の始まり・終わり・最終の値
@@ -331,6 +415,12 @@ components:
     depends_on:
       - component: CachePlan
         interaction: 状態行のキャッシュの通知を決めさせる
+        style: sync
+      - component: FetchCoordinator
+        interaction: FetchJob・失敗の一覧・進み具合の型を使う（今の依存）
+        style: sync
+      - component: FetchStatus
+        interaction: 終わりの状態（JobStatus）の型を使う
         style: sync
     dependents:
       - component: TauriApp
@@ -348,14 +438,14 @@ components:
         references:
           - entity: FetchJob
             owned_by: FetchCoordinator
-            relationship: 表示中の取得 1 回の状態
+            relationship: 表示中の取得 1 回の状態（FetchJob の型を使う。AppSession → FetchCoordinator の依存）
       - name: CancelNoticeView
         identifier: fetchJobId
         attributes: [fetchJobId, unfinishedStreams, beforeListing]
         references:
-          - entity: ScheduleOutcome
-            owned_by: StreamSchedule
-            relationship: 読み終えていない本数は取得の終わり方から写す
+          - entity: FetchJob
+            owned_by: FetchCoordinator
+            relationship: 読み終えていない本数は FetchJob から写す（StreamSchedule を直接は見ない）
 
   - name: TauriApp
     summary: Tauri のコマンドと非同期の起動（変更）
@@ -605,6 +695,15 @@ graph TD
     AwsCloudWatchLogsGateway -->|実装| CloudWatchLogsGateway
     FakeGateway -->|実装| CloudWatchLogsGateway
     AppSession -->|キャッシュの通知| CachePlan
+    AppSession -->|FetchJob の型| FetchCoordinator
+    AppSession -->|JobStatus| FetchStatus
+    FetchCoordinator -->|JobStatus| FetchStatus
+    StreamSchedule -->|JobStatus| FetchStatus
+    CachePlan -->|JobStatus| FetchStatus
+    FetchCheck -->|取得を走らせる| FetchCoordinator
+    FetchCheck -->|実際の AWS| AwsCloudWatchLogsGateway
+    FetchCheck -->|止めない信号| RetryPolicy
+    RecordingSink -->|FetchSink を実装| FetchCoordinator
   end
   subgraph app["アプリ"]
     TauriApp -->|操作| AppSession
@@ -632,24 +731,27 @@ graph TD
   CiWorkflows
 ```
 
-文字による代替：FetchCoordinator が StreamPlanner・EventFetcher・StreamSchedule・CallPacer・RetryPolicy・LogView・CachePlan を使う。EventFetcher は CloudWatchLogsGateway・CallPacer・RetryPolicy を使う。TauriApp が取得を始め、止める信号を理由つきで送る。TauriSink は FetchSink を実装して 1 つずつ受け取る。画面は ApiBridge を通して TauriApp を呼び、AppShell が ConditionArea・StatusLine・CancelNotice を並べる。CiWorkflows はどの部品ともつながらない。
+文字による代替：FetchCoordinator が StreamPlanner・EventFetcher・StreamSchedule・CallPacer・RetryPolicy・LogView・CachePlan・FetchStatus を使う。終わりの状態の型 FetchStatus は StreamSchedule・CachePlan・AppSession も使う。AppSession は FetchCoordinator の型（FetchJob など）を使う。FetchCheck と RecordingSink は FetchCoordinator を使う（RecordingSink は FetchSink を実装する）。EventFetcher は CloudWatchLogsGateway・CallPacer・RetryPolicy を使う。TauriApp が取得を始め、止める信号を理由つきで送る。TauriSink は FetchSink を実装して 1 つずつ受け取る。画面は ApiBridge を通して TauriApp を呼び、AppShell が ConditionArea・StatusLine・CancelNotice を並べる。CiWorkflows はどの部品ともつながらない。
 
 ## Component Summary
 
 | Component | Purpose | Depends On | Dependents | Entities Owned |
 |-----------|---------|------------|------------|----------------|
 | CallPacer（新規） | 呼び出しの速さを上限の半分程度に抑え、制限で下げて戻す | — | FetchCoordinator, EventFetcher | RegionCallLimit, PacingState |
-| StreamSchedule（新規） | ストリームごとの状態、次に読むもの、あきらめ、N、終わりの状態 | — | FetchCoordinator | StreamSlot, ScheduleOutcome |
-| FetchCoordinator | 取得 1 回を同時の読み取りで進め、ページを 1 列に集める | StreamPlanner, EventFetcher, StreamSchedule, CallPacer, RetryPolicy, LogView, CachePlan | TauriApp, TauriSink | FetchJob |
+| StreamSchedule（新規） | ストリームごとの状態、次に読むもの、あきらめ（本数の上限と終わり方の分け方を含む）、N、終わりの状態の唯一の決め手 | FetchStatus | FetchCoordinator | StreamSlot, ScheduleOutcome |
+| FetchStatus（新規・切り出し） | 終わりの状態の型（Cancelled を追加） | — | StreamSchedule, FetchCoordinator, CachePlan, AppSession | — |
+| FetchCoordinator | 取得 1 回を同時の読み取りで進め、ページを 1 列に集める | StreamPlanner, EventFetcher, StreamSchedule, CallPacer, RetryPolicy, LogView, CachePlan, FetchStatus | TauriApp, TauriSink, AppSession, FetchCheck, RecordingSink | FetchJob |
 | EventFetcher | 1 ストリームを読む、試行ごとに許可を待つ | CloudWatchLogsGateway, CallPacer, RetryPolicy | FetchCoordinator | StreamFetchOutcome |
 | StreamPlanner | 対象のストリームを選ぶ（今と同じ） | CloudWatchLogsGateway, RetryPolicy | FetchCoordinator | PlannedStream |
-| RetryPolicy | 再試行の決まり、理由つきの止める信号 | — | FetchCoordinator, EventFetcher, StreamPlanner, TauriApp | RetryRule, StopSignal |
+| RetryPolicy | 再試行の決まり、理由つきの止める信号（閉じるが常に勝つ） | — | FetchCoordinator, EventFetcher, StreamPlanner, TauriApp, FetchCheck | RetryRule, StopSignal |
 | CloudWatchLogsGateway | AWS への境界の trait（今と同じ） | — | EventFetcher, StreamPlanner, AwsCloudWatchLogsGateway, FakeGateway | ConnectionTarget |
-| AwsCloudWatchLogsGateway | SDK による実装、SDK の再試行の扱い | CloudWatchLogsGateway | TauriApp | — |
+| AwsCloudWatchLogsGateway | SDK による実装、SDK の既定の再試行を止める | CloudWatchLogsGateway | TauriApp, FetchCheck | — |
+| FetchCheck（追従） | 手元で実際の AWS に取得を試す（リージョン必須） | FetchCoordinator, AwsCloudWatchLogsGateway, RetryPolicy | — | — |
+| RecordingSink（追従） | テスト用の受け口 | FetchCoordinator | — | — |
 | FakeGateway | テスト用の境界（呼んだ時刻の記録、呼び出しの時間） | CloudWatchLogsGateway | — | — |
 | LogView | 時刻順の保持と絞り込み（今と同じ） | — | FetchCoordinator, TauriSink, TauriApp | — |
-| CachePlan | 書き込みの判断（中断は書かない） | — | FetchCoordinator, AppSession | — |
-| AppSession | 段階・ボタン・経過・中断の注意の状態 | CachePlan | TauriApp, TauriSink | FetchSessionView, CancelNoticeView |
+| CachePlan | 書き込みの判断（中断は書かない） | FetchStatus | FetchCoordinator, AppSession | — |
+| AppSession | 段階・ボタン・経過・中断の注意の状態 | CachePlan, FetchCoordinator, FetchStatus | TauriApp, TauriSink | FetchSessionView, CancelNoticeView |
 | TauriApp | 中断のコマンドと止める信号の保持 | AppSession, FetchCoordinator, RetryPolicy, AwsCloudWatchLogsGateway, TauriSink, LogView | ApiBridge | RunningFetch |
 | TauriSink | FetchSink の実装（形は今のまま） | FetchCoordinator, AppSession, LogView | TauriApp | — |
 | ApiBridge | 中断のコマンドと新しい型 | TauriApp | AppShell, ScreenHooks | — |
@@ -666,17 +768,17 @@ graph TD
 | Entity | Owning Component | Identifier | Attributes | References |
 |--------|------------------|------------|------------|------------|
 | RegionCallLimit | CallPacer | regionCode | regionCode, getLogEventsPerSecond | — |
-| PacingState | CallPacer | fetchJobId | fetchJobId, ceilingRate, currentRate, lastThrottledAt | FetchJob（FetchCoordinator）、ConnectionTarget（CloudWatchLogsGateway） |
-| StreamSlot | StreamSchedule | logStreamName | logStreamName, state, endReason, failure | PlannedStream（StreamPlanner） |
-| ScheduleOutcome | StreamSchedule | fetchJobId | fetchJobId, succeededStreams, failedStreams, unfinishedStreams, exhaustionStreak, endState | FetchJob（FetchCoordinator） |
-| FetchJob | FetchCoordinator | fetchJobId | fetchJobId, plannedStreams, finishedStreams, eventCount, status | — |
-| StreamFetchOutcome | EventFetcher | logStreamName | logStreamName, pageCount, eventCount, endReason, failure | PlannedStream（StreamPlanner） |
+| PacingState | CallPacer | fetchJobId | fetchJobId, ceilingRate, currentRate, lastThrottledAt | FetchJob（値だけ）、ConnectionTarget（regionCode の値だけ） |
+| StreamSlot | StreamSchedule | logStreamName | logStreamName, state, endReason, failure | PlannedStream（値だけ） |
+| ScheduleOutcome | StreamSchedule | fetchJobId | fetchJobId, unfinishedStreams, exhaustionStreak, endState | FetchJob（値だけ。FetchCoordinator が status と本数に写す） |
+| FetchJob | FetchCoordinator | fetchJobId | fetchJobId, plannedStreams, finishedStreams, failedStreams, unfinishedStreams, outcomes, eventCount, status | — |
+| StreamFetchOutcome | EventFetcher | logStreamName | logStreamName, pageCount, eventCount, endReason, failure | PlannedStream（値だけ） |
 | PlannedStream | StreamPlanner | logStreamName | logStreamName, lastEventTimestamp | — |
 | RetryRule | RetryPolicy | failureKind | failureKind, delays, jitter, maxAttempts | — |
-| StopSignal | RetryPolicy | fetchJobId | fetchJobId, reason | FetchJob（FetchCoordinator） |
+| StopSignal | RetryPolicy | fetchJobId | fetchJobId, reason | FetchJob（値だけ） |
 | ConnectionTarget | CloudWatchLogsGateway | profileAndRegion | profileName, regionCode | — |
-| FetchSessionView | AppSession | fetchJobId | fetchJobId, phase, startedAt, finishedAt, elapsedMs, buttonState | FetchJob（FetchCoordinator） |
-| CancelNoticeView | AppSession | fetchJobId | fetchJobId, unfinishedStreams, beforeListing | ScheduleOutcome（StreamSchedule） |
+| FetchSessionView | AppSession | fetchJobId | fetchJobId, phase, startedAt, finishedAt, elapsedMs, buttonState | FetchJob（FetchCoordinator、型の依存） |
+| CancelNoticeView | AppSession | fetchJobId | fetchJobId, unfinishedStreams, beforeListing | FetchJob（FetchCoordinator） |
 | RunningFetch | TauriApp | fetchJobId | fetchJobId, stopHandle | StopSignal（RetryPolicy） |
 
 `fetchJobId` は「取得 1 回」を指す言葉として使う。今のコードに同じ名前の値があるとは限らず、実際の持ち方は機能設計で決める。
@@ -703,8 +805,10 @@ graph TD
 | CallPacer | 関心が違う：「1 回の要求の再試行」（RetryPolicy）ではなく「取得 1 回の全呼び出しの速さ」を扱う。共有される状態（速さ）を持ち、時計を差し替えて単独でテストできる（Q1、ADR-001） |
 | StreamSchedule | 変わる理由が違う：あきらめ・N・終わりの判断は利用者に見える決まりで、非同期の処理とは別に変わる。純粋なのでテスト先行で作れる（Q2、ADR-002） |
 | FetchCoordinator | 非同期のつなぎ（同時に走らせ、ページを 1 列に集める）に専念させる（Q3、ADR-003） |
-| RetryPolicy | 止める信号の持ち主のまま、理由を足す（Q4、ADR-004）。連続使い切りの数えは StreamSchedule に渡す（ADR-007） |
+| RetryPolicy | 止める信号の持ち主のまま、理由を足す（Q4、ADR-004）。連続使い切りの数え・本数の上限・終わり方の分け方は StreamSchedule に渡す（ADR-007） |
 | AppSession／ScreenHooks | 経過の値の持ち主（始まり・終わり・最終の値）はライブラリ、秒ごとの進みは画面、と分ける（Q5、ADR-005） |
+| FetchStatus | 終わりの状態の型を、FetchCoordinator・CachePlan・AppSession・StreamSchedule が共有する。今の CachePlan↔FetchCoordinator の相互の依存を解き、終わりの状態の値を 1 か所で定める（R-02、R-04、ADR-009） |
+| FetchCheck／RecordingSink | 取得の形（止める理由、CallPacer、JobStatus の場所）に追従して直す。薄い一本の確認とテストの道具（R-07） |
 | CancelNotice | 今の FetchErrorBanner は「取得全体の失敗」のための部品で、中断は失敗ではない。出す場所は同じだが、文・色・読み上げが違うため別の部品にする（refined-mockups、ADR-006） |
 | ConditionArea／StatusLine／MessageCatalog／TauriApp／ApiBridge／AppShell | 今の部品の役割の中で足す。新しい部品にする理由がない |
 | CiWorkflows | 下準備（FR6）。アプリの部品とはつながらない |
@@ -715,11 +819,13 @@ graph TD
 - ストリームの状態：FetchCoordinator の中に置く案（B）は、非同期の処理と数え方が混ざり、テストが偽のゲートウェイ経由になるため採らない（ADR-002）。
 - 受け口：受け口を同時に呼べる形に変える案（B）は、TauriSink・RecordingSink・確認用プログラムをすべて直す必要があるため採らない（ADR-003）。
 - 止める信号：中断用の別の信号（B）は、止め方を 2 か所で守る必要があるため採らない（ADR-004）。
+- SDK の再試行：数に入れるためにゲートウェイが CallPacer を受け取る案は、ADR-001 で退けた「ゲートウェイを包む」形と同じになるため採らない（ADR-008）。
+- 終わりの状態の型：FetchCoordinator に置いたままにする案は、CachePlan との相互の依存が残るため採らない（ADR-009）。
 - 経過：画面だけで数える案（B）は最終の値をライブラリのテストで確かめられず、ライブラリが秒ごとに送る案（C）は取得中ずっと送信が増えるため採らない（ADR-005）。
 
 ## Assumptions & Open Questions
 
 - 仮の決め：FetchCoordinator が同時に走らせる読み取りは、1 つのプロセスの中の非同期の仕事として作る（今の tokio の使い方の延長）。スレッドの数などは機能設計で決める。
 - 仮の決め：一覧（StreamPlanner）を読み終えてから読み取りを始める今の順を前提にする。一覧と読み取りを重ねるかは機能設計で決める（requirements §5）。重ねても部品の分け方は変わらない。
-- 同時に読む本数、リージョンの上限の表の値、下げ方と戻し方、SDK の既定の再試行の扱い、止める理由が重なったときの扱いは、機能設計で決める。
+- 同時に読む本数、リージョンの上限の表の値、下げ方と戻し方、SDK の再試行を止める具体的な設定、各ストリームから FetchCoordinator への受け渡しの通り道を上限のある形にするか無制限にするかは、機能設計で決める。
 

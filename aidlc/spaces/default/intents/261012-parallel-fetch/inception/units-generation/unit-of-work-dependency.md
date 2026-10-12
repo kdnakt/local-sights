@@ -39,8 +39,8 @@ graph TD
 
 | 作業単位 | 依存先 | 理由 |
 |----------|--------|------|
-| U2 | U1 | CallPacer の固定の上限と、試行ごとの許可待ちの上に、引き下げと戻しを足す |
-| U3 | U1 | StreamSchedule（ストリームごとの状態）と同時の読み取りの上に、あきらめの決まりを足す |
+| U2 | U1 | CallPacer の固定の上限と、すべての試行（再試行を含む）の前の許可待ちの上に、引き下げと戻しを足す |
+| U3 | U1 | StreamSchedule（ストリームごとの状態）と同時の読み取りの上に、あきらめの決まりを足し、U1 の暫定の動きを置き換える |
 | U4 | U1 | 経過は同時取得の取得 1 回の始まりと終わりを測る（stories の依存関係：US2.1 は US1.1 を前提） |
 | U5 | U1 | 中断は同時の読み取り・StreamSchedule の状態（N の数え方）・FetchStatus の上に足す |
 
@@ -57,11 +57,11 @@ graph TD
 ## 同時に進められる組み合わせ
 
 - U1 が終わった後、U2・U3・U4・U5 は互いに依存しないので、どの順でも、同時にでも進められる。
-- ただし同じファイルに手を入れる組み合わせがある（U2 と U5 は CallPacer と RetryPolicy、U3 と U5 は StreamSchedule、U4 と U5 は AppSession と StatusLine）。同時に進めるときは、マージの順と衝突の扱いを Delivery Planning で決める。
+- ただし同じファイルに手を入れる組み合わせがある（U2 と U5 は CallPacer と EventFetcher、U3 と U5 は StreamSchedule、U4 と U5 は AppSession と StatusLine）。同時に進めるときは、マージの順と衝突の扱いを Delivery Planning で決める。
 
 ## 薄い一本
 
-最初の作業単位は U1（`u1-concurrent-skeleton`、依存なし）。U1 だけで「画面から取得 → 同時に読む → 届いた分から時刻順に表示」が端から端まで動き、手元の実際の AWS で確かめられる。後の作業単位がなくても動く（あきらめは今の動きのまま、経過と中断は無い状態）。
+最初の作業単位は U1（`u1-concurrent-skeleton`、依存なし）。U1 だけで「画面から取得 → 同時に読む → 届いた分から時刻順に表示」が端から端まで動き、手元の実際の AWS で確かめられる。後の作業単位がなくても動く。あきらめは暫定として今の ExhaustionStreak（3 本）をストリームが終わった順に当てはめ、制限を受けても速さは固定の上限のまま下げない。経過と中断は無い状態。
 
 ## Assumptions & Open Questions
 

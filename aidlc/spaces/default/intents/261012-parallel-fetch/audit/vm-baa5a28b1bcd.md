@@ -3724,3 +3724,122 @@
 **Reply**: ごめん、リリースを下書きにするって何だっけ？公開するはreleasesにdmgを公開するってこと？
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T11:52:11Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a2a7d06faeb27112f
+**Message**: A ですぐ公開で\n```
+
+---
+
+## Session End
+**Timestamp**: 2026-10-12T11:56:48Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-12T12:50:57Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T12:51:03Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T12:51:10Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T12:51:11Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q1: A
+**Person Reply**: すぐ公開で
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T12:51:12Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q2
+**Options**: A,B,C,D,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T12:52:51Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A. CI で測って合否にする"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T12:52:52Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q2. テストのカバレッジ（テストで通るコードの行の割合）の下限 80% を、どう満たしますか？（今回の進め方 mvp では、共通ルールで行のカバレッジ 80% 以上が求められ、開発ルールでは外せません。今は Rust 側にも画面側にも、カバレッジを測る設定がありません。C は A か B と組み合わせられます。その他の考えは「Type something」で書いてください）
+**Reply**: A. CI で測って合否にする
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-12T12:52:56Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T12:52:58Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q2: A
+**Picker Note**: Not what the person picked in the picker ("A. CI で測って合否にする").
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T12:52:58Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q3
+**Options**: A,B,C,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T12:53:36Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["おすすめは？"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T12:53:37Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q3. 依存関係のチェック（cargo-deny）で調べる機能の範囲はどちらが正しいですか？（設定ファイル deny.toml は「実際にビルドする機能だけを調べる」（all-features = false）ですが、CI の設定のコメントには「すべての機能を調べる」（true）と書かれています。最初から食い違っています。その他の考えは「Type something」で書いてください）
+**Reply**: おすすめは？
+
+---

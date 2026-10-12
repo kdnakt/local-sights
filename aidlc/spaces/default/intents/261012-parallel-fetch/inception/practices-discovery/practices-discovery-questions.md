@@ -11,7 +11,7 @@ B. 下書きに戻す（開発ルールはそのまま。リリースの仕組�
 C. Not yet defined
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q2. テストのカバレッジ（テストが通るコードの割合）の下限 80% をどう満たすか
 
@@ -23,7 +23,7 @@ C. 測る範囲を GUI に依存しない層（ライブラリ側）と画面の
 D. Not yet defined
 X. Other (please specify)
 
-[Answer]:
+[Answer]: A
 
 ## Q3. 依存関係のチェック（cargo-deny）が対象にする機能の範囲
 

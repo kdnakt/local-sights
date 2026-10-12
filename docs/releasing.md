@@ -87,10 +87,11 @@ and the Release workflow runs the second before building anything.
 - **A test or the build fails**: `build-and-publish` does not run, or stops
   before publishing. The Release is created only after the `.dmg` has been
   built and checked, so a failed run leaves no Release behind.
-- **The signature check fails** (`codesign --verify` rejects the built `.app`,
-  or `codesign -dvv` reports no `Signature=adhoc`): `build-and-publish` stops
-  right after the build, before the `.dmg` is checked, and nothing is
-  published. The build step must run with `APPLE_SIGNING_IDENTITY: "-"`.
+- **The signature check fails** (`codesign --verify` rejects the `.app` inside
+  the built `.dmg`, or `codesign -dvv` reports no `Signature=adhoc`):
+  `build-and-publish` stops after the `.dmg` is built and before the Release
+  is published, so nothing is published. The build step must run with
+  `APPLE_SIGNING_IDENTITY: "-"`.
 
 To fix it, change `main` through a pull request as usual. Then either release
 the next patch version (simplest), or, since no Release exists for the failed

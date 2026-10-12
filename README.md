@@ -36,8 +36,9 @@ and `logs:GetLogEvents`.
 To use the app on a Mac with Apple Silicon (for example a company PC), install
 the released `.dmg` from
 [GitHub Releases](https://github.com/kdnakt/local-sights/releases): see
-[docs/install.md](docs/install.md) for installing, the first-launch warning of
-the unsigned app, updating and going back to an earlier version. The AWS
+[docs/install.md](docs/install.md) for installing, the first-launch warning
+(the app is ad-hoc signed, not notarized by Apple), updating and going back to
+an earlier version. The AWS
 preparation in [Prerequisites](#prerequisites) is needed there too. The rest of
 this README is for development.
 

@@ -9599,3 +9599,37 @@
 **Answer Mode**: guide (reused from intent-capture)
 
 ---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T22:31:14Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: U1 の機能設計に進むか、先に下準備（CI カバレッジ検査）の PR を作るか
+**Options**: Proceed to U1 functional design,Pre-work PR first
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T22:31:22Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a65e4c67db57b106d
+**Message**: U1の機能設計に進んで
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T22:31:33Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T22:31:41Z
+**Event**: QUESTION_ANSWERED
+**Stage**: functional-design
+**Details**: Pre-work PR first
+**Person Reply**: 下準備から始めて
+
+---

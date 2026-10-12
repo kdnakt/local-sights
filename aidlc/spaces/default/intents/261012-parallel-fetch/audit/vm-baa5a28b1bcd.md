@@ -8386,3 +8386,199 @@
 **Answer Mode**: guide (reused from intent-capture)
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T16:29:30Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-design-questions.md
+**Context**: inception > contract-design > contract-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T16:29:33Z
+**Event**: DECISION_RECORDED
+**Stage**: contract-design
+**Decision**: Q1
+**Options**: A,B,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T16:33:04Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T16:33:05Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q1. 画面に新しく渡すもの（経過、中断中の段階、中断の注意）は、どう運びますか？今は session-changed と fetch-progress の 2 つのイベントで状態を渡しています。
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T16:33:11Z
+**Event**: QUESTION_ANSWERED
+**Stage**: contract-design
+**Details**: Q1: A
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T16:33:12Z
+**Event**: DECISION_RECORDED
+**Stage**: contract-design
+**Decision**: Q2
+**Options**: A,B,X
+
+---
+
+## Session End
+**Timestamp**: 2026-10-12T16:38:14Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-12T17:01:00Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:01:06Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T17:01:07Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q2. 約束（作業単位の間、アプリと画面の間）を変えるときの決まりはどうしますか？開発者は 1 人で、全部同じリポジトリ・同じ .dmg です。
+**Reply**: A (Recommended)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:01:09Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T17:01:16Z
+**Event**: QUESTION_ANSWERED
+**Stage**: contract-design
+**Details**: Q2: A
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T17:01:17Z
+**Event**: DECISION_RECORDED
+**Stage**: contract-design
+**Decision**: Q3
+**Options**: A,B,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:01:44Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T17:01:44Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q3. 取得していないときに［中断］のコマンドが届いたら、どうしますか？（押した瞬間に取得が終わる、二度押しが届くなどで起こりえます）
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T17:01:56Z
+**Event**: QUESTION_ANSWERED
+**Stage**: contract-design
+**Details**: Q3: A
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T17:01:58Z
+**Event**: DECISION_RECORDED
+**Stage**: contract-design
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-design-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T17:02:27Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T17:02:27Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: この内容で約束の設計（contract-summary.md）を作ってよいですか？
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-12T17:02:34Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: contract-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-design-questions.md
+**Questions SHA-256**: 96c24a5880499d9bbfd401601472531645884515e8181c02bcc6554b37ed74d6
+**Hash Scope**: confirmed-content-v2
+**Summary Authorization Id**: eea13f9ee48eab438574bcbf4451d31c58d49f5f0fd835753493d84a192818bf
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T17:03:26Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/contract-design/contract-summary.md
+**Context**: inception > contract-design > contract-summary.md
+**Summary Authorization Id**: eea13f9ee48eab438574bcbf4451d31c58d49f5f0fd835753493d84a192818bf
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-12T17:03:34Z
+**Event**: REVIEW_REQUESTED
+**Stage**: contract-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:c8fba3fc7c4a6f55c0d8ec974c71a659e38bfac66a0a6f8fa5e1705a0407b06f
+**Request Id**: review:275cc8578a7ca8225d5efd1768ab1937
+**Review File**: .aidlc-engine/reviews/contract-design/stage/f2a04432b45e0402/1.275cc8578a7ca8225d5efd1768ab1937.review.md
+
+---

@@ -3630,3 +3630,97 @@
 **Answer Mode**: guide (reused from intent-capture)
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T11:47:42Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a04479219ff92e894
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:48:38Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/team-practices.md
+**Context**: inception > practices-discovery > team-practices.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:48:40Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/discovered-rules.md
+**Context**: inception > practices-discovery > discovered-rules.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:48:42Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-timestamp.md
+**Context**: inception > practices-discovery > practices-discovery-timestamp.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:49:53Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T11:50:11Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T11:50:11Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-pipeline-deploy-agent
+**Agent ID**: aefeb0777a59a1b05
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T11:50:35Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T11:50:36Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q1
+**Options**: A,B,C,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T11:51:45Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["ごめん、リリースを下書きにするって何だっけ？公開するはreleasesにdmgを公開するってこと？"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T11:51:46Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q1. リリースを下書きにするか、すぐ公開するか？（開発ルールでは「GitHub Releases に下書きとして置く」ですが、リリースの仕組みと手順書はすぐ公開し、v0.1.0 も公開済みです。前回のリリースの作業で「すぐ公開し、開発ルールの記述を直す」と決めていましたが、記述は直っていません。その他の考えは「Type something」で書いてください）
+**Reply**: ごめん、リリースを下書きにするって何だっけ？公開するはreleasesにdmgを公開するってこと？
+
+---

@@ -59,6 +59,13 @@ body {
   padding: var(--ls-space-xs) var(--ls-space-m) 0;
 }
 
+/* 261011-sso-login: the spinner and the waiting text side by side. */
+.sso-login-waiting {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ls-space-xs);
+}
+
 .app-body {
   display: flex;
   gap: var(--ls-space-m);

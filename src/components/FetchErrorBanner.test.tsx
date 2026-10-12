@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { JobSummary } from "../api";
 import { createTranslator } from "../i18n/messages";
-import { sessionView, t } from "../test/fixtures";
+import { sessionView, ssoLoginView, t } from "../test/fixtures";
 import { FetchErrorBanner } from "./FetchErrorBanner";
 
 const failedJob: JobSummary = {
@@ -92,6 +92,50 @@ describe("FetchErrorBanner (FR3.2, mockups screen 5b)", () => {
       />,
     );
     expect(screen.getByTestId("fetch-error-banner")).toBeInTheDocument();
+  });
+
+  it("carries [Sign in with SSO] in an auth error when the login is available (261011-sso-login FR1.1)", async () => {
+    const user = userEvent.setup();
+    const onSsoLogin = vi.fn();
+    const authJob: JobSummary = {
+      ...failedJob,
+      failure: { kind: "AuthRequired", safeDetail: "profile=dev", retryable: false },
+    };
+    const { rerender } = render(
+      <FetchErrorBanner
+        session={sessionView({
+          phase: "Failed",
+          lastJob: authJob,
+          ssoLogin: ssoLoginView({ available: true, canStart: true }),
+        })}
+        t={t}
+        onSsoLogin={onSsoLogin}
+      />,
+    );
+    await user.click(screen.getByTestId("fetch-error-sso-login-button"));
+    expect(onSsoLogin).toHaveBeenCalledTimes(1);
+    // Another kind of failure, or a profile that cannot sign in: no button.
+    rerender(
+      <FetchErrorBanner
+        session={sessionView({
+          phase: "Failed",
+          lastJob: { ...failedJob, jobId: 2 },
+          ssoLogin: ssoLoginView({ available: true, canStart: true }),
+        })}
+        t={t}
+        onSsoLogin={onSsoLogin}
+      />,
+    );
+    expect(screen.queryByTestId("fetch-error-sso-login-button")).not.toBeInTheDocument();
+    rerender(
+      <FetchErrorBanner
+        session={sessionView({ phase: "Failed", lastJob: { ...authJob, jobId: 3 } })}
+        t={t}
+        onSsoLogin={onSsoLogin}
+      />,
+    );
+    expect(screen.getByTestId("fetch-error-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("fetch-error-sso-login-button")).not.toBeInTheDocument();
   });
 
   it("does not close with Escape (R-06: the close button only)", async () => {

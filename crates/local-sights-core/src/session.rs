@@ -37,6 +37,13 @@
 //! they end (U6 review R-02), and splits each settings operation into the
 //! decision, the file work (done by the caller without the session lock)
 //! and its result (U6 review R-01).
+//! Since 261011-sso-login it holds the SSO login started from an auth error
+//! ([`SsoLoginView`]): whether [Sign in with SSO] is shown and can be
+//! pressed (BR1.5, BR2.5), the CLI arguments of a new attempt (BR2.2), the
+//! attempt's state with the first URL and code the CLI printed (BR3.1),
+//! and the listing that follows a success (BR4.1). While a login runs the
+//! connection, the fetch, the reload and the settings dialog are refused
+//! (BR3.4). The CLI itself is run by the app.
 
 use std::path::PathBuf;
 
@@ -52,7 +59,7 @@ use crate::connection::{
 use crate::coordinator::{BatchProgress, FailedStream, FetchJob, JobStatus};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
-use crate::failure::ApiFailure;
+use crate::failure::{ApiFailure, FailureKind};
 use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -61,6 +68,9 @@ use crate::log_groups::{
 };
 use crate::paging::PageDecision;
 use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
+use crate::sso_login::{
+    LoginHints, SsoLoginOutcome, SsoLoginTarget, cli_args, resolve_login_target,
+};
 use crate::streams::StreamListingStatus;
 use crate::streams::planner::ListingProgress;
 use crate::time_range::{date_in_zone, format_day_bounds, format_display_in_zone};
@@ -127,6 +137,13 @@ pub enum SessionError {
     /// The settings dialog is not open (U6:BR5.1).
     #[error("the settings dialog is not open")]
     SettingsClosed,
+    /// An SSO login is under way (261011-sso-login BR2.5, BR3.4).
+    #[error("an SSO login is in progress")]
+    SsoLoginInProgress,
+    /// No SSO login can start: no auth error is shown or the selected
+    /// profile leads to no SSO profile (261011-sso-login BR1.5).
+    #[error("no SSO login is available")]
+    SsoLoginUnavailable,
 }
 
 impl SessionError {
@@ -144,6 +161,8 @@ impl SessionError {
             SessionError::StaleGeneration => "session.staleGeneration",
             SessionError::NoFailures => "session.noFailures",
             SessionError::SettingsClosed => "session.settingsClosed",
+            SessionError::SsoLoginInProgress => "session.ssoLoginInProgress",
+            SessionError::SsoLoginUnavailable => "session.ssoLoginUnavailable",
         }
     }
 }
@@ -232,6 +251,78 @@ pub struct CloseConfirmed {
     /// Whether a fetch is still running and must be aborted first (not
     /// when it ended while the dialog was shown, BR3.4).
     pub abort_fetch: bool,
+}
+
+/// State of the SSO login (261011-sso-login, entities.md
+/// SsoLoginAttempt.state; `Idle`: no attempt is shown).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum SsoLoginState {
+    /// No attempt, or the last one was put away.
+    #[default]
+    Idle,
+    /// [Sign in with SSO] was pressed; the CLI is being looked for.
+    Starting,
+    /// The CLI runs and waits for the approval in the browser.
+    Waiting,
+    /// The CLI ended with exit code 0 (BR4.1).
+    Succeeded,
+    /// The CLI ended with another code or could not be started (BR4.2).
+    Failed,
+    /// Five minutes passed (BR3.2).
+    TimedOut,
+    /// The user cancelled (BR3.3).
+    Cancelled,
+    /// No AWS CLI was found (BR2.1).
+    CliNotFound,
+}
+
+impl SsoLoginState {
+    /// Whether an attempt is under way (Starting or Waiting).
+    pub fn is_running(self) -> bool {
+        matches!(self, SsoLoginState::Starting | SsoLoginState::Waiting)
+    }
+}
+
+/// The SSO login as the screen shows it (frontend-components.md).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsoLoginView {
+    /// Whether [Sign in with SSO] is shown: an auth error is shown and the
+    /// selected profile leads to an SSO profile (BR1.5).
+    pub available: bool,
+    /// Whether it can be pressed now (BR2.5).
+    pub can_start: bool,
+    /// The state of the current attempt.
+    pub state: SsoLoginState,
+    /// The allow-listed sign-in URL the CLI printed (BR3.1).
+    pub verification_url: Option<String>,
+    /// The verification code the CLI printed (BR3.1).
+    pub user_code: Option<String>,
+    /// The exit code of a failed CLI (BR4.2).
+    pub exit_code: Option<i32>,
+    /// Number of the current attempt; 0 before the first.
+    pub attempt_id: u64,
+    /// `--profile <name>` for the terminal fallback text, or empty.
+    pub profile_option: String,
+}
+
+/// What the app must do to start an SSO login: run the CLI with `args`
+/// and report on `attempt_id` (BR2.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SsoLoginStart {
+    /// Number of the attempt; reports for any other number are ignored.
+    pub attempt_id: u64,
+    /// The CLI arguments: `sso login` and, when needed, `--profile <name>`.
+    pub args: Vec<String>,
+}
+
+/// What the app must do after an SSO login ended (BR4.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SsoLoginFinish {
+    /// The login succeeded: drop the cached SDK clients before listing.
+    pub succeeded: bool,
+    /// Start this listing (the log groups are read again after a success).
+    pub listing: Option<ListingRequest>,
 }
 
 /// File work of a settings operation, done by the caller without the
@@ -501,6 +592,8 @@ pub struct SessionView {
     pub discard_generation: u64,
     /// Whether closing awaits an answer (U7:BR3.1).
     pub close_confirmation: CloseConfirmation,
+    /// The SSO login (261011-sso-login).
+    pub sso_login: SsoLoginView,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -590,6 +683,28 @@ pub struct AppSession {
     close_confirmation: CloseConfirmation,
     /// [Close] was chosen: the app may end without asking again (BR3.2).
     close_confirmed: bool,
+    /// `AWS_PROFILE` of the app's environment, given by the app
+    /// (261011-sso-login BR1.3); the session never reads the environment.
+    aws_profile_env: Option<String>,
+    /// The current SSO login attempt (261011-sso-login).
+    sso: SsoLoginAttempt,
+    /// The CLI of the latest attempt may still be running: from the start
+    /// until the app reports that its process is gone. A [Cancel] ends the
+    /// attempt at once, but its CLI takes up to the stop grace to end; no
+    /// new login starts before that, so two CLIs never run (FR2.6).
+    sso_cli_active: bool,
+}
+
+/// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
+/// run by the app; this is only its state.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct SsoLoginAttempt {
+    attempt_id: u64,
+    state: SsoLoginState,
+    target: Option<SsoLoginTarget>,
+    verification_url: Option<String>,
+    user_code: Option<String>,
+    exit_code: Option<i32>,
 }
 
 impl Default for AppSession {
@@ -665,6 +780,9 @@ impl AppSession {
             discard_generation: 0,
             close_confirmation: CloseConfirmation::None,
             close_confirmed: false,
+            aws_profile_env: None,
+            sso: SsoLoginAttempt::default(),
+            sso_cli_active: false,
         };
         session.select_startup_profile();
         session.revalidate();
@@ -763,7 +881,9 @@ impl AppSession {
     /// R-02) and not while a connection change awaits confirmation
     /// (U6:BR5.1).
     pub fn can_open_settings(&self) -> bool {
-        !self.is_busy_with_disk() && self.connection.pending().is_none()
+        !self.is_busy_with_disk()
+            && self.connection.pending().is_none()
+            && !self.sso_login_running()
     }
 
     /// Fetching, writing the cache or doing a settings operation's files.
@@ -773,6 +893,7 @@ impl AppSession {
 
     /// Opens the settings dialog (U6:BR5.1); opening it again keeps it open.
     pub fn open_settings(&mut self) -> Result<(), SessionError> {
+        self.ensure_not_logging_in()?;
         if self.phase == Phase::Fetching || self.cache_writes.is_writing() {
             return Err(SessionError::Busy);
         }
@@ -977,11 +1098,13 @@ impl AppSession {
             && self.validation.is_ok()
     }
 
-    /// Whether profile, region and log group may be changed (U2:BR2.6).
+    /// Whether profile, region and log group may be changed (U2:BR2.6);
+    /// not while an SSO login runs (261011-sso-login BR3.4).
     pub fn can_change_connection(&self) -> bool {
         self.phase != Phase::Fetching
             && self.connection.pending().is_none()
             && self.settings_dialog == SettingsDialog::Closed
+            && !self.sso_login_running()
     }
 
     /// The chosen connection.
@@ -1022,6 +1145,7 @@ impl AppSession {
         &mut self,
         profile: ProfileSelector,
     ) -> Result<ConnectionEffect, SessionError> {
+        self.ensure_not_logging_in()?;
         self.ensure_can_change()?;
         let default_region = self
             .catalog
@@ -1038,6 +1162,7 @@ impl AppSession {
 
     /// Chooses a region (U2:BR2.3, BR2.5).
     pub fn select_region(&mut self, region: String) -> Result<ConnectionEffect, SessionError> {
+        self.ensure_not_logging_in()?;
         self.ensure_can_change()?;
         if !self.catalog.has_region(&region) {
             return Err(SessionError::UnknownRegion);
@@ -1070,6 +1195,7 @@ impl AppSession {
     /// selected log group and the shown logs (U2:BR3.5).
     pub fn reload_log_groups(&mut self, generation: u64) -> Result<ListingRequest, SessionError> {
         self.ensure_current_generation(generation)?;
+        self.ensure_not_logging_in()?;
         self.ensure_can_change()?;
         match self.connection.reload() {
             Some(command) => self
@@ -1093,6 +1219,7 @@ impl AppSession {
     /// Selects one listed log group; the shown logs stay (U2:BR3.8).
     pub fn select_log_group(&mut self, name: String, generation: u64) -> Result<(), SessionError> {
         self.ensure_current_generation(generation)?;
+        self.ensure_not_logging_in()?;
         self.ensure_can_change()?;
         let listed = self.listing.as_ref().is_some_and(|l| l.contains(&name));
         if !listed {
@@ -1149,6 +1276,7 @@ impl AppSession {
         if self.phase == Phase::Fetching {
             return Err(SessionError::Busy);
         }
+        self.ensure_not_logging_in()?;
         if self.connection.pending().is_some()
             || self.settings_dialog == SettingsDialog::Open
             || self.close_confirmation == CloseConfirmation::Pending
@@ -1563,6 +1691,7 @@ impl AppSession {
             cache_notices: self.cache_notices.clone(),
             discard_generation: self.discard_generation,
             close_confirmation: self.close_confirmation,
+            sso_login: self.sso_login_view(),
         }
     }
 
@@ -1671,6 +1800,236 @@ impl AppSession {
             &self.start_input,
             &self.end_input,
         );
+    }
+}
+
+/// The SSO login (261011-sso-login). The app runs the AWS CLI; the session
+/// decides whether a login may start, with which arguments, and keeps its
+/// state. Reports for an attempt that ended or is not the current one are
+/// ignored, so the first report to arrive wins.
+impl AppSession {
+    /// The same session with `AWS_PROFILE` of the app's environment, which
+    /// is where the SDK default profile points (BR1.3).
+    pub fn with_aws_profile_env(mut self, aws_profile: Option<String>) -> Self {
+        self.aws_profile_env = aws_profile;
+        self
+    }
+
+    /// Whether a login is under way (Starting or Waiting).
+    pub fn sso_login_running(&self) -> bool {
+        self.sso.state.is_running()
+    }
+
+    /// The number of the running attempt, if any.
+    pub fn running_sso_attempt(&self) -> Option<u64> {
+        self.sso_login_running().then_some(self.sso.attempt_id)
+    }
+
+    /// The sign-in URL of the running attempt: the only URL the app may
+    /// open for the user (BR3.1). `None` when nothing runs.
+    pub fn sso_login_url(&self) -> Option<&str> {
+        self.sso_login_running()
+            .then_some(self.sso.verification_url.as_deref())
+            .flatten()
+    }
+
+    /// [Sign in with SSO] (BR1.5, BR2.2, BR2.5): refused while a login,
+    /// a fetch, a listing or a settings operation runs, while a dialog
+    /// awaits an answer, and when no login is available. Otherwise a new
+    /// attempt becomes Starting and the CLI arguments are returned.
+    pub fn start_sso_login(&mut self) -> Result<SsoLoginStart, SessionError> {
+        if self.sso_login_running() || self.sso_cli_active {
+            return Err(SessionError::SsoLoginInProgress);
+        }
+        if self.is_busy_for_sso_login() {
+            return Err(SessionError::Busy);
+        }
+        if self.awaits_an_answer() {
+            return Err(SessionError::ConfirmationPending);
+        }
+        let target = self
+            .sso_login_target()
+            .filter(|_| self.shows_auth_error())
+            .ok_or(SessionError::SsoLoginUnavailable)?;
+        let args = cli_args(&target, &self.catalog).ok_or(SessionError::SsoLoginUnavailable)?;
+        self.sso = SsoLoginAttempt {
+            attempt_id: self.sso.attempt_id + 1,
+            state: SsoLoginState::Starting,
+            target: Some(target),
+            ..SsoLoginAttempt::default()
+        };
+        self.sso_cli_active = true;
+        Ok(SsoLoginStart {
+            attempt_id: self.sso.attempt_id,
+            args,
+        })
+    }
+
+    /// The CLI of `attempt_id` was started: Starting becomes Waiting.
+    /// Returns whether the state changed.
+    pub fn on_sso_cli_started(&mut self, attempt_id: u64) -> bool {
+        if !self.is_current_attempt(attempt_id) || self.sso.state != SsoLoginState::Starting {
+            return false;
+        }
+        self.sso.state = SsoLoginState::Waiting;
+        true
+    }
+
+    /// Takes the URL and the code of one output line of `attempt_id`'s CLI;
+    /// only the first of each is kept (BR3.1). Returns whether the state
+    /// changed.
+    pub fn on_sso_login_hints(&mut self, attempt_id: u64, hints: LoginHints) -> bool {
+        if !self.is_current_attempt(attempt_id) {
+            return false;
+        }
+        let mut changed = false;
+        if self.sso.verification_url.is_none() && hints.verification_url.is_some() {
+            self.sso.verification_url = hints.verification_url;
+            changed = true;
+        }
+        if self.sso.user_code.is_none() && hints.user_code.is_some() {
+            self.sso.user_code = hints.user_code;
+            changed = true;
+        }
+        changed
+    }
+
+    /// Ends the running attempt `attempt_id` with `outcome` (BR3.2, BR4.1,
+    /// BR4.2). On a success the log groups are listed again; the fetch is
+    /// not started again. `None` when the report is ignored.
+    pub fn finish_sso_login(
+        &mut self,
+        attempt_id: u64,
+        outcome: SsoLoginOutcome,
+    ) -> Option<SsoLoginFinish> {
+        self.on_sso_cli_ended(attempt_id);
+        if !self.is_current_attempt(attempt_id) {
+            return None;
+        }
+        let (state, exit_code) = match outcome {
+            SsoLoginOutcome::Succeeded => (SsoLoginState::Succeeded, None),
+            SsoLoginOutcome::Failed { exit_code } => (SsoLoginState::Failed, exit_code),
+            SsoLoginOutcome::TimedOut => (SsoLoginState::TimedOut, None),
+            SsoLoginOutcome::Cancelled => (SsoLoginState::Cancelled, None),
+            SsoLoginOutcome::CliNotFound => (SsoLoginState::CliNotFound, None),
+        };
+        self.sso.state = state;
+        self.sso.exit_code = exit_code;
+        let succeeded = state == SsoLoginState::Succeeded;
+        let listing = if succeeded {
+            self.connection
+                .reload()
+                .and_then(|command| self.start_listing(command))
+        } else {
+            None
+        };
+        Some(SsoLoginFinish { succeeded, listing })
+    }
+
+    /// The CLI of `attempt_id` is gone (it ended, was stopped, or never
+    /// started): a new login may start again. Returns whether the state
+    /// changed, so the app pushes the view after a cancelled attempt.
+    pub fn on_sso_cli_ended(&mut self, attempt_id: u64) -> bool {
+        if !self.sso_cli_active || self.sso.attempt_id != attempt_id {
+            return false;
+        }
+        self.sso_cli_active = false;
+        true
+    }
+
+    /// [Cancel] (BR3.3): the running attempt becomes Cancelled; returns its
+    /// number so the app stops its CLI. `None` when nothing runs.
+    pub fn cancel_sso_login(&mut self) -> Option<u64> {
+        let attempt_id = self.running_sso_attempt()?;
+        self.sso.state = SsoLoginState::Cancelled;
+        Some(attempt_id)
+    }
+
+    /// [Close] on a result, or closing the success notice: back to Idle.
+    /// Returns whether the state changed; a running login is not touched.
+    pub fn dismiss_sso_login(&mut self) -> bool {
+        if self.sso.state == SsoLoginState::Idle || self.sso_login_running() {
+            return false;
+        }
+        self.sso = SsoLoginAttempt {
+            attempt_id: self.sso.attempt_id,
+            ..SsoLoginAttempt::default()
+        };
+        true
+    }
+
+    /// Where [Sign in with SSO] signs in for the selected profile (BR1.3,
+    /// BR1.4, BR2.3), whether or not an error is shown.
+    fn sso_login_target(&self) -> Option<SsoLoginTarget> {
+        let profile = self.connection.selection().profile.as_ref()?;
+        resolve_login_target(profile, &self.catalog, self.aws_profile_env.as_deref())
+    }
+
+    /// BR1.5 / FR1.1: an `AuthRequired` error is shown in the log group
+    /// list or as the failure of the whole fetch.
+    fn shows_auth_error(&self) -> bool {
+        let is_auth = |failure: Option<&ApiFailure>| {
+            failure.is_some_and(|failure| failure.kind() == FailureKind::AuthRequired)
+        };
+        let listing_failed = is_auth(self.listing.as_ref().and_then(LogGroupListing::failure));
+        let fetch_failed = self.phase == Phase::Failed
+            && is_auth(self.last_job.as_ref().and_then(|job| job.failure.as_ref()));
+        listing_failed || fetch_failed
+    }
+
+    /// BR2.5: a fetch, a log group listing or a settings operation runs.
+    fn is_busy_for_sso_login(&self) -> bool {
+        self.phase == Phase::Fetching
+            || self.settings_busy
+            || self
+                .listing
+                .as_ref()
+                .is_some_and(|listing| listing.status() == ListingStatus::Loading)
+    }
+
+    /// A connection change, the settings dialog or the close confirmation
+    /// awaits an answer.
+    fn awaits_an_answer(&self) -> bool {
+        self.connection.pending().is_some()
+            || self.settings_dialog == SettingsDialog::Open
+            || self.close_confirmation == CloseConfirmation::Pending
+    }
+
+    /// Whether `attempt_id` is the running attempt.
+    fn is_current_attempt(&self, attempt_id: u64) -> bool {
+        self.sso_login_running() && self.sso.attempt_id == attempt_id
+    }
+
+    /// BR3.4: refuses an operation while a login runs.
+    fn ensure_not_logging_in(&self) -> Result<(), SessionError> {
+        if self.sso_login_running() {
+            Err(SessionError::SsoLoginInProgress)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// The SSO login part of the view.
+    fn sso_login_view(&self) -> SsoLoginView {
+        let target = self.sso.target.clone().or_else(|| self.sso_login_target());
+        let available = self.shows_auth_error() && target.is_some();
+        SsoLoginView {
+            available,
+            can_start: available
+                && !self.sso_login_running()
+                && !self.sso_cli_active
+                && !self.is_busy_for_sso_login()
+                && !self.awaits_an_answer(),
+            state: self.sso.state,
+            verification_url: self.sso.verification_url.clone(),
+            user_code: self.sso.user_code.clone(),
+            exit_code: self.sso.exit_code,
+            attempt_id: self.sso.attempt_id,
+            profile_option: target
+                .and_then(|target| target.profile_argument)
+                .map(|name| format!("--profile {name}"))
+                .unwrap_or_default(),
+        }
     }
 }
 
@@ -3865,5 +4224,440 @@ mod tests {
             assert_eq!(session.start_input().instant(), None);
             assert_eq!(session.end_input().error(), None);
         }
+    }
+
+    // --- 261011-sso-login: the login state (BR1.5, BR2.5, BR3.1-BR3.4, BR4.1) ---
+
+    use crate::catalog::ProfileAuthInfo;
+    use crate::sso_login::{LoginHints, SsoLoginOutcome};
+
+    fn auth_info(name: &str, sso: bool, source: Option<&str>) -> ProfileAuthInfo {
+        ProfileAuthInfo {
+            profile_name: name.to_string(),
+            has_sso_settings: sso,
+            source_profile: source.map(str::to_string),
+        }
+    }
+
+    /// `catalog()` where `dev` is an SSO profile, `prod` uses access keys
+    /// and `default` is an SSO profile too.
+    fn sso_catalog() -> ConnectionCatalog {
+        let profile = |kind, name: Option<&str>, region: Option<&str>| ConnectionProfile {
+            kind,
+            profile_name: name.map(str::to_string),
+            default_region: region.map(str::to_string),
+        };
+        ConnectionCatalog::new(
+            vec![
+                profile(ProfileKind::SdkDefault, None, None),
+                profile(ProfileKind::Named, Some("default"), None),
+                profile(ProfileKind::Named, Some("dev"), Some("ap-northeast-1")),
+                profile(ProfileKind::Named, Some("prod"), Some("us-east-1")),
+            ],
+            Vec::new(),
+        )
+        .with_auth_infos(vec![
+            auth_info("default", true, None),
+            auth_info("dev", true, None),
+            auth_info("prod", false, None),
+        ])
+    }
+
+    fn auth_failure() -> ApiFailure {
+        ApiFailure::new(FailureKind::AuthRequired, &SafeDetailFields::default())
+    }
+
+    /// Connected to `profile` (default region) and its listing failed with
+    /// `failure`.
+    fn session_with_listing_failure(profile: &str, failure: ApiFailure) -> AppSession {
+        let mut session = AppSession::with_catalog(sso_catalog());
+        let listing = session
+            .select_profile(ProfileSelector::Named(profile.to_string()))
+            .unwrap()
+            .listing
+            .unwrap();
+        assert!(session.apply_listing_failure(&listing.listing_id, failure));
+        session
+    }
+
+    /// `dev` with a listed log group whose fetch failed with an auth error.
+    fn session_with_fetch_auth_failure() -> AppSession {
+        let mut session = AppSession::with_catalog(sso_catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = finished_job(&mut session, 0, Some(auth_failure()));
+        session.finish_fetch(&job, 1);
+        assert_eq!(session.phase(), Phase::Failed);
+        session
+    }
+
+    fn sso_view(session: &AppSession) -> SsoLoginView {
+        session.view().sso_login
+    }
+
+    #[test]
+    fn an_auth_error_with_an_sso_target_makes_the_login_available() {
+        let listing = session_with_listing_failure("dev", auth_failure());
+        let view = sso_view(&listing);
+        assert!(view.available);
+        assert!(view.can_start);
+        assert_eq!(view.state, SsoLoginState::Idle);
+        assert_eq!(view.profile_option, "--profile dev");
+        assert!(sso_view(&session_with_fetch_auth_failure()).available);
+    }
+
+    #[test]
+    fn no_login_without_an_sso_target_or_without_an_auth_error() {
+        let keys = session_with_listing_failure("prod", auth_failure());
+        assert!(!sso_view(&keys).available);
+        let network = session_with_listing_failure(
+            "dev",
+            ApiFailure::new(FailureKind::Network, &SafeDetailFields::default()),
+        );
+        assert!(!sso_view(&network).available);
+        let mut fresh = AppSession::with_catalog(sso_catalog());
+        assert!(!sso_view(&fresh).available);
+        assert_eq!(
+            fresh.start_sso_login(),
+            Err(SessionError::SsoLoginUnavailable)
+        );
+    }
+
+    #[test]
+    fn starting_a_login_returns_the_cli_arguments_and_becomes_starting() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let start = session.start_sso_login().unwrap();
+        assert_eq!(start.attempt_id, 1);
+        assert_eq!(start.args, ["sso", "login", "--profile", "dev"]);
+        let view = sso_view(&session);
+        assert_eq!(view.state, SsoLoginState::Starting);
+        assert_eq!(view.attempt_id, 1);
+        assert!(!view.can_start);
+        assert!(session.sso_login_running());
+        assert_eq!(session.running_sso_attempt(), Some(1));
+        assert_eq!(
+            session.start_sso_login(),
+            Err(SessionError::SsoLoginInProgress)
+        );
+    }
+
+    #[test]
+    fn the_sdk_default_with_aws_profile_starts_without_profile() {
+        let mut session =
+            AppSession::with_catalog(sso_catalog()).with_aws_profile_env(Some("dev".to_string()));
+        let listing = session
+            .select_region("us-east-1".to_string())
+            .unwrap()
+            .listing
+            .unwrap();
+        session.apply_listing_failure(&listing.listing_id, auth_failure());
+        assert_eq!(sso_view(&session).profile_option, "");
+        assert_eq!(session.start_sso_login().unwrap().args, ["sso", "login"]);
+    }
+
+    #[test]
+    fn a_login_cannot_start_while_other_work_runs_or_a_dialog_is_open() {
+        // Fetching.
+        let mut fetching = session_with_fetch_auth_failure();
+        fetching
+            .begin_fetch(fetching.connection_generation())
+            .unwrap();
+        assert_eq!(fetching.start_sso_login(), Err(SessionError::Busy));
+        // Listing the log groups (the fetch's auth error is still shown).
+        let mut listing = session_with_fetch_auth_failure();
+        listing
+            .reload_log_groups(listing.connection_generation())
+            .unwrap();
+        assert!(!sso_view(&listing).can_start);
+        assert_eq!(listing.start_sso_login(), Err(SessionError::Busy));
+        // The settings dialog.
+        let mut settings = session_with_listing_failure("dev", auth_failure());
+        settings.open_settings().unwrap();
+        assert_eq!(
+            settings.start_sso_login(),
+            Err(SessionError::ConfirmationPending)
+        );
+    }
+
+    #[test]
+    fn waiting_keeps_the_first_url_and_code_only() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let id = session.start_sso_login().unwrap().attempt_id;
+        assert!(session.on_sso_cli_started(id));
+        assert_eq!(sso_view(&session).state, SsoLoginState::Waiting);
+        let first = LoginHints {
+            verification_url: Some("https://device.sso.us-east-1.amazonaws.com/".to_string()),
+            user_code: None,
+        };
+        assert!(session.on_sso_login_hints(id, first));
+        assert!(session.on_sso_login_hints(
+            id,
+            LoginHints {
+                verification_url: Some("https://other.awsapps.com/start".to_string()),
+                user_code: Some("ABCD-EFGH".to_string()),
+            }
+        ));
+        assert!(!session.on_sso_login_hints(
+            id,
+            LoginHints {
+                verification_url: None,
+                user_code: Some("WXYZ-QRST".to_string()),
+            }
+        ));
+        let view = sso_view(&session);
+        assert_eq!(
+            view.verification_url.as_deref(),
+            Some("https://device.sso.us-east-1.amazonaws.com/")
+        );
+        assert_eq!(view.user_code.as_deref(), Some("ABCD-EFGH"));
+    }
+
+    #[test]
+    fn a_success_lists_the_log_groups_again_and_does_not_fetch() {
+        let mut session = session_with_fetch_auth_failure();
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.on_sso_cli_started(id);
+        let finish = session
+            .finish_sso_login(id, SsoLoginOutcome::Succeeded)
+            .unwrap();
+        assert!(finish.succeeded);
+        let listing = finish.listing.unwrap();
+        assert_eq!(listing.profile, dev());
+        assert_eq!(listing.region, "ap-northeast-1");
+        assert!(session.is_current_listing(&listing.listing_id));
+        assert_eq!(sso_view(&session).state, SsoLoginState::Succeeded);
+        assert_eq!(session.phase(), Phase::Failed, "the fetch is not started");
+        assert!(!session.sso_login_running());
+    }
+
+    #[test]
+    fn failures_time_outs_and_a_missing_cli_end_the_attempt() {
+        let cases = [
+            (
+                true,
+                SsoLoginOutcome::Failed { exit_code: Some(3) },
+                SsoLoginState::Failed,
+                Some(3),
+            ),
+            (
+                true,
+                SsoLoginOutcome::TimedOut,
+                SsoLoginState::TimedOut,
+                None,
+            ),
+            (
+                false,
+                SsoLoginOutcome::CliNotFound,
+                SsoLoginState::CliNotFound,
+                None,
+            ),
+            (
+                false,
+                SsoLoginOutcome::Failed { exit_code: None },
+                SsoLoginState::Failed,
+                None,
+            ),
+        ];
+        for (started, outcome, state, exit_code) in cases {
+            let mut session = session_with_listing_failure("dev", auth_failure());
+            let id = session.start_sso_login().unwrap().attempt_id;
+            if started {
+                session.on_sso_cli_started(id);
+            }
+            let finish = session.finish_sso_login(id, outcome).unwrap();
+            assert!(!finish.succeeded);
+            assert_eq!(finish.listing, None);
+            let view = sso_view(&session);
+            assert_eq!(view.state, state, "{outcome:?}");
+            assert_eq!(view.exit_code, exit_code);
+            assert!(view.can_start, "{outcome:?}: the button works again");
+        }
+    }
+
+    #[test]
+    fn cancelling_while_starting_or_waiting_wins_over_later_reports() {
+        for started in [false, true] {
+            let mut session = session_with_listing_failure("dev", auth_failure());
+            let id = session.start_sso_login().unwrap().attempt_id;
+            if started {
+                session.on_sso_cli_started(id);
+            }
+            assert_eq!(session.cancel_sso_login(), Some(id));
+            assert_eq!(sso_view(&session).state, SsoLoginState::Cancelled);
+            assert!(!session.on_sso_cli_started(id));
+            assert_eq!(
+                session.finish_sso_login(id, SsoLoginOutcome::Succeeded),
+                None
+            );
+            assert_eq!(sso_view(&session).state, SsoLoginState::Cancelled);
+            assert_eq!(session.cancel_sso_login(), None);
+        }
+    }
+
+    #[test]
+    fn a_new_login_waits_until_the_cancelled_cli_is_gone() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.on_sso_cli_started(id);
+        assert_eq!(session.cancel_sso_login(), Some(id));
+        assert!(
+            !sso_view(&session).can_start,
+            "the old CLI is still stopping"
+        );
+        assert_eq!(
+            session.start_sso_login().unwrap_err(),
+            SessionError::SsoLoginInProgress
+        );
+        assert!(session.on_sso_cli_ended(id));
+        assert!(!session.on_sso_cli_ended(id), "reported once");
+        assert!(sso_view(&session).can_start);
+        assert!(session.start_sso_login().is_ok());
+    }
+
+    #[test]
+    fn a_dismissed_cancel_still_waits_for_its_cli() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.cancel_sso_login();
+        assert!(session.dismiss_sso_login());
+        assert!(!sso_view(&session).can_start);
+        // The runner's late report of the cancelled attempt frees the button.
+        assert_eq!(
+            session.finish_sso_login(id, SsoLoginOutcome::Cancelled),
+            None
+        );
+        assert!(sso_view(&session).can_start);
+    }
+
+    #[test]
+    fn the_end_of_an_older_attempts_cli_does_not_free_a_newer_one() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let old = session.start_sso_login().unwrap().attempt_id;
+        session.cancel_sso_login();
+        assert!(session.on_sso_cli_ended(old));
+        let new = session.start_sso_login().unwrap().attempt_id;
+        session.cancel_sso_login();
+        assert!(!session.on_sso_cli_ended(old));
+        assert!(!sso_view(&session).can_start);
+        assert!(session.on_sso_cli_ended(new));
+    }
+
+    #[test]
+    fn reports_for_an_older_attempt_are_ignored() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let old = session.start_sso_login().unwrap().attempt_id;
+        session.finish_sso_login(old, SsoLoginOutcome::TimedOut);
+        let new = session.start_sso_login().unwrap().attempt_id;
+        assert_eq!(new, old + 1);
+        assert!(!session.on_sso_cli_started(old));
+        assert!(!session.on_sso_login_hints(
+            old,
+            LoginHints {
+                verification_url: None,
+                user_code: Some("ABCD-EFGH".to_string()),
+            }
+        ));
+        assert_eq!(
+            session.finish_sso_login(old, SsoLoginOutcome::Succeeded),
+            None
+        );
+        let view = sso_view(&session);
+        assert_eq!(view.state, SsoLoginState::Starting);
+        assert_eq!(view.user_code, None);
+        assert_eq!(view.attempt_id, new);
+    }
+
+    #[test]
+    fn other_operations_are_refused_while_a_login_runs() {
+        let mut session = session_with_fetch_auth_failure();
+        session.start_sso_login().unwrap();
+        let generation = session.connection_generation();
+        assert_eq!(
+            session.select_profile(dev()),
+            Err(SessionError::SsoLoginInProgress)
+        );
+        assert_eq!(
+            session.select_region("us-east-1".to_string()),
+            Err(SessionError::SsoLoginInProgress)
+        );
+        assert_eq!(
+            session.reload_log_groups(generation),
+            Err(SessionError::SsoLoginInProgress)
+        );
+        assert_eq!(
+            session.select_log_group("/aws/lambda/orders".to_string(), generation),
+            Err(SessionError::SsoLoginInProgress)
+        );
+        assert_eq!(
+            session.begin_fetch(generation),
+            Err(SessionError::SsoLoginInProgress)
+        );
+        assert_eq!(
+            session.open_settings(),
+            Err(SessionError::SsoLoginInProgress)
+        );
+        let view = session.view();
+        assert!(!view.can_change_connection);
+        assert!(!view.can_reload);
+        assert!(!view.can_fetch);
+        assert!(!view.can_open_settings);
+        // Closing the window is not asked about for a login (plan Step 6).
+        assert_eq!(session.request_close(), CloseDecision::Allow);
+    }
+
+    #[test]
+    fn dismissing_a_result_returns_to_idle_but_not_while_running() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        assert!(!session.dismiss_sso_login(), "nothing to dismiss");
+        let id = session.start_sso_login().unwrap().attempt_id;
+        assert!(!session.dismiss_sso_login());
+        assert_eq!(sso_view(&session).state, SsoLoginState::Starting);
+        session.finish_sso_login(id, SsoLoginOutcome::Failed { exit_code: Some(1) });
+        assert!(session.dismiss_sso_login());
+        let view = sso_view(&session);
+        assert_eq!(view.state, SsoLoginState::Idle);
+        assert_eq!(view.exit_code, None);
+        assert!(session.select_profile(dev()).is_ok());
+    }
+
+    #[test]
+    fn only_the_running_attempt_has_a_url_to_open() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        assert_eq!(session.sso_login_url(), None);
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.on_sso_cli_started(id);
+        assert_eq!(session.sso_login_url(), None, "no URL printed yet");
+        session.on_sso_login_hints(
+            id,
+            LoginHints {
+                verification_url: Some("https://my.awsapps.com/start/#/device".to_string()),
+                user_code: None,
+            },
+        );
+        assert_eq!(
+            session.sso_login_url(),
+            Some("https://my.awsapps.com/start/#/device")
+        );
+        session.cancel_sso_login();
+        assert_eq!(session.sso_login_url(), None);
+    }
+
+    #[test]
+    fn the_sso_login_view_serializes_in_camel_case() {
+        let mut session = session_with_listing_failure("dev", auth_failure());
+        let id = session.start_sso_login().unwrap().attempt_id;
+        session.on_sso_cli_started(id);
+        let json = serde_json::to_value(session.view()).unwrap();
+        let sso = &json["ssoLogin"];
+        assert_eq!(sso["state"], "Waiting");
+        assert_eq!(sso["available"], true);
+        assert_eq!(sso["canStart"], false);
+        assert_eq!(sso["attemptId"], 1);
+        assert_eq!(sso["profileOption"], "--profile dev");
+        assert!(sso["verificationUrl"].is_null());
+        assert!(sso["userCode"].is_null());
+        assert!(sso["exitCode"].is_null());
     }
 }

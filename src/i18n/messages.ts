@@ -28,6 +28,10 @@
  * no-match text (`table.empty`, `table.noMatches`), and the "Fetch is
  * unavailable because:" list is gone (FR3.1). `error.what.*` / `error.next.*`
  * are unchanged (FR3.4).
+ * Since 261011-sso-login the SSO login texts (`ssoLogin.*`, the wording of
+ * frontend-components.md, plus `ssoLogin.failedToStart` for a CLI that did
+ * not start and `ssoLogin.openFailed` for a URL that could not be opened)
+ * and the core's `session.ssoLoginInProgress` / `session.ssoLoginUnavailable`.
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -373,6 +377,51 @@ export const messages = {
   },
   "close.keep": { en: "Keep fetching", ja: "取得を続ける" },
   "close.close": { en: "Close", ja: "閉じる" },
+  "ssoLogin.button": { en: "Sign in with SSO", ja: "SSO にログイン" },
+  "ssoLogin.title": { en: "Sign in with SSO", ja: "SSO にログイン" },
+  "ssoLogin.waiting": {
+    en: "Approve the sign-in in your browser. If the browser does not open, open this URL and enter the code.",
+    ja: "ブラウザでログインを承認してください。ブラウザが開かない場合は、次の URL を開いて確認コードを入力してください。",
+  },
+  "ssoLogin.code": { en: "Verification code", ja: "確認コード" },
+  "ssoLogin.cancel": { en: "Cancel", ja: "キャンセル" },
+  "ssoLogin.close": { en: "Close", ja: "閉じる" },
+  "ssoLogin.succeeded": {
+    en: "Signed in. Reloading the log groups.",
+    ja: "ログインしました。ロググループの一覧を読み込み直しています。",
+  },
+  "ssoLogin.timedOut": {
+    en: "The sign-in timed out. Try again.",
+    ja: "時間切れになりました。もう一度ログインしてください。",
+  },
+  "ssoLogin.failed": {
+    en: "Could not sign in (exit code {code}).",
+    ja: "ログインできませんでした（終了コード {code}）。",
+  },
+  "ssoLogin.failedToStart": {
+    en: "Could not sign in: the AWS CLI could not be started.",
+    ja: "ログインできませんでした。AWS CLI を起動できませんでした。",
+  },
+  "ssoLogin.cliNotFound": {
+    en: "AWS CLI was not found. Install AWS CLI v2.",
+    ja: "AWS CLI が見つかりません。AWS CLI v2 をインストールしてください。",
+  },
+  "ssoLogin.fallback": {
+    en: "You can also run aws sso login {profileOption} in a terminal and press [Reload].",
+    ja: "ターミナルで aws sso login {profileOption} を実行してから、[再読み込み] を押してもログインできます。",
+  },
+  "ssoLogin.openFailed": {
+    en: "The sign-in page could not be opened. Open the URL in your browser yourself.",
+    ja: "ログインのページを開けませんでした。URL をブラウザで開いてください。",
+  },
+  "session.ssoLoginInProgress": {
+    en: "This cannot be done while signing in with SSO.",
+    ja: "SSO にログイン中はこの操作はできません。",
+  },
+  "session.ssoLoginUnavailable": {
+    en: "Signing in with SSO is not available for the selected profile.",
+    ja: "選んでいるプロファイルでは SSO にログインできません。",
+  },
 } as const satisfies Record<string, Record<Locale, string>>;
 
 export type MessageKey = keyof typeof messages;

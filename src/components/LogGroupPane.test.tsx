@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { LogGroupPane } from "./LogGroupPane";
-import { connectedView, sessionView, t } from "../test/fixtures";
+import { connectedView, sessionView, ssoLoginView, t } from "../test/fixtures";
 
 function renderPane(view = connectedView()) {
   const handlers = { onFilterChange: vi.fn(), onReload: vi.fn(), onSelect: vi.fn() };
@@ -130,6 +130,63 @@ describe("LogGroupPane (mockups screen 1 and 5c, Q6)", () => {
     expect(alert).not.toHaveTextContent("Access denied");
     // The rows that did arrive are still listed.
     expect(screen.getByTestId("log-group-pane-option")).toHaveTextContent("/aws/ecs/web");
+  });
+
+  it("carries [Sign in with SSO] in an auth error of the list when the login is available (261011-sso-login FR1.1)", async () => {
+    const authList = (available: boolean, kind: "AuthRequired" | "Network" = "AuthRequired") =>
+      connectedView({
+        logGroups: {
+          status: "Partial",
+          visibleGroups: [],
+          totalCount: 0,
+          emptyState: null,
+          failure: { kind, safeDetail: "", retryable: false },
+        },
+        ssoLogin: ssoLoginView({ available, canStart: available }),
+      });
+    const onSsoLogin = vi.fn();
+    const { rerender } = render(
+      <LogGroupPane
+        session={authList(true)}
+        t={t}
+        onFilterChange={vi.fn()}
+        onReload={vi.fn()}
+        onSelect={vi.fn()}
+        onSsoLogin={onSsoLogin}
+      />,
+    );
+    const button = within(screen.getByTestId("log-group-pane-error")).getByTestId(
+      "log-group-pane-sso-login-button",
+    );
+    await userEvent.click(button);
+    expect(onSsoLogin).toHaveBeenCalledTimes(1);
+    for (const view of [authList(false), authList(true, "Network")]) {
+      rerender(
+        <LogGroupPane
+          session={view}
+          t={t}
+          onFilterChange={vi.fn()}
+          onReload={vi.fn()}
+          onSelect={vi.fn()}
+          onSsoLogin={onSsoLogin}
+        />,
+      );
+      expect(screen.queryByTestId("log-group-pane-sso-login-button")).not.toBeInTheDocument();
+    }
+  });
+
+  it("disables the rows and [Reload] while the core says a login runs (BR3.4)", () => {
+    renderPane(
+      connectedView({
+        canChangeConnection: false,
+        canReload: false,
+        ssoLogin: ssoLoginView({ state: "Waiting" }),
+      }),
+    );
+    expect(screen.getByTestId("log-group-pane-reload-button")).toBeDisabled();
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio).toBeDisabled();
+    }
   });
 
   it("points a failed listing to [Reload] and still says when nothing matches", () => {

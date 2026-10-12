@@ -68,8 +68,9 @@ this README is for development.
 - An AWS CLI-style configuration (`~/.aws/config`) with a default region for
   the profile you use. Authentication (SSO, access keys, AssumeRole,
   environment variables) is left to the AWS SDK; for SSO profiles run
-  `aws sso login --profile <name>` first. The app never reads, stores or logs
-  your credentials.
+  `aws sso login --profile <name>` first, or sign in from the app (see
+  [Sign in with SSO](#sign-in-with-sso), which needs AWS CLI v2). The app
+  never reads, stores or logs your credentials.
 
 ## Run the app
 
@@ -122,7 +123,50 @@ streams whose events may fall in the range are found with
 event is more than an hour before the start). The profile list comes from
 `~/.aws/config` and `~/.aws/credentials` (or `AWS_CONFIG_FILE` /
 `AWS_SHARED_CREDENTIALS_FILE`); only section names and `region` values are
-read, never credentials.
+read, never credentials (and, from `~/.aws/config`, whether a profile has
+`sso_session` / `sso_start_url` and the name in `source_profile`, for the
+SSO sign-in below; never their values).
+
+## Sign in with SSO
+
+When the SSO session has expired, the log group pane or the error above the
+log list says the credentials could not be used. If the selected profile is
+an SSO profile, or takes its credentials from one through `source_profile`
+(up to five steps, as with an AssumeRole profile), that message carries a
+**Sign in with SSO** button:
+
+1. Press it. The app starts `aws sso login` of the AWS CLI (no shell; the
+   only arguments are `sso login` and, when needed, `--profile <name>`) and
+   shows a dialog. With **Default** selected the CLI picks the profile
+   itself (`AWS_PROFILE`, otherwise `default`), unless that profile takes
+   its credentials from another one, which is then named with `--profile`.
+2. Approve the sign-in in the browser the CLI opens. If no browser opens,
+   click the URL in the dialog (only an `https://` address on
+   `*.amazonaws.com` or `*.awsapps.com` is shown and opened) and enter the
+   verification code when one is shown (newer CLIs print none).
+3. On success the dialog closes, "Signed in. Reloading the log groups."
+   appears above the log list and the log groups are listed again with the
+   new token (no restart needed). A failed fetch is not repeated: press
+   **Fetch** again.
+
+**Cancel** stops the CLI; after five minutes without approval the CLI is
+stopped and the dialog says the sign-in timed out. If the CLI fails, the
+dialog shows its exit code (never its output) and how to sign in from a
+terminal instead. While signing in, the profile, the region, the log group
+list, **Reload**, **Fetch** and the settings are disabled. Closing the
+window or quitting the app stops a running CLI; it does not ask first.
+
+The AWS CLI is looked for at `/opt/homebrew/bin/aws` (Homebrew), then
+`/usr/local/bin/aws` (the official installer); `PATH` is not used, because
+an app started from the Finder or the Dock does not get the terminal's
+`PATH`. If neither exists, the dialog says the AWS CLI was not found:
+install [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html),
+or run `aws sso login` in a terminal and press **Reload**.
+
+The app itself calls no SSO API and never reads or writes the SSO token
+cache (`~/.aws/sso/cache`); the CLI signs in and the AWS SDK reads the token.
+The CLI's output is read line by line only to find the URL and the code; it
+is not kept, logged or written anywhere.
 
 ## Manual GUI check (walking-skeleton checkpoint)
 
@@ -225,6 +269,20 @@ Console-style screen (261010-console-ui-polish):
 - [ ] In the Dock the icon is the same size as the other apps' icons: its rounded tile fills the central 824 of the 1024 px with a transparent margin of 100 px on every side, like Apple's app icon grid (the Dock may need a restart to drop its cached icon).
 - [ ] In the calendar of the start date and of the end date, tomorrow and every later day are dimmed and cannot be picked (clicking them does nothing), while today and earlier days can; with **UTC** selected, "today" is the UTC date (around local midnight it differs from the local date by a day). A future date typed by hand is still accepted.
 - [ ] With 1,000 or more rows held (or a fetch running and adding rows), the status line ("Fetching… n/m streams…", the event count, "Filtered: N of M events") stays visible at the bottom edge of the right container; only the log list scrolls, inside the space left between the condition row and the status line. Check it at the minimum window size, 1024×640, with a failed fetch's error alert shown above the list, and while making the window taller and shorter.
+
+Sign in with SSO (261011-sso-login), on the company Mac with AWS CLI v2:
+
+- [ ] With an expired SSO session and a profile that has SSO settings directly (`sso_session` or `sso_start_url`) selected, the log group pane's error shows **Sign in with SSO**; pressing it opens the dialog, the browser asks for approval, and after approving the dialog closes, "Signed in. Reloading the log groups." appears and the list loads without restarting the app. **Fetch** then works with the new token.
+- [ ] The same with an AssumeRole profile (`source_profile` pointing to an SSO profile): the sign-in is for the SSO profile, and afterwards the AssumeRole profile's list loads.
+- [ ] With a fetch that failed for the expired session, the error above the list also shows **Sign in with SSO**; after signing in the fetch is not repeated until **Fetch** is pressed.
+- [ ] A profile with access keys, or an error other than expired credentials (for example a network error), shows no **Sign in with SSO**.
+- [ ] When the browser does not open by itself (for example, close the browser window the CLI opened, or set `BROWSER` to a command that does nothing before `npm run tauri dev`), the dialog's URL opens the sign-in page, and the verification code shown in the dialog (when there is one) completes the sign-in.
+- [ ] **Cancel** while waiting closes the dialog and leaves no `aws` process: check in Activity Monitor (or `pgrep -fl "aws sso login"`) that none is left.
+- [ ] Waiting five minutes without approving shows "The sign-in timed out. Try again." and leaves no `aws` process.
+- [ ] Cmd+Q, Quit in the app menu, closing the window and Quit in the Dock menu while the dialog waits end the app without asking, and leave no `aws` process.
+- [ ] With the AWS CLI moved away from both `/opt/homebrew/bin/aws` and `/usr/local/bin/aws` (or on a Mac without it), the dialog says "AWS CLI was not found. Install AWS CLI v2." with the terminal alternative.
+- [ ] While the dialog waits, the profile, region, log group list, **Reload**, **Fetch** and the gear button cannot be used, Escape and the dialog's close button do not close it, and **Cancel** is reachable with Tab; after the dialog closes, the focus is back on the **Sign in with SSO** button (or on **Reload** when that button is gone).
+- [ ] Started from a terminal (`npm run tauri dev`), standard error shows only "sso login N ended: …" lines for the sign-in: no URL, code, token or CLI output.
 
 ## Performance check of the log list
 

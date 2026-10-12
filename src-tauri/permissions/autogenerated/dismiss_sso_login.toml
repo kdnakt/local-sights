@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dismiss-sso-login"
+description = "Enables the dismiss_sso_login command without any pre-configured scope."
+commands.allow = ["dismiss_sso_login"]
+
+[[permission]]
+identifier = "deny-dismiss-sso-login"
+description = "Denies the dismiss_sso_login command without any pre-configured scope."
+commands.deny = ["dismiss_sso_login"]

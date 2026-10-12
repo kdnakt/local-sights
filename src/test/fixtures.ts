@@ -1,4 +1,4 @@
-import type { DisplayRow, RowWindow, SessionView } from "../api";
+import type { DisplayRow, RowWindow, SessionView, SsoLoginView } from "../api";
 import { createTranslator } from "../i18n/messages";
 
 /** English translator used by component tests. */
@@ -49,6 +49,22 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     cacheNotices: [],
     discardGeneration: 0,
     closeConfirmation: "None",
+    ssoLogin: ssoLoginView(),
+    ...overrides,
+  };
+}
+
+/** The SSO login part of a session view; nothing to show by default. */
+export function ssoLoginView(overrides: Partial<SsoLoginView> = {}): SsoLoginView {
+  return {
+    available: false,
+    canStart: false,
+    state: "Idle",
+    verificationUrl: null,
+    userCode: null,
+    exitCode: null,
+    attemptId: 0,
+    profileOption: "",
     ...overrides,
   };
 }

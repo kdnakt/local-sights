@@ -46,6 +46,8 @@ const CORE_KEYS = [
   "session.staleGeneration",
   "session.noFailures",
   "session.settingsClosed",
+  "session.ssoLoginInProgress",
+  "session.ssoLoginUnavailable",
   "selection.profileRequired",
   "selection.regionRequired",
   "selection.logGroupRequired",
@@ -66,6 +68,32 @@ describe("message catalog", () => {
     for (const key of CORE_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
+  });
+
+  it("has every SSO login text in both languages (261011-sso-login NFR5)", () => {
+    for (const key of [
+      "ssoLogin.button",
+      "ssoLogin.title",
+      "ssoLogin.waiting",
+      "ssoLogin.code",
+      "ssoLogin.cancel",
+      "ssoLogin.close",
+      "ssoLogin.succeeded",
+      "ssoLogin.timedOut",
+      "ssoLogin.failed",
+      "ssoLogin.failedToStart",
+      "ssoLogin.cliNotFound",
+      "ssoLogin.fallback",
+      "ssoLogin.openFailed",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(translate("en", "ssoLogin.failed", { code: 3 })).toBe(
+      "Could not sign in (exit code 3).",
+    );
+    expect(translate("ja", "ssoLogin.fallback", { profileOption: "--profile dev" })).toBe(
+      "ターミナルで aws sso login --profile dev を実行してから、[再読み込み] を押してもログインできます。",
+    );
   });
 
   it("uses Japanese only when the first OS language is Japanese", () => {

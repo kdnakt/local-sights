@@ -25,6 +25,10 @@
     "allow-clear-cache",
     "allow-row-positions",
     "allow-cancel-close",
-    "allow-confirm-close"
+    "allow-confirm-close",
+    "allow-start-sso-login",
+    "allow-cancel-sso-login",
+    "allow-dismiss-sso-login",
+    "allow-open-sso-url"
   ]
 }

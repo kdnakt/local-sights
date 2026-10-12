@@ -9,7 +9,7 @@ import type {
   SessionView,
 } from "./api";
 import { App } from "./App";
-import { connectedView, logEvent, rowWindow, sessionView } from "./test/fixtures";
+import { connectedView, logEvent, rowWindow, sessionView, ssoLoginView } from "./test/fixtures";
 
 const handlers: {
   session?: (view: SessionView) => void;
@@ -42,6 +42,10 @@ vi.mock("./api", async (importOriginal) => {
     rowPositions: vi.fn(),
     cancelClose: vi.fn(),
     confirmClose: vi.fn(),
+    startSsoLogin: vi.fn(),
+    cancelSsoLogin: vi.fn(),
+    dismissSsoLogin: vi.fn(),
+    openSsoUrl: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
       handlers.session = handler;
       return () => undefined;
@@ -113,6 +117,10 @@ describe("App", () => {
       api.clearCache,
       api.cancelClose,
       api.confirmClose,
+      api.startSsoLogin,
+      api.cancelSsoLogin,
+      api.dismissSsoLogin,
+      api.openSsoUrl,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -550,6 +558,80 @@ describe("App", () => {
     expect(api.setLogFilter).toHaveBeenCalledWith("error");
     await waitFor(() => expect(api.setLogFilter).toHaveBeenCalledTimes(2));
     expect(api.setLogFilter).toHaveBeenLastCalledWith("error");
+  });
+
+  it("signs in with SSO from the list error: dialog, URL, [Cancel], focus back (261011-sso-login)", async () => {
+    const user = userEvent.setup();
+    const authError = connectedView({
+      logGroups: {
+        status: "Partial",
+        visibleGroups: [],
+        totalCount: 0,
+        emptyState: null,
+        failure: { kind: "AuthRequired", safeDetail: "", retryable: false },
+      },
+      ssoLogin: ssoLoginView({ available: true, canStart: true, profileOption: "--profile dev" }),
+    });
+    vi.mocked(api.getSession).mockResolvedValue(authError);
+    render(<App locale="en" />);
+    const button = await screen.findByTestId("log-group-pane-sso-login-button");
+    await user.click(button);
+    expect(api.startSsoLogin).toHaveBeenCalledTimes(1);
+
+    const url = "https://device.sso.us-east-1.amazonaws.com/";
+    push({
+      ...authError,
+      canChangeConnection: false,
+      canReload: false,
+      ssoLogin: ssoLoginView({
+        available: true,
+        state: "Waiting",
+        attemptId: 1,
+        verificationUrl: url,
+        userCode: "ABCD-EFGH",
+      }),
+    });
+    expect(screen.getByTestId("sso-login-modal")).toHaveTextContent("ABCD-EFGH");
+    await user.click(screen.getByTestId("sso-login-modal-url-link"));
+    expect(api.openSsoUrl).toHaveBeenCalledWith(url);
+    await user.click(screen.getByTestId("sso-login-modal-cancel-button"));
+    expect(api.cancelSsoLogin).toHaveBeenCalledTimes(1);
+
+    push({
+      ...authError,
+      ssoLogin: ssoLoginView({ available: true, canStart: true, state: "Cancelled", attemptId: 1 }),
+    });
+    expect(screen.queryByTestId("sso-login-modal")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("log-group-pane-sso-login-button")).toHaveFocus(),
+    );
+  });
+
+  it("shows a success notice at the top of the right pane and puts it away (261011-sso-login FR3.1)", async () => {
+    const user = userEvent.setup();
+    render(<App locale="ja" />);
+    await screen.findByTestId("fetch-form");
+    push(
+      connectedView({
+        ssoLogin: ssoLoginView({ state: "Failed", exitCode: 2, attemptId: 1 }),
+      }),
+    );
+    expect(screen.getByTestId("sso-login-modal-result")).toHaveTextContent(
+      "ログインできませんでした（終了コード 2）。",
+    );
+    await user.click(screen.getByTestId("sso-login-modal-close-button"));
+    expect(api.dismissSsoLogin).toHaveBeenCalledTimes(1);
+
+    push(connectedView({ ssoLogin: ssoLoginView({ state: "Succeeded", attemptId: 2 }) }));
+    expect(screen.queryByTestId("sso-login-modal")).not.toBeInTheDocument();
+    const notice = screen.getByTestId("sso-login-success");
+    expect(notice).toHaveTextContent(
+      "ログインしました。ロググループの一覧を読み込み直しています。",
+    );
+    await user.click(within(notice).getByRole("button", { name: "閉じる" }));
+    expect(api.dismissSsoLogin).toHaveBeenCalledTimes(2);
+    // The fetch is not started again by the screen (FR3.2).
+    expect(api.startFetch).not.toHaveBeenCalled();
   });
 
   it("asks before closing while fetching and forwards [Keep fetching], Escape and [Close]", async () => {

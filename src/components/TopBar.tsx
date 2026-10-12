@@ -5,7 +5,13 @@ import ButtonDropdown, {
   type ButtonDropdownProps,
 } from "@cloudscape-design/components/button-dropdown";
 import TopNavigation from "@cloudscape-design/components/top-navigation";
-import { selectorOf, type ProfileSelector, type SessionView, type TimeZoneChoice } from "../api";
+import {
+  isSsoLoginRunning,
+  selectorOf,
+  type ProfileSelector,
+  type SessionView,
+  type TimeZoneChoice,
+} from "../api";
 import { timeZoneLabelKey, type Translate } from "../i18n/messages";
 
 const SDK_DEFAULT_VALUE = "sdk-default";
@@ -50,7 +56,9 @@ export interface TopBarProps {
  * the plan's table (R-05): while fetching the connection dropdowns and the
  * settings button are disabled and the time zone stays usable (FR1.5); while
  * a connection change awaits confirmation or the settings dialog is open,
- * everything is disabled (U2:BR2.6, U6:BR5.1). The notices for config files
+ * everything is disabled (U2:BR2.6, U6:BR5.1); while an SSO login runs the
+ * profile, the region and the settings button are disabled and the time
+ * zone stays usable (261011-sso-login BR3.4). The notices for config files
  * that could not be read (file kind only, U2:BR1.3) are warning alerts right
  * below the bar. The dropdowns are Cloudscape ButtonDropdowns inside the
  * TopNavigation's custom content, because its structured utilities cannot be
@@ -65,7 +73,10 @@ export function TopBar({
   onOpenSettings,
   settingsButtonRef,
 }: TopBarProps) {
-  const connectionDisabled = !session.canChangeConnection;
+  // 261011-sso-login BR3.4: while signing in, the profile, the region and
+  // the settings are disabled (the core refuses them too).
+  const loggingIn = isSsoLoginRunning(session.ssoLogin);
+  const connectionDisabled = !session.canChangeConnection || loggingIn;
   const dialogOpen = session.pendingChange !== null || session.settingsDialog === "Open";
   const currentProfile = session.connection.profile
     ? encodeSelector(session.connection.profile)
@@ -150,7 +161,9 @@ export function TopBar({
               variant="icon"
               iconName="settings"
               ariaLabel={t("settings.open")}
-              disabled={!session.canOpenSettings || dialogOpen || onOpenSettings === undefined}
+              disabled={
+                !session.canOpenSettings || dialogOpen || loggingIn || onOpenSettings === undefined
+              }
               onClick={onOpenSettings}
               data-testid="top-bar-settings-button"
             />

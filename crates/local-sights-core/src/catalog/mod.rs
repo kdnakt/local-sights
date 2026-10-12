@@ -3,13 +3,16 @@
 //! The profile list is built from the AWS shared config and credentials
 //! files (BR1.1). Only section headers and `region` lines are looked at;
 //! every other line, including credential values, is discarded without
-//! being kept (BR1.2). This module holds the pure logic; reading the files
+//! being kept (BR1.2). Since 261011-sso-login the config file's profiles
+//! also tell whether they have SSO settings (`sso_session` or
+//! `sso_start_url`, presence only) and the name of their `source_profile`
+//! ([`ProfileAuthInfo`], that intent's BR1.1, BR1.2). This module holds the pure logic; reading the files
 //! is in [`files`], the static region list in [`regions`].
 
 pub mod files;
 pub mod regions;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -53,15 +56,36 @@ pub enum ConfigFileKind {
     Credentials,
 }
 
-/// Profile names and `region` values read from one file. Nothing else.
+/// Profile names, `region` values, whether a profile has SSO settings and
+/// the name of its `source_profile`, read from one file. Nothing else
+/// (BR1.2 of 261011-sso-login).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileSections {
     names: Vec<String>,
     regions: BTreeMap<String, String>,
+    /// Profiles with an `sso_session` or `sso_start_url` key; the value is
+    /// never kept (BR1.1).
+    sso_profiles: BTreeSet<String>,
+    /// `source_profile` of a profile: a profile name only (BR1.2).
+    source_profiles: BTreeMap<String, String>,
+}
+
+/// What the login decision needs of one profile (entities.md
+/// ProfileAuthInfo): whether it has SSO settings and the name of the
+/// profile it takes its credentials from. Holds no secret and no SSO value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileAuthInfo {
+    /// The profile name.
+    pub profile_name: String,
+    /// Whether the section has `sso_session` or `sso_start_url` (BR1.1).
+    pub has_sso_settings: bool,
+    /// The `source_profile` name, if any (BR1.2).
+    pub source_profile: Option<String>,
 }
 
 /// Reads a shared file line by line, keeping only section names and (for
-/// the config file) `region` values. Each line is inspected and dropped.
+/// the config file) `region` values, the presence of SSO settings and the
+/// `source_profile` name. Each line is inspected and dropped.
 #[derive(Debug, Clone)]
 pub struct SectionReader {
     file: ConfigFileKind,
@@ -87,6 +111,8 @@ pub struct ConnectionCatalog {
     profiles: Vec<ConnectionProfile>,
     regions: Vec<String>,
     unreadable_files: Vec<ConfigFileKind>,
+    /// Login-related settings of the config file's profiles, by name.
+    auth: BTreeMap<String, ProfileAuthInfo>,
 }
 
 impl ProfileSelector {
@@ -138,6 +164,30 @@ impl ProfileSections {
     pub fn region_of(&self, profile_name: &str) -> Option<&str> {
         self.regions.get(profile_name).map(String::as_str)
     }
+
+    /// Whether the profile has `sso_session` or `sso_start_url` (BR1.1).
+    pub fn has_sso_settings(&self, profile_name: &str) -> bool {
+        self.sso_profiles.contains(profile_name)
+    }
+
+    /// `source_profile` of a profile, if the file set one (BR1.2).
+    pub fn source_profile_of(&self, profile_name: &str) -> Option<&str> {
+        self.source_profiles.get(profile_name).map(String::as_str)
+    }
+
+    /// The login-related settings of every profile of this file, in name
+    /// order, each name once.
+    pub fn auth_infos(&self) -> Vec<ProfileAuthInfo> {
+        let names: BTreeSet<&String> = self.names.iter().collect();
+        names
+            .into_iter()
+            .map(|name| ProfileAuthInfo {
+                profile_name: name.clone(),
+                has_sso_settings: self.has_sso_settings(name),
+                source_profile: self.source_profile_of(name).map(str::to_string),
+            })
+            .collect()
+    }
 }
 
 impl SectionReader {
@@ -166,22 +216,35 @@ impl SectionReader {
             }
             return;
         }
-        // Only `region` in the config file is kept; every other line
-        // (credentials, SSO settings, ...) is dropped right here.
+        // Only the config file's `region`, whether `sso_session` or
+        // `sso_start_url` is there (never its value) and the name in
+        // `source_profile` are kept; every other line (credentials, other
+        // SSO settings, ...) is dropped right here (BR1.2).
         if self.file != ConfigFileKind::Config {
             return;
         }
         let Some((key, value)) = line.split_once('=') else {
             return;
         };
-        if key.trim() != "region" {
+        let Some(profile) = &self.current else {
             return;
-        }
+        };
         let value = value.trim();
-        if let (Some(profile), false) = (&self.current, value.is_empty()) {
-            self.sections
-                .regions
-                .insert(profile.clone(), value.to_string());
+        match key.trim() {
+            "sso_session" | "sso_start_url" => {
+                self.sections.sso_profiles.insert(profile.clone());
+            }
+            "region" if !value.is_empty() => {
+                self.sections
+                    .regions
+                    .insert(profile.clone(), value.to_string());
+            }
+            "source_profile" if !value.is_empty() => {
+                self.sections
+                    .source_profiles
+                    .insert(profile.clone(), value.to_string());
+            }
+            _ => {}
         }
     }
 
@@ -263,7 +326,23 @@ impl ConnectionCatalog {
             profiles,
             regions,
             unreadable_files,
+            auth: BTreeMap::new(),
         }
+    }
+
+    /// The same catalog with the login-related settings of the config
+    /// file's profiles (261011-sso-login BR1.1, BR1.2).
+    pub fn with_auth_infos(mut self, infos: Vec<ProfileAuthInfo>) -> Self {
+        self.auth = infos
+            .into_iter()
+            .map(|info| (info.profile_name.clone(), info))
+            .collect();
+        self
+    }
+
+    /// The login-related settings of a profile, when the config file has it.
+    pub fn auth_info(&self, profile_name: &str) -> Option<&ProfileAuthInfo> {
+        self.auth.get(profile_name)
     }
 
     /// Profile rows, SdkDefault first.
@@ -526,5 +605,129 @@ mod tests {
             ConfigFileKind::Config.unreadable_message_key(),
             "catalog.unreadable.config"
         );
+    }
+
+    // --- 261011-sso-login: SSO settings and source_profile (BR1.1, BR1.2) ---
+
+    fn sso_config_text() -> String {
+        "[default]\nsso_session = corp\nregion = us-east-1\n\
+         [profile dev]\nsso_start_url = https://x.awsapps.com/start\nsso_account_id = 111122223333\n\
+         [profile role]\nsource_profile = dev\nrole_arn = arn:aws:iam::111122223333:role/R\n\
+         [profile keys]\nregion = eu-west-1\n\
+         [sso-session corp]\nsso_start_url = https://corp.awsapps.com/start\nsso_region = us-east-1\n"
+            .to_string()
+    }
+
+    #[test]
+    fn sso_session_key_marks_a_profile_as_sso() {
+        let config = parse_sections(&sso_config_text(), ConfigFileKind::Config);
+        assert!(config.has_sso_settings("default"));
+    }
+
+    #[test]
+    fn sso_start_url_key_marks_a_profile_as_sso() {
+        let config = parse_sections(&sso_config_text(), ConfigFileKind::Config);
+        assert!(config.has_sso_settings("dev"));
+    }
+
+    #[test]
+    fn a_profile_without_sso_keys_is_not_sso() {
+        let config = parse_sections(&sso_config_text(), ConfigFileKind::Config);
+        assert!(!config.has_sso_settings("role"));
+        assert!(!config.has_sso_settings("keys"));
+        assert!(!config.has_sso_settings("no-such-profile"));
+        assert!(
+            !config.has_sso_settings("corp"),
+            "sso-session is not a profile"
+        );
+        assert_eq!(config.names(), ["default", "dev", "role", "keys"]);
+    }
+
+    #[test]
+    fn source_profile_keeps_only_the_name() {
+        let config = parse_sections(&sso_config_text(), ConfigFileKind::Config);
+        assert_eq!(config.source_profile_of("role"), Some("dev"));
+        assert_eq!(config.source_profile_of("dev"), None);
+        assert_eq!(
+            config.auth_infos(),
+            vec![
+                ProfileAuthInfo {
+                    profile_name: "default".to_string(),
+                    has_sso_settings: true,
+                    source_profile: None,
+                },
+                ProfileAuthInfo {
+                    profile_name: "dev".to_string(),
+                    has_sso_settings: true,
+                    source_profile: None,
+                },
+                ProfileAuthInfo {
+                    profile_name: "keys".to_string(),
+                    has_sso_settings: false,
+                    source_profile: None,
+                },
+                ProfileAuthInfo {
+                    profile_name: "role".to_string(),
+                    has_sso_settings: false,
+                    source_profile: Some("dev".to_string()),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn sso_values_and_credentials_file_lines_are_never_kept() {
+        let config = parse_sections(&sso_config_text(), ConfigFileKind::Config);
+        let credentials_text = format!(
+            "[dev]\naws_access_key_id = {}\nsso_session = from-credentials\n\
+             source_profile = from-credentials\n",
+            dummy_key_id()
+        );
+        let credentials = parse_sections(&credentials_text, ConfigFileKind::Credentials);
+        assert!(!credentials.has_sso_settings("dev"));
+        assert_eq!(credentials.source_profile_of("dev"), None);
+        let everything = format!("{config:?} {credentials:?} {:?}", config.auth_infos());
+        for value in [
+            "awsapps.com",
+            "111122223333",
+            "arn:aws",
+            "corp",
+            "from-credentials",
+            dummy_key_id().as_str(),
+        ] {
+            assert!(!everything.contains(value), "{value} must not be kept");
+        }
+    }
+
+    #[test]
+    fn sso_keys_are_read_with_spaces_and_comments_around_them() {
+        let text = "# leading comment\n[profile a]\n  sso_session=x  \n; comment\n\
+                    [profile b]\n# sso_session = commented-out\n\
+                    [profile c]\n   source_profile   =   a   \n\
+                    [profile d]\nsso_session_extra = not-the-key\n";
+        let config = parse_sections(text, ConfigFileKind::Config);
+        assert!(config.has_sso_settings("a"));
+        assert!(!config.has_sso_settings("b"));
+        assert_eq!(config.source_profile_of("c"), Some("a"));
+        assert!(!config.has_sso_settings("d"));
+    }
+
+    #[test]
+    fn the_catalog_answers_the_auth_info_of_a_profile() {
+        let config = parse_sections(&sso_config_text(), ConfigFileKind::Config);
+        let catalog = ConnectionCatalog::new(vec![sdk_default(None)], Vec::new())
+            .with_auth_infos(config.auth_infos());
+        assert!(
+            catalog
+                .auth_info("dev")
+                .is_some_and(|info| info.has_sso_settings)
+        );
+        assert_eq!(
+            catalog
+                .auth_info("role")
+                .and_then(|info| info.source_profile.as_deref()),
+            Some("dev")
+        );
+        assert!(catalog.auth_info("nope").is_none());
     }
 }

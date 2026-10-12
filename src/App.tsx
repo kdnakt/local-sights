@@ -1,20 +1,33 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 import Alert from "@cloudscape-design/components/alert";
 import Button, { type ButtonProps } from "@cloudscape-design/components/button";
 import {
   cancelClose,
   cancelConnectionChange,
   cancelSettings,
+  cancelSsoLogin,
   clearCache,
   confirmClose,
   confirmConnectionChange,
+  dismissSsoLogin,
   getSession,
   isCommandError,
+  isSsoLoginModalShown,
+  isSsoLoginRunning,
   mergeSessionView,
   onFetchProgress,
   onFilterProgress,
   onSessionChanged,
   openSettings,
+  openSsoUrl,
   reloadLogGroups,
   saveSettings,
   selectLogGroup,
@@ -24,6 +37,7 @@ import {
   setFailureListOpen,
   setLogFilter,
   startFetch,
+  startSsoLogin,
   updateInput,
   updateLogGroupFilter,
   withFilter,
@@ -43,6 +57,7 @@ import { LogTable } from "./components/LogTable";
 import { LogTableCloudscape } from "./components/LogTableCloudscape";
 import { PaneResizer } from "./components/PaneResizer";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { SsoLoginModal } from "./components/SsoLoginModal";
 import { StatusLine } from "./components/StatusLine";
 import { TopBar } from "./components/TopBar";
 import { LOG_TABLE_VARIANT, usePerfRows } from "./dev/perfRows";
@@ -85,6 +100,12 @@ export interface AppProps {
  * (the closed state is remembered too). Closing moves the focus to that
  * button, opening moves it back to the close button, so the keyboard never
  * loses its place.
+ * Since 261011-sso-login [Sign in with SSO] in the list error and the fetch
+ * error starts a login; the login dialog is shown while the core's
+ * `ssoLogin` state asks for it, a success shows a dismissible notice at the
+ * top of the right pane, and when the dialog closes the focus goes back to
+ * the button that was pressed, or to [Reload] when that button is gone
+ * (NFR7).
  */
 export function App({ locale }: AppProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
@@ -97,6 +118,10 @@ export function App({ locale }: AppProps) {
   const pane = usePaneWidth();
   const collapseButtonRef = useRef<ButtonProps.Ref>(null);
   const expandButtonRef = useRef<ButtonProps.Ref>(null);
+  const reloadButtonRef = useRef<ButtonProps.Ref>(null);
+  // The [Sign in with SSO] button last pressed, for the focus afterwards.
+  const ssoTriggerRef = useRef<RefObject<ButtonProps.Ref | null> | null>(null);
+  const ssoModalWasShown = useRef(false);
   // Which pane button takes the focus after the next collapse or expand.
   const paneFocusRef = useRef<"collapse" | "expand" | null>(null);
   useColorScheme();
@@ -223,6 +248,26 @@ export function App({ locale }: AppProps) {
   const handleCloseApp = useCallback(() => run(confirmClose), [run]);
   const handleOpenFailures = useCallback(() => run(() => setFailureListOpen(true)), [run]);
   const handleCloseFailures = useCallback(() => run(() => setFailureListOpen(false)), [run]);
+  const handleSsoLogin = useCallback(
+    (returnFocus: RefObject<ButtonProps.Ref | null>) => {
+      ssoTriggerRef.current = returnFocus;
+      run(startSsoLogin);
+    },
+    [run],
+  );
+  const handleCancelSsoLogin = useCallback(() => run(cancelSsoLogin), [run]);
+  const handleDismissSsoLogin = useCallback(() => run(dismissSsoLogin), [run]);
+  const handleOpenSsoUrl = useCallback((url: string) => run(() => openSsoUrl(url)), [run]);
+
+  // NFR7: when the login dialog closes, the focus goes back to the pressed
+  // button, or to [Reload] when that button is gone.
+  const ssoModalShown = session !== null && isSsoLoginModalShown(session.ssoLogin);
+  useEffect(() => {
+    if (ssoModalWasShown.current && !ssoModalShown) {
+      (ssoTriggerRef.current?.current ?? reloadButtonRef.current)?.focus();
+    }
+    ssoModalWasShown.current = ssoModalShown;
+  }, [ssoModalShown]);
 
   const handleFetch = useCallback(() => {
     setCommandError(null);
@@ -284,6 +329,8 @@ export function App({ locale }: AppProps) {
             onSelect={handleSelectLogGroup}
             onCollapse={collapsePane}
             collapseButtonRef={collapseButtonRef}
+            reloadButtonRef={reloadButtonRef}
+            onSsoLogin={handleSsoLogin}
           />
         )}
         {session && !pane.collapsed && (
@@ -303,6 +350,19 @@ export function App({ locale }: AppProps) {
               onLogFilterChange={handleLogFilter}
               filterFailureCount={filterFailures}
             >
+              {session.ssoLogin.state === "Succeeded" && (
+                <div role="status" data-testid="sso-login-success">
+                  <Alert
+                    type="success"
+                    dismissible
+                    dismissAriaLabel={t("ssoLogin.close")}
+                    statusIconAriaLabel={t("ssoLogin.succeeded")}
+                    onDismiss={handleDismissSsoLogin}
+                  >
+                    {t("ssoLogin.succeeded")}
+                  </Alert>
+                </div>
+              )}
               {commandError && (
                 <div role="alert" data-testid="command-error">
                   <Alert
@@ -316,7 +376,7 @@ export function App({ locale }: AppProps) {
                   </Alert>
                 </div>
               )}
-              <FetchErrorBanner session={session} t={t} />
+              <FetchErrorBanner session={session} t={t} onSsoLogin={handleSsoLogin} />
               {LOG_TABLE_VARIANT === "cloudscape" ? (
                 <LogTableCloudscape {...tableProps} />
               ) : (
@@ -350,6 +410,18 @@ export function App({ locale }: AppProps) {
       )}
       {session?.closeConfirmation === "Pending" && (
         <CloseConfirmDialog t={t} onKeep={handleKeepFetching} onClose={handleCloseApp} />
+      )}
+      {session && ssoModalShown && (
+        <SsoLoginModal
+          // A new attempt, or waiting turning into a result, starts the
+          // dialog afresh so its footer button takes the focus.
+          key={`${session.ssoLogin.attemptId}:${isSsoLoginRunning(session.ssoLogin)}`}
+          login={session.ssoLogin}
+          t={t}
+          onCancel={handleCancelSsoLogin}
+          onClose={handleDismissSsoLogin}
+          onOpenUrl={handleOpenSsoUrl}
+        />
       )}
     </main>
   );

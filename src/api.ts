@@ -17,6 +17,9 @@
  * code generation review (R-05): `rowPositions` replaces it. A request of
  * more keys than the core accepts is refused with an error key, never cut
  * short (review R-04).
+ * Since 261011-sso-login the session view carries the SSO login (`ssoLogin`)
+ * and `startSsoLogin`, `cancelSsoLogin`, `dismissSsoLogin` and `openSsoUrl`
+ * drive it; the app runs the AWS CLI, the screen only shows its state.
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -135,6 +138,35 @@ export type CloseConfirmation = "None" | "Pending";
 /** One cache notice of the status line; wording in U6:BR5.3. */
 export type CacheNotice = "Hit" | "ReadFailed" | "SaveFailed";
 
+/** State of the SSO login (261011-sso-login); `Idle`: nothing is shown. */
+export type SsoLoginState =
+  | "Idle"
+  | "Starting"
+  | "Waiting"
+  | "Succeeded"
+  | "Failed"
+  | "TimedOut"
+  | "Cancelled"
+  | "CliNotFound";
+
+/** The SSO login as the core shows it (261011-sso-login, BR1.5-BR4.2). */
+export interface SsoLoginView {
+  /** Whether [Sign in with SSO] is shown: an auth error with an SSO profile (BR1.5). */
+  available: boolean;
+  /** Whether it can be pressed now (BR2.5). */
+  canStart: boolean;
+  state: SsoLoginState;
+  /** The allow-listed sign-in URL the CLI printed (BR3.1). */
+  verificationUrl: string | null;
+  /** The verification code the CLI printed (BR3.1). */
+  userCode: string | null;
+  /** The exit code of a failed CLI (BR4.2). */
+  exitCode: number | null;
+  attemptId: number;
+  /** `--profile <name>` for the terminal fallback text, or empty. */
+  profileOption: string;
+}
+
 export interface FailedStream {
   logStreamName: string;
   failure: ApiFailure;
@@ -205,6 +237,27 @@ export interface SessionView {
   discardGeneration: number;
   /** Pending while the close confirmation is shown (U7:BR3.1). */
   closeConfirmation: CloseConfirmation;
+  /** The SSO login (261011-sso-login). */
+  ssoLogin: SsoLoginView;
+}
+
+/** Whether an SSO login is under way (Starting or Waiting). */
+export function isSsoLoginRunning(view: SsoLoginView): boolean {
+  return view.state === "Starting" || view.state === "Waiting";
+}
+
+/**
+ * Whether the SSO login dialog is shown: while the login runs and for a
+ * result to read (time-out, failure, no CLI). Idle, Cancelled and Succeeded
+ * close it.
+ */
+export function isSsoLoginModalShown(view: SsoLoginView): boolean {
+  return (
+    isSsoLoginRunning(view) ||
+    view.state === "Failed" ||
+    view.state === "TimedOut" ||
+    view.state === "CliNotFound"
+  );
 }
 
 export interface LogEvent {
@@ -452,6 +505,32 @@ export function saveSettings(enabled: boolean): Promise<void> {
 /** Removes every cached file at once ([Clear cache], U6:BR1.4). */
 export function clearCache(): Promise<void> {
   return invoke<void>("clear_cache");
+}
+
+/**
+ * [Sign in with SSO] (261011-sso-login FR2.1): the app runs `aws sso login`.
+ * Resolves with nothing; the login's state arrives through `session-changed`.
+ */
+export function startSsoLogin(): Promise<void> {
+  return invoke<void>("start_sso_login");
+}
+
+/** [Cancel] in the login dialog: the CLI is stopped (FR2.4). */
+export function cancelSsoLogin(): Promise<void> {
+  return invoke<void>("cancel_sso_login");
+}
+
+/** [Close] on a login result, or closing the success notice. */
+export function dismissSsoLogin(): Promise<void> {
+  return invoke<void>("dismiss_sso_login");
+}
+
+/**
+ * Opens the sign-in URL of the running login in the browser. The app opens
+ * only the URL the CLI printed for this attempt (functional-design review).
+ */
+export function openSsoUrl(url: string): Promise<void> {
+  return invoke<void>("open_sso_url", { url });
 }
 
 /** Opens or closes the list of failed streams. */

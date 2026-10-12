@@ -1,0 +1,36 @@
+{
+  "stage": "code-generation",
+  "upstream_ids": [
+    "FR1.1", "FR1.2", "FR1.3", "FR1.4", "FR1.5",
+    "FR2.1", "FR2.2", "FR2.3", "FR2.4", "FR2.5", "FR2.6",
+    "FR3.1", "FR3.2", "FR3.3", "FR3.4",
+    "FR4.1", "FR4.2",
+    "NFR1", "NFR2", "NFR3", "NFR4", "NFR5", "NFR6", "NFR7"
+  ],
+  "coverage": [
+    { "id": "FR1.1", "status": "OK", "target": "src/components/SsoLoginButton.tsx" },
+    { "id": "FR1.2", "status": "OK", "target": "crates/local-sights-core/src/sso_login.rs" },
+    { "id": "FR1.3", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "FR1.4", "status": "OK", "target": "crates/local-sights-core/src/catalog/mod.rs" },
+    { "id": "FR1.5", "status": "OK", "target": "src/components/SsoLoginButton.test.tsx" },
+    { "id": "FR2.1", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "FR2.2", "status": "OK", "target": "src/components/SsoLoginModal.tsx" },
+    { "id": "FR2.3", "status": "OK", "target": "src/components/SsoLoginModal.test.tsx" },
+    { "id": "FR2.4", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "FR2.5", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "FR2.6", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "FR3.1", "status": "OK", "target": "src-tauri/src/lib.rs" },
+    { "id": "FR3.2", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "FR3.3", "status": "OK", "target": "src/components/SsoLoginModal.tsx" },
+    { "id": "FR3.4", "status": "OK", "target": "crates/local-sights-core/src/gateway/aws.rs" },
+    { "id": "FR4.1", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "FR4.2", "status": "OK", "target": "src/components/SsoLoginModal.test.tsx" },
+    { "id": "NFR1", "status": "OK", "target": "crates/local-sights-core/src/gateway/aws.rs" },
+    { "id": "NFR2", "status": "OK", "target": "crates/local-sights-core/src/sso_login.rs" },
+    { "id": "NFR3", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "NFR4", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "NFR5", "status": "OK", "target": "src/i18n/messages.test.ts" },
+    { "id": "NFR6", "status": "OK", "target": "src-tauri/src/sso_cli.rs" },
+    { "id": "NFR7", "status": "OK", "target": "src/components/SsoLoginModal.tsx" }
+  ]
+}

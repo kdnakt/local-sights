@@ -21,5 +21,13 @@
     "scope": "bugfix",
     "status": "complete",
     "request": "2e6d1582"
+  },
+  {
+    "uuid": "01a12b58-fec1-714b-8957-3f505aa55f9a",
+    "slug": "sso-login",
+    "dirName": "261011-sso-login",
+    "scope": "refactor",
+    "status": "complete",
+    "request": "e3514d11"
   }
 ]

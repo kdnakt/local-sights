@@ -7486,3 +7486,272 @@
 **Answer Mode**: guide (reused from intent-capture)
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T15:35:11Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/units-generation-questions.md
+**Context**: inception > units-generation > units-generation-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T15:35:14Z
+**Event**: DECISION_RECORDED
+**Stage**: units-generation
+**Decision**: Q1
+**Options**: A,B,C,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T15:40:02Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T15:40:03Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q1. 最初の作業単位（薄い一本：同時に読んで画面に出す）に、呼び出しの速さの上限をどこまで入れますか？薄い一本は手元で実際の AWS に対して試すので、上限が無いと同じアカウントの他の人の分まで使いかねません。
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T15:40:08Z
+**Event**: QUESTION_ANSWERED
+**Stage**: units-generation
+**Details**: Q1: A
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T15:40:09Z
+**Event**: DECISION_RECORDED
+**Stage**: units-generation
+**Decision**: Q2
+**Options**: A,B,X
+
+---
+
+## Session End
+**Timestamp**: 2026-10-12T15:45:13Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-12T15:49:17Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T15:49:22Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T15:49:23Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q2. 作業単位の細かさはどうしますか？（たたき台：薄い一本／呼び出しの速さ／あきらめの決まり／かかった時間／中断 の 5 つ）
+**Reply**: A (Recommended)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T15:49:24Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T15:49:30Z
+**Event**: QUESTION_ANSWERED
+**Stage**: units-generation
+**Details**: Q2: A
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T15:49:31Z
+**Event**: DECISION_RECORDED
+**Stage**: units-generation
+**Decision**: Q3
+**Options**: A,B,X
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T15:49:58Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T15:49:58Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q3. 薄い一本の後の作業単位どうしの依存はどうしますか？（どれも薄い一本を前提にしますが、それ以外はコードの上で互いを必要としません）
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T15:50:04Z
+**Event**: QUESTION_ANSWERED
+**Stage**: units-generation
+**Details**: Q3: A
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T15:50:28Z
+**Event**: DECISION_RECORDED
+**Stage**: units-generation
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/units-generation-questions.md
+
+---
+
+## Session End
+**Timestamp**: 2026-10-12T15:55:14Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-12T16:09:14Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T16:09:25Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T16:09:25Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: この計画で作業単位の成果物を作ってよいですか？
+**Reply**: Looks correct
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T16:09:26Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-12T16:09:33Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: units-generation
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/units-generation-questions.md
+**Questions SHA-256**: ad8d35e3bfd1b8418605ad638092409f0dbe1f4ac934bb3621dedc2d7f2ffe31
+**Hash Scope**: confirmed-content-v2
+**Summary Authorization Id**: 0dcae66764b4dfd4280300932592793ff2477146280d735655cc65c6c9dcb892
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T16:10:10Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/unit-of-work.md
+**Context**: inception > units-generation > unit-of-work.md
+**Summary Authorization Id**: 0dcae66764b4dfd4280300932592793ff2477146280d735655cc65c6c9dcb892
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T16:10:22Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/unit-of-work-dependency.md
+**Context**: inception > units-generation > unit-of-work-dependency.md
+**Summary Authorization Id**: 0dcae66764b4dfd4280300932592793ff2477146280d735655cc65c6c9dcb892
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T16:10:34Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/unit-of-work-story-map.md
+**Context**: inception > units-generation > unit-of-work-story-map.md
+**Summary Authorization Id**: 0dcae66764b4dfd4280300932592793ff2477146280d735655cc65c6c9dcb892
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T16:10:36Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/traceability.json
+**Context**: inception > units-generation > traceability.json
+**Summary Authorization Id**: 0dcae66764b4dfd4280300932592793ff2477146280d735655cc65c6c9dcb892
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-12T16:10:37Z
+**Event**: SENSOR_FIRED
+**Fire id**: 16595399
+**Sensor ID**: traceability
+**Stage slug**: units-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-12T16:10:38Z
+**Event**: SENSOR_PASSED
+**Fire id**: 16595399
+**Sensor ID**: traceability
+**Stage slug**: units-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/inception/units-generation/traceability.json
+**Duration ms**: 944
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-12T16:10:45Z
+**Event**: REVIEW_REQUESTED
+**Stage**: units-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:695e83b65d86755c447958a4768eb126c5b530b1bd6dc54cf7546d0030873d51
+**Request Id**: review:42212ae7a44b4bc0c212454f44d440cb
+**Review File**: .aidlc-engine/reviews/units-generation/stage/d652d282d055d7a9/1.42212ae7a44b4bc0c212454f44d440cb.review.md
+
+---

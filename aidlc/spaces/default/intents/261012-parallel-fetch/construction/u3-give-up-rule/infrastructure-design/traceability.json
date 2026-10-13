@@ -1,0 +1,11 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "u3-give-up-rule",
+  "upstream_ids": ["NFR6.1", "NFR7.1", "NFR7.2", "NFR8.1"],
+  "coverage": [
+    { "id": "NFR6.1", "status": "OK", "target": "cicd-pipeline: 偽物のゲートウェイと止めた時計、CI に AWS の認証情報を置かない" },
+    { "id": "NFR7.1", "status": "OK", "target": "cicd-pipeline: Rust library と Tauri app のジョブで既存のテストが通ったまま" },
+    { "id": "NFR7.2", "status": "OK", "target": "cicd-pipeline: 行カバレッジ 80% を CI で" },
+    { "id": "NFR8.1", "status": "OK", "target": "cicd-pipeline: 依存も API も足さない（cargo-deny は変わらない）" }
+  ]
+}

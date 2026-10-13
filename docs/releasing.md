@@ -6,8 +6,12 @@ A release is a tag `vX.Y.Z` on a commit of `main`. Pushing the tag starts the
 [GitHub Releases](https://github.com/kdnakt/local-sights/releases) right away
 (not as a draft). Installing it is described in [install.md](install.md).
 
-The app is not signed or notarized, and the workflow uses only the automatic
-`GITHUB_TOKEN`: no AWS credentials, Apple certificates or other secrets.
+The app is ad-hoc signed in CI (the build step passes
+`APPLE_SIGNING_IDENTITY: "-"` to Tauri, so `codesign` signs it without a
+certificate) and not notarized; it is not signed with an Apple Developer ID.
+The workflow verifies that signature before publishing, and uses only the
+automatic `GITHUB_TOKEN`: no AWS credentials, Apple certificates or other
+secrets.
 
 ## What you need
 
@@ -67,7 +71,13 @@ and the Release workflow runs the second before building anything.
    they are.
 7. Install the published `.dmg` on your own Mac following
    [install.md](install.md), launch it, and check that **About Local Sights**
-   shows the new version and that a fetch works.
+   shows the new version and that a fetch works. On the first launch, macOS
+   must show the "could not verify" warning and the app must open with the
+   steps in install.md alone (**Done**, then **Open Anyway** in **Privacy &
+   Security**), without Terminal. If macOS instead says the app "is damaged
+   and can't be opened", the `.app` lacks the ad-hoc signature: treat the
+   release as defective (the signature check in `build-and-publish` should
+   have failed), do not hand it out, and release a fixed patch version.
 
 ## When something fails
 
@@ -77,6 +87,11 @@ and the Release workflow runs the second before building anything.
 - **A test or the build fails**: `build-and-publish` does not run, or stops
   before publishing. The Release is created only after the `.dmg` has been
   built and checked, so a failed run leaves no Release behind.
+- **The signature check fails** (`codesign --verify` rejects the `.app` inside
+  the built `.dmg`, or `codesign -dvv` reports no `Signature=adhoc`):
+  `build-and-publish` stops after the `.dmg` is built and before the Release
+  is published, so nothing is published. The build step must run with
+  `APPLE_SIGNING_IDENTITY: "-"`.
 
 To fix it, change `main` through a pull request as usual. Then either release
 the next patch version (simplest), or, since no Release exists for the failed

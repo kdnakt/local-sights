@@ -36,8 +36,9 @@ and `logs:GetLogEvents`.
 To use the app on a Mac with Apple Silicon (for example a company PC), install
 the released `.dmg` from
 [GitHub Releases](https://github.com/kdnakt/local-sights/releases): see
-[docs/install.md](docs/install.md) for installing, the first-launch warning of
-the unsigned app, updating and going back to an earlier version. The AWS
+[docs/install.md](docs/install.md) for installing, the first-launch warning
+(the app is ad-hoc signed, not notarized by Apple), updating and going back to
+an earlier version. The AWS
 preparation in [Prerequisites](#prerequisites) is needed there too. The rest of
 this README is for development.
 
@@ -369,6 +370,8 @@ cargo test --workspace          # Rust library and integration tests
 cargo test -p local-sights-core --release --lib -- timeline:: --ignored  # 1M-event speed check
 cargo test -p local-sights-core --release --lib -- filter:: log_view:: --ignored  # filter speed (NFR1, NFR2)
 npm test                        # screen tests (Vitest + React Testing Library)
+npm run test:coverage           # screen tests with line coverage (fails below 80%)
+cargo llvm-cov -p local-sights-core --fail-under-lines 80  # library line coverage (needs cargo-llvm-cov)
 cargo fmt --check
 cargo clippy --workspace
 npm run typecheck && npm run lint && npm run format:check

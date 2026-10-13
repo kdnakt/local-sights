@@ -18,16 +18,20 @@ for example a company PC. To build from source for development, see
 
 ## Before you install: check your company's rules
 
-The app is **not signed or notarized by Apple**. Before installing it on a
-company PC, check for yourself:
+The app is **ad-hoc signed** (signed in CI without a certificate) and is
+**not signed with an Apple Developer ID certificate, and not notarized by
+Apple**. macOS therefore cannot verify who made it and warns on the first
+launch (see [First launch](#first-launch-the-could-not-verify-warning)).
+Before installing it on a company PC, check for yourself:
 
 1. Whether your company's device management (MDM) blocks apps from
-   unidentified developers, or apps that are not signed.
+   unidentified developers, or apps that are not notarized by Apple.
 2. Whether installing software needs an application or approval first.
 
-If unsigned apps are not allowed, do not work around the rule. Stop here: the
-release process has to be changed to sign and notarize the app first. If an
-application is needed, get the approval before you continue.
+If such apps are not allowed, do not work around the rule. Stop here: the
+release process has to be changed to sign the app with an Apple Developer ID
+and notarize it first. If an application is needed, get the approval before
+you continue.
 
 ## Download
 
@@ -51,22 +55,23 @@ application is needed, get the approval before you continue.
 3. Eject the `.dmg` (the eject button next to it in the Finder sidebar) and
    delete the downloaded file if you like.
 
-## First launch: the "unidentified developer" warning
+## First launch: the "could not verify" warning
 
-Because the app is not signed, macOS warns on the first launch (for example
-"Apple could not verify "Local Sights" is free of malware" or "can't be opened
-because it is from an unidentified developer"). Open it once as follows; later
-launches do not ask again.
+Because the app is ad-hoc signed and not notarized by Apple, macOS warns on
+the first launch: "Apple could not verify "Local Sights" is free of malware
+that may harm your Mac or compromise your privacy" (on macOS 14 and earlier:
+"can't be opened because Apple cannot check it for malicious software" or
+"from an unidentified developer"). Open it once as follows, without Terminal;
+later launches do not ask again.
 
 **macOS 15 Sequoia and later**
 
-1. Double-click `Local Sights.app`. When the warning appears, click **Done**
-   (or **OK**). Do not move it to the Bin.
+1. Double-click `Local Sights.app`. When the warning appears, click **Done**.
+   Do not move it to the Bin.
 2. Open **System Settings** → **Privacy & Security**, and scroll down to the
-   **Security** section. Next to the message about "Local Sights", click
-   **Open Anyway**, and confirm with your password or Touch ID.
-3. Double-click the app again and click **Open Anyway** (or **Open**) in the
-   dialog.
+   **Security** section. Next to ""Local Sights" was blocked to protect your
+   Mac", click **Open Anyway**, and confirm with your password or Touch ID.
+3. Double-click the app again and click **Open Anyway** in the dialog.
 
 **macOS 14 Sonoma and earlier**
 
@@ -74,9 +79,17 @@ launches do not ask again.
    **Open**.
 2. Click **Open** in the dialog.
 
-If these steps are not offered, or macOS says the app "is damaged and can't be
-opened", remove the download mark (quarantine attribute) in Terminal and open
-the app again. Use the folder you installed into:
+**If macOS says the app "is damaged and can't be opened"**
+
+That dialog offers no **Open Anyway**. It appears for an app without any
+signature, which a current release does not ship: the Release workflow
+verifies the ad-hoc signature before publishing. Expect it only from an old
+release built before ad-hoc signing was added; install the newest release
+instead. If it appears with a current release, report it as a defect of that
+release (see [releasing.md](releasing.md)).
+
+As a last resort, remove the download mark (quarantine attribute) in Terminal
+and open the app again. Use the folder you installed into:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Local Sights.app"
@@ -98,8 +111,8 @@ There is no automatic update.
 2. Download the new version's `.dmg` as in [Download](#download).
 3. Open it and drag `Local Sights.app` into the same folder as before. When the
    Finder asks, choose **Replace**.
-4. Open the app. If the "unidentified developer" warning appears again, follow
-   [First launch](#first-launch-the-unidentified-developer-warning).
+4. Open the app. If the "could not verify" warning appears again, follow
+   [First launch](#first-launch-the-could-not-verify-warning).
 
 Your settings and the disk cache are kept: they are stored outside the app, in
 `~/Library/Application Support/dev.local-sights.app/` (settings) and

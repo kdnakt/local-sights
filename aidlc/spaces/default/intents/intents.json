@@ -37,5 +37,13 @@
     "scope": "mvp",
     "status": "in-flight",
     "request": "22ebc7bc"
+  },
+  {
+    "uuid": "01a12f3c-2ab5-7f0c-b41a-9ca48a3f5e4f",
+    "slug": "adhoc-signing",
+    "dirName": "261012-adhoc-signing",
+    "scope": "express",
+    "status": "complete",
+    "request": "dd50e417"
   }
 ]

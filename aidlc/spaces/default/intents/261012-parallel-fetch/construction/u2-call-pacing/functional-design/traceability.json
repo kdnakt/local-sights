@@ -1,0 +1,13 @@
+{
+  "stage": "functional-design",
+  "unit": "u2-call-pacing",
+  "upstream_ids": ["AC2.2.1", "AC2.2.2", "AC2.2.3", "AC2.2.4", "AC2.2.5", "AC2.2.6"],
+  "coverage": [
+    { "id": "AC2.2.1", "status": "OK", "target": "BR2.5（U1 の BR1.1・BR1.3 の上に、速さの変化を足す）" },
+    { "id": "AC2.2.2", "status": "OK", "target": "BR2.6（U1 の BR1.2 のまま）" },
+    { "id": "AC2.2.3", "status": "OK", "target": "BR2.1, BR2.2, BR2.3, BR2.4, BR2.5" },
+    { "id": "AC2.2.4", "status": "OK", "target": "BR2.8" },
+    { "id": "AC2.2.5", "status": "OK", "target": "BR2.8（U1 の BR1.6 のまま）" },
+    { "id": "AC2.2.6", "status": "OK", "target": "BR2.7" }
+  ]
+}

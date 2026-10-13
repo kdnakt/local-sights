@@ -9671,3 +9671,520 @@
 **Session**: 9439726f-4987-50e0-8a87-0cce07395efd
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T23:51:30Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a2f1b41de11f13dd2
+**Message**: マージしたよ。U1 の機能設計に進めて
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T23:51:46Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-12T23:52:54Z
+**Event**: UNIT_STARTED
+**Stage**: functional-design
+**Unit**: u1-concurrent-skeleton
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T23:53:15Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-design-questions.md
+**Context**: construction > u1-concurrent-skeleton > functional-design > functional-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T23:53:16Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Q1
+**Options**: A,B,C,X
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T23:53:45Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T23:53:45Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q1. 同時に読むストリームの本数（同時に出す呼び出しの数の上限）はいくつにしますか？速さは別に 1 秒 12 回（東京）程度に抑えるので、本数を増やしても呼び出しの量は増えません。本数は「応答を待つ間にほかをどれだけ進めるか」を決めます。
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T23:53:48Z
+**Event**: QUESTION_ANSWERED
+**Stage**: functional-design
+**Details**: Q1: A
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T23:53:49Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Q2
+**Options**: A,B,X
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T23:54:16Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T23:54:17Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q2. ストリームの一覧を読み終える前から、ストリームの読み取りを始めますか？困りごとの場面（数十〜数百本）では一覧は数ページで終わります。
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-12T23:54:27Z
+**Event**: QUESTION_ANSWERED
+**Stage**: functional-design
+**Details**: Q2: A
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-12T23:54:28Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-design-questions.md
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-12T23:54:41Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-12T23:54:42Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: この内容で U1 の機能設計の成果物を作ってよいですか？
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-12T23:54:46Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: functional-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-design-questions.md
+**Questions SHA-256**: 7587bc19b47db7c65656e293d38f4b3be38159864ddb93bba923cf145955d48a
+**Hash Scope**: confirmed-content-v2
+**Unit**: u1-concurrent-skeleton
+**Summary Authorization Id**: b3a0acf879ace343b1def0aa5140703376476229a8312bf6a03785e074299459
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T23:55:34Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/entities.md
+**Context**: construction > u1-concurrent-skeleton > functional-design > entities.md
+**Summary Authorization Id**: b3a0acf879ace343b1def0aa5140703376476229a8312bf6a03785e074299459
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T23:56:10Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/rules.md
+**Context**: construction > u1-concurrent-skeleton > functional-design > rules.md
+**Summary Authorization Id**: b3a0acf879ace343b1def0aa5140703376476229a8312bf6a03785e074299459
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T23:56:52Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md
+**Context**: construction > u1-concurrent-skeleton > functional-design > functional-spec.md
+**Summary Authorization Id**: b3a0acf879ace343b1def0aa5140703376476229a8312bf6a03785e074299459
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-12T23:57:00Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+**Context**: construction > u1-concurrent-skeleton > functional-design > traceability.json
+**Summary Authorization Id**: b3a0acf879ace343b1def0aa5140703376476229a8312bf6a03785e074299459
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-12T23:57:00Z
+**Event**: SENSOR_FIRED
+**Fire id**: 15578a08
+**Sensor ID**: traceability
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-12T23:57:01Z
+**Event**: SENSOR_FAILED
+**Fire id**: 15578a08
+**Sensor ID**: traceability
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/functional-design/traceability-15578a08.md
+**Findings count**: 10
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-12T23:57:08Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:03c9c6cc99a30fc66ee4a44af96bd5d32a924a0c79a220e5fdac6ae857227f1e
+**Request Id**: review:6142bf607ad734e41a26b9aa5519860d
+**Review File**: .aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/1.6142bf607ad734e41a26b9aa5519860d.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-12T23:57:48Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a3f9e1661651bfd1c
+**Message**: PR マージしたよ
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T00:00:54Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/1.6142bf607ad734e41a26b9aa5519860d.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u1-concurrent-skeleton > df725d72ea237644 > 1.6142bf607ad734e41a26b9aa5519860d.review.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:01:09Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T00:01:09Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: aba183c87fe590124
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T00:01:15Z
+**Event**: REVIEW_COMPLETED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:03c9c6cc99a30fc66ee4a44af96bd5d32a924a0c79a220e5fdac6ae857227f1e
+**Artifact Fingerprint**: sha256:03c9c6cc99a30fc66ee4a44af96bd5d32a924a0c79a220e5fdac6ae857227f1e
+**Request Id**: review:6142bf607ad734e41a26b9aa5519860d
+**Review Record**: .aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json
+**Review Record Digest**: sha256:654207c389d3b40ffb3ff7562ca23997a9b70b1486ead1226f25d5cf3bd7b5d7
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T00:03:04Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 2
+**Artifact Fingerprint**: sha256:625c0b20d5c4cc02b9758d6394516c88a850dd3a6708b8cc445651501ce8c220
+**Request Id**: review:c3a28d6f05bc14cf2b4ec01356d4ed06
+**Review File**: .aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T00:03:41Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a06ba824e5196b8ee
+**Message**: PR #20 マージしたよ
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T00:09:37Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u1-concurrent-skeleton > df725d72ea237644 > 2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T00:09:43Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u1-concurrent-skeleton > df725d72ea237644 > 2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:09:57Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T00:09:57Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a6c766766a1da8d09
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-13T00:10:02Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage functional-design --reviewer aidlc-architecture-reviewer-agent --unit u1-concurrent-skeleton --iteration 2 --verdict READY
+**Error**: Refusing REVIEW_COMPLETED for "functional-design": the findings report could not be read. Write the whole review again with the required Prior findings and New findings tables. Rerun this review request with --retry-pending and dispatch the reviewer once more.
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T00:10:23Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 2
+**Retry**: pending-request
+**Artifact Fingerprint**: sha256:625c0b20d5c4cc02b9758d6394516c88a850dd3a6708b8cc445651501ce8c220
+**Request Id**: review:c3a28d6f05bc14cf2b4ec01356d4ed06
+**Review File**: .aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T00:10:47Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: aa9e5dc6d915d7184
+**Message**: Approve
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T00:10:54Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u1-concurrent-skeleton > df725d72ea237644 > 2.c3a28d6f05bc14cf2b4ec01356d4ed06.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T00:11:00Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a6c766766a1da8d09
+**Message**: **Reviewer:** aidlc-architecture-reviewer-agent\n\nイテレーション 2 のレビューファイルを、指定された最小の形で全面的に書き直しました。判定は READY のまま、1 回目の指摘 R-01〜R-08 の状態も新しい指摘 7 件も内容は変えていません。\n\n- **書き直した内容**:\n  - Date 行と Validation Tool Result
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:11:10Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T00:11:10Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a6c766766a1da8d09
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T00:11:14Z
+**Event**: REVIEW_COMPLETED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 2
+**Verdict**: READY
+**Request Fingerprint**: sha256:625c0b20d5c4cc02b9758d6394516c88a850dd3a6708b8cc445651501ce8c220
+**Artifact Fingerprint**: sha256:625c0b20d5c4cc02b9758d6394516c88a850dd3a6708b8cc445651501ce8c220
+**Request Id**: review:c3a28d6f05bc14cf2b4ec01356d4ed06
+**Review Record**: .aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json
+**Review Record Digest**: sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T00:11:19Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Which notes should be kept for next time?
+**Options**: Keep none of these,c1,c2,c3
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T00:11:19Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Anything to add for next time?
+**Options**: Nothing to add,Add a note
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T00:16:35Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T00:43:05Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:43:08Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T00:48:05Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T00:55:29Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:55:34Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Keep none of these","Nothing to add"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T00:55:34Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U1 の機能設計のレビューが通りました（READY）。次回のために残しておくメモはどれですか？（c1：NFR1 の偽物の条件を「1 回 200ms・100 本・東京 12 回/秒」とした　c2：受け渡しの通り道を 16 件とした（後でやめた）　c3：レビューを受け、通り道をやめて「1 ストリーム 1 ページずつ」を並べる形にし、SDK の再試行を止めるのは GetLogEvents だけにした）
+**Reply**: Keep none of these
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T00:55:34Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: ほかに次回のために足しておきたいことはありますか？
+**Reply**: Nothing to add
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:55:35Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T00:55:41Z
+**Event**: QUESTION_ANSWERED
+**Stage**: functional-design
+**Details**: Keep none of these; Anything to add: Nothing to add
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T00:55:41Z
+**Event**: UNIT_COMPLETED
+**Stage**: functional-design
+**Unit**: u1-concurrent-skeleton
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

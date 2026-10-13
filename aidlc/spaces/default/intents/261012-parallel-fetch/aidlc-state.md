@@ -46,6 +46,11 @@
 
 - **Construction Verification Command**: cargo test --workspace && npx vitest run && cargo build -p local-sights
 
+- **Skeleton Stance**: on
+
+
+
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -107,7 +112,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: nfr-requirements
 - **Status**: Running
-- **Last Updated**: 2026-10-12T22:30:53Z
+- **Last Updated**: 2026-10-13T00:55:41Z
 
 ## Session Resume Point
 - **Last Completed Stage**: delivery-planning

@@ -1,0 +1,20 @@
+## Review
+
+**Verdict:** READY
+**Reviewer:** aidlc-architecture-reviewer-agent
+**Iteration:** 1
+
+### Findings
+
+| ID | Severity | Location | Finding | Required action | Status |
+|---|---|---|---|---|---|
+| R-01 | Minor | functional-spec.md の 2. 例（limit 3、同時に読む）の表 | 例の最後の行で、あきらめの時点の未着手を s10〜s20 としているが、実際の流れでは成り立たない。最大 8 本の枠は、ストリームが 1 本終わるたびに coordinator.rs の run ループが start_next で埋める。s02・s05・s01・s03・s04 の 5 本が終わった時点で s09〜s13 が読み始められており、s08 の 3 本目の使い切りのとき未着手になるのは s14 以降になる。「s09 だけが読み途中」という書き方も同じ理由で成り立たない。この表は流れの正本であり、テスト条件の元になるため、そのまま台本にすると期待値が食い違う。 | 例を U1 の BR1.7・BR1.8 の枠の埋まり方に合わせて書き直す（読み途中を s09〜s13 とし、未着手を s14〜s20 とする）。または「枠の埋まり方は省略した図」と明記し、テストの台本は別に定義する。 | New |
+| R-02 | Minor | rules.md の BR3.6、functional-spec.md の 1. 流れ（手順 1）、entities.md の ExhaustionStreak.limit | あきらめる本数 limit を StreamSchedule へ渡す元が決まっていない。今の coordinator.rs は context.retrier.policy().max_consecutive_exhausted を読んでおり、BR3.6 でこの項目をなくす。run_fetch の引数には limit がなく、呼び出し側の fetch_check.rs と src-tauri の lib.rs は RetryPolicy::default() を使うだけである。「FetchCoordinator は limit とともに作る」とだけでは、定数にするのか、run_fetch の引数や設定にするのかを実装者が推測することになる。また limit の下限 1 の扱い（今の ExhaustionStreak::new は max(1) で切り上げる）が、拒否なのか切り上げなのか書かれていない。 | limit の出どころを 1 つに決めて書く（例：schedule.rs の定数 DEFAULT_GIVE_UP_LIMIT を 3 とし、StreamSchedule::new の引数で受ける。画面と確認用プログラムは変えない）。0 を渡したときは 1 に切り上げると明記する。 | New |
+| R-03 | Minor | rules.md の BR3.1・BR3.3 と functional-spec.md の 5. 持ち越しの扱い（「数え方の結果は同じ」） | 現行コードはあきらめた後も、終わったストリームごとに streak.record を呼ぶので、ScheduleOutcome.exhaustion_streak が後から動く（例：読み途中の s09 が成功すると 0 に戻る）。BR3.3 と流れの疑似コードは、あきらめた後は数えを変えないとしており、これは現行コードからの変更である。それなのに 5. では「数え方の結果は同じ」と書かれていて、変更点として拾われていない。entities.md の制約にも、あきらめた後は ScheduleOutcome の値が固定されるとは書かれていない。 | 5. の記述を直し、あきらめた後は数えと ScheduleOutcome.exhaustionStreak が固定されることを U1 からの差分として書く。あきらめた直後と全完了後の outcome().exhaustion_streak を確かめるテストも条件に加える。 | New |
+| R-04 | Minor | entities.md の GiveUp、rules.md の BR3.2・BR3.3、functional-spec.md の 3. 確かめ方（読み途中は最後まで） | GiveUp（triggeredBy・failure・skippedCount）は「残す」と書かれているが、公開するかどうか、誰が読むかが決まっていない。「あきらめは 1 回だけ」という合格の基準を自動テストで確かめるには観測できる口が要るが、その口の定義がない。さらに現行コードは失敗の内容が None だと、使い切りが limit に達しても何も Skipped にしない（let (true, Some(failure)) の分岐）。BR3.2 は使い切りのストリームには必ず失敗の内容があると仮定しているが、その前提と None のときの動きが書かれていない。未着手が 0 本のときに GiveUp を残すかどうかも、skippedCount の min 0 から読むほかない。 | GiveUp を StreamSchedule の読み取り用の口（例：give_up() が Option を返す）として定義する。または GiveUp は概念であり、観測は Skipped の並びと outcome に限ると明記する。使い切りには失敗の内容が必ずあることを前提として書き、未着手が 0 本のときも GiveUp は記録されるか、記録されないかを一文で決める。 | New |
+| R-05 | Minor | rules.md の BR3.5・BR3.6、functional-spec.md の 1. 流れ（手順 3-1）、3. 確かめ方（閉じて止めたものは数えない） | 終わり方の型が StreamFetchEnd（fetcher.rs）、SlotEnd（schedule.rs）、StreamEnding（retry.rs）の 3 つあり、今は coordinator が StreamFetchEnd を SlotEnd に変換し、SlotEnd 自身が streak_ending を持つ。BR3.6 は EventFetcher 側の streak_ending をなくして StreamEnding を StreamSchedule に移すとしているが、SlotEnd を残すのか StreamFetchEnd を直接受けるのかが書かれていない。直接受けるなら schedule.rs が fetcher.rs に依存し、残すなら分類が二重になる。また「使い切り 2 本の後に閉じる」テストは、coordinator が止めた後の結果を捨てる（finish_stream を呼ばずに continue する）ため、コーディネーター経由では数えが観測できない。このテストは StreamSchedule 単体でしか成り立たない。 | 型の整理を 1 行で決めて書く（例：SlotEnd を残し、streak_ending と NotCounted の分類を schedule.rs の中に置いて StreamEnding を schedule.rs へ移す。fetcher.rs の streak_ending と retry.rs の ExhaustionStreak・StreamEnding を消す）。Aborted を数えないテストは StreamSchedule 単体のテストとして書くと注記する。 | New |
+| R-06 | Minor | traceability.json の coverage と upstream_ids | upstream_ids と coverage が AC2.3.1〜AC2.3.4 の 4 件だけで、FR3.1〜FR3.4 と、BR3.5（ADR-004、U1 の BR1.16）・BR3.6（ADR-007、約束 C2）の出どころが載っていない。AC2.3.2 の対応先に BR3.7 を入れているのは良いが、BR3.5 と BR3.6 に対応する AC が無いため、ルール側から見た追跡の抜けが分かりにくい。 | upstream_ids と coverage に FR3.1〜FR3.4 を足す。AC に対応しない BR3.5・BR3.6 は ADR-004・ADR-007・C2 に紐づけ、「AC なしの設計上の決まり」と分かる形で記録する。 | New |
+
+### Summary
+
+あきらめの決まり（BR3.1〜BR3.7）は FR3.1〜FR3.4、AC2.3.1〜AC2.3.4、ADR-007、U1 の BR1.13・BR1.15・BR1.19 と矛盾せず、現行の schedule.rs・retry.rs・coordinator.rs の動きとも整合している。コンポーネントの輪（循環依存）や参照切れは見つからなかった。実質は U1 で暫定実装済みの数えを StreamSchedule へ移して整える作業であり、実装の中身に迷う箇所は少ない。指摘は、worked example の誤り（R-01）、limit の渡し元とあきらめ後の数えの固定の書き漏れ（R-02、R-03）、GiveUp の観測の口と型の整理の曖昧さ（R-04、R-05）、トレーサビリティの抜け（R-06）で、いずれも Minor であり、実装前に文章を直せば足りる。Critical と Major がないため READY とする。

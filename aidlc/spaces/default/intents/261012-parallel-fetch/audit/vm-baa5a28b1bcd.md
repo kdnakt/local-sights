@@ -13476,3 +13476,188 @@
 **Autonomous**: true
 
 ---
+
+## Unit Started
+**Timestamp**: 2026-10-13T15:05:30Z
+**Event**: UNIT_STARTED
+**Stage**: functional-design
+**Unit**: u3-give-up-rule
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:06:00Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-design-questions.md
+**Context**: construction > u3-give-up-rule > functional-design > functional-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T15:06:03Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-design-questions.md
+**Unit**: u3-give-up-rule
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T15:09:02Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T15:09:02Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U3（あきらめの決まり）の機能設計です。数え方は要件で決まっていて新しく聞くことはなく、主な変更は数えの持ち主を移すことです。この内容で作ってよいですか？\n・終わった順に「再試行を使い切って失敗した」ストリームを数え、成功か使い切り以外の失敗で 0 に戻す\n・3 本たまったら未着手は呼ばずに失敗（3 本目の失敗の内容を写す）、読み途中は最後まで読む\n・閉じて止めたストリームは数えない。あきらめは一度だけで取り消さない\n・数えの持ち主を再試行の部品（RetryPolicy）から読む順の部品（StreamSchedule）に移す\n・終わる順を入れ替えた場合をテスト先行で確かめる\n・画面・要約・失敗の一覧の見え方は変えない
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T15:09:08Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: functional-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-design-questions.md
+**Questions SHA-256**: db2edb875b6b54f8265c79bec18c2f26cb8ed8f99fc0e0baaa7269326925c9a3
+**Hash Scope**: confirmed-content-v2
+**Unit**: u3-give-up-rule
+**Summary Authorization Id**: 7ae29e49dd30fa87b52dd9d0175c77327b083ed84cbb006e5082e9cb54206670
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:09:25Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/entities.md
+**Context**: construction > u3-give-up-rule > functional-design > entities.md
+**Summary Authorization Id**: 7ae29e49dd30fa87b52dd9d0175c77327b083ed84cbb006e5082e9cb54206670
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:09:41Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/rules.md
+**Context**: construction > u3-give-up-rule > functional-design > rules.md
+**Summary Authorization Id**: 7ae29e49dd30fa87b52dd9d0175c77327b083ed84cbb006e5082e9cb54206670
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:10:01Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md
+**Context**: construction > u3-give-up-rule > functional-design > functional-spec.md
+**Summary Authorization Id**: 7ae29e49dd30fa87b52dd9d0175c77327b083ed84cbb006e5082e9cb54206670
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:10:04Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+**Context**: construction > u3-give-up-rule > functional-design > traceability.json
+**Summary Authorization Id**: 7ae29e49dd30fa87b52dd9d0175c77327b083ed84cbb006e5082e9cb54206670
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T15:10:05Z
+**Event**: SENSOR_FIRED
+**Fire id**: 708a5089
+**Sensor ID**: traceability
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-13T15:10:05Z
+**Event**: SENSOR_FAILED
+**Fire id**: 708a5089
+**Sensor ID**: traceability
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/functional-design/traceability-708a5089.md
+**Findings count**: 6
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T15:10:08Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u3-give-up-rule
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:9a5e9885be7d694ae9aa1cda52c9c9317965580198683bc687ced213bc49f84f
+**Request Id**: review:b02ef4b452fccb76ac18f9d8f4ef1b7f
+**Review File**: .aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.b02ef4b452fccb76ac18f9d8f4ef1b7f.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:11:50Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.b02ef4b452fccb76ac18f9d8f4ef1b7f.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u3-give-up-rule > df725d72ea237644 > 1.b02ef4b452fccb76ac18f9d8f4ef1b7f.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T15:11:59Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: aaddd007502f5bf08
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T15:12:18Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T15:12:26Z
+**Event**: REVIEW_COMPLETED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u3-give-up-rule
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:9a5e9885be7d694ae9aa1cda52c9c9317965580198683bc687ced213bc49f84f
+**Artifact Fingerprint**: sha256:9a5e9885be7d694ae9aa1cda52c9c9317965580198683bc687ced213bc49f84f
+**Request Id**: review:b02ef4b452fccb76ac18f9d8f4ef1b7f
+**Review Record**: .aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json
+**Review Record Digest**: sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T15:12:27Z
+**Event**: UNIT_COMPLETED
+**Stage**: functional-design
+**Unit**: u3-give-up-rule
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

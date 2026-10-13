@@ -16,6 +16,8 @@ export interface SsoLoginModalProps {
   onCancel: () => void;
   /** [Close] on a result (time-out, failure, no CLI). */
   onClose: () => void;
+  /** [Sign in with SSO] on a result: starts a new attempt from the dialog. */
+  onRetry: () => void;
   /** Opens the sign-in URL in the browser (the app checks it again). */
   onOpenUrl: (url: string) => void;
 }
@@ -28,11 +30,19 @@ export interface SsoLoginModalProps {
  * printed as a link the app opens, the verification code when there is
  * one (the newer CLI's PKCE flow prints none) and [Cancel]; the close button
  * and Escape do nothing then, since the CLI runs. A time-out, a failure (with
- * the exit code) or a missing CLI is told with the terminal fallback and
- * [Close], which the close button and Escape also mean. Focus starts on the
- * footer button.
+ * the exit code) or a missing CLI is told with the terminal fallback,
+ * [Sign in with SSO] to try again right there (shown while the core offers
+ * the login, disabled while it cannot start) and [Close], which the close
+ * button and Escape also mean. Focus starts on [Cancel] or [Close].
  */
-export function SsoLoginModal({ login, t, onCancel, onClose, onOpenUrl }: SsoLoginModalProps) {
+export function SsoLoginModal({
+  login,
+  t,
+  onCancel,
+  onClose,
+  onRetry,
+  onOpenUrl,
+}: SsoLoginModalProps) {
   const footerRef = useInitialFocus();
   const running = isSsoLoginRunning(login);
   return (
@@ -53,9 +63,21 @@ export function SsoLoginModal({ login, t, onCancel, onClose, onOpenUrl }: SsoLog
               {t("ssoLogin.cancel")}
             </Button>
           ) : (
-            <Button ref={footerRef} onClick={onClose} data-testid="sso-login-modal-close-button">
-              {t("ssoLogin.close")}
-            </Button>
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button ref={footerRef} onClick={onClose} data-testid="sso-login-modal-close-button">
+                {t("ssoLogin.close")}
+              </Button>
+              {login.available && (
+                <Button
+                  variant="primary"
+                  disabled={!login.canStart}
+                  onClick={onRetry}
+                  data-testid="sso-login-modal-retry-button"
+                >
+                  {t("ssoLogin.button")}
+                </Button>
+              )}
+            </SpaceBetween>
           )}
         </Box>
       }

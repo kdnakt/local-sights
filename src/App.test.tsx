@@ -599,6 +599,13 @@ describe("App", () => {
 
     push({
       ...authError,
+      ssoLogin: ssoLoginView({ available: true, canStart: true, state: "TimedOut", attemptId: 1 }),
+    });
+    await user.click(screen.getByTestId("sso-login-modal-retry-button"));
+    expect(api.startSsoLogin).toHaveBeenCalledTimes(2);
+
+    push({
+      ...authError,
       ssoLogin: ssoLoginView({ available: true, canStart: true, state: "Cancelled", attemptId: 1 }),
     });
     expect(screen.queryByTestId("sso-login-modal")).not.toBeInTheDocument();

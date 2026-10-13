@@ -255,6 +255,9 @@ export function App({ locale }: AppProps) {
     },
     [run],
   );
+  // Trying again from the result dialog keeps the first button as the
+  // place the focus goes back to.
+  const handleRetrySsoLogin = useCallback(() => run(startSsoLogin), [run]);
   const handleCancelSsoLogin = useCallback(() => run(cancelSsoLogin), [run]);
   const handleDismissSsoLogin = useCallback(() => run(dismissSsoLogin), [run]);
   const handleOpenSsoUrl = useCallback((url: string) => run(() => openSsoUrl(url)), [run]);
@@ -420,6 +423,7 @@ export function App({ locale }: AppProps) {
           t={t}
           onCancel={handleCancelSsoLogin}
           onClose={handleDismissSsoLogin}
+          onRetry={handleRetrySsoLogin}
           onOpenUrl={handleOpenSsoUrl}
         />
       )}

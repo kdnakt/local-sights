@@ -14830,3 +14830,365 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Checkpoint Verification Recorded
+**Timestamp**: 2026-10-13T16:11:11Z
+**Event**: CHECKPOINT_VERIFICATION_RECORDED
+**Unit**: u3-give-up-rule
+**Kind**: unit
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Verification Id**: 801368cc-dd6b-4aeb-be84-8ed08aa4cf84
+**Fingerprint**: sha256:df72afd22b21dc3fbcfcdd46e9ff1171c9f117314b5d97a0f59fa64eb2634581
+**Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Exit Code**: 0
+**Verified**: true
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-13T16:11:18Z
+**Event**: GATE_APPROVED
+**Unit**: u3-give-up-rule
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Scope**: unit-end
+**Checkpoint**: construction-unit
+**Fingerprint**: sha256:df72afd22b21dc3fbcfcdd46e9ff1171c9f117314b5d97a0f59fa64eb2634581
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+**Run floors**: {"functional-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-requirements":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","infrastructure-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","code-generation":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1"}
+**Verification Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Verification Id**: 801368cc-dd6b-4aeb-be84-8ed08aa4cf84
+**Approved Evidence**: {"functional-design":["sha256:9a5e9885be7d694ae9aa1cda52c9c9317965580198683bc687ced213bc49f84f",null],"nfr-requirements":["sha256:b75d15c9a48f73d131241f8f273a65d9c8c45b47cf40f90e0dee6c4ab5aeaea5",null],"nfr-design":["sha256:4b9485f3d8f28c61ec7054d467c18cbe4bd39a0a44eccaf3e86ad43f405b286b",null],"infrastructure-design":["sha256:88a5b1396341406f105c6b0c394613efa2477125655ec58ef4e3638dad4ae535",null],"code-generation":["sha256:2d9ed32c938c71d0e6d8f4b82d626229d493d830f35a6d7528f6c5ba71854658","sha256:1fc61029efd26314ecf4d212d955bb67c99c86b3c04c0bb30f74382179dea886",{"\u0000crates/local-sights-core/src/coordinator.rs":"100644 849937c03778f4a9bb40d03a6099368a57c0cee18cc235e4da2860ebb8836065","\u0000crates/local-sights-core/src/fetcher.rs":"100644 c117633b3e819af4fd4a5ccbd46cc6db995ed6a9aff93a093c44886031d2ace2","\u0000crates/local-sights-core/src/retry.rs":"100644 0f1dd671ba0b3018282ffaf2efe7d7a7c079ebb2a83173fb3b8233610ba479ec","\u0000crates/local-sights-core/src/schedule.rs":"100644 aea414910623c71de03041a4d7e15821be6ca9c08c99ffeb44f8f7f397167b31","\u0000crates/local-sights-core/tests/u3_give_up_rule.rs":"100644 505ddcad9d7fc6bc8608e41a081c230c753c9cca30e1e8ddaee38100659ec04a"}]}
+**Autonomous**: true
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:13:25Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-design-questions.md
+**Context**: construction > u4-elapsed-time > functional-design > functional-design-questions.md
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-13T16:13:30Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log decision --help
+**Error**: Cannot record this decision: "--help" is not an option of log decision, so it is probably part of a value that a bare double quote split. Run the command again with each value as one argument, in the person's exact words; in Windows PowerShell write each double quote inside a value as \" (for example --decision 'Run \"todo --help\" first'), or as a single quote ('') when the value also holds &, |, <, > or ^.
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T16:13:40Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Q1 最終の経過を読み上げるか
+**Options**: A,B,X
+**Unit**: u4-elapsed-time
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T16:18:43Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T16:25:49Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T16:25:56Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T16:25:56Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4（かかった時間）Q1：画面の読み上げで、取得が終わったときの最終の経過を読み上げますか？（取得中の秒の進みは読み上げません）
+**Reply**: A (Recommended)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T16:25:57Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T16:26:05Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-design-questions.md
+**Context**: construction > u4-elapsed-time > functional-design > functional-design-questions.md
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T16:26:08Z
+**Event**: QUESTION_ANSWERED
+**Stage**: functional-design
+**Details**: Q1: A (Recommended)
+**Unit**: u4-elapsed-time
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T16:26:13Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Q2 結果が消える操作で経過をどうするか
+**Options**: A,B,X
+**Unit**: u4-elapsed-time
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T16:28:43Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T16:28:44Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4 Q2：接続やロググループを変えると、表示中のログ・件数・前の結果が消え、状態行は取得前の表示に戻ります。そのとき経過はどうしますか？
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T16:29:16Z
+**Event**: QUESTION_ANSWERED
+**Stage**: functional-design
+**Details**: Q2: A (Recommended)
+**Unit**: u4-elapsed-time
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T16:29:22Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-design-questions.md
+**Unit**: u4-elapsed-time
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T16:35:12Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T16:40:21Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T16:40:28Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T16:40:29Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4（かかった時間）の機能設計のまとめです。この内容で成果物を作ってよいですか？\n\n- 経過は状態行の今の内容の末尾に「経過 mm:ss」／「Elapsed mm:ss」として出す。1 時間以上は h:mm:ss、秒未満は切り捨て\n- 始まりは［取得］を押して取得中に移った時点、終わりは取得の終わり（成功・一部失敗・失敗・中断、取得の作業が異常に止まったときも含む）を受けた時点。どちらもライブラリが戻らない時計で記録し、最終の値を持つ。キャッシュへの保存の時間も含め、キャッシュから表示したときも出す\n- 取得中は画面が 1 秒ごとに進める（再試行の待ちの間も進む）。ライブラリから画面へは状態が変わるときだけ渡し、秒ごとには送らない\n- 最終の経過は次の取得を始めるまで残す。ただし接続（プロファイル・リージョン）を変えて前の結果が消えるときは、経過も一緒に消す。同じ接続でロググループを選び直すだけなら、今と同じくログも経過も残る（Q2）\n- アプリを閉じて取得が止まったときは、今と同じく取得前の状態に戻り、経過も出さない。一度も取得していないときも出さない\n- 読み上げ：取得中の秒の進みは読み上げない。終わったときは最終の経過も一緒に読み上げる（Q1）\n- 確かめ：表記の関数はテストを先に書く。最終の値は時計を差し替えた Rust のテストで確かめる。GUI で経過が進み、終わると残ることを目で確かめる
+**Reply**: Looks correct
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T16:40:30Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T16:40:37Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: functional-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-design-questions.md
+**Questions SHA-256**: 18093cb417234124e9ac01ecd7618c1e3ab2a2a9b714c869dbc3ab304e5da2b1
+**Hash Scope**: confirmed-content-v2
+**Unit**: u4-elapsed-time
+**Summary Authorization Id**: bdf21f5e03e10402100596fa25a1f284d34a10f7d6321f6ecc7c2c6d31ad4f1b
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:41:20Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/entities.md
+**Context**: construction > u4-elapsed-time > functional-design > entities.md
+**Summary Authorization Id**: bdf21f5e03e10402100596fa25a1f284d34a10f7d6321f6ecc7c2c6d31ad4f1b
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:41:50Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/rules.md
+**Context**: construction > u4-elapsed-time > functional-design > rules.md
+**Summary Authorization Id**: bdf21f5e03e10402100596fa25a1f284d34a10f7d6321f6ecc7c2c6d31ad4f1b
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:42:37Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md
+**Context**: construction > u4-elapsed-time > functional-design > functional-spec.md
+**Summary Authorization Id**: bdf21f5e03e10402100596fa25a1f284d34a10f7d6321f6ecc7c2c6d31ad4f1b
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:42:42Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+**Context**: construction > u4-elapsed-time > functional-design > traceability.json
+**Summary Authorization Id**: bdf21f5e03e10402100596fa25a1f284d34a10f7d6321f6ecc7c2c6d31ad4f1b
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T16:42:43Z
+**Event**: SENSOR_FIRED
+**Fire id**: bb99d0c9
+**Sensor ID**: traceability
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-13T16:42:44Z
+**Event**: SENSOR_PASSED
+**Fire id**: bb99d0c9
+**Sensor ID**: traceability
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+**Duration ms**: 932
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T16:42:49Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:bb2a8faf26a5e88a8c7a99fe305a5ecfa98c8ede5d6c017e594343dbfa6a3742
+**Request Id**: review:a5c5f690523de44b316ae3a035b5b6d5
+**Review File**: .aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.a5c5f690523de44b316ae3a035b5b6d5.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:42:57Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:46:51Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.a5c5f690523de44b316ae3a035b5b6d5.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u4-elapsed-time > df725d72ea237644 > 1.a5c5f690523de44b316ae3a035b5b6d5.review.md
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T16:47:04Z
+**Event**: REVIEW_COMPLETED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:bb2a8faf26a5e88a8c7a99fe305a5ecfa98c8ede5d6c017e594343dbfa6a3742
+**Artifact Fingerprint**: sha256:bb2a8faf26a5e88a8c7a99fe305a5ecfa98c8ede5d6c017e594343dbfa6a3742
+**Request Id**: review:a5c5f690523de44b316ae3a035b5b6d5
+**Review Record**: .aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json
+**Review Record Digest**: sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T16:47:05Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a4efcc1552270a785
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T16:47:06Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-13T16:47:22Z
+**Event**: UNIT_STARTED
+**Stage**: functional-design
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T16:47:28Z
+**Event**: UNIT_COMPLETED
+**Stage**: functional-design
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

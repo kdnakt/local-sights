@@ -2390,6 +2390,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "fastrand",
+ "futures-util",
  "home",
  "iana-time-zone",
  "regex",

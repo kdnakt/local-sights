@@ -26,8 +26,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::catalog::ProfileSelector;
-use crate::coordinator::JobStatus;
 use crate::event::LogEvent;
+use crate::fetch_status::JobStatus;
 use crate::request::FetchRequest;
 
 /// Version of the cache file format (BR4.1). Version 2 (U7, U6 review R-03)

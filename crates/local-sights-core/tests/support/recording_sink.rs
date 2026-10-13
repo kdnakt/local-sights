@@ -1,6 +1,7 @@
 //! A [`FetchSink`] that records everything it receives, in order.
 
-use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, JobStatus};
+use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink};
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::{StreamFetchOutcome, StreamStatus};
 use local_sights_core::streams::planner::ListingProgress;
 

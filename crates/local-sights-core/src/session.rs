@@ -56,10 +56,11 @@ use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileS
 use crate::connection::{
     ChangeOutcome, ConnectionSelection, ConnectionState, ListingCommand, PendingConnectionChange,
 };
-use crate::coordinator::{BatchProgress, FailedStream, FetchJob, JobStatus};
+use crate::coordinator::{BatchProgress, FailedStream, FetchJob};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
 use crate::failure::{ApiFailure, FailureKind};
+use crate::fetch_status::JobStatus;
 use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{

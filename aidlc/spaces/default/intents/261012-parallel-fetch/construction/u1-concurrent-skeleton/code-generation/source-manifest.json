@@ -1,0 +1,32 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-concurrent-skeleton",
+  "version": 1,
+  "writes": [
+    { "path": "Cargo.toml" },
+    { "path": "Cargo.lock" },
+    { "path": "README.md" },
+    { "path": "crates/local-sights-core/Cargo.toml" },
+    { "path": "crates/local-sights-core/src/lib.rs" },
+    { "path": "crates/local-sights-core/src/pacing.rs" },
+    { "path": "crates/local-sights-core/src/schedule.rs" },
+    { "path": "crates/local-sights-core/src/fetch_status.rs" },
+    { "path": "crates/local-sights-core/src/fetch_stats.rs" },
+    { "path": "crates/local-sights-core/src/retry.rs" },
+    { "path": "crates/local-sights-core/src/fetcher.rs" },
+    { "path": "crates/local-sights-core/src/coordinator.rs" },
+    { "path": "crates/local-sights-core/src/gateway/aws.rs" },
+    { "path": "crates/local-sights-core/src/streams/planner.rs" },
+    { "path": "crates/local-sights-core/src/cache/plan.rs" },
+    { "path": "crates/local-sights-core/src/session.rs" },
+    { "path": "crates/local-sights-core/examples/fetch_check.rs" },
+    { "path": "crates/local-sights-core/tests/support/fake_gateway.rs" },
+    { "path": "crates/local-sights-core/tests/support/recording_sink.rs" },
+    { "path": "crates/local-sights-core/tests/u1_concurrent_fetch.rs" },
+    { "path": "crates/local-sights-core/tests/u1_fetch_flow.rs" },
+    { "path": "crates/local-sights-core/tests/u3_fetch_flow.rs" },
+    { "path": "crates/local-sights-core/tests/u5_filter_flow.rs" },
+    { "path": "crates/local-sights-core/tests/u6_cache_flow.rs" },
+    { "path": "src-tauri/src/lib.rs" }
+  ]
+}

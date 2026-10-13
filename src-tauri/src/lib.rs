@@ -104,10 +104,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::catalog::files::load_catalog;
-use local_sights_core::coordinator::{
-    BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch_with_cache,
-};
+use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch_with_cache};
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_report_progress};
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
@@ -116,7 +115,9 @@ use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_li
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::log_view::{LogView, RowKey, RowPositions};
 use local_sights_core::paging::PageDecision;
-use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
+use local_sights_core::retry::{
+    RandomJitter, Retrier, RetryPolicy, StopHandle, StopReason, stop_pair,
+};
 use local_sights_core::session::{
     AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, InputField,
     Phase, SessionError, SessionView, SettingsWork, SsoLoginStart,
@@ -166,9 +167,9 @@ struct AppState {
     /// The held events and the log filter (U5 review R-02).
     log_view: Arc<Mutex<LogView>>,
     gateway: Arc<AwsCloudWatchLogsGateway>,
-    /// Abort handle of the running fetch with its fetch number from the
+    /// Stop handle of the running fetch with its fetch number from the
     /// session (BR5.5), so a finished fetch only forgets its own handle.
-    abort: Arc<Mutex<Option<(u64, AbortHandle)>>>,
+    abort: Arc<Mutex<Option<(u64, StopHandle)>>>,
     /// Set by [Close] (U7:BR3.2): the exit and window close that follow are
     /// not stopped again. Read without the session lock.
     exit_allowed: AtomicBool,
@@ -213,10 +214,11 @@ impl AppState {
     }
 
     /// Asks the running fetch, if any, to stop ([Close] or the window being
-    /// destroyed, BR5.5, U7:BR3.2).
+    /// destroyed, BR5.5, U7:BR3.2). Both are a Close: the fetched logs are
+    /// discarded (261012-parallel-fetch U1:BR1.16, contract C7).
     fn abort_fetch(&self) {
         if let Some((_, handle)) = lock(&self.abort).as_ref() {
-            handle.abort();
+            handle.stop(StopReason::Close);
         }
     }
 
@@ -676,7 +678,7 @@ fn begin_and_spawn_fetch(
     let fetch_started_at_ms = now_epoch_ms();
     emit_or_log(app, SESSION_CHANGED, view);
 
-    let (handle, signal) = abort_pair();
+    let (handle, signal) = stop_pair();
     *lock(&state.abort) = Some((fetch_number, handle));
     let session = Arc::clone(&state.session);
     let log_view = Arc::clone(&state.log_view);

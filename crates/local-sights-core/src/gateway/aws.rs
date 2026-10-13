@@ -6,7 +6,8 @@
 //! [`ErrorSignal`], classified, and returned with a safe detail only; the raw
 //! SDK message is never surfaced (U1:BR4.3). Only `GetLogEvents`,
 //! `DescribeLogGroups` and `DescribeLogStreams` are called (U2:BR3.9,
-//! U3:BR1.4).
+//! U3:BR1.4). Since 261012-parallel-fetch U1, `GetLogEvents` is sent without
+//! the SDK's own retries ([`get_log_events_config_override`], BR1.6).
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -16,6 +17,7 @@ use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_credential_types::provider::error::{CredentialsError, TokenError};
 use aws_sdk_cloudwatchlogs::Client;
 use aws_sdk_cloudwatchlogs::config::http::HttpResponse;
+use aws_sdk_cloudwatchlogs::config::retry::RetryConfig;
 use aws_sdk_cloudwatchlogs::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_cloudwatchlogs::operation::RequestId;
 use aws_sdk_cloudwatchlogs::operation::describe_log_groups::{
@@ -112,6 +114,8 @@ impl CloudWatchLogsGateway for AwsCloudWatchLogsGateway {
             .end_time(request.end_time)
             .start_from_head(request.start_from_head)
             .set_next_token(request.next_token.clone())
+            .customize()
+            .config_override(get_log_events_config_override())
             .send()
             .await
             .map_err(|error| failure_from_sdk_error(&error, &request))?;
@@ -154,6 +158,18 @@ impl CloudWatchLogsGateway for AwsCloudWatchLogsGateway {
             .map_err(|error| failure_from_describe_streams_error(&error, &request))?;
         Ok(streams_page_from_output(&output))
     }
+}
+
+/// The per-operation settings of every `GetLogEvents` call
+/// (261012-parallel-fetch U1:BR1.6, NFR3.4): at most one attempt, that is,
+/// no retry by the SDK. One attempt of the app's own retrier is then
+/// exactly one API call, and every call waits for a permit of the fetch's
+/// call pacer. `DescribeLogGroups` and `DescribeLogStreams` keep the SDK's
+/// default retries. A transient server failure (5xx) that the SDK used to
+/// absorb is now reported as a failure of the stream (BR1.6).
+pub fn get_log_events_config_override() -> aws_sdk_cloudwatchlogs::config::Builder {
+    aws_sdk_cloudwatchlogs::Config::builder()
+        .retry_config(RetryConfig::standard().with_max_attempts(1))
 }
 
 /// Resolves the connection target for a profile (`None`: SDK default,
@@ -518,6 +534,77 @@ mod tests {
         call.region = None;
         let failure = gateway.get_log_events(call).await.unwrap_err();
         assert_eq!(failure.kind(), FailureKind::RegionMissing);
+    }
+
+    // ---- 261012-parallel-fetch U1:BR1.6, NFR3.4 (NFR design review R-01) --
+
+    #[test]
+    fn the_get_log_events_override_allows_one_attempt_only() {
+        let config = get_log_events_config_override().build();
+        let retry = config.retry_config().expect("the override sets retries");
+        assert_eq!(retry.max_attempts(), 1, "max_attempts 1: no SDK retry");
+        assert_eq!(retry.mode(), RetryConfig::standard().mode());
+    }
+
+    /// An in-process HTTP connector that counts the requests and fails each
+    /// one with a retryable I/O error. Nothing reaches the network or AWS.
+    #[derive(Debug, Clone, Default)]
+    struct CountingConnector(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+    impl aws_smithy_runtime_api::client::http::HttpConnector for CountingConnector {
+        fn call(
+            &self,
+            _request: aws_smithy_runtime_api::client::orchestrator::HttpRequest,
+        ) -> aws_smithy_runtime_api::client::http::HttpConnectorFuture {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            aws_smithy_runtime_api::client::http::HttpConnectorFuture::ready(Err(
+                ConnectorError::io(
+                    std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset").into(),
+                ),
+            ))
+        }
+    }
+
+    /// The SDK's default retries apply to DescribeLogStreams (three
+    /// attempts) but not to GetLogEvents, which carries the override. The
+    /// retry waits run on the paused clock.
+    #[tokio::test(start_paused = true)]
+    async fn only_get_log_events_is_sent_without_sdk_retries() {
+        use aws_smithy_runtime_api::client::http::{SharedHttpConnector, http_client_fn};
+
+        let connector = CountingConnector::default();
+        let attempts = std::sync::Arc::clone(&connector.0);
+        let config = aws_sdk_cloudwatchlogs::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("ap-northeast-1"))
+            .credentials_provider(aws_credential_types::Credentials::new(
+                "test-key",
+                "test-secret",
+                None,
+                None,
+                "unit-test",
+            ))
+            .http_client(http_client_fn(move |_, _| {
+                SharedHttpConnector::new(connector.clone())
+            }))
+            .build();
+        let gateway = AwsCloudWatchLogsGateway::new();
+        gateway.lock_clients().insert(
+            (Some("dev".to_string()), Some("ap-northeast-1".to_string())),
+            Client::from_conf(config),
+        );
+        let count = || attempts.load(std::sync::atomic::Ordering::SeqCst);
+
+        let failure = gateway.get_log_events(request()).await.unwrap_err();
+        assert_eq!(failure.kind(), FailureKind::Network);
+        assert_eq!(count(), 1, "GetLogEvents: one attempt");
+
+        let failure = gateway
+            .describe_log_streams(streams_request())
+            .await
+            .unwrap_err();
+        assert_eq!(failure.kind(), FailureKind::Network);
+        assert_eq!(count(), 1 + 3, "DescribeLogStreams keeps the SDK default");
     }
 
     #[test]

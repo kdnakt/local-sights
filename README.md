@@ -324,15 +324,24 @@ credentials; tests and CI never run it.
 
 ```bash
 cargo run -p local-sights-core --example fetch_check -- \
-  --profile dev --log-group /aws/lambda/my-function \
+  --profile dev --region ap-northeast-1 --log-group /aws/lambda/my-function \
   --start '2024/01/02 03:00:00' --end '2024/01/02 03:59:59'
 ```
 
+`--region` is required. It is the region the fetch connects to and also sets
+the ceiling on `GetLogEvents` calls, half the region's AWS limit (12 calls a
+second in Tokyo; 5 when the region is unknown), so leaving it to the profile
+would understate the speed.
+
 Events go to standard output in time order
-(`UTC time<TAB>stream name<TAB>message`); the event, stream and failed-stream
-counts, then each failed stream (or an incomplete stream listing) with its
-failure kind and safe detail, go to standard error. Exit code 0 means
-success, 1 that something failed, 2 invalid arguments.
+(`UTC time<TAB>stream name<TAB>message`). Standard error gets the one-line
+fetch summary, for example
+`local-sights: fetch summary streams=180 calls=212 throttled=3 elapsed_ms=18450 max_in_flight=8 status=Completed`
+(numbers and the status only; the app writes the same line when started from
+a terminal), then the event, stream and failed-stream counts, then each
+failed stream (or an incomplete stream listing) with its failure kind and
+safe detail. Exit code 0 means success, 1 that something failed, 2 invalid
+arguments.
 
 ## App icon
 
@@ -377,7 +386,16 @@ cargo clippy --workspace
 npm run typecheck && npm run lint && npm run format:check
 npm audit
 npm run check:version           # same version in Cargo.toml, Cargo.lock, package.json, tauri.conf.json
+cargo test -p local-sights-core --example fetch_check  # fetch_check argument parsing (--region is required)
 ```
+
+Against real AWS, by hand only: `fetch_check` needs `--region` (see "Check
+against real AWS from the terminal") and prints the one-line fetch summary
+(`streams=… calls=… throttled=… elapsed_ms=… max_in_flight=… status=…`) to
+standard error. To compare the speed with `main`, run both with the same
+profile, log group, time range and `AWS_REGION`, giving this version the same
+region in `--region` too, three times each under `time`, and compare the
+median real time and the event count.
 
 ## Releasing
 

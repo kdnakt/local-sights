@@ -2,9 +2,17 @@
 //! returns scripted responses in order and records every request it gets.
 //! Since U3 it also answers `DescribeLogStreams` and keeps a separate script
 //! of `GetLogEvents` responses per stream name.
+//!
+//! Since 261012-parallel-fetch U1 a `GetLogEvents` call can take time (a
+//! `tokio::time::sleep`, so tests run on the paused clock), and the fake
+//! records when each call started and ended and how many calls were under
+//! way at once. Without a duration it answers at once, as before.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
+use std::time::Duration;
+
+use tokio::time::Instant;
 
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use local_sights_core::gateway::{
@@ -15,6 +23,24 @@ use local_sights_core::log_groups::LogGroup;
 use local_sights_core::streams::LogStream;
 
 type EventsScript = VecDeque<Result<GetLogEventsPage, ApiFailure>>;
+
+/// One `GetLogEvents` call: which stream, and when it started and ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimedCall {
+    /// Stream name.
+    pub stream: String,
+    /// When the call reached the fake.
+    pub started: Instant,
+    /// When the fake answered.
+    pub ended: Instant,
+}
+
+/// `GetLogEvents` calls under way now and the most seen at once.
+#[derive(Debug, Default)]
+struct InFlight {
+    now: usize,
+    max: usize,
+}
 
 /// Scripted gateway.
 #[derive(Debug, Default)]
@@ -28,6 +54,10 @@ pub struct FakeGateway {
     stream_calls: Mutex<Vec<DescribeLogStreamsRequest>>,
     per_stream: Mutex<HashMap<String, EventsScript>>,
     api_log: Mutex<Vec<String>>,
+    call_duration: Option<Duration>,
+    per_stream_duration: HashMap<String, Duration>,
+    timed_calls: Mutex<Vec<TimedCall>>,
+    in_flight: Mutex<InFlight>,
 }
 
 impl FakeGateway {
@@ -117,6 +147,45 @@ impl FakeGateway {
             .map(|call| call.log_stream_name)
             .collect()
     }
+
+    /// Every `GetLogEvents` call takes `duration` (U1), unless its stream
+    /// has its own duration.
+    pub fn with_call_duration(mut self, duration: Duration) -> Self {
+        self.call_duration = Some(duration);
+        self
+    }
+
+    /// The `GetLogEvents` calls of `name` take `duration` (U1).
+    pub fn stream_call_duration(mut self, name: &str, duration: Duration) -> Self {
+        self.per_stream_duration.insert(name.to_string(), duration);
+        self
+    }
+
+    /// Every finished `GetLogEvents` call with its start and end, in the
+    /// order they started (U1).
+    pub fn timed_calls(&self) -> Vec<TimedCall> {
+        let mut calls = self.timed_calls.lock().unwrap().clone();
+        calls.sort_by_key(|call| call.started);
+        calls
+    }
+
+    /// The most `GetLogEvents` calls that were under way at once (U1).
+    pub fn max_concurrent_calls(&self) -> usize {
+        self.in_flight.lock().unwrap().max
+    }
+
+    fn scripted_answer(&self, stream: &str) -> Result<GetLogEventsPage, ApiFailure> {
+        if let Some(script) = self.per_stream.lock().unwrap().get_mut(stream) {
+            return script.pop_front().unwrap_or_else(|| {
+                panic!("FakeGateway received more GetLogEvents calls for {stream} than scripted")
+            });
+        }
+        self.responses
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("FakeGateway received more calls than scripted responses")
+    }
 }
 
 impl CloudWatchLogsGateway for FakeGateway {
@@ -133,16 +202,28 @@ impl CloudWatchLogsGateway for FakeGateway {
             .push(format!("GetLogEvents:{}", request.log_stream_name));
         let stream = request.log_stream_name.clone();
         self.calls.lock().unwrap().push(request);
-        if let Some(script) = self.per_stream.lock().unwrap().get_mut(&stream) {
-            return script.pop_front().unwrap_or_else(|| {
-                panic!("FakeGateway received more GetLogEvents calls for {stream} than scripted")
-            });
+        let duration = self
+            .per_stream_duration
+            .get(&stream)
+            .copied()
+            .or(self.call_duration);
+        let Some(duration) = duration else {
+            return self.scripted_answer(&stream);
+        };
+        let started = Instant::now();
+        {
+            let mut in_flight = self.in_flight.lock().unwrap();
+            in_flight.now += 1;
+            in_flight.max = in_flight.max.max(in_flight.now);
         }
-        self.responses
-            .lock()
-            .unwrap()
-            .pop_front()
-            .expect("FakeGateway received more calls than scripted responses")
+        tokio::time::sleep(duration).await;
+        self.in_flight.lock().unwrap().now -= 1;
+        self.timed_calls.lock().unwrap().push(TimedCall {
+            stream: stream.clone(),
+            started,
+            ended: Instant::now(),
+        });
+        self.scripted_answer(&stream)
     }
 
     async fn describe_log_groups(

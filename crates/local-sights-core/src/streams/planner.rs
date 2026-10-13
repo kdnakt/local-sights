@@ -50,10 +50,12 @@ where
             log_group_name: request.log_group_name().to_string(),
             next_token: selection.token_to_send().map(str::to_string),
         };
-        // Retries are counted per request (BR2.2).
+        // Retries are counted per request (BR2.2). DescribeLogStreams is not
+        // under the GetLogEvents ceiling (261012-parallel-fetch FR2), so it
+        // is called without a permit, as before.
         let mut counter = RetryCounter::new();
         let page = match retrier
-            .call(&mut counter, || gateway.describe_log_streams(call.clone()))
+            .call_unpaced(&mut counter, || gateway.describe_log_streams(call.clone()))
             .await
         {
             CallResult::Succeeded(page) => page,

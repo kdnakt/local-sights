@@ -30,9 +30,9 @@
 //! `UTC time<TAB>stream name<TAB>message on one line`.
 //! Standard error: the one-line fetch summary written by the coordinator
 //! (`local-sights: fetch summary streams=… calls=… throttled=… elapsed_ms=…
-//! max_in_flight=… status=…`, U1:NFR2.2, NFR2.3), then the event, stream and
-//! failure counts, then every failed stream (or the listing failure) with
-//! its kind and safe detail.
+//! max_in_flight=… min_rate=… status=…`, U1:NFR2.2, NFR2.3, U2:BR2.7), then
+//! the event, stream and failure counts, then every failed stream (or the
+//! listing failure) with its kind and safe detail.
 //! Exit codes: 0 success, 1 something failed, 2 invalid arguments.
 //!
 //! Comparing with the version on `main` by hand (U1:NFR2.1, review R-03):

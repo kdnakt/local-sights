@@ -617,7 +617,7 @@ async fn no_selected_stream_completes_without_reading() {
         sink.summary.map(|s| s.line()),
         Some(
             "local-sights: fetch summary streams=0 calls=0 throttled=0 elapsed_ms=0 \
-             max_in_flight=0 status=Completed"
+             max_in_flight=0 min_rate=12 status=Completed"
                 .to_string()
         )
     );

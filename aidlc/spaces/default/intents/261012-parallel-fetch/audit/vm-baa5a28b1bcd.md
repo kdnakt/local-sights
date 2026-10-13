@@ -13088,3 +13088,356 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:28:30Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:28:39Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/unit-test-instructions.md
+**Context**: construction > u2-call-pacing > code-generation > unit-test-instructions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T14:29:42Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Approve Plan"]
+
+---
+
+## Plan Approval Recorded
+**Timestamp**: 2026-10-13T14:29:42Z
+**Event**: PLAN_APPROVAL_RECORDED
+**Stage**: code-generation
+**Details**: Approve Plan
+**Checkpoint**: plan-approval
+**Plan Target**: unit:u2-call-pacing
+**Intent**: 01a12ef4-71f6-7a92-afe0-2716a1cc1c7e
+**Directive Epoch**: sha256:d8f7210131d8e5ea45b82102aaf502118c0d4ea9447cda41ec4d0eabd5887907
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+**Approval Fingerprint**: sha256:v3:be70f321d60f2b4bcdf516ccf7c92ff7a994e2c086555a2e2d8764632f4e85dc
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-questions.md
+**Questions SHA-256**: 41b85591ced4b895b4c7ea7a60c131773f917e2159d04d9938c48c836a568366
+**Prompt SHA-256**: de877136c4fef10e58c925fbd8725fbe743ddcd84f57176b0d9ae636c267b6f2
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Asked By**: engine
+**Person Reply**: Approve Plan
+**Unit**: u2-call-pacing
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T14:29:42Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Approve the code plan for u2-call-pacing?\n\n・Builds: 制限（スロットリング）を受けたら GetLogEvents の速さを半分に下げ、制限なしが 5 秒続くごとに 1 秒あたり 1 回ずつ上限まで戻す CallPacer と、要約の 1 行の min_rate=\n・Touches: crates/local-sights-core/src/pacing.rs（下げ・戻し）、fetcher.rs（制限の知らせ）、fetch_stats.rs・coordinator.rs（min_rate）、tests/u2_call_pacing.rs（新規）\n・Tests: CallPacer の単体テスト約 10 件（テスト先行）、FetchStats の書式のテストの更新、偽物のゲートウェイと止めた時計による結合テスト約 6 件。既存のテストは通ったまま、行カバレッジ 80% 以上\n\n計画：aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Reply**: Approve Plan
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:33:57Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:34:00Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:37:26Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:39:14Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:39:17Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:39:52Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:41:04Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:42:08Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:42:11Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:42:13Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:46:49Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:46:53Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:51:34Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:51:37Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:51:40Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T14:52:22Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Context**: construction > u2-call-pacing > code-generation > code-generation-plan.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T14:53:08Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-developer-agent
+**Agent ID**: abea7fca81d984d2d
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T14:57:52Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:58:00Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/source-manifest.json
+**Context**: construction > u2-call-pacing > code-generation > source-manifest.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:58:09Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/traceability.json
+**Context**: construction > u2-call-pacing > code-generation > traceability.json
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T14:58:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: 168b3222
+**Sensor ID**: traceability
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-13T14:58:11Z
+**Event**: SENSOR_FAILED
+**Fire id**: 168b3222
+**Sensor ID**: traceability
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/code-generation/traceability-168b3222.md
+**Findings count**: 10
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:58:23Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-summary.md
+**Context**: construction > u2-call-pacing > code-generation > code-summary.md
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-13T14:58:26Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Unit**: u1-concurrent-skeleton
+**Checkpoint**: review-receipt
+**Changed**: README.md, crates/local-sights-core/examples/fetch_check.rs, crates/local-sights-core/src/coordinator.rs, crates/local-sights-core/src/fetch_stats.rs, crates/local-sights-core/src/fetcher.rs, crates/local-sights-core/src/pacing.rs, crates/local-sights-core/tests/u1_concurrent_fetch.rs
+**Recorded**: sha256:06711e840661b2de35230a43a0af2f391b1c674a2c449c0c4a591cc1943728ae
+**Current**: sha256:0a0aa946ecf5d288e163fd218518626c86abd8bd8170ba426592cb9eeaa305c5
+**Details**: README.md, crates/local-sights-core/examples/fetch_check.rs, crates/local-sights-core/src/coordinator.rs, crates/local-sights-core/src/fetch_stats.rs, crates/local-sights-core/src/fetcher.rs, crates/local-sights-core/src/pacing.rs, crates/local-sights-core/tests/u1_concurrent_fetch.rs changed after the concurrent skeleton Unit was reviewed; carrying on.
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T14:58:26Z
+**Event**: REVIEW_REQUESTED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-call-pacing
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:f0d3ef22415339d63eef56c50330876eeac4509dc4f44ef7ccc618c03b0d2829
+**Request Id**: review:72fea13395e7207c286ae1afbbbf957f
+**Source Fingerprint**: e6295615d3e4a3df65a4812df9303d70453a2c5c2936b9258980b5f090b41c08
+**Unit Source Fingerprint**: sha256:e9d494aa5eb090531deb46a6bb569c599b6e21a38d08ce1ef85821523bd8a41a
+**Review File**: .aidlc-engine/reviews/code-generation/units/u2-call-pacing/df725d72ea237644/1.72fea13395e7207c286ae1afbbbf957f.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T15:00:18Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/code-generation/units/u2-call-pacing/df725d72ea237644/1.72fea13395e7207c286ae1afbbbf957f.review.md
+**Context**: .aidlc-engine > reviews > code-generation > units > u2-call-pacing > df725d72ea237644 > 1.72fea13395e7207c286ae1afbbbf957f.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T15:00:23Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a6e4cf1ad78bf0486
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T15:00:40Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T15:00:45Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-call-pacing
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:f0d3ef22415339d63eef56c50330876eeac4509dc4f44ef7ccc618c03b0d2829
+**Artifact Fingerprint**: sha256:f0d3ef22415339d63eef56c50330876eeac4509dc4f44ef7ccc618c03b0d2829
+**Request Id**: review:72fea13395e7207c286ae1afbbbf957f
+**Request Source Fingerprint**: e6295615d3e4a3df65a4812df9303d70453a2c5c2936b9258980b5f090b41c08
+**Source Fingerprint**: e6295615d3e4a3df65a4812df9303d70453a2c5c2936b9258980b5f090b41c08
+**Unit Source Fingerprint**: sha256:e9d494aa5eb090531deb46a6bb569c599b6e21a38d08ce1ef85821523bd8a41a
+**Review Record**: .aidlc-engine/reviews/code-generation/units/u2-call-pacing/df725d72ea237644/1.json
+**Review Record Digest**: sha256:8d8a52efa1c70a5de7d5f7decf02adac24257a59668bc651d21b3f9df8650b03
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-13T15:00:57Z
+**Event**: UNIT_STARTED
+**Stage**: code-generation
+**Unit**: u2-call-pacing
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T15:01:01Z
+**Event**: UNIT_COMPLETED
+**Stage**: code-generation
+**Unit**: u2-call-pacing
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

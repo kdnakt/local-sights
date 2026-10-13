@@ -43,7 +43,7 @@ use crate::fetcher::{
     PageStep, ReadContext, StreamFetch, StreamFetchEnd, StreamFetchOutcome, StreamReader, next_page,
 };
 use crate::gateway::CloudWatchLogsGateway;
-use crate::pacing::CallPacer;
+use crate::pacing::{CallPacer, RegionCallLimit};
 use crate::request::ValidatedFetch;
 use crate::retry::Retrier;
 use crate::schedule::{SlotEnd, StreamSchedule};
@@ -308,7 +308,10 @@ impl TimelineStore for Mutex<EventTimeline> {
 /// before the job finishes.
 ///
 /// At the end the one-line summary of the fetch goes to standard error and
-/// to [`FetchSink::on_summary`] (NFR2.2, see [`crate::fetch_stats`]).
+/// to [`FetchSink::on_summary`] (NFR2.2, see [`crate::fetch_stats`]). Its
+/// `min_rate` is the pacer's lowest rate; a fetch stopped while listing,
+/// before the pacer is made, reports the region's ceiling (U2:BR2.7). The
+/// pacer lowering its rate changes no notice to the sink (U2 FR2.6).
 pub async fn run_fetch<G, T, S>(
     gateway: &G,
     fetch: &ValidatedFetch,
@@ -334,7 +337,15 @@ where
     {
         PlanOutcome::Planned(plan) => plan,
         PlanOutcome::Aborted => {
-            report_summary(&job, &stats, Duration::ZERO, JobStatus::Aborted, sink);
+            // No pacer was made: the lowest rate is the region's ceiling
+            // (U2:BR2.7).
+            let ceiling = RegionCallLimit::for_region(fetch.request.region()).ceiling_per_second();
+            let ended = FetchEnd {
+                elapsed: Duration::ZERO,
+                min_rate: ceiling,
+                status: JobStatus::Aborted,
+            };
+            report_summary(&job, &stats, ended, sink);
             return abort(job, timeline, sink);
         }
     };
@@ -359,15 +370,38 @@ where
     };
     let latest_version = read.run(&context, &plan).await;
     let elapsed = read_started.elapsed();
+    let min_rate = pacer.lowest_rate_per_second();
 
     if retrier.is_stopped() {
-        report_summary(&job, &stats, elapsed, JobStatus::Aborted, sink);
+        let ended = FetchEnd {
+            elapsed,
+            min_rate,
+            status: JobStatus::Aborted,
+        };
+        report_summary(&job, &stats, ended, sink);
         return abort(job, timeline, sink);
     }
     job.status = decide_job_status(false, Some(&plan), job.failed_stream_count());
-    report_summary(&job, &stats, elapsed, job.status, sink);
+    let ended = FetchEnd {
+        elapsed,
+        min_rate,
+        status: job.status,
+    };
+    report_summary(&job, &stats, ended, sink);
     sink.on_finished(&job, latest_version);
     job
+}
+
+/// How a fetch that went to AWS ended, for its summary line.
+#[derive(Debug, Clone, Copy)]
+struct FetchEnd {
+    /// Time of the read stage; zero when it was never entered.
+    elapsed: Duration,
+    /// The pacer's lowest rate, or the region's ceiling when no pacer was
+    /// made (U2:BR2.7).
+    min_rate: u32,
+    /// The final status.
+    status: JobStatus,
 }
 
 /// The read stage of one fetch: the only place that hands pages and
@@ -496,16 +530,15 @@ where
 
 /// NFR2.2: writes the one-line summary of a fetch that went to AWS to
 /// standard error and hands it to the sink. Only numbers and the status
-/// word go into it (NFR8.6).
-fn report_summary<S: FetchSink>(
-    job: &FetchJob,
-    stats: &FetchStats,
-    elapsed: Duration,
-    status: JobStatus,
-    sink: &mut S,
-) {
-    let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
-    let summary = stats.summary(u64::from(job.finished_stream_count), elapsed_ms, status);
+/// word go into it (NFR8.6, U2:NFR8.7).
+fn report_summary<S: FetchSink>(job: &FetchJob, stats: &FetchStats, ended: FetchEnd, sink: &mut S) {
+    let elapsed_ms = u64::try_from(ended.elapsed.as_millis()).unwrap_or(u64::MAX);
+    let summary = stats.summary(
+        u64::from(job.finished_stream_count),
+        elapsed_ms,
+        ended.min_rate,
+        ended.status,
+    );
     eprintln!("{summary}");
     sink.on_summary(&summary);
 }

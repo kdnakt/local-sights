@@ -336,9 +336,14 @@ would understate the speed.
 Events go to standard output in time order
 (`UTC time<TAB>stream name<TAB>message`). Standard error gets the one-line
 fetch summary, for example
-`local-sights: fetch summary streams=180 calls=212 throttled=3 elapsed_ms=18450 max_in_flight=8 status=Completed`
+`local-sights: fetch summary streams=180 calls=212 throttled=3 elapsed_ms=18450 max_in_flight=8 min_rate=6 status=Completed`
 (numbers and the status only; the app writes the same line when started from
-a terminal), then the event, stream and failed-stream counts, then each
+a terminal). `min_rate` is the lowest number of `GetLogEvents` calls a second
+the fetch used: when AWS throttles a call, the fetch halves its rate (never
+below 1) and raises it by one again for every five seconds without
+throttling, up to the region's ceiling. It equals the ceiling when nothing
+was throttled. The screen shows nothing of this. Then come the event, stream
+and failed-stream counts, then each
 failed stream (or an incomplete stream listing) with its failure kind and
 safe detail. Exit code 0 means success, 1 that something failed, 2 invalid
 arguments.
@@ -391,7 +396,7 @@ cargo test -p local-sights-core --example fetch_check  # fetch_check argument pa
 
 Against real AWS, by hand only: `fetch_check` needs `--region` (see "Check
 against real AWS from the terminal") and prints the one-line fetch summary
-(`streams=… calls=… throttled=… elapsed_ms=… max_in_flight=… status=…`) to
+(`streams=… calls=… throttled=… elapsed_ms=… max_in_flight=… min_rate=… status=…`) to
 standard error. To compare the speed with `main`, run both with the same
 profile, log group, time range and `AWS_REGION`, giving this version the same
 region in `--region` too, three times each under `time`, and compare the

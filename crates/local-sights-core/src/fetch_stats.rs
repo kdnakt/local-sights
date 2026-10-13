@@ -7,7 +7,12 @@
 //! reader holds a shared reference and increments atomic counters (NFR
 //! design review R-02). `calls` counts every attempt, retries included, and
 //! `throttled` the attempts that failed as Throttled; `max_in_flight` is
-//! the largest number of streams being read at once.
+//! the largest number of streams being read at once. Since U2, `min_rate`
+//! is the lowest `GetLogEvents` rate per second the fetch's CallPacer came
+//! down to after throttling (U2:BR2.7, NFR8.7). The coordinator passes it in
+//! at the end; it is the region's ceiling when the rate was never lowered or
+//! when the fetch ended before the read stage made a pacer. Being lowered is
+//! shown nowhere else, neither on the screen nor in a notice (FR2.6).
 //!
 //! When the summary is written (review R-02): once at the end of every fetch
 //! that went to AWS, whatever its status (Completed, CompletedWithFailures,
@@ -23,7 +28,7 @@
 //! or a failure detail (NFR8.3, NFR8.6).
 //!
 //! ```text
-//! local-sights: fetch summary streams=180 calls=212 throttled=3 elapsed_ms=18450 max_in_flight=8 status=Completed
+//! local-sights: fetch summary streams=180 calls=212 throttled=3 elapsed_ms=18450 max_in_flight=8 min_rate=6 status=Completed
 //! ```
 
 use std::fmt;
@@ -76,14 +81,22 @@ impl FetchStats {
     }
 
     /// The summary of a finished fetch with `streams` ended streams, a read
-    /// stage of `elapsed_ms` and its final `status`.
-    pub fn summary(&self, streams: u64, elapsed_ms: u64, status: JobStatus) -> FetchSummary {
+    /// stage of `elapsed_ms`, the lowest call rate per second `min_rate`
+    /// (U2:BR2.7) and its final `status`.
+    pub fn summary(
+        &self,
+        streams: u64,
+        elapsed_ms: u64,
+        min_rate: u32,
+        status: JobStatus,
+    ) -> FetchSummary {
         FetchSummary {
             streams,
             calls: self.calls(),
             throttled: self.throttled(),
             elapsed_ms,
             max_in_flight: self.max_in_flight(),
+            min_rate,
             status,
         }
     }
@@ -102,6 +115,8 @@ pub struct FetchSummary {
     pub elapsed_ms: u64,
     /// The most streams read at once.
     pub max_in_flight: u64,
+    /// The lowest `GetLogEvents` calls per second of the fetch (U2:BR2.7).
+    pub min_rate: u32,
     /// The final status of the fetch.
     pub status: JobStatus,
 }
@@ -118,12 +133,13 @@ impl fmt::Display for FetchSummary {
         write!(
             f,
             "local-sights: fetch summary streams={} calls={} throttled={} elapsed_ms={} \
-             max_in_flight={} status={}",
+             max_in_flight={} min_rate={} status={}",
             self.streams,
             self.calls,
             self.throttled,
             self.elapsed_ms,
             self.max_in_flight,
+            self.min_rate,
             self.status.as_str()
         )
     }
@@ -141,16 +157,18 @@ mod tests {
             throttled: 3,
             elapsed_ms: 18_450,
             max_in_flight: 8,
+            min_rate: 6,
             status,
         }
     }
 
     #[test]
     fn the_line_has_the_fixed_fields_in_the_fixed_order() {
+        // U2:BR2.7: min_rate after max_in_flight, before status.
         assert_eq!(
             summary(JobStatus::Completed).line(),
             "local-sights: fetch summary streams=180 calls=212 throttled=3 \
-             elapsed_ms=18450 max_in_flight=8 status=Completed"
+             elapsed_ms=18450 max_in_flight=8 min_rate=6 status=Completed"
         );
         assert_eq!(
             summary(JobStatus::Aborted).to_string(),
@@ -178,13 +196,17 @@ mod tests {
                     "throttled",
                     "elapsed_ms",
                     "max_in_flight",
+                    "min_rate",
                     "status"
                 ]
             );
-            for (key, value) in &pairs[..5] {
-                assert!(value.chars().all(|c| c.is_ascii_digit()), "{key}={value}");
+            for (key, value) in &pairs[..6] {
+                assert!(
+                    !value.is_empty() && value.chars().all(|c| c.is_ascii_digit()),
+                    "{key}={value}"
+                );
             }
-            assert_eq!(pairs[5].1, status.as_str());
+            assert_eq!(pairs[6].1, status.as_str());
         }
     }
 
@@ -197,8 +219,9 @@ mod tests {
         other_reader.record_attempt(true);
         reader.record_attempt(true);
         assert_eq!((stats.calls(), stats.throttled()), (3, 2));
-        let line = stats.summary(2, 10, JobStatus::Completed).line();
+        let line = stats.summary(2, 10, 3, JobStatus::Completed).line();
         assert!(line.contains(" calls=3 throttled=2 "), "{line}");
+        assert!(line.contains(" min_rate=3 status=Completed"), "{line}");
     }
 
     #[test]
@@ -208,16 +231,31 @@ mod tests {
             stats.record_in_flight(count);
         }
         assert_eq!(stats.max_in_flight(), 8);
-        assert_eq!(stats.summary(0, 0, JobStatus::Aborted).max_in_flight, 8);
+        assert_eq!(stats.summary(0, 0, 12, JobStatus::Aborted).max_in_flight, 8);
     }
 
     #[test]
-    fn a_fetch_that_read_nothing_reports_zeros() {
+    fn the_lowest_rate_given_is_the_min_rate_of_the_summary() {
+        // U2:BR2.7: the coordinator passes the pacer's lowest rate, or the
+        // region's ceiling when no pacer was made.
+        let stats = FetchStats::new();
+        for rate in [1, 5, 12] {
+            assert_eq!(
+                stats.summary(0, 0, rate, JobStatus::Completed).min_rate,
+                rate
+            );
+        }
+    }
+
+    #[test]
+    fn a_fetch_that_read_nothing_reports_zeros_and_the_ceiling() {
+        // U1:NFR7.1 test kept in the U2 format: nothing read, so min_rate
+        // is the ceiling the coordinator passes (5 without a region).
         let stats = FetchStats::default();
         assert_eq!(
-            stats.summary(0, 0, JobStatus::Failed).line(),
+            stats.summary(0, 0, 5, JobStatus::Failed).line(),
             "local-sights: fetch summary streams=0 calls=0 throttled=0 \
-             elapsed_ms=0 max_in_flight=0 status=Failed"
+             elapsed_ms=0 max_in_flight=0 min_rate=5 status=Failed"
         );
     }
 }

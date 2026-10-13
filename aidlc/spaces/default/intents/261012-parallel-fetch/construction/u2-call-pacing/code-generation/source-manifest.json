@@ -1,0 +1,15 @@
+{
+  "stage": "code-generation",
+  "unit": "u2-call-pacing",
+  "version": 1,
+  "writes": [
+    { "path": "README.md" },
+    { "path": "crates/local-sights-core/src/pacing.rs" },
+    { "path": "crates/local-sights-core/src/fetch_stats.rs" },
+    { "path": "crates/local-sights-core/src/fetcher.rs" },
+    { "path": "crates/local-sights-core/src/coordinator.rs" },
+    { "path": "crates/local-sights-core/examples/fetch_check.rs" },
+    { "path": "crates/local-sights-core/tests/u1_concurrent_fetch.rs" },
+    { "path": "crates/local-sights-core/tests/u2_call_pacing.rs" }
+  ]
+}

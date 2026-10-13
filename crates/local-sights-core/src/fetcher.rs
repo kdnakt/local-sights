@@ -7,7 +7,8 @@
 //! FetchCoordinator can keep up to eight streams' next pages going side by
 //! side in one task and hand each page on before asking for the next one
 //! (U1:BR1.10, BR1.11). Every `GetLogEvents` attempt waits for a permit of
-//! the fetch's [`CallPacer`] first (U1:BR1.4).
+//! the fetch's [`CallPacer`] first (U1:BR1.4), and since U2 every attempt
+//! that ends Throttled is reported to it, which lowers the rate (U2:BR2.1).
 
 use serde::Serialize;
 
@@ -293,7 +294,11 @@ where
     }
 }
 
-/// One `GetLogEvents` attempt, counted in the fetch's stats (NFR2.4).
+/// One `GetLogEvents` attempt, counted in the fetch's stats (NFR2.4). An
+/// attempt that ends Throttled, the first one or a retry, is reported to
+/// the fetch's [`CallPacer`], which lowers the rate of the next slots
+/// (U2:BR2.1, contract C1). Only `GetLogEvents` reports: the listing calls
+/// go through `call_unpaced` and never reach here.
 async fn counted_call<G>(
     context: &ReadContext<'_, G>,
     call: GetLogEventsRequest,
@@ -304,6 +309,9 @@ where
     let result = context.gateway.get_log_events(call).await;
     let throttled = matches!(&result, Err(failure) if failure.kind() == FailureKind::Throttled);
     context.stats.record_attempt(throttled);
+    if throttled {
+        context.pacer.report_throttled();
+    }
     result
 }
 
@@ -418,18 +426,29 @@ mod tests {
         stop: &StopSignal,
         stats: &FetchStats,
     ) -> (Vec<Vec<(String, u64)>>, StreamFetch) {
+        let pacer = CallPacer::for_region(region);
+        read_all_with(gateway, region, stop, stats, &pacer).await
+    }
+
+    /// [`read_all`] with a pacer the test can look at afterwards.
+    async fn read_all_with(
+        gateway: &ScriptedLogs,
+        region: Option<&str>,
+        stop: &StopSignal,
+        stats: &FetchStats,
+        pacer: &CallPacer,
+    ) -> (Vec<Vec<(String, u64)>>, StreamFetch) {
         let policy = RetryPolicy::default();
         let jitter = FixedJitter(0.0);
         let retrier = Retrier::new(&policy, &jitter, stop);
         let request = request(region);
         let range = TimeRange::from_seconds(START / 1_000, START / 1_000 + 60).unwrap();
-        let pacer = CallPacer::for_region(region);
         let context = ReadContext {
             gateway,
             request: &request,
             range: &range,
             retrier: &retrier,
-            pacer: &pacer,
+            pacer,
             stats,
         };
         let mut reader = StreamReader::new("s01");
@@ -573,5 +592,71 @@ mod tests {
             ]
         );
         assert_eq!((stats.calls(), stats.throttled()), (4, 1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_throttled_attempt_lowers_the_fetchs_rate() {
+        // U2:BR2.1: the first attempt and the retry are both reported. Tokyo:
+        // 12 → 6 at 0 s, 6 → 3 at 1 s (the hold of one second has passed);
+        // the retry waits stay 1 s and 2 s (U2:BR2.8).
+        let gateway = ScriptedLogs::new(vec![
+            Err(failure(FailureKind::Throttled)),
+            Err(failure(FailureKind::Throttled)),
+            page(&[(START, "a")], None),
+        ]);
+        let stats = FetchStats::new();
+        let pacer = CallPacer::for_region(Some("ap-northeast-1"));
+        let (pages, fetch) = read_all_with(
+            &gateway,
+            Some("ap-northeast-1"),
+            &StopSignal::never(),
+            &stats,
+            &pacer,
+        )
+        .await;
+        assert_eq!(pages.len(), 1);
+        assert_eq!(fetch.end, StreamFetchEnd::Completed);
+        let times: Vec<Duration> = gateway.calls().into_iter().map(|(at, _)| at).collect();
+        assert_eq!(
+            times,
+            vec![
+                Duration::ZERO,
+                Duration::from_secs(1),
+                Duration::from_secs(3)
+            ]
+        );
+        assert_eq!(pacer.current_rate_per_second(), 3);
+        assert_eq!(pacer.lowest_rate_per_second(), 3);
+        assert_eq!((stats.calls(), stats.throttled()), (3, 2));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn other_failures_and_successes_leave_the_rate_alone() {
+        // U2:BR2.1: only Throttled is reported. A network failure is retried
+        // but does not lower the rate, nor does a denied call. (The listing
+        // calls never reach the pacer: they are made before it exists, with
+        // `call_unpaced`; tests/u2_call_pacing.rs checks a throttled
+        // listing end to end.)
+        let gateway = ScriptedLogs::new(vec![
+            page(&[(START, "a")], Some("f/1")),
+            Err(failure(FailureKind::Network)),
+            Err(failure(FailureKind::AccessDenied)),
+        ]);
+        let stats = FetchStats::new();
+        let pacer = CallPacer::for_region(Some("ap-northeast-1"));
+        let (_, fetch) = read_all_with(
+            &gateway,
+            Some("ap-northeast-1"),
+            &StopSignal::never(),
+            &stats,
+            &pacer,
+        )
+        .await;
+        assert_eq!(fetch.end, StreamFetchEnd::Failed { exhausted: false });
+        assert_eq!(gateway.calls().len(), 3);
+        assert_eq!(pacer.current_rate_per_second(), 12);
+        assert_eq!(pacer.lowest_rate_per_second(), 12);
+        assert_eq!(pacer.min_interval(), crate::pacing::min_interval(12));
+        assert_eq!(stats.throttled(), 0);
     }
 }

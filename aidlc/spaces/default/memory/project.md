@@ -98,3 +98,4 @@ None. (affirmed 2026-10-12)
 - アプリが利用者の操作で AWS CLI の aws sso login を起動することは、Forbidden の「CloudWatch Logs の読み取り API 以外を呼ばない」と「SSO のトークンを書き込まない」の対象外とする。アプリ自身は SSO の API を呼ばず、トークンを読み書きしない (learned 2026-10-11) <!-- cid:261011-sso-login:intent-capture:b2155b7843696ad2ed4315f53ce0950625508101b5fef4a57d001979208f5710 -->
 - 選択肢の説明に添えた例の数値（例：「半分以下」）は確定した目標値とみなさず、測る条件と数値は後のステージで決める (learned 2026-10-12) <!-- cid:261012-parallel-fetch:intent-capture:0057eaf5e0e1b5719946a1ae0544ced3b84ee9b61be2d1e88549b9c2f666d36c -->
 - 「含めないもの」の質問で選ばれなかった項目は、含めるとも含めないともみなさず、追加の質問で確かめる (learned 2026-10-12) <!-- cid:261012-parallel-fetch:intent-capture:7294424c81c605a135be8bd6e7b9479d249332912f3659665b0181f236684857 -->
+- ALWAYS CI のジョブ名を変えるときは、ブランチの保護ルールの必須チェックの名前と合わせる（PR #20 で名前を変えてマージできなくなった） (learned 2026-10-13) <!-- cid:261012-parallel-fetch:code-generation:42c27d7572a097e518f636f0c205a6d03693f4cadb5891375e6cbc90393ba6bc -->

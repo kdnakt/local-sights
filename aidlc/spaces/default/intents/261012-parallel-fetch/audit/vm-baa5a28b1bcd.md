@@ -11734,3 +11734,200 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Checkpoint Verification Recorded
+**Timestamp**: 2026-10-13T12:07:03Z
+**Event**: CHECKPOINT_VERIFICATION_RECORDED
+**Unit**: u1-concurrent-skeleton
+**Kind**: skeleton
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Verification Id**: 2bc3348b-dbf8-4f8a-bcf5-66483fb0964d
+**Fingerprint**: sha256:ffbfc283ff0ce7c878c29aca18ba4f11fb6500b6561ee007c87e116fa7768408
+**Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Exit Code**: 0
+**Verified**: true
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T12:07:26Z
+**Event**: DECISION_RECORDED
+**Stage**: code-generation
+**Decision**: U1 で気づいたことのうち、今後の決まりとして残すものはありますか？
+**Options**: A,B,Keep none of these
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T12:08:35Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T12:08:35Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U1 で気づいたことのうち、今後の決まりとして残すものはありますか？（複数選べます）
+**Reply**: A
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T12:08:41Z
+**Event**: QUESTION_ANSWERED
+**Stage**: code-generation
+**Details**: A
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Rule Learned
+**Timestamp**: 2026-10-13T12:09:26Z
+**Event**: RULE_LEARNED
+**Stage**: code-generation
+**Candidate-ID**: user-addition-1
+**Content-Hash**: 42c27d7572a097e518f636f0c205a6d03693f4cadb5891375e6cbc90393ba6bc
+**Destination**: <project-dir>/aidlc/spaces/default/memory/project.md
+**Heading**: ## Corrections
+**Source**: user_addition
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T12:09:35Z
+**Event**: DECISION_RECORDED
+**Stage**: code-generation
+**Decision**: Anything to add for next time?
+**Options**: Nothing to add,Add a note
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T12:14:41Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T13:14:04Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T13:14:12Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Nothing to add"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T13:14:12Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: 次のために、ほかに残しておきたいことはありますか？
+**Reply**: Nothing to add
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T13:14:14Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T13:14:23Z
+**Event**: QUESTION_ANSWERED
+**Stage**: code-generation
+**Details**: Nothing to add
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T13:14:31Z
+**Event**: DECISION_RECORDED
+**Checkpoint**: Construction Unit Approval
+**Unit**: u1-concurrent-skeleton
+**Kind**: skeleton
+**Stage**: code-generation
+**Fingerprint**: sha256:ffbfc283ff0ce7c878c29aca18ba4f11fb6500b6561ee007c87e116fa7768408
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Options**: Approve,Request Changes
+**Asked Evidence**: {"functional-design":["sha256:625c0b20d5c4cc02b9758d6394516c88a850dd3a6708b8cc445651501ce8c220",null],"nfr-requirements":["sha256:5f6c0219b776dceba7c0b66eb9eeb4bab6c3696401300dd8fbf56ec9d2dbb97d",null],"nfr-design":["sha256:002f603c6191099b94fd50a4cdc0d00c72154a0fde239ea57096f2dcae0ff950",null],"infrastructure-design":["sha256:ffb6e6e9e69304a416ac439c63052147cd359b94e10e15e27bb23845beda9c6d",null],"code-generation":["sha256:fe28acd2c0e34dd8c3fef287bac3e007b2aed45caf5bfbfac560fca07e96a12c","sha256:06711e840661b2de35230a43a0af2f391b1c674a2c449c0c4a591cc1943728ae",{"\u0000Cargo.lock":"100644 2826642f3c44f87e768344601284512e8c8772514cb7a39adf28b82292a0998c","\u0000Cargo.toml":"100644 cfdd0fd6195d7bd053b3b72c7e721064de8d10edd2a814a6925971e1c35097fb","\u0000README.md":"100644 cf815d33af2a5cda378eaafb2b2b712ded6041e0e30d389a421e9aef95f6d30c","\u0000crates/local-sights-core/Cargo.toml":"100644 152a17e86d7edf42797b7a5091df6120a45b7804193d204f7a358d72c0083afc","\u0000crates/local-sights-core/examples/fetch_check.rs":"100644 bc40de69f5979c2158f3bd6d8a6b4f33e5b0bfa778bc6a8cc01a1c1f3a553e98","\u0000crates/local-sights-core/src/cache/plan.rs":"100644 2f1807e98ee1e8c7a7d0d43e4f3dc2c28ea9575b77bfb58fba58363734550973","\u0000crates/local-sights-core/src/coordinator.rs":"100644 042413922279a039a9eecf56ec35ad0cdd0eb2634b27ca28c98daf6ce5f6fdc6","\u0000crates/local-sights-core/src/fetch_stats.rs":"100644 355f679ba281a11116171c2fe99a7675ad1528c881f2747fd859455caf2a4699","\u0000crates/local-sights-core/src/fetch_status.rs":"100644 4c993d7b785499a2f6573400f3133b245d8e2782bc1a9e44e5a1d693ab5dab56","\u0000crates/local-sights-core/src/fetcher.rs":"100644 c339c772233adbcec7d735fe8ddd196d6a29c7926912cf06e3d299a3dc207f44","\u0000crates/local-sights-core/src/gateway/aws.rs":"100644 a10a1db9bfde9c6870d815b1c5b7a594e79e111132fa4ffa64fb29a361d7e59e","\u0000crates/local-sights-core/src/lib.rs":"100644 d83a8df3900db795260945e8a287f229fa528a00ba6e75caf666b6fc75641927","\u0000crates/local-sights-core/src/pacing.rs":"100644 d6a2021feb9fafcb017212c5ef89eb8514841e6a63425ab0b1f80b89135b7535","\u0000crates/local-sights-core/src/retry.rs":"100644 6c77476f79d549fcc2e86c3f5c48c4e547a3b3dbfdeb9f72fef214a79a67032d","\u0000crates/local-sights-core/src/schedule.rs":"100644 4afc6e4b24bcdc4b174ea643a042734503e34c9fbafaf32c605df131c804e2c7","\u0000crates/local-sights-core/src/session.rs":"100644 72cda095824ab732fc6eee242e219737813efc73190424452618d8f6381b803e","\u0000crates/local-sights-core/src/streams/planner.rs":"100644 154d828ed2b20807feb5c3b984ee4caf22f912a9e5ba862ccfb81a8273a20e75","\u0000crates/local-sights-core/tests/support/fake_gateway.rs":"100644 f78f6d9a9785b8038c4ebaf1bf4dbb0090eea4aa0fcc127ee0d9f05f880a4de9","\u0000crates/local-sights-core/tests/support/recording_sink.rs":"100644 c323fcdc97250d8f0257c472e42fa7f22251f0d5881e054c5319456c06c53d05","\u0000crates/local-sights-core/tests/u1_concurrent_fetch.rs":"100644 7ed2f57bdfb000f2db54eae5db42cd9b13d2419ef0b21fa02eb8353658265dc0","\u0000crates/local-sights-core/tests/u1_fetch_flow.rs":"100644 79bd9e5c2eed64ff74001c4e9d1a24543ab85820175b6929cca5da3a1c1bc17d","\u0000crates/local-sights-core/tests/u3_fetch_flow.rs":"100644 918eadca2ebcff2a5577601a3bd242235e320f09703dd00b40b20242750144e1","\u0000crates/local-sights-core/tests/u5_filter_flow.rs":"100644 6aefd54295745a2dec2d5f605a2c8e93e234ba99e3e375ff4740f4e0b141082f","\u0000crates/local-sights-core/tests/u6_cache_flow.rs":"100644 544a972a373972bd3c3c9ed2d4f954bd1540178f934dee0d38a0587c9a0a8ec9","\u0000src-tauri/src/lib.rs":"100644 c6f2539a0069aa2737d87d99def76f3a7fed3d275355fa66bee502d62004ff98"}]}
+**Run floors**: {"functional-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-requirements":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","infrastructure-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","code-generation":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1"}
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T13:20:10Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T13:52:07Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T13:52:13Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Approve"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T13:52:13Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Verified with `cargo test --workspace && npx vitest run && cargo build -p local-sights` (exit 0). Approve this completed u1-concurrent-skeleton?\n\n承認の前に、team.md の薄い一本の確認（手元で 2 つ）をお願いします。ブランチ claude/parallel-fetch を取り込んで：\n1. 実際の AWS で確認用プログラム：`AWS_REGION=ap-northeast-1 cargo run -p local-sights-core --example fetch_check -- --profile <名前> --region ap-northeast-1 --log-group <名前> --start "yyyy/mm/dd hh:mm:ss" --end "yyyy/mm/dd hh:mm:ss"`。標準エラー出力の `local-sights: fetch summary ...` の 1 行で max_in_flight が 8 以下・throttled が 0 付近かを見る。main の版との比較（3 回ずつ time の中央値と件数）は README の手順どおり\n2. GUI を起動し、ストリームの多いロググループで取得結果が時刻順に表示されることを目で確かめる
+**Reply**: Approve
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T13:52:14Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-13T13:52:27Z
+**Event**: GATE_APPROVED
+**Unit**: u1-concurrent-skeleton
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Scope**: unit-end
+**Checkpoint**: walking-skeleton
+**Fingerprint**: sha256:ffbfc283ff0ce7c878c29aca18ba4f11fb6500b6561ee007c87e116fa7768408
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+**Run floors**: {"functional-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-requirements":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","infrastructure-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","code-generation":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1"}
+**Verification Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Verification Id**: 2bc3348b-dbf8-4f8a-bcf5-66483fb0964d
+**Approved Evidence**: {"functional-design":["sha256:625c0b20d5c4cc02b9758d6394516c88a850dd3a6708b8cc445651501ce8c220",null],"nfr-requirements":["sha256:5f6c0219b776dceba7c0b66eb9eeb4bab6c3696401300dd8fbf56ec9d2dbb97d",null],"nfr-design":["sha256:002f603c6191099b94fd50a4cdc0d00c72154a0fde239ea57096f2dcae0ff950",null],"infrastructure-design":["sha256:ffb6e6e9e69304a416ac439c63052147cd359b94e10e15e27bb23845beda9c6d",null],"code-generation":["sha256:fe28acd2c0e34dd8c3fef287bac3e007b2aed45caf5bfbfac560fca07e96a12c","sha256:06711e840661b2de35230a43a0af2f391b1c674a2c449c0c4a591cc1943728ae",{"\u0000Cargo.lock":"100644 2826642f3c44f87e768344601284512e8c8772514cb7a39adf28b82292a0998c","\u0000Cargo.toml":"100644 cfdd0fd6195d7bd053b3b72c7e721064de8d10edd2a814a6925971e1c35097fb","\u0000README.md":"100644 cf815d33af2a5cda378eaafb2b2b712ded6041e0e30d389a421e9aef95f6d30c","\u0000crates/local-sights-core/Cargo.toml":"100644 152a17e86d7edf42797b7a5091df6120a45b7804193d204f7a358d72c0083afc","\u0000crates/local-sights-core/examples/fetch_check.rs":"100644 bc40de69f5979c2158f3bd6d8a6b4f33e5b0bfa778bc6a8cc01a1c1f3a553e98","\u0000crates/local-sights-core/src/cache/plan.rs":"100644 2f1807e98ee1e8c7a7d0d43e4f3dc2c28ea9575b77bfb58fba58363734550973","\u0000crates/local-sights-core/src/coordinator.rs":"100644 042413922279a039a9eecf56ec35ad0cdd0eb2634b27ca28c98daf6ce5f6fdc6","\u0000crates/local-sights-core/src/fetch_stats.rs":"100644 355f679ba281a11116171c2fe99a7675ad1528c881f2747fd859455caf2a4699","\u0000crates/local-sights-core/src/fetch_status.rs":"100644 4c993d7b785499a2f6573400f3133b245d8e2782bc1a9e44e5a1d693ab5dab56","\u0000crates/local-sights-core/src/fetcher.rs":"100644 c339c772233adbcec7d735fe8ddd196d6a29c7926912cf06e3d299a3dc207f44","\u0000crates/local-sights-core/src/gateway/aws.rs":"100644 a10a1db9bfde9c6870d815b1c5b7a594e79e111132fa4ffa64fb29a361d7e59e","\u0000crates/local-sights-core/src/lib.rs":"100644 d83a8df3900db795260945e8a287f229fa528a00ba6e75caf666b6fc75641927","\u0000crates/local-sights-core/src/pacing.rs":"100644 d6a2021feb9fafcb017212c5ef89eb8514841e6a63425ab0b1f80b89135b7535","\u0000crates/local-sights-core/src/retry.rs":"100644 6c77476f79d549fcc2e86c3f5c48c4e547a3b3dbfdeb9f72fef214a79a67032d","\u0000crates/local-sights-core/src/schedule.rs":"100644 4afc6e4b24bcdc4b174ea643a042734503e34c9fbafaf32c605df131c804e2c7","\u0000crates/local-sights-core/src/session.rs":"100644 72cda095824ab732fc6eee242e219737813efc73190424452618d8f6381b803e","\u0000crates/local-sights-core/src/streams/planner.rs":"100644 154d828ed2b20807feb5c3b984ee4caf22f912a9e5ba862ccfb81a8273a20e75","\u0000crates/local-sights-core/tests/support/fake_gateway.rs":"100644 f78f6d9a9785b8038c4ebaf1bf4dbb0090eea4aa0fcc127ee0d9f05f880a4de9","\u0000crates/local-sights-core/tests/support/recording_sink.rs":"100644 c323fcdc97250d8f0257c472e42fa7f22251f0d5881e054c5319456c06c53d05","\u0000crates/local-sights-core/tests/u1_concurrent_fetch.rs":"100644 7ed2f57bdfb000f2db54eae5db42cd9b13d2419ef0b21fa02eb8353658265dc0","\u0000crates/local-sights-core/tests/u1_fetch_flow.rs":"100644 79bd9e5c2eed64ff74001c4e9d1a24543ab85820175b6929cca5da3a1c1bc17d","\u0000crates/local-sights-core/tests/u3_fetch_flow.rs":"100644 918eadca2ebcff2a5577601a3bd242235e320f09703dd00b40b20242750144e1","\u0000crates/local-sights-core/tests/u5_filter_flow.rs":"100644 6aefd54295745a2dec2d5f605a2c8e93e234ba99e3e375ff4740f4e0b141082f","\u0000crates/local-sights-core/tests/u6_cache_flow.rs":"100644 544a972a373972bd3c3c9ed2d4f954bd1540178f934dee0d38a0587c9a0a8ec9","\u0000src-tauri/src/lib.rs":"100644 c6f2539a0069aa2737d87d99def76f3a7fed3d275355fa66bee502d62004ff98"}]}
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**User Input**: Approve
+**Person Reply**: Approve
+
+---

@@ -10188,3 +10188,307 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Unit Started
+**Timestamp**: 2026-10-13T00:56:01Z
+**Event**: UNIT_STARTED
+**Stage**: nfr-requirements
+**Unit**: u1-concurrent-skeleton
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T00:56:14Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/nfr-requirements-questions.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > nfr-requirements-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T00:56:15Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Q1
+**Options**: A,B,C,X
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T00:59:07Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T00:59:07Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q1. 取得 1 回の終わりに、呼び出しの数などの要約を診断ログ（標準エラー出力）に出しますか？手元の実際の AWS で確かめるとき、速さの上限を守れているか・制限を何回受けたかが見えるようになります。出すのは数と時間だけです。
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T00:59:11Z
+**Event**: QUESTION_ANSWERED
+**Stage**: nfr-requirements
+**Details**: Q1: A
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T00:59:11Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Q2
+**Options**: A,B,X
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T01:00:04Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T01:00:04Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: Q2. 手元の実際の AWS での確かめ（薄い一本の確認 2）は、何を合格とみなしますか？速さの合否は自動テスト（偽物）で決めます。
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T01:00:16Z
+**Event**: QUESTION_ANSWERED
+**Stage**: nfr-requirements
+**Details**: Q2: A
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T01:00:17Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/nfr-requirements-questions.md
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T01:00:31Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T01:00:31Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: この内容で U1 の NFR 要件の成果物を作ってよいですか？
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T01:00:36Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: nfr-requirements
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/nfr-requirements-questions.md
+**Questions SHA-256**: 2b373c6cc970c2ef192ddb3544d72253e01b865ce59e08ff4cc1cc86e47b9c8b
+**Hash Scope**: confirmed-content-v2
+**Unit**: u1-concurrent-skeleton
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-13T01:01:39Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage nfr-requirements --unit u1-concurrent-skeleton --reviewer aidlc-architecture-reviewer-agent --iteration 1
+**Error**: Cannot start review for "nfr-requirements": this stage's output document <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/performance-requirements.md has no recorded write. Save the document again, so its write descends from the current confirmation, then continue.\n{"kind":"ask","ask_type":"guard-recovery","response_route":"execute-remedy","question":"NFR Requirements for u1-concurrent-skeleton can't go ahead as things stand: which way would you like to go on?","stage":"nfr-requirements","unit":"u1-concurrent-skeleton","reason_codes":["SUMMARY_ARTIFACT_UNAUTHORIZED"],"remedies":[{"op":"redo-unit-step","action":"Redo \"nfr-requirements\" for unit \"u1-concurrent-skeleton\" only: continue with /aidlc and do that step again for unit \"u1-concurrent-skeleton\". The other units keep their finished work, reviews, Plan Approvals and checkpoint approvals.","requiresHuman":false,"executableNow":true,"interaction":"external-work"}],"agent_work":true}
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:01:59Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/performance-requirements.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > performance-requirements.md
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:02:05Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/tech-stack-decisions.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > tech-stack-decisions.md
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:02:11Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/observability-requirements.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > observability-requirements.md
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:02:18Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/reliability-requirements.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > reliability-requirements.md
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:02:23Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/scalability-requirements.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > scalability-requirements.md
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:02:34Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > security-requirements.md
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:02:39Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+**Context**: construction > u1-concurrent-skeleton > nfr-requirements > traceability.json
+**Summary Authorization Id**: 0be2d2ccd9c82353931156e42ab42ac06e9bb844052a866034d45717a609adea
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T01:02:39Z
+**Event**: SENSOR_FIRED
+**Fire id**: 16a0ce9a
+**Sensor ID**: traceability
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-13T01:02:40Z
+**Event**: SENSOR_PASSED
+**Fire id**: 16a0ce9a
+**Sensor ID**: traceability
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+**Duration ms**: 437
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T01:02:43Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:5f6c0219b776dceba7c0b66eb9eeb4bab6c3696401300dd8fbf56ec9d2dbb97d
+**Request Id**: review:10bbef94a703078246ae1dceeb6c6ff0
+**Review File**: .aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.10bbef94a703078246ae1dceeb6c6ff0.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T01:03:19Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: aa2e80720ec9e6fea
+**Message**: 続けて進めて
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T01:05:09Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.10bbef94a703078246ae1dceeb6c6ff0.review.md
+**Context**: .aidlc-engine > reviews > nfr-requirements > units > u1-concurrent-skeleton > df725d72ea237644 > 1.10bbef94a703078246ae1dceeb6c6ff0.review.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T01:05:19Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T01:05:20Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: af8b243428921ca1d
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T01:05:31Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:5f6c0219b776dceba7c0b66eb9eeb4bab6c3696401300dd8fbf56ec9d2dbb97d
+**Artifact Fingerprint**: sha256:5f6c0219b776dceba7c0b66eb9eeb4bab6c3696401300dd8fbf56ec9d2dbb97d
+**Request Id**: review:10bbef94a703078246ae1dceeb6c6ff0
+**Review Record**: .aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json
+**Review Record Digest**: sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T01:05:42Z
+**Event**: UNIT_COMPLETED
+**Stage**: nfr-requirements
+**Unit**: u1-concurrent-skeleton
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

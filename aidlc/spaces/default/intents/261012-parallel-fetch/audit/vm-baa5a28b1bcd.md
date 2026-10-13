@@ -12551,3 +12551,178 @@
 **Session**: 9439726f-4987-50e0-8a87-0cce07395efd
 
 ---
+
+## Unit Started
+**Timestamp**: 2026-10-13T14:11:36Z
+**Event**: UNIT_STARTED
+**Stage**: nfr-requirements
+**Unit**: u2-call-pacing
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:11:55Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/nfr-requirements-questions.md
+**Context**: construction > u2-call-pacing > nfr-requirements > nfr-requirements-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T14:11:58Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/nfr-requirements-questions.md
+**Unit**: u2-call-pacing
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T14:12:30Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T14:12:31Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U2 の非機能要件です（新しく聞くことはなく、U1 の枠の中に収まります）。この内容で作ってよいですか？\n・呼び出しの量：下げても戻しても、どの 1 秒もリージョンの上限（東京 12 回）を超えない\n・秘密：要約の 1 行に足すのは整数の min_rate= だけ。新しい API・権限・保存先・依存は足さない\n・画面：何も足さない\n・テスト：下げ方・戻し方は止めた時計でテスト先行。偽物のゲートウェイで間隔が広がり戻ることを確かめる。実際の AWS には接続しない。行カバレッジ 80% 以上\n・既存のテストは通ったまま（U1 の要約の書式のテストだけ、欄が増えるので直す）
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T14:12:36Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: nfr-requirements
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/nfr-requirements-questions.md
+**Questions SHA-256**: 40266e7aca9125b7321f6914151533e0d78c23a37a48e924309c727bb68efd12
+**Hash Scope**: confirmed-content-v2
+**Unit**: u2-call-pacing
+**Summary Authorization Id**: 0bf92820807a617549a3c93c5497d9df44dd8e794e4d20f1913750ca601cdb91
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:12:55Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md
+**Context**: construction > u2-call-pacing > nfr-requirements > security-requirements.md
+**Summary Authorization Id**: 0bf92820807a617549a3c93c5497d9df44dd8e794e4d20f1913750ca601cdb91
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:13:03Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/tech-stack-decisions.md
+**Context**: construction > u2-call-pacing > nfr-requirements > tech-stack-decisions.md
+**Summary Authorization Id**: 0bf92820807a617549a3c93c5497d9df44dd8e794e4d20f1913750ca601cdb91
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:13:06Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+**Context**: construction > u2-call-pacing > nfr-requirements > traceability.json
+**Summary Authorization Id**: 0bf92820807a617549a3c93c5497d9df44dd8e794e4d20f1913750ca601cdb91
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T14:13:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: f3717d68
+**Sensor ID**: traceability
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-13T14:13:08Z
+**Event**: SENSOR_FAILED
+**Fire id**: f3717d68
+**Sensor ID**: traceability
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/traceability-f3717d68.md
+**Findings count**: 6
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T14:13:13Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-call-pacing
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:d4255236a43cb5b266c559eb0dc01c3cff57bda4b40f9a2274f6ed9b6163329c
+**Request Id**: review:517c8394c294b0a540cb8344c01c589b
+**Review File**: .aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.517c8394c294b0a540cb8344c01c589b.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:14:44Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.517c8394c294b0a540cb8344c01c589b.review.md
+**Context**: .aidlc-engine > reviews > nfr-requirements > units > u2-call-pacing > df725d72ea237644 > 1.517c8394c294b0a540cb8344c01c589b.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T14:14:53Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a7a7de27216eda349
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T14:15:11Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T14:15:19Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-call-pacing
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:d4255236a43cb5b266c559eb0dc01c3cff57bda4b40f9a2274f6ed9b6163329c
+**Artifact Fingerprint**: sha256:d4255236a43cb5b266c559eb0dc01c3cff57bda4b40f9a2274f6ed9b6163329c
+**Request Id**: review:517c8394c294b0a540cb8344c01c589b
+**Review Record**: .aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.json
+**Review Record Digest**: sha256:6cd58cf1d3ac2025502064f0cc3a66cf45f9f42905b1a7d0eacd6e97b0eb01c8
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T14:15:20Z
+**Event**: UNIT_COMPLETED
+**Stage**: nfr-requirements
+**Unit**: u2-call-pacing
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

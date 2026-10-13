@@ -12923,3 +12923,168 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Unit Started
+**Timestamp**: 2026-10-13T14:23:58Z
+**Event**: UNIT_STARTED
+**Stage**: infrastructure-design
+**Unit**: u2-call-pacing
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:24:02Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/infrastructure-design-questions.md
+**Context**: construction > u2-call-pacing > infrastructure-design > infrastructure-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T14:24:05Z
+**Event**: DECISION_RECORDED
+**Stage**: infrastructure-design
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/infrastructure-design-questions.md
+**Unit**: u2-call-pacing
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T14:25:14Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T14:25:14Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U2 のインフラ設計です（ライブラリの中だけの変更で、新しく聞くことはありません）。この内容で作ってよいですか？\n・クラウドの資源・配布の形・CI の手順は U1 のまま。U2 で足すものはない\n・確かめは CI の Rust library のジョブ（テストと行カバレッジ 80%）。実際の AWS には接続しない\n・ブランチは U1 と同じ。必須チェックの名前は変えない。U2 だけではタグを付けない
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T14:25:20Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: infrastructure-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/infrastructure-design-questions.md
+**Questions SHA-256**: 2ef2c1dc5bd8c425c7da8de0f9b322f8e3b561346e856a57d59687207f0b811b
+**Hash Scope**: confirmed-content-v2
+**Unit**: u2-call-pacing
+**Summary Authorization Id**: a4795b3ce2cc782905cef722feab46f5b85c40e64ad1517a018fe563814f1f95
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:25:32Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md
+**Context**: construction > u2-call-pacing > infrastructure-design > cicd-pipeline.md
+**Summary Authorization Id**: a4795b3ce2cc782905cef722feab46f5b85c40e64ad1517a018fe563814f1f95
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:25:35Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+**Context**: construction > u2-call-pacing > infrastructure-design > traceability.json
+**Summary Authorization Id**: a4795b3ce2cc782905cef722feab46f5b85c40e64ad1517a018fe563814f1f95
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T14:25:36Z
+**Event**: SENSOR_FIRED
+**Fire id**: 81e32a1b
+**Sensor ID**: traceability
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-13T14:25:37Z
+**Event**: SENSOR_FAILED
+**Fire id**: 81e32a1b
+**Sensor ID**: traceability
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/infrastructure-design/traceability-81e32a1b.md
+**Findings count**: 11
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T14:25:40Z
+**Event**: REVIEW_REQUESTED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-call-pacing
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:4fe9ec8a1eee0fe88bddc73703a4910e553d2cef38c0822278d3f38b474baade
+**Request Id**: review:f00dfc72f0967748314e6f4739521c5c
+**Review File**: .aidlc-engine/reviews/infrastructure-design/units/u2-call-pacing/df725d72ea237644/1.f00dfc72f0967748314e6f4739521c5c.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T14:26:41Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/infrastructure-design/units/u2-call-pacing/df725d72ea237644/1.f00dfc72f0967748314e6f4739521c5c.review.md
+**Context**: .aidlc-engine > reviews > infrastructure-design > units > u2-call-pacing > df725d72ea237644 > 1.f00dfc72f0967748314e6f4739521c5c.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T14:26:44Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a63ff5f54e37ad213
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T14:26:58Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T14:27:07Z
+**Event**: REVIEW_COMPLETED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u2-call-pacing
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:4fe9ec8a1eee0fe88bddc73703a4910e553d2cef38c0822278d3f38b474baade
+**Artifact Fingerprint**: sha256:4fe9ec8a1eee0fe88bddc73703a4910e553d2cef38c0822278d3f38b474baade
+**Request Id**: review:f00dfc72f0967748314e6f4739521c5c
+**Review Record**: .aidlc-engine/reviews/infrastructure-design/units/u2-call-pacing/df725d72ea237644/1.json
+**Review Record Digest**: sha256:4f67bb5894560805dffb7b389b64df4a225e857189c59eb1ec89fc519547fcfe
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T14:27:08Z
+**Event**: UNIT_COMPLETED
+**Stage**: infrastructure-design
+**Unit**: u2-call-pacing
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

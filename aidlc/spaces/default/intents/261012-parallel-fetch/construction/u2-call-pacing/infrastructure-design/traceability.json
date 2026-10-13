@@ -1,0 +1,10 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "u2-call-pacing",
+  "upstream_ids": ["NFR6.1", "NFR7.1", "NFR7.2"],
+  "coverage": [
+    { "id": "NFR6.1", "status": "OK", "target": "cicd-pipeline: 止めた時計と偽物のゲートウェイ、CI に AWS の認証情報を置かない" },
+    { "id": "NFR7.1", "status": "OK", "target": "cicd-pipeline: Rust library のジョブ、要約の書式のテストを直す" },
+    { "id": "NFR7.2", "status": "OK", "target": "cicd-pipeline: 行カバレッジ 80% を CI で" }
+  ]
+}

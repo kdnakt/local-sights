@@ -15192,3 +15192,268 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T16:48:23Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/nfr-requirements-questions.md
+**Context**: construction > u4-elapsed-time > nfr-requirements > nfr-requirements-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T16:48:26Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Q1 取得中に経過の数字が戻ることを許すか
+**Options**: A,B,X
+**Unit**: u4-elapsed-time
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T16:54:13Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T22:36:47Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T22:36:57Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T22:36:57Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4 非機能要件 Q1：取得中、画面は自分の時計で経過を進め、ライブラリから新しい値が届くたびに合わせ直します。届くまでのわずかな遅れで、合わせ直した瞬間に表示が 1 秒戻ることがあります（例：00:09 → 00:08）。取得中に数字が戻って見えることを許しますか？
+**Reply**: A (Recommended)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T22:36:59Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T22:37:17Z
+**Event**: QUESTION_ANSWERED
+**Stage**: nfr-requirements
+**Details**: Q1: A (Recommended)
+**Unit**: u4-elapsed-time
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T22:37:18Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/nfr-requirements-questions.md
+**Unit**: u4-elapsed-time
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T22:38:59Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T22:39:00Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4 非機能要件のまとめです。この内容で成果物を作ってよいですか？\n\n- AWS の呼び出し・権限・保存先・依存は足さない。経過は時刻と長さだけで、秘密の情報を含まない\n- 経過のために画面へ送る回数は増やさない。毎秒の描き直しは経過だけを描く小さな部品に閉じ込め、ログの表は毎秒描き直さない\n- 取得中の表示は 1 秒ごとに進み（再試行の待ちの間も）、ライブラリの値とのずれは 1 秒以内。取得中は数字を戻さず、終わったときだけ最終の値に置き換える（Q1）\n- 画面の時計の合わせ直しは、ライブラリから状態全体が新しく届いたときだけ\n- 読み上げ：取得中は経過の部分を読み上げの対象から外し、終わったら戻す\n- 時計：ライブラリも画面も戻らない時計で数え、テストで差し替えられる形にする\n- 接続の変更で経過が消えるのは、機能設計の Q2 で選んだ扱いとして対応表に書く\n- テスト：表記と画面の時計は Vitest、最終の値は Rust のテスト。実際の AWS には接続しない。行カバレッジ 80% 以上。英日の文言をそろえる
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T22:39:07Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: nfr-requirements
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/nfr-requirements-questions.md
+**Questions SHA-256**: 24796cfd2abe3377e27157e8c2c61073d39a4412d17296f8383476c276859313
+**Hash Scope**: confirmed-content-v2
+**Unit**: u4-elapsed-time
+**Summary Authorization Id**: 282c41d33af4ba1e1f3181f3676e0dbe482540e6eb30922a407883a3c331a8cf
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T22:40:18Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:ffee4f79dd2bd8d7063cf85d41e3fef4aedb0a8e4c7790965b8ae19addb9fc8a
+**Request Id**: review:8328484f36a85ee4c979d8a9406061e3
+**Review File**: .aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/1.8328484f36a85ee4c979d8a9406061e3.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T22:40:25Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T22:42:17Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/1.8328484f36a85ee4c979d8a9406061e3.review.md
+**Context**: .aidlc-engine > reviews > nfr-requirements > units > u4-elapsed-time > df725d72ea237644 > 1.8328484f36a85ee4c979d8a9406061e3.review.md
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T22:42:27Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:ffee4f79dd2bd8d7063cf85d41e3fef4aedb0a8e4c7790965b8ae19addb9fc8a
+**Artifact Fingerprint**: sha256:ffee4f79dd2bd8d7063cf85d41e3fef4aedb0a8e4c7790965b8ae19addb9fc8a
+**Request Id**: review:8328484f36a85ee4c979d8a9406061e3
+**Review Record**: .aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/1.json
+**Review Record Digest**: sha256:9b041277ad477b50b20c500e2dcf020d8515a12e51c550d8344e89641e1f4790
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T22:42:27Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a10ac88204aac8ac7
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T22:42:29Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T22:43:00Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 2
+**Artifact Fingerprint**: sha256:0769fc95425b9804257e73bbc95d6793519216ff024a97a6d55ec32b44bf10c1
+**Request Id**: review:6d9de600b8366cb63a225d11d6cb892e
+**Review File**: .aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/2.6d9de600b8366cb63a225d11d6cb892e.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T22:43:07Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-13T22:43:30Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-requirements
+**Tool**: Glob
+**Details**: . (unit u4-elapsed-time)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T22:44:17Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/2.6d9de600b8366cb63a225d11d6cb892e.review.md
+**Context**: .aidlc-engine > reviews > nfr-requirements > units > u4-elapsed-time > df725d72ea237644 > 2.6d9de600b8366cb63a225d11d6cb892e.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T22:44:25Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a0af9c0ac17461c1d
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T22:44:27Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 2
+**Verdict**: READY
+**Request Fingerprint**: sha256:0769fc95425b9804257e73bbc95d6793519216ff024a97a6d55ec32b44bf10c1
+**Artifact Fingerprint**: sha256:0769fc95425b9804257e73bbc95d6793519216ff024a97a6d55ec32b44bf10c1
+**Request Id**: review:6d9de600b8366cb63a225d11d6cb892e
+**Review Record**: .aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/2.json
+**Review Record Digest**: sha256:e4a1ddb8a653616b41d3058ea1e017b67163d8b641dad71c61b3de4c50946543
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T22:44:37Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-13T22:44:43Z
+**Event**: UNIT_STARTED
+**Stage**: nfr-requirements
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T22:44:48Z
+**Event**: UNIT_COMPLETED
+**Stage**: nfr-requirements
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

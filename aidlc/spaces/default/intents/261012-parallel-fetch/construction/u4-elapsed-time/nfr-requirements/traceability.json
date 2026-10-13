@@ -1,0 +1,68 @@
+{
+  "stage": "nfr-requirements",
+  "unit": "u4-elapsed-time",
+  "upstream_ids": [
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR6",
+    "NFR7",
+    "NFR8",
+    "NFR9",
+    "NFR10"
+  ],
+  "coverage": [
+    {
+      "id": "NFR1",
+      "status": "N/A",
+      "target": "取得の速さは U1〜U3 の範囲。U4 は経過を表示するだけで取得の流れを変えない"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "performance-requirements.md NFR2.2, observability-requirements.md NFR2.3, NFR2.4"
+    },
+    {
+      "id": "NFR3",
+      "status": "N/A",
+      "target": "AWS の呼び出しの量を変えない（U4 は呼び出しを足さない、NFR8.11）"
+    },
+    {
+      "id": "NFR4",
+      "status": "N/A",
+      "target": "中断の速さは U5 の範囲"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "performance-requirements.md NFR5.3, NFR5.4"
+    },
+    {
+      "id": "NFR6",
+      "status": "OK",
+      "target": "security-requirements.md NFR6.2, scalability-requirements.md NFR6.3, NFR6.4, reliability-requirements.md NFR6.5, NFR6.6, NFR6.7, NFR6.8, NFR6.9, NFR6.10, NFR6.11, tech-stack-decisions.md NFR6.12"
+    },
+    {
+      "id": "NFR7",
+      "status": "OK",
+      "target": "tech-stack-decisions.md NFR7.3"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "security-requirements.md NFR8.10, NFR8.11"
+    },
+    {
+      "id": "NFR9",
+      "status": "OK",
+      "target": "observability-requirements.md NFR9.1, NFR9.2"
+    },
+    {
+      "id": "NFR10",
+      "status": "N/A",
+      "target": "キーボードで押す［中断］は U5 の範囲。U4 は押せる部品を足さない"
+    }
+  ]
+}

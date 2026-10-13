@@ -10852,3 +10852,313 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Unit Started
+**Timestamp**: 2026-10-13T04:57:00Z
+**Event**: UNIT_STARTED
+**Stage**: infrastructure-design
+**Unit**: u1-concurrent-skeleton
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T04:57:10Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-design-questions.md
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > infrastructure-design-questions.md
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T05:01:38Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T08:47:31Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T08:47:36Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T08:53:08Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-13T10:45:26Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T10:45:46Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["カバレッジのプルリクマージして進めて"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T10:45:47Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U1 のコードの PR は、PR #20 のマージを待ってから出しますか？ PR #20 は CI で行カバレッジ 80% を確かめる仕組みで、CI は通っていますがまだ main にマージされていません。U1 の PR を先に出すと、その PR の CI ではカバレッジを確かめられません。
+**Reply**: カバレッジのプルリクマージして進めて
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T10:45:48Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T10:46:21Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-design-questions.md
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > infrastructure-design-questions.md
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-13T10:46:25Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log answer --help
+**Error**: Cannot record this answer: "--help" is not an option of log answer, so it is probably part of a value that a bare double quote split. Run the command again with each value as one argument, in the person's exact words; in Windows PowerShell write each double quote inside a value as \" (for example --details 'Run \"todo --help\" first'), or as a single quote ('') when the value also holds &, |, <, > or ^. An answer holding any of those, or a quote, $, %, ! or a line break, goes in a file instead: write it to <record>/.aidlc-engine/answer-text/answer.txt with your file tool and pass --details-file .aidlc-engine/answer-text/answer.txt.
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T10:46:46Z
+**Event**: DECISION_RECORDED
+**Stage**: infrastructure-design
+**Decision**: Q1
+**Options**: A,B,X
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-13T10:46:47Z
+**Event**: QUESTION_ANSWERED
+**Stage**: infrastructure-design
+**Details**: Q1: A
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-13T10:47:06Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-design-questions.md
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > infrastructure-design-questions.md
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-13T10:47:09Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log decision --stage infrastructure-design --unit u1-concurrent-skeleton --decision Does this all look correct before I generate the artifact? --options Looks correct,Request changes --checkpoint Consolidated Summary Confirmation --questions-file aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-design-questions.md
+**Error**: Unknown --checkpoint "Consolidated Summary Confirmation". Accepted: summary-confirmation, plan-approval, verification-command, construction-policy, guard-recovery
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T10:47:15Z
+**Event**: DECISION_RECORDED
+**Stage**: infrastructure-design
+**Decision**: Does this all look correct before I generate the artifact?
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-design-questions.md
+**Unit**: u1-concurrent-skeleton
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T10:48:03Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-13T10:48:04Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: この内容で U1 のインフラ設計の成果物を作ってよいですか？\n・配置：今までどおりローカルのアプリ（.dmg）。クラウドの資源は足さず、AWS は CloudWatch Logs の読み取り API だけ（新しい API・権限なし）\n・監視：仕組みは持たず、取得 1 回ごとの要約の 1 行を標準エラー出力へ（外へは送らない）\n・CI：今の CI に PR #20 の行カバレッジ 80% を足した上で U1 の PR をマージ。U1 で CI の手順は増やさない（futures-util は既存の cargo-deny で確かめる）\n・順番：PR #20 を先にマージし、U1 のブランチはその後の main から切る\n・配布：U1 の PR だけではタグを付けない（次の版は今の決まりどおり v0.1.2）
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-13T10:48:10Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: infrastructure-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-design-questions.md
+**Questions SHA-256**: b26ca5d4fdfe3c1a4e0775185df961efe723f39be3261e29db6cfb33f61ea388
+**Hash Scope**: confirmed-content-v2
+**Unit**: u1-concurrent-skeleton
+**Summary Authorization Id**: f19b69448265b1404e90e97282e2416698af3c8f2db1841b2055f5185650421e
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T10:48:35Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-specification.md
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > infrastructure-specification.md
+**Summary Authorization Id**: f19b69448265b1404e90e97282e2416698af3c8f2db1841b2055f5185650421e
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T10:48:44Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/monitoring-design.md
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > monitoring-design.md
+**Summary Authorization Id**: f19b69448265b1404e90e97282e2416698af3c8f2db1841b2055f5185650421e
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T10:48:59Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > cicd-pipeline.md
+**Summary Authorization Id**: f19b69448265b1404e90e97282e2416698af3c8f2db1841b2055f5185650421e
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T10:49:06Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+**Context**: construction > u1-concurrent-skeleton > infrastructure-design > traceability.json
+**Summary Authorization Id**: f19b69448265b1404e90e97282e2416698af3c8f2db1841b2055f5185650421e
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-13T10:49:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 61b9e76f
+**Sensor ID**: traceability
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-13T10:49:09Z
+**Event**: SENSOR_FAILED
+**Fire id**: 61b9e76f
+**Sensor ID**: traceability
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/infrastructure-design/traceability-61b9e76f.md
+**Findings count**: 14
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-13T10:49:14Z
+**Event**: REVIEW_REQUESTED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:ffb6e6e9e69304a416ac439c63052147cd359b94e10e15e27bb23845beda9c6d
+**Request Id**: review:3c764f8c0fb45d3e48b5571fb7eaee7e
+**Review File**: .aidlc-engine/reviews/infrastructure-design/units/u1-concurrent-skeleton/df725d72ea237644/1.3c764f8c0fb45d3e48b5571fb7eaee7e.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T10:49:55Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a3f33f76ded2173c5
+**Message**: 了解、そのまま進めて
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T10:50:43Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/infrastructure-design/units/u1-concurrent-skeleton/df725d72ea237644/1.3c764f8c0fb45d3e48b5571fb7eaee7e.review.md
+**Context**: .aidlc-engine > reviews > infrastructure-design > units > u1-concurrent-skeleton > df725d72ea237644 > 1.3c764f8c0fb45d3e48b5571fb7eaee7e.review.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-13T10:50:52Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-13T10:50:53Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a87fbabfd652cbe1c
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-13T10:50:57Z
+**Event**: REVIEW_COMPLETED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u1-concurrent-skeleton
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:ffb6e6e9e69304a416ac439c63052147cd359b94e10e15e27bb23845beda9c6d
+**Artifact Fingerprint**: sha256:ffb6e6e9e69304a416ac439c63052147cd359b94e10e15e27bb23845beda9c6d
+**Request Id**: review:3c764f8c0fb45d3e48b5571fb7eaee7e
+**Review Record**: .aidlc-engine/reviews/infrastructure-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json
+**Review Record Digest**: sha256:f1b7f5fba7127716afe1e6c8b993bb9dcf7078571605cf06b99062955b45f726
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-13T10:51:04Z
+**Event**: UNIT_COMPLETED
+**Stage**: infrastructure-design
+**Unit**: u1-concurrent-skeleton
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

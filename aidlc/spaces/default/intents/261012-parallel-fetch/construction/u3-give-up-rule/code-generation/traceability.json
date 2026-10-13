@@ -1,0 +1,36 @@
+{
+  "stage": "code-generation",
+  "unit": "u3-give-up-rule",
+  "upstream_ids": [
+    "AC2.3.1", "AC2.3.2", "AC2.3.3", "AC2.3.4",
+    "FR3.1", "FR3.2", "FR3.3", "FR3.4",
+    "BR3.1", "BR3.2", "BR3.3", "BR3.4", "BR3.5", "BR3.6", "BR3.7",
+    "NFR3.7", "NFR6.1", "NFR7.1", "NFR7.2", "NFR8.1", "NFR8.9",
+    "ADR-007", "C2"
+  ],
+  "coverage": [
+    { "id": "AC2.3.1", "status": "OK", "target": "crates/local-sights-core/tests/u3_give_up_rule.rs" },
+    { "id": "AC2.3.2", "status": "OK", "target": "crates/local-sights-core/tests/u3_give_up_rule.rs" },
+    { "id": "AC2.3.3", "status": "OK", "target": "crates/local-sights-core/tests/u3_give_up_rule.rs" },
+    { "id": "AC2.3.4", "status": "OK", "target": "crates/local-sights-core/tests/u3_give_up_rule.rs" },
+    { "id": "FR3.1", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "FR3.2", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "FR3.3", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "FR3.4", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "BR3.1", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "BR3.2", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "BR3.3", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "BR3.4", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "BR3.5", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "BR3.6", "status": "OK", "target": "crates/local-sights-core/src/retry.rs" },
+    { "id": "BR3.7", "status": "OK", "target": "crates/local-sights-core/src/coordinator.rs" },
+    { "id": "NFR3.7", "status": "OK", "target": "crates/local-sights-core/tests/u3_give_up_rule.rs" },
+    { "id": "NFR6.1", "status": "OK", "target": "crates/local-sights-core/tests/u3_give_up_rule.rs" },
+    { "id": "NFR7.1", "status": "OK", "target": "crates/local-sights-core/src/coordinator.rs" },
+    { "id": "NFR7.2", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "NFR8.1", "status": "OK", "target": "crates/local-sights-core/src/fetcher.rs" },
+    { "id": "NFR8.9", "status": "OK", "target": "crates/local-sights-core/src/fetcher.rs" },
+    { "id": "ADR-007", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" },
+    { "id": "C2", "status": "OK", "target": "crates/local-sights-core/src/schedule.rs" }
+  ]
+}

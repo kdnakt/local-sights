@@ -1,0 +1,12 @@
+{
+  "stage": "code-generation",
+  "unit": "u3-give-up-rule",
+  "version": 1,
+  "writes": [
+    { "path": "crates/local-sights-core/src/schedule.rs" },
+    { "path": "crates/local-sights-core/src/fetcher.rs" },
+    { "path": "crates/local-sights-core/src/retry.rs" },
+    { "path": "crates/local-sights-core/src/coordinator.rs" },
+    { "path": "crates/local-sights-core/tests/u3_give_up_rule.rs" }
+  ]
+}

@@ -9,6 +9,12 @@
 //! (U1:BR1.10, BR1.11). Every `GetLogEvents` attempt waits for a permit of
 //! the fetch's [`CallPacer`] first (U1:BR1.4), and since U2 every attempt
 //! that ends Throttled is reported to it, which lowers the rate (U2:BR2.1).
+//!
+//! Since U3 (ADR-007, BR3.6) the fetcher only reports how its stream ended
+//! ([`StreamFetchEnd`]); a failed end carries whether the retries were used
+//! up and the failure itself, as the retrier returned them. Counting the
+//! exhausted streams and giving up belong to the
+//! [`StreamSchedule`](crate::schedule::StreamSchedule).
 
 use serde::Serialize;
 
@@ -19,7 +25,7 @@ use crate::gateway::{CloudWatchLogsGateway, GatewayEvent, GetLogEventsPage, GetL
 use crate::pacing::CallPacer;
 use crate::paging::PageCursor;
 use crate::request::FetchRequest;
-use crate::retry::{CallResult, Retrier, RetryCounter, StreamEnding};
+use crate::retry::{CallResult, Retrier, RetryCounter};
 use crate::time_range::TimeRange;
 
 /// Result status of one stream.
@@ -64,32 +70,24 @@ impl StreamFetchOutcome {
     }
 }
 
-/// How the fetch of one stream ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How the fetch of one stream ended. The fetcher only reports its own end;
+/// how the end counts towards giving up is decided by the
+/// [`StreamSchedule`](crate::schedule::StreamSchedule) (U3:BR3.6, ADR-007).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamFetchEnd {
     /// Read to the last page.
     Completed,
-    /// Failed for good; `exhausted` when the retries were used up.
+    /// Failed for good; `exhausted` when the retries were used up. The
+    /// failure is always there, so a give-up can always copy it
+    /// (U3:NFR3.7, NFR8.9).
     Failed {
         /// Whether a retryable failure used up every retry.
         exhausted: bool,
+        /// The last failure (safe detail only), as the retrier returned it.
+        failure: ApiFailure,
     },
     /// The abort was requested; no further API call was made.
     Aborted,
-}
-
-impl StreamFetchEnd {
-    /// The ending as counted by the exhaustion streak; `None` when aborted.
-    pub fn streak_ending(self) -> Option<StreamEnding> {
-        match self {
-            StreamFetchEnd::Completed => Some(StreamEnding::Succeeded),
-            StreamFetchEnd::Failed { exhausted: true } => Some(StreamEnding::Exhausted),
-            StreamFetchEnd::Failed { exhausted: false } => {
-                Some(StreamEnding::FailedWithoutExhaustion)
-            }
-            StreamFetchEnd::Aborted => None,
-        }
-    }
 }
 
 /// Outcome of one stream and how it ended.
@@ -272,8 +270,8 @@ where
             CallResult::Failed { failure, exhausted } => {
                 let fetch = reader.finish(
                     StreamStatus::Failed,
-                    Some(failure),
-                    StreamFetchEnd::Failed { exhausted },
+                    Some(failure.clone()),
+                    StreamFetchEnd::Failed { exhausted, failure },
                 );
                 return (reader, PageStep::Finished(fetch));
             }
@@ -523,7 +521,15 @@ mod tests {
         let stats = FetchStats::new();
         let (pages, fetch) = read_all(&gateway, None, &StopSignal::never(), &stats).await;
         assert_eq!(pages.len(), 1, "the page before the failure is kept");
-        assert_eq!(fetch.end, StreamFetchEnd::Failed { exhausted: false });
+        assert!(
+            matches!(
+                &fetch.end,
+                StreamFetchEnd::Failed { exhausted: false, failure }
+                    if failure.kind() == FailureKind::AccessDenied
+            ),
+            "{:?}",
+            fetch.end
+        );
         assert_eq!(fetch.outcome.status, StreamStatus::Failed);
         assert_eq!(
             fetch.outcome.failure.as_ref().map(ApiFailure::kind),
@@ -538,7 +544,22 @@ mod tests {
         let exhausted = ScriptedLogs::new(throttles);
         let stats = FetchStats::new();
         let (_, fetch) = read_all(&exhausted, None, &StopSignal::never(), &stats).await;
-        assert_eq!(fetch.end, StreamFetchEnd::Failed { exhausted: true });
+        assert!(
+            matches!(
+                &fetch.end,
+                StreamFetchEnd::Failed { exhausted: true, failure }
+                    if failure.kind() == FailureKind::Throttled
+            ),
+            "{:?}",
+            fetch.end
+        );
+        if let StreamFetchEnd::Failed { failure, .. } = &fetch.end {
+            assert_eq!(
+                fetch.outcome.failure.as_ref(),
+                Some(failure),
+                "the end carries the same failure as the outcome (U3:NFR8.9)"
+            );
+        }
         assert_eq!(fetch.outcome.retry_count, 5);
         assert_eq!((stats.calls(), stats.throttled()), (7, 6));
     }
@@ -652,7 +673,15 @@ mod tests {
             &pacer,
         )
         .await;
-        assert_eq!(fetch.end, StreamFetchEnd::Failed { exhausted: false });
+        assert!(
+            matches!(
+                &fetch.end,
+                StreamFetchEnd::Failed { exhausted: false, failure }
+                    if failure.kind() == FailureKind::AccessDenied
+            ),
+            "{:?}",
+            fetch.end
+        );
         assert_eq!(gateway.calls().len(), 3);
         assert_eq!(pacer.current_rate_per_second(), 12);
         assert_eq!(pacer.lowest_rate_per_second(), 12);

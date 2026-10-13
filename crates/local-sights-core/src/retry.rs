@@ -1,10 +1,16 @@
-//! RetryPolicy: which failures are retried, how long to wait and when to
-//! give up (U3:BR2.1-BR2.3), plus the stop signal used by every wait.
+//! RetryPolicy: which failures are retried, how long to wait and when one
+//! request gives up (U3:BR2.1-BR2.3), plus the stop signal used by every
+//! wait.
 //!
 //! The decisions are pure functions; [`Retrier`] runs them around one API
 //! call, waiting with `tokio::time::sleep` and stopping as soon as the
 //! [`StopSignal`] fires. The random spread of each wait comes from a
 //! [`JitterSource`], so tests can fix it.
+//!
+//! Since 261012-parallel-fetch U3 (ADR-007, BR3.6) this module only covers
+//! one request and the stop signal: counting the streams that used up their
+//! retries in a row, and giving up on the streams not started yet, belong to
+//! the [`StreamSchedule`](crate::schedule::StreamSchedule).
 //!
 //! Since 261012-parallel-fetch U1 the stop signal carries a reason
 //! ([`StopReason`], contract C7): Close always wins over Cancel (BR1.20).
@@ -27,9 +33,6 @@ pub struct RetryPolicy {
     pub jitter_ratio: f64,
     /// Retries per request; the first call plus this many at most.
     pub max_retries: u32,
-    /// Streams that exhaust their retries in a row before the remaining
-    /// streams are failed without calling the API (review R-03).
-    pub max_consecutive_exhausted: u32,
 }
 
 impl Default for RetryPolicy {
@@ -38,7 +41,6 @@ impl Default for RetryPolicy {
             base_delays_ms: vec![1_000, 2_000, 4_000, 8_000, 16_000],
             jitter_ratio: 0.2,
             max_retries: 5,
-            max_consecutive_exhausted: 3,
         }
     }
 }
@@ -151,52 +153,6 @@ impl RetryCounter {
         if failure == Some(FailureKind::Throttled) {
             self.throttled = self.throttled.saturating_add(1);
         }
-    }
-}
-
-/// How one stream ended, as far as the exhaustion streak is concerned.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StreamEnding {
-    /// Read to the last page.
-    Succeeded,
-    /// Failed without using up the retries (e.g. AccessDenied).
-    FailedWithoutExhaustion,
-    /// Failed after using up every retry.
-    Exhausted,
-}
-
-/// Counts streams that exhausted their retries in a row (BR2.1, R-03).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExhaustionStreak {
-    consecutive: u32,
-    limit: u32,
-}
-
-impl ExhaustionStreak {
-    /// A streak that trips after `limit` exhausted streams in a row.
-    pub fn new(limit: u32) -> Self {
-        Self {
-            consecutive: 0,
-            limit: limit.max(1),
-        }
-    }
-
-    /// Records how a stream ended; anything but Exhausted resets the count.
-    pub fn record(&mut self, ending: StreamEnding) {
-        self.consecutive = match ending {
-            StreamEnding::Exhausted => self.consecutive.saturating_add(1),
-            StreamEnding::Succeeded | StreamEnding::FailedWithoutExhaustion => 0,
-        };
-    }
-
-    /// Number of exhausted streams in a row so far.
-    pub fn consecutive(&self) -> u32 {
-        self.consecutive
-    }
-
-    /// Whether the remaining streams must be failed without calling.
-    pub fn limit_reached(&self) -> bool {
-        self.consecutive >= self.limit
     }
 }
 
@@ -591,32 +547,6 @@ mod tests {
         counter.record_retry();
         assert_eq!(counter.current_request(), 1);
         assert_eq!(counter.total(), 3, "the stream total spans requests");
-    }
-
-    #[test]
-    fn three_exhausted_streams_in_a_row_trip_the_limit() {
-        let mut streak = ExhaustionStreak::new(RetryPolicy::default().max_consecutive_exhausted);
-        streak.record(StreamEnding::Exhausted);
-        streak.record(StreamEnding::Exhausted);
-        assert!(!streak.limit_reached());
-        streak.record(StreamEnding::Exhausted);
-        assert!(streak.limit_reached());
-        assert_eq!(streak.consecutive(), 3);
-    }
-
-    #[test]
-    fn a_success_or_a_non_exhausting_failure_resets_the_streak() {
-        let mut streak = ExhaustionStreak::new(3);
-        streak.record(StreamEnding::Exhausted);
-        streak.record(StreamEnding::Exhausted);
-        streak.record(StreamEnding::Succeeded);
-        assert_eq!(streak.consecutive(), 0);
-        streak.record(StreamEnding::Exhausted);
-        streak.record(StreamEnding::Exhausted);
-        streak.record(StreamEnding::FailedWithoutExhaustion);
-        assert_eq!(streak.consecutive(), 0);
-        streak.record(StreamEnding::Exhausted);
-        assert!(!streak.limit_reached());
     }
 
     #[tokio::test(start_paused = true)]

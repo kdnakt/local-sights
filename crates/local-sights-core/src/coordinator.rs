@@ -40,13 +40,13 @@ use crate::failure::ApiFailure;
 use crate::fetch_stats::{FetchStats, FetchSummary};
 use crate::fetch_status::JobStatus;
 use crate::fetcher::{
-    PageStep, ReadContext, StreamFetch, StreamFetchEnd, StreamFetchOutcome, StreamReader, next_page,
+    PageStep, ReadContext, StreamFetch, StreamFetchOutcome, StreamReader, next_page,
 };
 use crate::gateway::CloudWatchLogsGateway;
 use crate::pacing::{CallPacer, RegionCallLimit};
 use crate::request::ValidatedFetch;
 use crate::retry::Retrier;
-use crate::schedule::{SlotEnd, StreamSchedule};
+use crate::schedule::StreamSchedule;
 use crate::streams::planner::{ListingProgress, PlanOutcome, plan_streams};
 use crate::streams::{StreamListingStatus, StreamPlan};
 use crate::time_range::TimeRange;
@@ -295,11 +295,11 @@ impl TimelineStore for Mutex<EventTimeline> {
 /// page to the timeline as it arrives (BR4.2, U1:BR1.10). The calls of every
 /// stream share one [`CallPacer`] made from the fetch's region (U1:BR1.1,
 /// BR1.2). A failed stream is listed and the other streams go on (BR5.3,
-/// U1:BR1.14). When `max_consecutive_exhausted` streams in a row, in
-/// finishing order, used up their retries, the streams not started yet are
-/// failed without calling the API, with the last such stream's failure
-/// (U1:BR1.13). The status is decided from the read stage and the listing
-/// (BR5.2, U1:BR1.15).
+/// U1:BR1.14). When [`GIVE_UP_LIMIT`](crate::schedule::GIVE_UP_LIMIT)
+/// streams in a row, in finishing order, used up their retries, the streams
+/// not started yet are failed without calling the API, with that stream's
+/// failure; the [`StreamSchedule`] owns this rule (U3:BR3.1-BR3.6). The
+/// status is decided from the read stage and the listing (BR5.2, U1:BR1.15).
 ///
 /// When the stop signal fires, no stream and no next page is started, the
 /// calls under way are awaited, any page they return is dropped, and once
@@ -441,8 +441,7 @@ where
             .iter()
             .map(|stream| stream.log_stream_name.clone())
             .collect();
-        let mut schedule =
-            StreamSchedule::new(names, context.retrier.policy().max_consecutive_exhausted);
+        let mut schedule = StreamSchedule::new(names);
         let mut reads = FuturesUnordered::new();
         loop {
             if !stop.is_stopped() {
@@ -486,18 +485,14 @@ where
         );
     }
 
-    /// Records a stream that ended, and the streams skipped because of it,
-    /// in finishing order (U1:BR1.13, BR1.14, BR1.19).
+    /// Records a stream that ended, then the streams skipped because of it,
+    /// one by one in the selected order (U1:BR1.14, BR1.19, U3:BR3.7). The
+    /// end goes to the schedule as the fetcher reported it; the schedule
+    /// alone decides how it counts and whether to give up (U3:BR3.6). A
+    /// stream only ends Aborted after the stop, which the read loop drops
+    /// before it gets here.
     fn finish_stream(&mut self, schedule: &mut StreamSchedule, order: usize, fetched: StreamFetch) {
-        let end = match fetched.end {
-            StreamFetchEnd::Completed => SlotEnd::Completed,
-            StreamFetchEnd::Failed { exhausted: true } => SlotEnd::FailedExhausted,
-            StreamFetchEnd::Failed { exhausted: false } => SlotEnd::FailedNotExhausted,
-            // A stream only ends Aborted after the stop, which the read loop
-            // drops before it gets here.
-            StreamFetchEnd::Aborted => SlotEnd::Aborted,
-        };
-        let skipped = schedule.finish(order, end, fetched.outcome.failure.as_ref());
+        let skipped = schedule.finish(order, fetched.end);
         self.record_stream(fetched.outcome);
         for stream in skipped {
             self.record_stream(StreamFetchOutcome::skipped(

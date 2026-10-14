@@ -1,9 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import type { ApiFailure, SessionView } from "../api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ApiFailure, ElapsedView, SessionView } from "../api";
 import { StatusLine } from "./StatusLine";
-import { createTranslator } from "../i18n/messages";
+import { createTranslator, type Translate } from "../i18n/messages";
 import { sessionView, t } from "../test/fixtures";
 
 function renderStatus(session: SessionView | null) {
@@ -301,5 +301,227 @@ describe("StatusLine", () => {
     expect(screen.getByTestId("status-line-cache-Hit")).toHaveTextContent(
       "キャッシュから表示（AWS は呼んでいない）",
     );
+  });
+});
+
+describe("StatusLine elapsed time (261012-parallel-fetch U4)", () => {
+  const fetchingProgress = {
+    seenStreamCount: 12,
+    selectedStreamCount: 12,
+    plannedStreamCount: 12,
+    finishedStreamCount: 3,
+    eventCount: 250,
+  };
+  const running = (elapsedMs: number): ElapsedView => ({
+    running: true,
+    elapsedMs,
+    fetchNumber: 1,
+  });
+  const stopped = (elapsedMs: number): ElapsedView => ({
+    running: false,
+    elapsedMs,
+    fetchNumber: 1,
+  });
+
+  /** The status-line parts in the order they are drawn. */
+  function partOrder() {
+    return [...screen.getByTestId("status-line").querySelectorAll("[data-testid]")]
+      .map((element) => element.getAttribute("data-testid"))
+      .filter((id) => id !== null && /^status-line-(?!what$)/.test(id));
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each<[string, Partial<SessionView>]>([
+    ["listing", { phase: "Fetching", elapsed: running(3_000) }],
+    ["fetching", { phase: "Fetching", progress: fetchingProgress, elapsed: running(7_000) }],
+    [
+      "saving to the cache",
+      {
+        phase: "Fetching",
+        progress: fetchingProgress,
+        cacheSaving: true,
+        elapsed: running(30_000),
+      },
+    ],
+    ["done", { phase: "Done", eventCount: 42, elapsed: stopped(31_400) }],
+    ["zero events", { phase: "Done", eventCount: 0, elapsed: stopped(2_000) }],
+    [
+      "some streams failed",
+      {
+        phase: "Done",
+        eventCount: 9,
+        failedStreams: [{ logStreamName: "s1", failure: throttled }],
+        elapsed: stopped(31_000),
+      },
+    ],
+    [
+      "failed",
+      {
+        phase: "Failed",
+        lastJob: {
+          jobId: 1,
+          status: "Failed",
+          eventCount: 0,
+          plannedStreamCount: 0,
+          finishedStreamCount: 0,
+          failedStreamCount: 0,
+          failure: throttled,
+        },
+        elapsed: stopped(5_000),
+      },
+    ],
+    [
+      "shown from the cache",
+      { phase: "Done", eventCount: 12, cacheNotices: ["Hit"], elapsed: stopped(0) },
+    ],
+  ])("puts the elapsed time after the fetch parts while %s (BR4.8)", (_, overrides) => {
+    renderStatus(sessionView(overrides));
+    const order = partOrder();
+    expect(order.at(-1)).toBe("status-line-elapsed");
+    expect(order.length).toBeGreaterThan(1);
+  });
+
+  it("writes the elapsed time in English and Japanese (NFR9.1, AC2.1.6)", () => {
+    const { unmount } = render(
+      <StatusLine
+        session={sessionView({ phase: "Done", eventCount: 3, elapsed: stopped(75 * 60_000) })}
+        t={t}
+        onOpenFailures={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 1:15:00");
+    unmount();
+    render(
+      <StatusLine
+        session={sessionView({ phase: "Done", eventCount: 3, elapsed: stopped(31_400) })}
+        t={createTranslator("ja")}
+        onOpenFailures={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("経過 00:31");
+  });
+
+  it("shows no elapsed time while Idle, without a session and without a value", () => {
+    renderStatus(sessionView({ phase: "Idle", elapsed: stopped(4_000) }));
+    expect(screen.queryByTestId("status-line-elapsed")).not.toBeInTheDocument();
+    cleanup();
+    renderStatus(null);
+    expect(screen.queryByTestId("status-line-elapsed")).not.toBeInTheDocument();
+    cleanup();
+    renderStatus(sessionView({ phase: "Done", eventCount: 1, elapsed: null }));
+    expect(screen.queryByTestId("status-line-elapsed")).not.toBeInTheDocument();
+  });
+
+  it("puts the elapsed time before the log filter", () => {
+    renderStatus(
+      sessionView({
+        phase: "Fetching",
+        progress: fetchingProgress,
+        cacheSaving: true,
+        elapsed: running(1_000),
+        filterSummary: {
+          filterId: 1,
+          matchedCount: 2,
+          allCount: 250,
+          status: "Filtering",
+          resultVersion: 3,
+        },
+      }),
+    );
+    expect(partOrder()).toEqual([
+      "status-line-fetching",
+      "status-line-cache-saving",
+      "status-line-elapsed",
+      "status-line-filter",
+      "status-line-filtering",
+    ]);
+  });
+
+  it("is read out with the end of the fetch, in the same update (NFR9.2, BR4.9)", () => {
+    const onOpenFailures = vi.fn();
+    const { rerender } = render(
+      <StatusLine
+        session={sessionView({
+          phase: "Fetching",
+          progress: fetchingProgress,
+          elapsed: running(30_000),
+        })}
+        t={t}
+        onOpenFailures={onOpenFailures}
+      />,
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveAttribute("aria-hidden", "true");
+    rerender(
+      <StatusLine
+        session={sessionView({ phase: "Done", eventCount: 42, elapsed: stopped(31_400) })}
+        t={t}
+        onOpenFailures={onOpenFailures}
+      />,
+    );
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("42 events");
+    const elapsed = screen.getByTestId("status-line-elapsed");
+    expect(elapsed).not.toHaveAttribute("aria-hidden");
+    expect(elapsed).toHaveTextContent("Elapsed 00:31");
+    expect(screen.getByRole("status")).toHaveTextContent("42 events");
+  });
+
+  it("does not go back when a progress message is composed into the view (NFR6.9)", () => {
+    vi.useFakeTimers();
+    const view = sessionView({
+      phase: "Fetching",
+      currentJobId: 7,
+      progress: fetchingProgress,
+      elapsed: running(10_000),
+    });
+    const onOpenFailures = vi.fn();
+    const { rerender } = render(
+      <StatusLine session={view} t={t} onOpenFailures={onOpenFailures} />,
+    );
+    for (let step = 0; step < 12; step += 1) {
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    }
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:13");
+    // As `withProgress` does: a new view object keeping the same `elapsed`.
+    rerender(
+      <StatusLine
+        session={{ ...view, progress: { ...fetchingProgress, finishedStreamCount: 4 } }}
+        t={t}
+        onOpenFailures={onOpenFailures}
+      />,
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:13");
+    expect(screen.getByTestId("status-line-fetching")).toHaveTextContent("4/12 streams");
+  });
+
+  it("redraws only the elapsed part every second (NFR5.3)", () => {
+    vi.useFakeTimers();
+    const translate = vi.fn<Translate>((key, params) => t(key, params));
+    render(
+      <StatusLine
+        session={sessionView({
+          phase: "Fetching",
+          progress: fetchingProgress,
+          elapsed: running(0),
+        })}
+        t={translate}
+        onOpenFailures={vi.fn()}
+      />,
+    );
+    const drawsOf = (key: string) => translate.mock.calls.filter(([k]) => k === key).length;
+    const lineDraws = drawsOf("status.fetching");
+    const elapsedDraws = drawsOf("status.elapsed");
+    for (let step = 0; step < 12; step += 1) {
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+    }
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:03");
+    expect(drawsOf("status.fetching")).toBe(lineDraws);
+    expect(drawsOf("status.elapsed")).toBeGreaterThanOrEqual(elapsedDraws + 3);
   });
 });

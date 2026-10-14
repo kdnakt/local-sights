@@ -128,6 +128,18 @@ read, never credentials (and, from `~/.aws/config`, whether a profile has
 `sso_session` / `sso_start_url` and the name in `source_profile`, for the
 SSO sign-in below; never their values).
 
+The status line below the list says what the fetch is doing and, after it,
+the event count, failed streams and cache notices. From the moment **Fetch**
+is accepted it also ends with the time the fetch has taken, "Elapsed mm:ss"
+("経過 mm:ss" in Japanese; `h:mm:ss` from one hour on, seconds cut, not
+rounded), placed before the log filter's count. It advances every second
+while fetching, also while a request waits to be retried, and stops at the
+final value, which includes saving to the cache and stays until the next
+**Fetch**. A fetch shown from the cache shows it too (usually `00:00`).
+Changing the profile or the region clears it with the previous result;
+choosing another log group keeps it. Screen readers do not hear the seconds
+tick; the final value is read with the end of the fetch.
+
 ## Sign in with SSO
 
 When the SSO session has expired, the log group pane or the error above the
@@ -284,6 +296,13 @@ Sign in with SSO (261011-sso-login), on the company Mac with AWS CLI v2:
 - [ ] With the AWS CLI moved away from both `/opt/homebrew/bin/aws` and `/usr/local/bin/aws` (or on a Mac without it), the dialog says "AWS CLI was not found. Install AWS CLI v2." with the terminal alternative.
 - [ ] While the dialog waits, the profile, region, log group list, **Reload**, **Fetch** and the gear button cannot be used, Escape and the dialog's close button do not close it, and **Cancel** is reachable with Tab; after the dialog closes, the focus is back on the **Sign in with SSO** button (or on **Reload** when that button is gone).
 - [ ] Started from a terminal (`npm run tauri dev`), standard error shows only "sso login N ended: …" lines for the sign-in: no URL, code, token or CLI output.
+
+Elapsed time (261012-parallel-fetch U4):
+
+- [ ] Pressing **Fetch** adds "Elapsed 00:00" at the end of the status line (before "Filtered: N of M events" when a filter is in force); it advances once a second while the streams are listed and read, also while nothing new arrives (for example while a throttled request waits), and through "Saving to cache".
+- [ ] When the fetch ends (done, 0 events, some streams failed, failed, or shown from the cache), the time stops at its final value and stays; fetching again starts from `00:00`. Choosing another log group keeps it; changing the profile or the region clears it.
+- [ ] A fetch longer than an hour reads `1:00:00` and on; with the OS language set to Japanese the text is "経過 mm:ss".
+- [ ] With VoiceOver on, the seconds are not read out while fetching; the end of the fetch is read with the final elapsed time.
 
 ## Performance check of the log list
 

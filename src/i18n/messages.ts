@@ -32,6 +32,8 @@
  * frontend-components.md, plus `ssoLogin.failedToStart` for a CLI that did
  * not start and `ssoLogin.openFailed` for a URL that could not be opened)
  * and the core's `session.ssoLoginInProgress` / `session.ssoLoginUnavailable`.
+ * Since 261012-parallel-fetch U4 the elapsed time of a fetch on the status
+ * line (`status.elapsed`, `{time}` is mm:ss or h:mm:ss, BR4.7, BR4.8).
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -206,6 +208,7 @@ export const messages = {
     ja: "0 件：この範囲にログはありません。",
   },
   "status.detail": { en: "Details: {detail}", ja: "詳細：{detail}" },
+  "status.elapsed": { en: "Elapsed {time}", ja: "経過 {time}" },
   "failure.kind.AuthRequired": {
     en: "Authentication required",
     ja: "認証が必要",

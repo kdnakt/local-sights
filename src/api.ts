@@ -20,6 +20,8 @@
  * Since 261011-sso-login the session view carries the SSO login (`ssoLogin`)
  * and `startSsoLogin`, `cancelSsoLogin`, `dismissSsoLogin` and `openSsoUrl`
  * drive it; the app runs the AWS CLI, the screen only shows its state.
+ * Since 261012-parallel-fetch U4 the session view carries the elapsed time of
+ * the fetch (`elapsed`); `fetch-progress` does not (NFR5.4).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -167,6 +169,21 @@ export interface SsoLoginView {
   profileOption: string;
 }
 
+/**
+ * The elapsed time of the current or last fetch (261012-parallel-fetch U4,
+ * BR4.5): only a flag and numbers (NFR8.10). Sent with every session view,
+ * never every second; the screen advances it by its own clock while
+ * `running` (BR4.6, `elapsed.ts`).
+ */
+export interface ElapsedView {
+  /** Whether the fetch still runs. */
+  running: boolean;
+  /** Milliseconds since the start when the view was made, or the final value. */
+  elapsedMs: number;
+  /** Number of the fetch; a running value is kept only for the same number. */
+  fetchNumber: number;
+}
+
 export interface FailedStream {
   logStreamName: string;
   failure: ApiFailure;
@@ -239,6 +256,13 @@ export interface SessionView {
   closeConfirmation: CloseConfirmation;
   /** The SSO login (261011-sso-login). */
   ssoLogin: SsoLoginView;
+  /**
+   * The elapsed time of the current or last fetch (261012-parallel-fetch U4).
+   * `null` when nothing was fetched yet, after a fetch stopped for closing
+   * (BR4.3), and after a connection change cleared the previous result
+   * (BR4.4).
+   */
+  elapsed: ElapsedView | null;
 }
 
 /** Whether an SSO login is under way (Starting or Waiting). */

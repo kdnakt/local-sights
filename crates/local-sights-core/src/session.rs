@@ -44,8 +44,19 @@
 //! and the listing that follows a success (BR4.1). While a login runs the
 //! connection, the fetch, the reload and the settings dialog are refused
 //! (BR3.4). The CLI itself is run by the app.
+//! Since 261012-parallel-fetch U4 it records how long a fetch takes
+//! (ADR-005): [`AppSession::begin_fetch`] notes the start on a monotonic
+//! [`SessionClock`] (replaced in tests with [`AppSession::with_clock`],
+//! BR4.10), the end of the fetch, also one that stopped abnormally, fixes
+//! the final value (BR4.2), and a fetch stopped for closing or a connection
+//! change drops it (BR4.3, BR4.4). Every [`SessionView`] carries it as
+//! [`ElapsedView`], read when the view is made; [`FetchProgressUpdate`] does
+//! not, and nothing is sent just for the time (BR4.5). The screen advances
+//! it every second by its own clock.
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
@@ -475,6 +486,79 @@ pub struct FilterProgressUpdate {
     pub filter_result_version: u64,
 }
 
+/// The clock the session reads the elapsed time of a fetch from
+/// (261012-parallel-fetch U4:BR4.10): a monotonic "now" that never goes
+/// back. The app uses [`SessionClock::system`] ([`Instant::now`]); tests
+/// pass a clock they move by hand with [`AppSession::with_clock`].
+#[derive(Clone)]
+pub struct SessionClock {
+    now: Arc<dyn Fn() -> Instant + Send + Sync>,
+}
+
+impl SessionClock {
+    /// The monotonic clock of the system.
+    pub fn system() -> Self {
+        Self::from_fn(Instant::now)
+    }
+
+    /// A clock that asks `now` for the current instant.
+    pub fn from_fn(now: impl Fn() -> Instant + Send + Sync + 'static) -> Self {
+        Self { now: Arc::new(now) }
+    }
+
+    /// The current instant.
+    pub fn now(&self) -> Instant {
+        (self.now)()
+    }
+}
+
+impl Default for SessionClock {
+    fn default() -> Self {
+        Self::system()
+    }
+}
+
+impl std::fmt::Debug for SessionClock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SessionClock")
+    }
+}
+
+/// When the current or last fetch started and, once it ended, how long it
+/// took (261012-parallel-fetch U4, entities.md ElapsedRecord).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ElapsedRecord {
+    /// When [`AppSession::begin_fetch`] accepted the fetch (BR4.1).
+    started_at: Instant,
+    /// Milliseconds from the start to the end; `None` while it runs (BR4.2).
+    final_ms: Option<u64>,
+}
+
+/// The elapsed time of a fetch as the screen receives it (261012-parallel-fetch
+/// U4:BR4.5, contract C5). Only a flag and numbers, no text (NFR8.10).
+/// `SessionView.elapsed` is `None` (`null`) when nothing was fetched yet,
+/// when the fetch was stopped for closing (Aborted, BR4.3), and when a
+/// connection change cleared the previous result (BR4.4); this widens the
+/// wording of C5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElapsedView {
+    /// Whether the fetch still runs: the screen then advances the time by
+    /// its own clock every second (BR4.6).
+    pub running: bool,
+    /// Milliseconds since the start when the view was made, or the final
+    /// value once the fetch ended (BR4.2, BR4.5).
+    pub elapsed_ms: u64,
+    /// Number of the fetch ([`AppSession::fetch_number`]); the screen keeps
+    /// a running value only for the same number (nfr-design review R-01).
+    pub fetch_number: u64,
+}
+
+/// Milliseconds from `start` to `now`; 0 when the clock went back (NFR6.8).
+fn elapsed_ms_between(start: Instant, now: Instant) -> u64 {
+    u64::try_from(now.saturating_duration_since(start).as_millis()).unwrap_or(u64::MAX)
+}
+
 /// Progress of the running fetch, for the status line (BR6.2).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -595,6 +679,11 @@ pub struct SessionView {
     pub close_confirmation: CloseConfirmation,
     /// The SSO login (261011-sso-login).
     pub sso_login: SsoLoginView,
+    /// The elapsed time of the current or last fetch (261012-parallel-fetch
+    /// U4:BR4.5); `None` when nothing was fetched yet, after a fetch
+    /// stopped for closing, and after a connection change cleared the
+    /// previous result (see [`ElapsedView`]).
+    pub elapsed: Option<ElapsedView>,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -694,6 +783,11 @@ pub struct AppSession {
     /// attempt at once, but its CLI takes up to the stop grace to end; no
     /// new login starts before that, so two CLIs never run (FR2.6).
     sso_cli_active: bool,
+    /// The monotonic clock of the elapsed time (261012-parallel-fetch
+    /// U4:BR4.10).
+    clock: SessionClock,
+    /// Start and final value of the current or last fetch (BR4.1-BR4.4).
+    elapsed: Option<ElapsedRecord>,
 }
 
 /// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
@@ -784,6 +878,8 @@ impl AppSession {
             aws_profile_env: None,
             sso: SsoLoginAttempt::default(),
             sso_cli_active: false,
+            clock: SessionClock::system(),
+            elapsed: None,
         };
         session.select_startup_profile();
         session.revalidate();
@@ -845,6 +941,44 @@ impl AppSession {
         self.cache_enabled = load_settings(&location.settings_path).cache_enabled();
         self.cache_location = Some(location);
         self
+    }
+
+    /// The same session reading the elapsed time of a fetch from `clock`
+    /// instead of the system's monotonic clock (261012-parallel-fetch
+    /// U4:BR4.10); tests use it to move the time by hand.
+    pub fn with_clock(mut self, clock: SessionClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// Fixes the final elapsed time of the running fetch, once
+    /// (261012-parallel-fetch U4:BR4.2).
+    fn settle_elapsed(&mut self) {
+        let now = self.clock.now();
+        if let Some(record) = self.elapsed.as_mut() {
+            if record.final_ms.is_none() {
+                record.final_ms = Some(elapsed_ms_between(record.started_at, now));
+            }
+        }
+    }
+
+    /// The elapsed time as the screen receives it (261012-parallel-fetch
+    /// U4:BR4.5): the final value once the fetch ended, otherwise the time
+    /// since its start, read now.
+    fn elapsed_view(&self) -> Option<ElapsedView> {
+        let record = self.elapsed?;
+        let (running, elapsed_ms) = match record.final_ms {
+            Some(final_ms) => (false, final_ms),
+            None => (
+                true,
+                elapsed_ms_between(record.started_at, self.clock.now()),
+            ),
+        };
+        Some(ElapsedView {
+            running,
+            elapsed_ms,
+            fetch_number: self.fetch_number,
+        })
     }
 
     /// Whether the disk cache is enabled (U6:BR1.1).
@@ -1298,6 +1432,12 @@ impl AppSession {
         };
         self.phase = Phase::Fetching;
         self.fetch_number += 1;
+        // 261012-parallel-fetch U4:BR4.1: the previous value goes; the new
+        // fetch starts counting now.
+        self.elapsed = Some(ElapsedRecord {
+            started_at: self.clock.now(),
+            final_ms: None,
+        });
         // BR5.6: the previous rows, count, failures and result go away.
         self.current_job_id = None;
         self.event_count = 0;
@@ -1452,8 +1592,13 @@ impl AppSession {
         if job.status == JobStatus::Aborted {
             self.phase = Phase::Idle;
             self.event_count = 0;
+            // 261012-parallel-fetch U4:BR4.3: no elapsed time when closing.
+            self.elapsed = None;
             return;
         }
+        // 261012-parallel-fetch U4:BR4.2: the cache write ended before this,
+        // so the final value includes it.
+        self.settle_elapsed();
         self.phase = if job.status == JobStatus::Failed {
             Phase::Failed
         } else {
@@ -1560,6 +1705,8 @@ impl AppSession {
             return false;
         }
         self.phase = Phase::Failed;
+        // 261012-parallel-fetch U4:BR4.2: ends like a failed fetch.
+        self.settle_elapsed();
         // U6 review R-11: as at a normal finish, the write is over.
         self.cache_saving = false;
         self.cache_notices.clear();
@@ -1693,6 +1840,7 @@ impl AppSession {
             discard_generation: self.discard_generation,
             close_confirmation: self.close_confirmation,
             sso_login: self.sso_login_view(),
+            elapsed: self.elapsed_view(),
         }
     }
 
@@ -1759,6 +1907,9 @@ impl AppSession {
         self.listing_failure = None;
         self.failure_list_open = false;
         self.cache_notices.clear();
+        // 261012-parallel-fetch U4:BR4.4: the elapsed time goes with the
+        // previous result.
+        self.elapsed = None;
         if matches!(self.phase, Phase::Done | Phase::Failed) {
             self.phase = Phase::Idle;
         }
@@ -4660,5 +4811,259 @@ mod tests {
         assert!(sso["verificationUrl"].is_null());
         assert!(sso["userCode"].is_null());
         assert!(sso["exitCode"].is_null());
+    }
+
+    // --- 261012-parallel-fetch U4: the elapsed time of a fetch ---
+
+    /// A clock the test moves by hand: `base` plus `offset_ms`. It starts
+    /// 60 seconds after `base` so that a test can also move it back.
+    #[derive(Clone)]
+    struct ManualClock {
+        base: std::time::Instant,
+        offset_ms: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    }
+
+    impl ManualClock {
+        fn new() -> Self {
+            Self {
+                base: std::time::Instant::now(),
+                offset_ms: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(60_000)),
+            }
+        }
+
+        fn advance(&self, ms: u64) {
+            self.offset_ms
+                .fetch_add(ms, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        fn go_back(&self, ms: u64) {
+            self.offset_ms
+                .fetch_sub(ms, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        fn session_clock(&self) -> SessionClock {
+            let clock = self.clone();
+            SessionClock::from_fn(move || {
+                clock.base
+                    + std::time::Duration::from_millis(
+                        clock.offset_ms.load(std::sync::atomic::Ordering::SeqCst),
+                    )
+            })
+        }
+    }
+
+    /// A session with valid input whose clock is `clock`.
+    fn clocked_session(clock: &ManualClock) -> AppSession {
+        let mut session = AppSession::with_catalog(catalog()).with_clock(clock.session_clock());
+        fill_valid(&mut session);
+        session
+    }
+
+    /// Starts a fetch of `session` and its job; returns the job, still Running.
+    fn start_clocked_fetch(session: &mut AppSession) -> FetchJob {
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job, 1);
+        job
+    }
+
+    fn completed(mut job: FetchJob, events: u64) -> FetchJob {
+        job.status = JobStatus::Completed;
+        job.event_count = events;
+        job
+    }
+
+    #[test]
+    fn the_elapsed_time_is_null_before_any_fetch() {
+        let clock = ManualClock::new();
+        let session = clocked_session(&clock);
+        assert_eq!(session.view().elapsed, None);
+        assert_eq!(AppSession::new().view().elapsed, None);
+    }
+
+    #[test]
+    fn a_running_fetch_reports_the_time_since_it_started() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        start_clocked_fetch(&mut session);
+        clock.advance(7_000);
+        assert_eq!(
+            session.view().elapsed,
+            Some(ElapsedView {
+                running: true,
+                elapsed_ms: 7_000,
+                fetch_number: session.fetch_number(),
+            })
+        );
+    }
+
+    #[test]
+    fn the_end_of_a_fetch_fixes_the_final_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(31_400);
+        session.finish_fetch(&completed(job, 5), 2);
+        let expected = Some(ElapsedView {
+            running: false,
+            elapsed_ms: 31_400,
+            fetch_number: session.fetch_number(),
+        });
+        assert_eq!(session.view().elapsed, expected);
+        clock.advance(10_000);
+        assert_eq!(session.view().elapsed, expected, "the final value stays");
+    }
+
+    #[test]
+    fn the_final_elapsed_time_includes_the_cache_write() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(10_000);
+        session.on_saving(job.job_id);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(10_000));
+        clock.advance(3_000);
+        session.finish_fetch(&completed(job, 5), 2);
+        let elapsed = session.view().elapsed.unwrap();
+        assert!(!elapsed.running);
+        assert_eq!(elapsed.elapsed_ms, 13_000);
+    }
+
+    #[test]
+    fn a_refused_fetch_does_not_restart_the_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        start_clocked_fetch(&mut session);
+        clock.advance(5_000);
+        assert_eq!(
+            session.begin_fetch(session.connection_generation()),
+            Err(SessionError::Busy)
+        );
+        clock.advance(2_000);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(7_000));
+
+        // A refused fetch after the end keeps the final value too.
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
+        let before = session.view().elapsed;
+        assert_eq!(
+            session.begin_fetch(session.connection_generation() + 1),
+            Err(SessionError::StaleGeneration)
+        );
+        clock.advance(1_000);
+        assert_eq!(session.view().elapsed, before);
+    }
+
+    #[test]
+    fn the_next_fetch_drops_the_previous_value_and_has_a_new_number() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(31_400);
+        session.finish_fetch(&completed(job, 0), 2);
+        let first = session.view().elapsed.unwrap();
+
+        start_clocked_fetch(&mut session);
+        let second = session.view().elapsed.unwrap();
+        assert!(second.running);
+        assert_eq!(second.elapsed_ms, 0);
+        assert_eq!(second.fetch_number, first.fetch_number + 1);
+    }
+
+    #[test]
+    fn an_aborted_fetch_shows_no_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let mut job = start_clocked_fetch(&mut session);
+        clock.advance(4_000);
+        job.status = JobStatus::Aborted;
+        session.finish_fetch(&job, 2);
+        assert_eq!(session.phase(), Phase::Idle);
+        assert_eq!(session.view().elapsed, None);
+    }
+
+    #[test]
+    fn a_connection_change_drops_the_elapsed_time_but_a_log_group_change_keeps_it() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(2_000);
+        session.finish_fetch(&completed(job, 3), 2);
+        let kept = session.view().elapsed;
+        assert!(kept.is_some());
+
+        session
+            .select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert_eq!(session.view().elapsed, kept, "same connection: kept");
+
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert_eq!(session.view().elapsed, kept, "awaiting confirmation: kept");
+        session.confirm_connection_change().unwrap();
+        assert_eq!(session.view().elapsed, None);
+    }
+
+    #[test]
+    fn a_fetch_that_stopped_abnormally_keeps_its_final_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        start_clocked_fetch(&mut session);
+        clock.advance(5_250);
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
+        clock.advance(5_000);
+        assert_eq!(
+            session.view().elapsed,
+            Some(ElapsedView {
+                running: false,
+                elapsed_ms: 5_250,
+                fetch_number: session.fetch_number(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_clock_that_goes_back_counts_as_zero() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.go_back(3_000);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(0));
+        session.finish_fetch(&completed(job, 1), 2);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(0));
+    }
+
+    #[test]
+    fn the_elapsed_time_serializes_as_numbers_and_a_flag_or_null() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert!(json["elapsed"].is_null());
+
+        start_clocked_fetch(&mut session);
+        clock.advance(7_000);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(
+            json["elapsed"],
+            serde_json::json!({
+                "running": true,
+                "elapsedMs": 7000,
+                "fetchNumber": session.fetch_number(),
+            })
+        );
+    }
+
+    #[test]
+    fn the_session_clock_tells_the_time_and_hides_its_source() {
+        let clock = SessionClock::system();
+        let before = std::time::Instant::now();
+        assert!(clock.now() >= before);
+        assert_eq!(format!("{clock:?}"), "SessionClock");
+        assert_eq!(format!("{:?}", SessionClock::default()), "SessionClock");
+        let session = AppSession::new();
+        assert!(format!("{session:?}").contains("SessionClock"));
     }
 }

@@ -1,0 +1,20 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-elapsed-time",
+  "version": 1,
+  "writes": [
+    { "path": "README.md" },
+    { "path": "crates/local-sights-core/src/session.rs" },
+    { "path": "src/api.ts" },
+    { "path": "src/elapsed.ts" },
+    { "path": "src/elapsed.test.ts" },
+    { "path": "src/hooks/useElapsed.ts" },
+    { "path": "src/components/ElapsedTime.tsx" },
+    { "path": "src/components/ElapsedTime.test.tsx" },
+    { "path": "src/components/StatusLine.tsx" },
+    { "path": "src/components/StatusLine.test.tsx" },
+    { "path": "src/App.test.tsx" },
+    { "path": "src/i18n/messages.ts" },
+    { "path": "src/test/fixtures.ts" }
+  ]
+}

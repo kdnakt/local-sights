@@ -3,6 +3,7 @@ import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import type { CacheNotice, FilterSummary, SessionView } from "../api";
 import { errorLines } from "../errorText";
 import type { Translate } from "../i18n/messages";
+import { ElapsedTime } from "./ElapsedTime";
 
 export interface StatusLineProps {
   session: SessionView | null;
@@ -31,14 +32,20 @@ const CACHE_NOTICE_KEYS: Record<CacheNotice, string> = {
  * and, while the scan runs, "filtering" (U5:BR3.3). Since U6: "saving to
  * the cache" while a fetch writes the cache, and after a fetch its cache
  * notices next to the count, in words (U6:BR5.3); a fetch shown from the
- * cache has no stream counts (U6 review R-12).
+ * cache has no stream counts (U6 review R-12). Since 261012-parallel-fetch
+ * U4: "Elapsed mm:ss" after the fetch and cache parts and before the log
+ * filter, in every phase but Idle (BR4.8); it advances every second while
+ * fetching inside `ElapsedTime` only, so this line is not drawn again for it
+ * (NFR5.3), and is not read out until the fetch ends (BR4.9).
  */
 export function StatusLine({ session, t, onOpenFailures }: StatusLineProps) {
   const filter = session?.filterSummary ?? null;
+  const showsElapsed = session !== null && session.phase !== "Idle";
   return (
     <div className="status-line" role="status" aria-live="polite" data-testid="status-line">
       {renderStatus(session, t, onOpenFailures)}
       {session && renderCache(session, t)}
+      {showsElapsed && <ElapsedTime elapsed={session.elapsed} t={t} />}
       {filter && renderFilter(filter, t)}
     </div>
   );

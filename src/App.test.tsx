@@ -179,6 +179,88 @@ describe("App", () => {
     expect(screen.getByTestId("status-line-count")).toHaveTextContent("3 events");
   });
 
+  it("starts the elapsed clock from getSession and keeps it across progress messages (261012-parallel-fetch U4, NFR6.9)", async () => {
+    const elapsed = { running: true, elapsedMs: 5_999, fetchNumber: 3 };
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({ phase: "Fetching", currentJobId: 7, elapsed }),
+    );
+    render(<App locale="en" />);
+    const part = await screen.findByTestId("status-line-elapsed");
+    expect(part).toHaveAttribute("aria-hidden", "true");
+    // The screen's own clock moves it on without any message from the core.
+    const shownSeconds = () =>
+      Number(
+        /Elapsed 00:(\d\d)/.exec(screen.getByTestId("status-line-elapsed").textContent ?? "")?.[1],
+      );
+    await waitFor(() => expect(shownSeconds()).toBeGreaterThanOrEqual(6));
+    const beforeProgress = shownSeconds();
+
+    act(() => {
+      handlers.progress?.({
+        jobId: 7,
+        progress: {
+          seenStreamCount: 2,
+          selectedStreamCount: 2,
+          plannedStreamCount: 2,
+          finishedStreamCount: 1,
+          eventCount: 3,
+        },
+        eventCount: 3,
+        timelineVersion: 1,
+        filterSummary: null,
+        filterResultVersion: 0,
+        cacheSaving: true,
+      });
+    });
+    expect(screen.getByTestId("status-line-cache-saving")).toBeInTheDocument();
+    expect(shownSeconds()).toBeGreaterThanOrEqual(beforeProgress);
+
+    push(
+      sessionView({
+        phase: "Done",
+        currentJobId: 7,
+        eventCount: 3,
+        elapsed: { running: false, elapsedMs: 31_400, fetchNumber: 3 },
+      }),
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:31");
+    expect(screen.getByTestId("status-line-elapsed")).not.toHaveAttribute("aria-hidden");
+
+    // A connection change clears the result and the elapsed time with it.
+    push(connectedView({ phase: "Idle", elapsed: null }));
+    expect(screen.queryByTestId("status-line-elapsed")).not.toBeInTheDocument();
+  });
+
+  it("keeps the same elapsed object when progress and filter messages are composed (NFR6.9)", () => {
+    const view = sessionView({
+      phase: "Fetching",
+      currentJobId: 7,
+      filterResultVersion: 2,
+      elapsed: { running: true, elapsedMs: 1_000, fetchNumber: 1 },
+    });
+    const progress = {
+      jobId: 7,
+      progress: {
+        seenStreamCount: 1,
+        selectedStreamCount: 1,
+        plannedStreamCount: 1,
+        finishedStreamCount: 0,
+        eventCount: 1,
+      },
+      eventCount: 1,
+      timelineVersion: 1,
+      filterSummary: null,
+      filterResultVersion: 3,
+      cacheSaving: false,
+    };
+    expect(api.withProgress(view, progress)?.elapsed).toBe(view.elapsed);
+    expect(api.withFilter(view, { filterSummary: null, filterResultVersion: 4 })?.elapsed).toBe(
+      view.elapsed,
+    );
+    const newer = { ...view, filterResultVersion: 1, elapsed: { ...view.elapsed! } };
+    expect(api.mergeSessionView(view, newer).elapsed).toBe(newer.elapsed);
+  });
+
   it("sends the connection generation with fetch, reload and log group selection", async () => {
     vi.mocked(api.getSession).mockResolvedValue(
       connectedView({

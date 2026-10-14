@@ -15819,3 +15819,423 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T02:53:05Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T02:53:12Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/unit-test-instructions.md
+**Context**: construction > u4-elapsed-time > code-generation > unit-test-instructions.md
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T02:58:34Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T03:03:45Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:03:56Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Approve Plan"]
+
+---
+
+## Plan Approval Recorded
+**Timestamp**: 2026-10-14T03:03:56Z
+**Event**: PLAN_APPROVAL_RECORDED
+**Stage**: code-generation
+**Details**: Approve Plan
+**Checkpoint**: plan-approval
+**Plan Target**: unit:u4-elapsed-time
+**Intent**: 01a12ef4-71f6-7a92-afe0-2716a1cc1c7e
+**Directive Epoch**: sha256:10b19485f9fb8a51317091c7160e12a7453ffb6ba49561e5edf0ad689f42b23e
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+**Approval Fingerprint**: sha256:v3:1c689885a211fb52611d00ea4a8056a618bdb942f8fa8f1bde289a76afa9e9e6
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-questions.md
+**Questions SHA-256**: a4dda0ec942d42b885fa4e8c47be86021b555f4cb76be2aa4d99f1d106f613c0
+**Prompt SHA-256**: 9e444b65a973c9fb2783cc7c99160e1114c8439ad38726ffcbfe917d3dcae6a1
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Asked By**: engine
+**Person Reply**: Approve Plan
+**Unit**: u4-elapsed-time
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T03:03:56Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4（かかった時間）のコード生成の計画を承認しますか？\n\n- 作るもの：取得にかかった時間を、状態行の末尾に「経過 mm:ss」として出す。ライブラリ（AppSession）が戻らない時計で始まりと最終の値を記録して画面に渡し、画面の小さな部品が取得中に 1 秒ごとに進める\n- 触る場所：session.rs（時計・記録）、画面の型、新しい純粋な関数（表記と合わせ直し）、新しい時計のフックと経過の部品、状態行、文言、テストの見本\n- テスト：ライブラリの経過のテスト約 8 件と表記・合わせ直しのテスト約 12 件はテストを先に書く。部品・状態行・App のテスト約 8 件は実装の後に書く。行カバレッジはライブラリ・画面とも 80% 以上\n- 前の段のレビューの軽微な指摘もここで片付ける。主な点は、経過に取得の番号を足すこと（届く順が崩れても、前の取得の値で時計が狂わないように）\n\n計画：aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Reply**: Approve Plan
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:03:58Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:05:40Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:06:24Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a3d1f78c928465c9c
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:07:01Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:08:54Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:10:45Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:10:48Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:11:40Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:12:28Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:14:52Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:14:55Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:18:31Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:18:33Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:19:32Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:21:56Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:22:35Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:25:06Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:27:17Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:27:30Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:27:44Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-developer-agent
+**Agent ID**: ae60b506bfe06c6b1
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:27:48Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:28:40Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/source-manifest.json
+**Context**: construction > u4-elapsed-time > code-generation > source-manifest.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:28:54Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/traceability.json
+**Context**: construction > u4-elapsed-time > code-generation > traceability.json
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T03:28:55Z
+**Event**: SENSOR_FIRED
+**Fire id**: 41a13be0
+**Sensor ID**: traceability
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T03:28:56Z
+**Event**: SENSOR_PASSED
+**Fire id**: 41a13be0
+**Sensor ID**: traceability
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/traceability.json
+**Duration ms**: 953
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:29:11Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-summary.md
+**Context**: construction > u4-elapsed-time > code-generation > code-summary.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:29:15Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Context**: construction > u4-elapsed-time > code-generation > code-generation-plan.md
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-14T03:29:18Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Unit**: u2-call-pacing
+**Checkpoint**: review-receipt
+**Changed**: README.md
+**Recorded**: sha256:e9d494aa5eb090531deb46a6bb569c599b6e21a38d08ce1ef85821523bd8a41a
+**Current**: sha256:833d97f2df5cac7407d7e378692ae5196d35b4b392fed059e5de8a8ff4851a91
+**Details**: README.md changed after the call pacing Unit was reviewed; carrying on.
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-14T03:29:18Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Unit**: u1-concurrent-skeleton
+**Checkpoint**: review-receipt
+**Changed**: crates/local-sights-core/src/session.rs
+**Recorded**: sha256:06711e840661b2de35230a43a0af2f391b1c674a2c449c0c4a591cc1943728ae
+**Current**: sha256:beab32cb2ed0e91f9b99ecbc0e6b35963d81082d475b62bce71722396abe3a47
+**Details**: crates/local-sights-core/src/session.rs changed after the concurrent skeleton Unit was reviewed; carrying on.
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T03:29:18Z
+**Event**: REVIEW_REQUESTED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:0c3d09af8309e452bc277ff9f713a16de9b753be26143b77abd542356e4f1e25
+**Request Id**: review:993985e17fbb0d2a9082e851713e0d71
+**Source Fingerprint**: 538671a4265333a6c972a88531c6ae9738f3d55143d94402a68a76b9f0e1ed32
+**Unit Source Fingerprint**: sha256:b7521d67e5ac493af3ef6d6d332e55e700072c5f9fcf177cf36d4c6ce597a6e1
+**Review File**: .aidlc-engine/reviews/code-generation/units/u4-elapsed-time/df725d72ea237644/1.993985e17fbb0d2a9082e851713e0d71.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:29:28Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:34:27Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/code-generation/units/u4-elapsed-time/df725d72ea237644/1.993985e17fbb0d2a9082e851713e0d71.review.md
+**Context**: .aidlc-engine > reviews > code-generation > units > u4-elapsed-time > df725d72ea237644 > 1.993985e17fbb0d2a9082e851713e0d71.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:34:39Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a000959542678a2ab
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T03:34:40Z
+**Event**: REVIEW_COMPLETED
+**Stage**: code-generation
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:0c3d09af8309e452bc277ff9f713a16de9b753be26143b77abd542356e4f1e25
+**Artifact Fingerprint**: sha256:0c3d09af8309e452bc277ff9f713a16de9b753be26143b77abd542356e4f1e25
+**Request Id**: review:993985e17fbb0d2a9082e851713e0d71
+**Request Source Fingerprint**: 538671a4265333a6c972a88531c6ae9738f3d55143d94402a68a76b9f0e1ed32
+**Source Fingerprint**: 538671a4265333a6c972a88531c6ae9738f3d55143d94402a68a76b9f0e1ed32
+**Unit Source Fingerprint**: sha256:b7521d67e5ac493af3ef6d6d332e55e700072c5f9fcf177cf36d4c6ce597a6e1
+**Review Record**: .aidlc-engine/reviews/code-generation/units/u4-elapsed-time/df725d72ea237644/1.json
+**Review Record Digest**: sha256:ac9b60679d0a37230b0612273edffcd89e86c91411d5987b49cdefb2f3d0400e
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:34:45Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T03:34:52Z
+**Event**: UNIT_STARTED
+**Stage**: code-generation
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T03:34:58Z
+**Event**: UNIT_COMPLETED
+**Stage**: code-generation
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

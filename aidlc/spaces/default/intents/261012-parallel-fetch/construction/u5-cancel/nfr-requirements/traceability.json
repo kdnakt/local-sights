@@ -1,0 +1,68 @@
+{
+  "stage": "nfr-requirements",
+  "unit": "u5-cancel",
+  "upstream_ids": [
+    "NFR1",
+    "NFR2",
+    "NFR3",
+    "NFR4",
+    "NFR5",
+    "NFR6",
+    "NFR7",
+    "NFR8",
+    "NFR9",
+    "NFR10"
+  ],
+  "coverage": [
+    {
+      "id": "NFR1",
+      "status": "N/A",
+      "target": "取得の速さは U1〜U3 の範囲。中断は取得を短くするだけ"
+    },
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "observability-requirements.md NFR2.5"
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "performance-requirements.md NFR4.2（中断の後に呼び出しを増やさないことで、呼び出しの量の上限の中に収まる）"
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "performance-requirements.md NFR4.2, NFR4.3, NFR4.4, NFR4.5, scalability-requirements.md NFR4.6"
+    },
+    {
+      "id": "NFR5",
+      "status": "OK",
+      "target": "performance-requirements.md NFR5.5"
+    },
+    {
+      "id": "NFR6",
+      "status": "OK",
+      "target": "security-requirements.md NFR6.13, scalability-requirements.md NFR6.14, reliability-requirements.md NFR6.15, NFR6.16, NFR6.17, NFR6.18, NFR6.19, tech-stack-decisions.md NFR6.20"
+    },
+    {
+      "id": "NFR7",
+      "status": "OK",
+      "target": "tech-stack-decisions.md NFR7.4"
+    },
+    {
+      "id": "NFR8",
+      "status": "OK",
+      "target": "security-requirements.md NFR8.13, NFR8.14, NFR8.15"
+    },
+    {
+      "id": "NFR9",
+      "status": "OK",
+      "target": "observability-requirements.md NFR9.3, NFR9.4"
+    },
+    {
+      "id": "NFR10",
+      "status": "OK",
+      "target": "observability-requirements.md NFR10.1"
+    }
+  ]
+}

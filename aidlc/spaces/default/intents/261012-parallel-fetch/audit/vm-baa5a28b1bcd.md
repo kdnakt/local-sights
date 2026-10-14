@@ -16550,3 +16550,272 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:51:24Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/nfr-requirements-questions.md
+**Context**: construction > u5-cancel > nfr-requirements > nfr-requirements-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T03:51:26Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/nfr-requirements-questions.md
+**Unit**: u5-cancel
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:52:31Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T03:52:32Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U5（中断）の非機能要件のまとめです。目標は要件の段で決まっているので、数値に直しただけです。この内容で成果物を作ってよいですか？\n\n- ［中断］の後に始まる AWS の呼び出しは 0 回。待ちの最中ならすぐ止まり、応答待ちならその応答で止まる\n- 止めた後に届いたページが最後かどうかは、同じ読み手でもう一度「次」を求めて決める（呼び出しは増えない）\n- 取得を始める操作と中断の操作は、同じ順でロックを取る（固まらないように）\n- 注意・状態行・要約に足すのは本数と決まった語だけ。新しい API・依存・外への送信は足さない。アプリの権限に中断の操作だけ足す\n- ［中断］は［取得］と同じ位置・同じタブ順で、キーボードだけで押せる。文言は英日\n- テスト：止め方・N の数え方・終わりの状態の決め方は、偽物の AWS と止めた時計で確かめる。閉じるときの今の動きは回帰テストで守る。行カバレッジはライブラリ・画面とも 80% 以上
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-14T03:53:11Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: nfr-requirements
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/nfr-requirements-questions.md
+**Questions SHA-256**: beeeea5e9e92bbcf0a8d4691c2031fb6b6bdc6f8b9580b1cf61552cffdc70b91
+**Hash Scope**: confirmed-content-v2
+**Unit**: u5-cancel
+**Summary Authorization Id**: 4398b90776811d2e14c943ae931e9ec736943458005038cd26e566164170843d
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T03:53:18Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:30aa060af1f76286930fad3e0e1cf44417249cb5f34cf8a461c42aac6ce29f9d
+**Request Id**: review:2813fb0b24c6e9a49d8217d6781bcdb3
+**Review File**: .aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/1.2813fb0b24c6e9a49d8217d6781bcdb3.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:53:25Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:55:56Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/1.2813fb0b24c6e9a49d8217d6781bcdb3.review.md
+**Context**: .aidlc-engine > reviews > nfr-requirements > units > u5-cancel > df725d72ea237644 > 1.2813fb0b24c6e9a49d8217d6781bcdb3.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:56:06Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a6f0242e2078233d8
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T03:56:10Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:30aa060af1f76286930fad3e0e1cf44417249cb5f34cf8a461c42aac6ce29f9d
+**Artifact Fingerprint**: sha256:30aa060af1f76286930fad3e0e1cf44417249cb5f34cf8a461c42aac6ce29f9d
+**Request Id**: review:2813fb0b24c6e9a49d8217d6781bcdb3
+**Review Record**: .aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/1.json
+**Review Record Digest**: sha256:75ff88eeca9bbb68053c1647b719699eb7574ce726f8dda59023b7e36a4e6255
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:56:13Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T03:56:24Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-requirements
+**Decision**: Q1 中断から止まるまでの時間の上限
+**Options**: A,B,C,X
+**Unit**: u5-cancel
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:57:30Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T03:57:31Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U5（中断）Q1：応答が返ってこない呼び出しがあるとき、［中断］から止まるまでの時間に上限を設けますか？（今は呼び出しごとの時間切れがないため、通信が止まると［中断中…］がいつまでも続きえます。そのときはウィンドウを閉じれば終われます）
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-14T03:58:03Z
+**Event**: QUESTION_ANSWERED
+**Stage**: nfr-requirements
+**Details**: Q1: A (Recommended)
+**Unit**: u5-cancel
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T03:58:12Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 2
+**Artifact Fingerprint**: sha256:0f0efc43b88e296b85728437513efcdaff34a0550814a3b7ae3957c7711bc952
+**Request Id**: review:28e63c2b1e3c70b182eb77135d5305e1
+**Review File**: .aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/2.28e63c2b1e3c70b182eb77135d5305e1.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:58:21Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T03:58:55Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-requirements
+**Tool**: Bash
+**Details**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T03:59:03Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-requirements
+**Tool**: Bash
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T03:59:25Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-requirements
+**Tool**: Bash
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:59:43Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/2.28e63c2b1e3c70b182eb77135d5305e1.review.md
+**Context**: .aidlc-engine > reviews > nfr-requirements > units > u5-cancel > df725d72ea237644 > 2.28e63c2b1e3c70b182eb77135d5305e1.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:59:51Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a7143f226b7c024f6
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T03:59:55Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-requirements
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 2
+**Verdict**: READY
+**Request Fingerprint**: sha256:0f0efc43b88e296b85728437513efcdaff34a0550814a3b7ae3957c7711bc952
+**Artifact Fingerprint**: sha256:0f0efc43b88e296b85728437513efcdaff34a0550814a3b7ae3957c7711bc952
+**Request Id**: review:28e63c2b1e3c70b182eb77135d5305e1
+**Review Record**: .aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/2.json
+**Review Record Digest**: sha256:dde1db53d8716f6c99f45fe9fbbac8047ceebacf0f160cd4fb06cd8c7fa11a14
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T03:59:58Z
+**Event**: UNIT_STARTED
+**Stage**: nfr-requirements
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T04:00:01Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T04:00:05Z
+**Event**: UNIT_COMPLETED
+**Stage**: nfr-requirements
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

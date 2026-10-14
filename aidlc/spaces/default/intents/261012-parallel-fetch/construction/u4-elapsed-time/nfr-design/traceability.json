@@ -1,0 +1,134 @@
+{
+  "stage": "nfr-design",
+  "unit": "u4-elapsed-time",
+  "upstream_ids": [
+    "NFR2.2",
+    "NFR2.3",
+    "NFR2.4",
+    "NFR5.3",
+    "NFR5.4",
+    "NFR6.2",
+    "NFR6.3",
+    "NFR6.4",
+    "NFR6.5",
+    "NFR6.6",
+    "NFR6.7",
+    "NFR6.8",
+    "NFR6.9",
+    "NFR6.10",
+    "NFR6.11",
+    "NFR6.12",
+    "NFR7.3",
+    "NFR8.10",
+    "NFR8.11",
+    "NFR9.1",
+    "NFR9.2"
+  ],
+  "coverage": [
+    {
+      "id": "NFR2.2",
+      "status": "OK",
+      "target": "performance-design: ライブラリの戻らない時計の差、security-design 2.1"
+    },
+    {
+      "id": "NFR2.3",
+      "status": "OK",
+      "target": "observability-design: 状態行の経過"
+    },
+    {
+      "id": "NFR2.4",
+      "status": "OK",
+      "target": "observability-design: 要約の 1 行は変えない"
+    },
+    {
+      "id": "NFR5.3",
+      "status": "OK",
+      "target": "performance-design: ElapsedTime の中だけで毎秒描き直す"
+    },
+    {
+      "id": "NFR5.4",
+      "status": "OK",
+      "target": "performance-design: 送る契機と FetchProgressUpdate を変えない"
+    },
+    {
+      "id": "NFR6.2",
+      "status": "OK",
+      "target": "security-design: SessionClock と Vitest の偽のタイマー"
+    },
+    {
+      "id": "NFR6.3",
+      "status": "OK",
+      "target": "scalability-design: formatElapsed は時を桁埋めしない"
+    },
+    {
+      "id": "NFR6.4",
+      "status": "OK",
+      "target": "scalability-design: Option<ElapsedRecord> を置き換える"
+    },
+    {
+      "id": "NFR6.5",
+      "status": "OK",
+      "target": "reliability-design: performance.now と自分の予約で進む"
+    },
+    {
+      "id": "NFR6.6",
+      "status": "OK",
+      "target": "reliability-design: nextAnchor の保持の条件"
+    },
+    {
+      "id": "NFR6.7",
+      "status": "OK",
+      "target": "reliability-design: 合わせ直しで追い越される、スリープは対象外"
+    },
+    {
+      "id": "NFR6.8",
+      "status": "OK",
+      "target": "reliability-design: saturating_duration_since と max(0, …)"
+    },
+    {
+      "id": "NFR6.9",
+      "status": "OK",
+      "target": "reliability-design: elapsed のオブジェクトの入れ替わり"
+    },
+    {
+      "id": "NFR6.10",
+      "status": "OK",
+      "target": "reliability-design: None にする場所を 2 つに限る"
+    },
+    {
+      "id": "NFR6.11",
+      "status": "OK",
+      "target": "reliability-design: abort_fetch_with_failure で final_ms"
+    },
+    {
+      "id": "NFR6.12",
+      "status": "OK",
+      "target": "security-design 2.2: src/elapsed.ts の純粋な関数をテスト先行"
+    },
+    {
+      "id": "NFR7.3",
+      "status": "OK",
+      "target": "security-design 3 節: ライブラリと画面のテスト、CI の行カバレッジ 80%"
+    },
+    {
+      "id": "NFR8.10",
+      "status": "OK",
+      "target": "security-design 1 節: elapsed は真偽値と数値だけ"
+    },
+    {
+      "id": "NFR8.11",
+      "status": "OK",
+      "target": "security-design 1 節: 呼び出し・依存・ログ・書き込みを足さない"
+    },
+    {
+      "id": "NFR9.1",
+      "status": "OK",
+      "target": "observability-design: status.elapsed の英日"
+    },
+    {
+      "id": "NFR9.2",
+      "status": "OK",
+      "target": "observability-design: running の間 aria-hidden、終わりと同じ描き直しで外す"
+    }
+  ]
+}

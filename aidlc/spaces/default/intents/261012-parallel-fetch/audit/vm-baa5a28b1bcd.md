@@ -15457,3 +15457,196 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-13T22:45:55Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/nfr-design-questions.md
+**Context**: construction > u4-elapsed-time > nfr-design > nfr-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-13T22:45:57Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-design
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/nfr-design-questions.md
+**Unit**: u4-elapsed-time
+
+---
+
+## Session End
+**Timestamp**: 2026-10-13T22:51:26Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T01:12:12Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T01:12:23Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T01:12:23Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4 非機能設計のまとめです（新しく決めることはなく、実現の形だけです）。この内容で成果物を作ってよいですか？\n\n- ライブラリ：AppSession に経過の記録（始まりと最終の値）と、テストで差し替えられる時計を持たせる。取得を始めると記録し、終わりや異常な停止で最終の値を決める。閉じて止めたときと接続を変えたときは消す\n- 画面：経過だけを描く小さな部品が毎秒の描き直しを受け持ち、状態行の取得の表示とキャッシュの表示の後ろ、絞り込みの表示の前に置く。取得中は読み上げの対象から外す\n- 画面の時計は、ライブラリから新しい状態が届いたときだけ合わせ直す。取得中は数字を戻さず、新しい取得の始まり・終わり・経過が空になったときは、受け取った値に置き換える\n- 表記・合わせ直し・表示する値の計算は純粋な関数にして、テストを先に書く。英日の文言を足す\n- AWS の呼び出し・依存・ログ・保存先は変えない。画面に渡す経過は、取得中かどうかと経過の数値だけ
+**Reply**: Looks correct
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T01:12:24Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-14T01:12:37Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: nfr-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/nfr-design-questions.md
+**Questions SHA-256**: 4be9c096b5a907e8010b0b1d69aaff3902e2c6216e3124e0a75e68967a31dc0c
+**Hash Scope**: confirmed-content-v2
+**Unit**: u4-elapsed-time
+**Summary Authorization Id**: c60908ab687b7ad955b2143a184dddda36b4cf2b3b4cf379396ad6b1783b83ea
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T01:13:45Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:1a2fe9a6404d0692301bcf4b0c8fc11daefe67818929e540fdccda3f4fbdadff
+**Request Id**: review:032e26d0a5ae73e3da6cefed0d8903bb
+**Review File**: .aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.032e26d0a5ae73e3da6cefed0d8903bb.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T01:13:55Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T01:15:45Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Bash
+**Details**: . (unit u4-elapsed-time)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T01:17:08Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Bash
+**Details**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch (unit u4-elapsed-time)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T01:17:24Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Bash
+**Details**: . (unit u4-elapsed-time)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T01:18:18Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.032e26d0a5ae73e3da6cefed0d8903bb.review.md
+**Context**: .aidlc-engine > reviews > nfr-design > units > u4-elapsed-time > df725d72ea237644 > 1.032e26d0a5ae73e3da6cefed0d8903bb.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T01:18:29Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: aac765096a2f44e02
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T01:18:30Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:1a2fe9a6404d0692301bcf4b0c8fc11daefe67818929e540fdccda3f4fbdadff
+**Artifact Fingerprint**: sha256:1a2fe9a6404d0692301bcf4b0c8fc11daefe67818929e540fdccda3f4fbdadff
+**Request Id**: review:032e26d0a5ae73e3da6cefed0d8903bb
+**Review Record**: .aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.json
+**Review Record Digest**: sha256:30dc8496693a96f1484d9f66d42c6275efec622b7d369fcedce4377e00ac337a
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T01:18:39Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T01:18:45Z
+**Event**: UNIT_STARTED
+**Stage**: nfr-design
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T01:18:50Z
+**Event**: UNIT_COMPLETED
+**Stage**: nfr-design
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

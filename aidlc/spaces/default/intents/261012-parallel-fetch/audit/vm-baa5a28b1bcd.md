@@ -17087,3 +17087,174 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:17:12Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-design-questions.md
+**Context**: construction > u5-cancel > infrastructure-design > infrastructure-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T12:17:14Z
+**Event**: DECISION_RECORDED
+**Stage**: infrastructure-design
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-design-questions.md
+**Unit**: u5-cancel
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T12:17:44Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T12:17:44Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U5（中断）のインフラ設計のまとめです（新しく決めることはありません）。この内容で成果物を作ってよいですか？\n\n- クラウドの資源・ネットワーク・保存先・配布の形・CI の手順は U1〜U4 のまま。アプリの権限に中断の操作を 1 つ足すだけ\n- 確かめは CI の各ジョブ（止め方・本数の数え方・終わりの状態・画面のテスト、行カバレッジ 80%、アプリのビルドとテスト）。実際の AWS には接続しない\n- 手元の GUI で、中断のボタン・注意・状態行・キーボード操作・読み上げ・キャッシュに残らないことを一度確かめる\n- ブランチは U1〜U4 と同じ。CI の必須チェックの名前は変えない。U5 だけではタグを付けない
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-14T12:18:13Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: infrastructure-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-design-questions.md
+**Questions SHA-256**: e5c926236bec138c88b210c48ce00f526cf12711e5b0b8009bbb6a260e517aef
+**Hash Scope**: confirmed-content-v2
+**Unit**: u5-cancel
+**Summary Authorization Id**: 1db4929bab185fa48453ac6fac9637da8a4e65f38659d2088e3d9fbab657cfd0
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T12:18:14Z
+**Event**: REVIEW_REQUESTED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:f9308d924e2746328cc9753195b91043c2c3bd26da450697d60dcea6342d6c55
+**Request Id**: review:44ff06488b156427e3ed68a0b84e2e65
+**Review File**: .aidlc-engine/reviews/infrastructure-design/units/u5-cancel/df725d72ea237644/1.44ff06488b156427e3ed68a0b84e2e65.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:18:21Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:18:46Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: infrastructure-design
+**Tool**: Glob
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:18:47Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: infrastructure-design
+**Tool**: Glob
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:19:08Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: infrastructure-design
+**Tool**: Bash
+**Details**: . (unit u5-cancel)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:19:42Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/infrastructure-design/units/u5-cancel/df725d72ea237644/1.44ff06488b156427e3ed68a0b84e2e65.review.md
+**Context**: .aidlc-engine > reviews > infrastructure-design > units > u5-cancel > df725d72ea237644 > 1.44ff06488b156427e3ed68a0b84e2e65.review.md
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T12:19:49Z
+**Event**: REVIEW_COMPLETED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:f9308d924e2746328cc9753195b91043c2c3bd26da450697d60dcea6342d6c55
+**Artifact Fingerprint**: sha256:f9308d924e2746328cc9753195b91043c2c3bd26da450697d60dcea6342d6c55
+**Request Id**: review:44ff06488b156427e3ed68a0b84e2e65
+**Review Record**: .aidlc-engine/reviews/infrastructure-design/units/u5-cancel/df725d72ea237644/1.json
+**Review Record Digest**: sha256:1bb11b929569bf2328f3c39cde8a1f9085825a260bf17b4d390f6417458dbc04
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T12:19:51Z
+**Event**: UNIT_STARTED
+**Stage**: infrastructure-design
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T12:19:51Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: aad8ccbccda4bd6ac
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T12:19:53Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T12:19:57Z
+**Event**: UNIT_COMPLETED
+**Stage**: infrastructure-design
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

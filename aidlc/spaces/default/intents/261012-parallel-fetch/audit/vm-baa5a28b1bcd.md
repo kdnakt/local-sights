@@ -16239,3 +16239,314 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Checkpoint Verification Recorded
+**Timestamp**: 2026-10-14T03:38:28Z
+**Event**: CHECKPOINT_VERIFICATION_RECORDED
+**Unit**: u4-elapsed-time
+**Kind**: unit
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Verification Id**: 28c3f3d8-d3d9-43e1-a42c-25c47849bcfd
+**Fingerprint**: sha256:e403aadef2dcf58b80385fa4453f55fbdc8a01ff463b366a896f713cc2476532
+**Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Exit Code**: 0
+**Verified**: true
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T03:38:36Z
+**Event**: GATE_APPROVED
+**Unit**: u4-elapsed-time
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Scope**: unit-end
+**Checkpoint**: construction-unit
+**Fingerprint**: sha256:e403aadef2dcf58b80385fa4453f55fbdc8a01ff463b366a896f713cc2476532
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+**Run floors**: {"functional-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-requirements":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","infrastructure-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","code-generation":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1"}
+**Verification Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Verification Id**: 28c3f3d8-d3d9-43e1-a42c-25c47849bcfd
+**Approved Evidence**: {"functional-design":["sha256:bb2a8faf26a5e88a8c7a99fe305a5ecfa98c8ede5d6c017e594343dbfa6a3742",null],"nfr-requirements":["sha256:0769fc95425b9804257e73bbc95d6793519216ff024a97a6d55ec32b44bf10c1",null],"nfr-design":["sha256:1a2fe9a6404d0692301bcf4b0c8fc11daefe67818929e540fdccda3f4fbdadff",null],"infrastructure-design":["sha256:8fe84c13c9f5035543121308ea74a5b5899ac6440e4e6e0109faf0b0bda21781",null],"code-generation":["sha256:0c3d09af8309e452bc277ff9f713a16de9b753be26143b77abd542356e4f1e25","sha256:b7521d67e5ac493af3ef6d6d332e55e700072c5f9fcf177cf36d4c6ce597a6e1",{"\u0000README.md":"100644 1456ee160736f62b71110804f9c755285e31f38ec90b7b3e920cd6b7bcca3a66","\u0000crates/local-sights-core/src/session.rs":"100644 c0f81f413d021c4ed528615ed86e02b1952b62f39aa9894de496fdf1e8377564","\u0000src/App.test.tsx":"100644 1ebf8729422efbc764934052ac5964fcef7f2cfdfca7491f2e9bf25bef32f561","\u0000src/api.ts":"100644 d758c7a55573d13ab400385330ae5f29c980f6c7d1bd357417a41393eb2bbe7f","\u0000src/components/ElapsedTime.test.tsx":"100644 5d3a22c03a386e09299c14835b7087b11e7b67ce406c64ece30e9e95750ce535","\u0000src/components/ElapsedTime.tsx":"100644 9cfb92b213374308b6f0df91f9172c873b1147684b33aa422547f3622a550574","\u0000src/components/StatusLine.test.tsx":"100644 629908a40e371759297454aecc95ed76408bdfdccfba08d3522d170155cca978","\u0000src/components/StatusLine.tsx":"100644 e1434a0b82fefe23a9f4d273c42089cc502a77e3af077b477a6ac7dc212d91ce","\u0000src/elapsed.test.ts":"100644 8969dfe8279875f52430ed29f51489505f94963bb99ab8755f7d48b187f5dcf3","\u0000src/elapsed.ts":"100644 7757fc1aa8c7e698f567b3f20943ed2f1ef74a1392310381e059db81d2a82ad1","\u0000src/hooks/useElapsed.ts":"100644 3ad9b97f468e28b9ebfbc6c5c13c2486d5816c262931ee5463cf3cf850df3d40","\u0000src/i18n/messages.ts":"100644 f5e0ab796f0e9e60c61048f936cb22352b43a59213d7bd4998e6d6ec6a4086c9","\u0000src/test/fixtures.ts":"100644 93ba9fea4015a425fe980d2c9a8f38adc711eb589a78fe0ca2a5f1d40391f66e"}]}
+**Autonomous**: true
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:40:10Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-design-questions.md
+**Context**: construction > u5-cancel > functional-design > functional-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T03:40:13Z
+**Event**: DECISION_RECORDED
+**Stage**: functional-design
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-design-questions.md
+**Unit**: u5-cancel
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:41:02Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T03:41:02Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U5（中断）の機能設計のまとめです。画面・文言は前の段で決まっているので、止まり方と数え方の細部だけです。この内容で成果物を作ってよいですか？\n\n- ［中断］を押すと、出ている呼び出しの応答は待って受け取り、新しい呼び出しは始めない。再試行の待ちの間ならすぐ止まる\n- 読み終えていない本数 N は「途中で止めたストリーム」と「まだ始めていないストリーム」の合計。失敗（あきらめたものを含む）は入れない\n- 止まった時点で N が 0 なら、中断ではなく終わった扱い（注意は出さず、キャッシュは今の決まりのまま）\n- 一覧を読み終える前に止めたら、本数の代わりに「一覧の前」の注意を出す。ログは 0 件\n- 中断の後にウィンドウを閉じたら、今と同じく閉じる動きが勝つ\n- 中断した後は「終わった」段階になり、取れたログ・件数・失敗のリンクを残して注意を出す。0 件でも「この範囲にログはありません」は出さない\n- ［中断］を押せるのは取得中で、中断中・キャッシュに保存中・キャッシュから表示中でないときだけ\n- 注意は、次の取得を始めたとき・接続を変えたとき・別のロググループを選んだときに消える（同じロググループを選び直しただけでは消えない）\n- 中断した取得はキャッシュに書かない。中断の操作は何度送っても同じ結果で、エラーを返さない
+**Reply**: Looks correct
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-14T03:41:08Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: functional-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-design-questions.md
+**Questions SHA-256**: 3de591802b969c4af962978f4cd1f7c7cabe5bf84d7b6f67e2253f8f99bd764e
+**Hash Scope**: confirmed-content-v2
+**Unit**: u5-cancel
+**Summary Authorization Id**: fa39f8dd5fffeaf1ffde4c82a6d62dad386d18d7b7553bf41e4c53d73c0bc9eb
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T03:42:27Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:1a05898998db87656f13e867b49160be387cbcd58345964f730aeb5740fd8c25
+**Request Id**: review:c12eaceee76d866d73a2c3fc3fd16d7b
+**Review File**: .aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/1.c12eaceee76d866d73a2c3fc3fd16d7b.review.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:42:46Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/rules.md
+**Context**: construction > u5-cancel > functional-design > rules.md
+**Summary Authorization Id**: fa39f8dd5fffeaf1ffde4c82a6d62dad386d18d7b7553bf41e4c53d73c0bc9eb
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-14T03:42:48Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log review --stage functional-design --reviewer aidlc-architecture-reviewer-agent --iteration 1 --unit u5-cancel --retry-pending
+**Error**: Refusing review retry for "functional-design": declared artifacts no longer match the bytes from REVIEW_REQUESTED iteration 1. A retry re-dispatches that exact request and cannot rebaseline changed content. Restore the requested artifact bytes before retrying. It never got a verdict, so request it again instead: `aidlc engine log review --stage functional-design --reviewer aidlc-architecture-reviewer-agent --unit u5-cancel --iteration 1 --project-dir /home/user/local-sights`.
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T03:42:53Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:3d3e8de185012ec6f09208c19a4b513aeea180f142e58ede10c475779f924acb
+**Request Id**: review:b83d68a700869d151a8bf8219163f041
+**Replaces Request Id**: review:c12eaceee76d866d73a2c3fc3fd16d7b
+**Review File**: .aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/1.b83d68a700869d151a8bf8219163f041.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:43:01Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T03:43:19Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: functional-design
+**Tool**: Bash
+**Details**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch (unit u5-cancel)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:45:50Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/1.b83d68a700869d151a8bf8219163f041.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u5-cancel > df725d72ea237644 > 1.b83d68a700869d151a8bf8219163f041.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:46:01Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a5fd3a2316f65b715
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T03:46:02Z
+**Event**: REVIEW_COMPLETED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:3d3e8de185012ec6f09208c19a4b513aeea180f142e58ede10c475779f924acb
+**Artifact Fingerprint**: sha256:3d3e8de185012ec6f09208c19a4b513aeea180f142e58ede10c475779f924acb
+**Request Id**: review:b83d68a700869d151a8bf8219163f041
+**Review Record**: .aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/1.json
+**Review Record Digest**: sha256:fd9d9f7ebd269fad26d39ec0ea6ff1ac0b03f40f30831d5c0fba174474911b2a
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:46:05Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T03:47:36Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md
+**Context**: construction > u5-cancel > functional-design > functional-spec.md
+**Summary Authorization Id**: fa39f8dd5fffeaf1ffde4c82a6d62dad386d18d7b7553bf41e4c53d73c0bc9eb
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T03:47:39Z
+**Event**: REVIEW_REQUESTED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 2
+**Artifact Fingerprint**: sha256:dc5356805c7896dc64f832b12d9aae7981407279a60753d3fd8165ebca56ee93
+**Request Id**: review:d368fa06919fca982f86a188cb6922ae
+**Review File**: .aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/2.d368fa06919fca982f86a188cb6922ae.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:47:47Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T03:48:04Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: functional-design
+**Tool**: Glob
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T03:49:55Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: functional-design
+**Tool**: Bash
+**Details**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch (unit u5-cancel)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T03:50:21Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/2.d368fa06919fca982f86a188cb6922ae.review.md
+**Context**: .aidlc-engine > reviews > functional-design > units > u5-cancel > df725d72ea237644 > 2.d368fa06919fca982f86a188cb6922ae.review.md
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T03:50:31Z
+**Event**: REVIEW_COMPLETED
+**Stage**: functional-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 2
+**Verdict**: READY
+**Request Fingerprint**: sha256:dc5356805c7896dc64f832b12d9aae7981407279a60753d3fd8165ebca56ee93
+**Artifact Fingerprint**: sha256:dc5356805c7896dc64f832b12d9aae7981407279a60753d3fd8165ebca56ee93
+**Request Id**: review:d368fa06919fca982f86a188cb6922ae
+**Review Record**: .aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/2.json
+**Review Record Digest**: sha256:ca3e1851356873906effd08d23c21cddd2151d2c53e3a52b6101d1b5b90db489
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T03:50:31Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a42542d03c265ffbf
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T03:50:35Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T03:50:42Z
+**Event**: UNIT_STARTED
+**Stage**: functional-design
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T03:50:47Z
+**Event**: UNIT_COMPLETED
+**Stage**: functional-design
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

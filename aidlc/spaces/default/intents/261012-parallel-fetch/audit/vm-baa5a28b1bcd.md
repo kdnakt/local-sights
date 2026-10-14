@@ -15650,3 +15650,172 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T01:19:42Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-design-questions.md
+**Context**: construction > u4-elapsed-time > infrastructure-design > infrastructure-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T01:19:45Z
+**Event**: DECISION_RECORDED
+**Stage**: infrastructure-design
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-design-questions.md
+**Unit**: u4-elapsed-time
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T01:25:03Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T01:27:20Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T01:32:33Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T02:48:32Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T02:48:39Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T02:48:39Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U4 インフラ設計のまとめです（新しく決めることはありません）。この内容で成果物を作ってよいですか？\n\n- クラウドの資源・ネットワーク・保存先・配布の形・CI の手順は U1〜U3 のまま。U4 で足すものはない\n- 確かめは CI の Rust library のジョブ（経過の記録のテスト、行カバレッジ 80%）と Front end のジョブ（表記・合わせ直し・経過の部品・状態行のテスト、行カバレッジ 80%）。実際の AWS には接続しない\n- 手元の GUI で、経過が進み終わると残ること、英日の文言、終わったときの読み上げを一度確かめる\n- ブランチは U1〜U3 と同じ。必須チェックの名前は変えない。U4 だけではタグを付けない
+**Reply**: Looks correct
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T02:48:41Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-14T02:48:49Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: infrastructure-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-design-questions.md
+**Questions SHA-256**: 4167d6d67c76d8400a2ae9118c0f5bf0e4f117ed1ba1d1182ad00871afed4993
+**Hash Scope**: confirmed-content-v2
+**Unit**: u4-elapsed-time
+**Summary Authorization Id**: 275a50d8fd99130b4fb7619beedfef6ed725693ea03d84b70abcbbd719d016fa
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T02:49:19Z
+**Event**: REVIEW_REQUESTED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:8fe84c13c9f5035543121308ea74a5b5899ac6440e4e6e0109faf0b0bda21781
+**Request Id**: review:fd03332d5b312c6ffea612df512bcb2b
+**Review File**: .aidlc-engine/reviews/infrastructure-design/units/u4-elapsed-time/df725d72ea237644/1.fd03332d5b312c6ffea612df512bcb2b.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T02:49:29Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T02:50:19Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/infrastructure-design/units/u4-elapsed-time/df725d72ea237644/1.fd03332d5b312c6ffea612df512bcb2b.review.md
+**Context**: .aidlc-engine > reviews > infrastructure-design > units > u4-elapsed-time > df725d72ea237644 > 1.fd03332d5b312c6ffea612df512bcb2b.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T02:50:27Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a363a6c4f494c5eab
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T02:50:29Z
+**Event**: REVIEW_COMPLETED
+**Stage**: infrastructure-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u4-elapsed-time
+**Iteration**: 1
+**Verdict**: READY
+**Request Fingerprint**: sha256:8fe84c13c9f5035543121308ea74a5b5899ac6440e4e6e0109faf0b0bda21781
+**Artifact Fingerprint**: sha256:8fe84c13c9f5035543121308ea74a5b5899ac6440e4e6e0109faf0b0bda21781
+**Request Id**: review:fd03332d5b312c6ffea612df512bcb2b
+**Review Record**: .aidlc-engine/reviews/infrastructure-design/units/u4-elapsed-time/df725d72ea237644/1.json
+**Review Record Digest**: sha256:e0c8c75291a0c0b35a2a3e19d606085bde0cbf7a2b91f156ca3722b63c469651
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T02:50:34Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T02:50:41Z
+**Event**: UNIT_STARTED
+**Stage**: infrastructure-design
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T02:50:46Z
+**Event**: UNIT_COMPLETED
+**Stage**: infrastructure-design
+**Unit**: u4-elapsed-time
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

@@ -1,0 +1,80 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "u4-elapsed-time",
+  "upstream_ids": [
+    "NFR2.3",
+    "NFR2.4",
+    "NFR5.3",
+    "NFR5.4",
+    "NFR6.2",
+    "NFR6.7",
+    "NFR6.12",
+    "NFR7.3",
+    "NFR8.10",
+    "NFR8.11",
+    "NFR9.1",
+    "NFR9.2"
+  ],
+  "coverage": [
+    {
+      "id": "NFR2.3",
+      "status": "OK",
+      "target": "monitoring-design: 状態行の経過、手元の GUI の確認"
+    },
+    {
+      "id": "NFR2.4",
+      "status": "OK",
+      "target": "monitoring-design: 要約の 1 行は変えない"
+    },
+    {
+      "id": "NFR5.3",
+      "status": "OK",
+      "target": "monitoring-design: SLI の描き直しの範囲、cicd-pipeline の Front end のテスト"
+    },
+    {
+      "id": "NFR5.4",
+      "status": "OK",
+      "target": "infrastructure-specification: session-changed の送る契機は今のまま"
+    },
+    {
+      "id": "NFR6.2",
+      "status": "OK",
+      "target": "cicd-pipeline: 時計の差し替え、実際の AWS に接続しない"
+    },
+    {
+      "id": "NFR6.7",
+      "status": "OK",
+      "target": "monitoring-design: SLI のずれ 1 秒以内"
+    },
+    {
+      "id": "NFR6.12",
+      "status": "OK",
+      "target": "cicd-pipeline 進め方 2: 純粋な判断はテスト先行"
+    },
+    {
+      "id": "NFR7.3",
+      "status": "OK",
+      "target": "cicd-pipeline: Rust library と Front end のジョブの行カバレッジ 80%"
+    },
+    {
+      "id": "NFR8.10",
+      "status": "OK",
+      "target": "cicd-pipeline: SessionView の elapsed の JSON の形のテスト"
+    },
+    {
+      "id": "NFR8.11",
+      "status": "OK",
+      "target": "infrastructure-specification: ネットワーク・保存・呼び出しを変えない、cicd-pipeline の cargo-deny"
+    },
+    {
+      "id": "NFR9.1",
+      "status": "OK",
+      "target": "cicd-pipeline: 文言の一覧のテスト"
+    },
+    {
+      "id": "NFR9.2",
+      "status": "OK",
+      "target": "monitoring-design: VoiceOver での手元の確認"
+    }
+  ]
+}

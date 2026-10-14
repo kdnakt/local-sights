@@ -16819,3 +16819,271 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T04:00:50Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/nfr-design-questions.md
+**Context**: construction > u5-cancel > nfr-design > nfr-design-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T04:00:53Z
+**Event**: DECISION_RECORDED
+**Stage**: nfr-design
+**Decision**: Consolidated Summary Confirmation
+**Options**: Looks correct,Request changes
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/nfr-design-questions.md
+**Unit**: u5-cancel
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T04:06:04Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T12:06:07Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T12:06:18Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["Looks correct"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T12:06:19Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: U5（中断）の非機能設計のまとめです（新しく決めることはなく、実現の形だけです）。この内容で成果物を作ってよいですか？\n\n- 中断でも閉じるでも、出ている呼び出しは待たずに打ち切る。閉じるときの確認と、ログを捨てて終わる動きは今のまま\n- 読み終えていない本数はライブラリの取得の順番を決める部品が数え、止めた後はあきらめを起こさない。終わりの状態は、止めた理由・本数・一覧の進み具合から決める\n- アプリは取得を始めるときに「止める信号」を先に用意し、中断の操作も同じ順でロックを取る（固まらないように）。アプリの権限に中断の操作を足す\n- 画面：ボタンは同じ 1 つで［取得］［中断］［中断中…］を切り替える。中断の注意は今のエラーの表示と同じ場所に黄色の注意として出す。状態行に「中断」を足す。英日の文言を足す\n- 新しい依存・API・外への送信は足さない。注意と要約に足すのは本数と決まった語だけ
+**Reply**: Looks correct
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T12:06:20Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Summary Confirmation Recorded
+**Timestamp**: 2026-10-14T12:06:35Z
+**Event**: SUMMARY_CONFIRMATION_RECORDED
+**Stage**: nfr-design
+**Details**: Looks correct
+**Checkpoint**: Consolidated Summary Confirmation
+**Questions File**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/nfr-design-questions.md
+**Questions SHA-256**: 9f02a19dcf8f777cfe23a2ce84ec1af2148aa5e22b594707d1baf0d0fb4dc47c
+**Hash Scope**: confirmed-content-v2
+**Unit**: u5-cancel
+**Summary Authorization Id**: 22cd26583d2b38b6c386198c79102d96f58ca59f8049d4ca69103dad3f9256d8
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T12:07:42Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Artifact Fingerprint**: sha256:29dc37080bfa29b3a0a87f59a51de18574095f611cc2b34f779c6594586c7e24
+**Request Id**: review:12c744b655bf964bf6995bdd4911a551
+**Review File**: .aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/1.12c744b655bf964bf6995bdd4911a551.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:07:50Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:11:05Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/1.12c744b655bf964bf6995bdd4911a551.review.md
+**Context**: .aidlc-engine > reviews > nfr-design > units > u5-cancel > df725d72ea237644 > 1.12c744b655bf964bf6995bdd4911a551.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T12:11:15Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: ae3149d5bc75f196f
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T12:11:21Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 1
+**Verdict**: NOT-READY
+**Request Fingerprint**: sha256:29dc37080bfa29b3a0a87f59a51de18574095f611cc2b34f779c6594586c7e24
+**Artifact Fingerprint**: sha256:29dc37080bfa29b3a0a87f59a51de18574095f611cc2b34f779c6594586c7e24
+**Request Id**: review:12c744b655bf964bf6995bdd4911a551
+**Review Record**: .aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/1.json
+**Review Record Digest**: sha256:d0a363d594c72a958273fee57cb05fc52d1a2ebc102fe6c21701c04421242560
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T12:11:22Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Review Requested
+**Timestamp**: 2026-10-14T12:12:21Z
+**Event**: REVIEW_REQUESTED
+**Stage**: nfr-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 2
+**Artifact Fingerprint**: sha256:3adcb56431835716b8c294ae78c61d90e5994a004a8b2841d4a9e9b74877f141
+**Request Id**: review:b105c79fb9796c5df1af494009ee6119
+**Review File**: .aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/2.b105c79fb9796c5df1af494009ee6119.review.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:12:30Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviewer-dispatch.json
+**Context**: .aidlc-engine > reviewer-dispatch.json
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:12:48Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Glob
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:13:21Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Bash
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:14:18Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Bash
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Guard Stood Aside
+**Timestamp**: 2026-10-14T12:14:19Z
+**Event**: GUARD_STOOD_ASIDE
+**Guard**: reviewer-scope
+**Authority**: grant
+**Grant**: dispatch-stamp
+**Actor**: subagent
+**Stage**: nfr-design
+**Tool**: Bash
+**Details**: <project-dir> (unit u5-cancel)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T12:16:14Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/2.b105c79fb9796c5df1af494009ee6119.review.md
+**Context**: .aidlc-engine > reviews > nfr-design > units > u5-cancel > df725d72ea237644 > 2.b105c79fb9796c5df1af494009ee6119.review.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T12:16:25Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-architecture-reviewer-agent
+**Agent ID**: a990ead42a263df44
+
+---
+
+## Review Completed
+**Timestamp**: 2026-10-14T12:16:26Z
+**Event**: REVIEW_COMPLETED
+**Stage**: nfr-design
+**Reviewer**: aidlc-architecture-reviewer-agent
+**Unit**: u5-cancel
+**Iteration**: 2
+**Verdict**: READY
+**Request Fingerprint**: sha256:3adcb56431835716b8c294ae78c61d90e5994a004a8b2841d4a9e9b74877f141
+**Artifact Fingerprint**: sha256:3adcb56431835716b8c294ae78c61d90e5994a004a8b2841d4a9e9b74877f141
+**Request Id**: review:b105c79fb9796c5df1af494009ee6119
+**Review Record**: .aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/2.json
+**Review Record Digest**: sha256:feb9dd582e35205280a7434ebbb96dcc2868fd5e33c9a9ff4807bea2b95ecf2c
+
+---
+
+## Unit Started
+**Timestamp**: 2026-10-14T12:16:34Z
+**Event**: UNIT_STARTED
+**Stage**: nfr-design
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T12:16:35Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Unit Completed
+**Timestamp**: 2026-10-14T12:16:39Z
+**Event**: UNIT_COMPLETED
+**Stage**: nfr-design
+**Unit**: u5-cancel
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---

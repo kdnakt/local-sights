@@ -22,6 +22,10 @@
  * drive it; the app runs the AWS CLI, the screen only shows its state.
  * Since 261012-parallel-fetch U4 the session view carries the elapsed time of
  * the fetch (`elapsed`); `fetch-progress` does not (NFR5.4).
+ * Since 261012-parallel-fetch U5 `cancelFetch` is [Cancel] (BR5.1) and the
+ * session view says whether it is under way (`cancelling`), whether it can be
+ * pressed (`fetchCancelAvailable`) and what the last cancelled fetch left
+ * unread (`cancelNotice`, a count only, NFR8.13); a job can end `Cancelled`.
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -91,7 +95,17 @@ export interface ApiFailure {
   retryable: boolean;
 }
 
-export type JobStatus = "Running" | "Completed" | "CompletedWithFailures" | "Failed" | "Aborted";
+export type JobStatus =
+  "Running" | "Completed" | "CompletedWithFailures" | "Failed" | "Aborted" | "Cancelled";
+
+/**
+ * The notice of a cancelled fetch (261012-parallel-fetch U5:BR5.8): the
+ * streams not read to their end, or `null` when the fetch was cancelled before
+ * the stream listing ended.
+ */
+export interface CancelNoticeView {
+  unfinishedStreams: number | null;
+}
 
 export interface JobSummary {
   jobId: number;
@@ -263,6 +277,12 @@ export interface SessionView {
    * (BR4.4).
    */
   elapsed: ElapsedView | null;
+  /** [Cancel] was pressed and the fetch has not ended yet (U5:BR5.1). */
+  cancelling: boolean;
+  /** Whether [Cancel] can be pressed now (U5:BR5.2). */
+  fetchCancelAvailable: boolean;
+  /** The notice of the last fetch when it was cancelled (U5:BR5.8). */
+  cancelNotice: CancelNoticeView | null;
 }
 
 /** Whether an SSO login is under way (Starting or Waiting). */
@@ -409,7 +429,9 @@ export function mergeSessionView(previous: SessionView | null, next: SessionView
  * Applies a progress message to the last session view. It applies only to
  * the running job; anything else (e.g. a message overtaken by the end of the
  * fetch) leaves the view as it is. Its filter part is applied like a
- * `filter-progress` message (U5:BR3.6).
+ * `filter-progress` message (U5:BR3.6). The start of the cache write arrives
+ * only as this message, so it also makes [Cancel] unavailable, as the core
+ * does (261012-parallel-fetch U5:BR5.2).
  */
 export function withProgress(view: SessionView | null, update: FetchProgressUpdate) {
   if (view === null || view.phase !== "Fetching" || view.currentJobId !== update.jobId) {
@@ -422,6 +444,7 @@ export function withProgress(view: SessionView | null, update: FetchProgressUpda
       eventCount: update.eventCount,
       timelineVersion: Math.max(view.timelineVersion, update.timelineVersion),
       cacheSaving: update.cacheSaving,
+      fetchCancelAvailable: view.fetchCancelAvailable && !update.cacheSaving,
     },
     update,
   );
@@ -454,6 +477,15 @@ export function updateInput(field: InputField, value: string): Promise<SessionVi
  */
 export function startFetch(generation: number): Promise<void> {
   return invoke<void>("start_fetch", { generation });
+}
+
+/**
+ * [Cancel] (261012-parallel-fetch U5:BR5.1): stops the running fetch, keeping
+ * what was fetched. Always resolves; when it cannot be pressed nothing
+ * happens. The new state arrives through `session-changed`.
+ */
+export function cancelFetch(): Promise<void> {
+  return invoke<void>("cancel_fetch");
 }
 
 /**

@@ -1,6 +1,7 @@
 //! A [`FetchSink`] that records everything it receives, in order.
 
 use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink};
+use local_sights_core::fetch_stats::FetchSummary;
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::{StreamFetchOutcome, StreamStatus};
 use local_sights_core::streams::planner::ListingProgress;
@@ -30,12 +31,28 @@ pub enum Delivered {
     Finished(Box<FetchJob>),
 }
 
+/// How the fetch ended, as `on_finished` reported it (U5: the status, the
+/// streams not read to their end and the before-listing mark).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ending {
+    pub status: JobStatus,
+    pub event_count: u64,
+    pub unfinished_stream_count: usize,
+    pub cancelled_before_listing: bool,
+}
+
 /// Records every delivery.
 #[derive(Debug, Default)]
 pub struct RecordingSink {
     pub delivered: Vec<Delivered>,
     /// The timeline version given with `on_finished`.
     pub finished_timeline_version: Option<u64>,
+    /// How the fetch ended (U5).
+    pub ending: Option<Ending>,
+    /// Whether the cache write was announced (`on_saving`, U5 NFR6.18).
+    pub saving: bool,
+    /// The one-line summary of the fetch (U5: its status word).
+    pub summary: Option<FetchSummary>,
 }
 
 impl RecordingSink {
@@ -94,8 +111,22 @@ impl FetchSink for RecordingSink {
         });
     }
 
+    fn on_saving(&mut self, _job_id: u64) {
+        self.saving = true;
+    }
+
+    fn on_summary(&mut self, summary: &FetchSummary) {
+        self.summary = Some(*summary);
+    }
+
     fn on_finished(&mut self, job: &FetchJob, timeline_version: u64) {
         self.finished_timeline_version = Some(timeline_version);
+        self.ending = Some(Ending {
+            status: job.status,
+            event_count: job.event_count,
+            unfinished_stream_count: job.unfinished_stream_count,
+            cancelled_before_listing: job.cancelled_before_listing,
+        });
         self.delivered
             .push(Delivered::Finished(Box::new(job.clone())));
     }

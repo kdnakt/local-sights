@@ -61,6 +61,8 @@ export interface ConditionAreaProps {
   locale?: Locale;
   onChange: (field: InputField, value: string) => void;
   onFetch: () => void;
+  /** [Cancel] of the running fetch (261012-parallel-fetch U5:BR5.1). */
+  onCancel: () => void;
   /** The log filter text in the field, kept by the parent (U5:BR3.4). */
   filterText: string;
   onFilterTextChange: (value: string) => void;
@@ -100,7 +102,8 @@ function synced(session: SessionView, drafts: Record<Side, DateTimeParts>): bool
  * reasons why Fetch is unavailable are shown under the field they belong to
  * (FR3.1, R-02): the shape of each field first, then the core's reasons; the
  * list "Fetch is unavailable because:" of the MVP is gone. While fetching the
- * date, time and [Fetch] are disabled and the filter field stays usable
+ * date and time are disabled, [Fetch] becomes [Cancel] (see below), and the
+ * filter field stays usable
  * (FR1.8, U5:BR3.4); while a dialog is open everything is disabled
  * (U2:BR2.6, U6:BR5.1). When [Fetch] becomes disabled while it has the
  * focus, the focus moves to the filter field (R-06). Enter in a date or time
@@ -124,6 +127,16 @@ function synced(session: SessionView, drafts: Record<Side, DateTimeParts>): bool
  * so a long list used to push the status line below the window; the frame
  * holds the column with absolute positioning, which takes the column out of
  * that height, and the list alone shrinks and scrolls.
+ *
+ * Since 261012-parallel-fetch U5 the same button is [Cancel] while fetching
+ * (BR5.10, nfr-design review R-09): [Fetch] outside a fetch; while fetching a
+ * primary [Cancel] when the core says it can be pressed
+ * (`fetchCancelAvailable`), a `loading` [Cancelling…] once it was pressed
+ * (`cancelling`; Cloudscape keeps a loading button focusable, so the focus
+ * stays), and a disabled [Cancel] otherwise (while the cache is written or
+ * closing awaits an answer). R-06 now moves the focus only when the button
+ * itself is disabled: [Fetch] that cannot be pressed, or that disabled
+ * [Cancel] (NFR10.1). Enter in a date or time field never cancels.
  */
 export function ConditionArea({
   session,
@@ -131,6 +144,7 @@ export function ConditionArea({
   locale = "en",
   onChange,
   onFetch,
+  onCancel,
   filterText,
   onFilterTextChange,
   onLogFilterChange,
@@ -159,6 +173,10 @@ export function ConditionArea({
   };
   const reasons = fieldReasons(reasonInput);
   const canSubmit = !locked && (session.canFetch || completionWouldEnableFetch(reasonInput));
+  // U5 R-09: what the one button is while fetching.
+  const cancelling = fetching && session.cancelling;
+  const canCancel = fetching && !session.cancelling && session.fetchCancelAvailable;
+  const buttonDisabled = fetching ? !(cancelling || canCancel) : !canSubmit;
 
   const commit = (side: Side, parts: DateTimeParts) => {
     draftsRef.current = { ...draftsRef.current, [side]: parts };
@@ -222,12 +240,27 @@ export function ConditionArea({
     }
   }, [session, locked, onFetch]);
 
-  // R-06: a disabled [Fetch] cannot keep the focus; the filter field takes it.
+  // R-06: a disabled button cannot keep the focus; the filter field takes it.
+  // [Cancel] and [Cancelling…] keep it (U5 NFR10.1).
   useEffect(() => {
-    if (!canSubmit && fetchWrapRef.current?.contains(document.activeElement)) {
+    if (buttonDisabled && fetchWrapRef.current?.contains(document.activeElement)) {
       filterRef.current?.focus();
     }
-  }, [canSubmit]);
+  }, [buttonDisabled]);
+
+  const handleButton = () => {
+    if (!fetching) {
+      submit();
+    } else if (canCancel) {
+      onCancel();
+    }
+  };
+
+  const buttonLabel = !fetching
+    ? t("form.fetch")
+    : cancelling
+      ? t("fetch.cancelling")
+      : t("fetch.cancel");
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // U1:BR6.2: Enter in a date or time field; the calendar's own Enter is
@@ -256,11 +289,13 @@ export function ConditionArea({
             <span ref={fetchWrapRef}>
               <Button
                 variant="primary"
-                disabled={!canSubmit}
-                onClick={submit}
+                disabled={buttonDisabled}
+                loading={cancelling}
+                loadingText={cancelling ? t("fetch.cancelling") : undefined}
+                onClick={handleButton}
                 data-testid="fetch-form-submit-button"
               >
-                {t("form.fetch")}
+                {buttonLabel}
               </Button>
             </span>
           }

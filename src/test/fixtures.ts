@@ -51,6 +51,9 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     closeConfirmation: "None",
     ssoLogin: ssoLoginView(),
     elapsed: null,
+    cancelling: false,
+    fetchCancelAvailable: false,
+    cancelNotice: null,
     ...overrides,
   };
 }

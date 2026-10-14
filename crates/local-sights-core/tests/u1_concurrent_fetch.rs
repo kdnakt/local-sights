@@ -481,8 +481,8 @@ async fn a_close_during_the_permit_wait_calls_nothing_more() {
     assert_eq!((summary.status, summary.calls), (JobStatus::Aborted, 2));
 }
 
-/// BR1.16: the calls under way at the close are awaited, but the pages
-/// they bring back are not handed on.
+/// BR1.16: no page under way at the close is handed on. Since U5 (NFR4.3,
+/// nfr-requirements Q1) the calls under way are cut off instead of awaited.
 #[tokio::test(start_paused = true)]
 async fn pages_that_arrive_after_the_close_are_dropped() {
     let streams = names(2);
@@ -511,11 +511,19 @@ async fn pages_that_arrive_after_the_close_are_dropped() {
     );
     assert!(timeline.lock().unwrap().is_empty());
     assert_eq!(
-        gateway.timed_calls().len(),
+        gateway.calls().len(),
         2,
         "both calls were already under way"
     );
-    assert!(started.elapsed() >= millis(584), "the calls were awaited");
+    assert!(
+        gateway.timed_calls().is_empty(),
+        "U5: neither call was awaited to its answer"
+    );
+    assert_eq!(
+        started.elapsed(),
+        millis(100),
+        "U5: the fetch ended at the close"
+    );
 }
 
 /// BR1.16: a close after the last stream but before the job finishes still

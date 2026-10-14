@@ -12,6 +12,7 @@ import Button, { type ButtonProps } from "@cloudscape-design/components/button";
 import {
   cancelClose,
   cancelConnectionChange,
+  cancelFetch,
   cancelSettings,
   cancelSsoLogin,
   clearCache,
@@ -47,6 +48,7 @@ import {
   type SessionView,
   type TimeZoneChoice,
 } from "./api";
+import { CancelNotice } from "./components/CancelNotice";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
 import { ConditionArea } from "./components/ConditionArea";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -106,6 +108,9 @@ export interface AppProps {
  * top of the right pane, and when the dialog closes the focus goes back to
  * the button that was pressed, or to [Reload] when that button is gone
  * (NFR7).
+ * Since 261012-parallel-fetch U5 the [Fetch] button becomes [Cancel] while
+ * fetching, which calls `cancelFetch`, and the cancel notice of the last
+ * fetch is shown where the fetch error would be (BR5.11).
  */
 export function App({ locale }: AppProps) {
   const t = useMemo(() => createTranslator(locale), [locale]);
@@ -274,6 +279,8 @@ export function App({ locale }: AppProps) {
     // The new state arrives through events only (see `startFetch`).
     startFetch(generation).catch(reportError);
   }, [reportError, generation]);
+  // 261012-parallel-fetch U5:BR5.1: [Cancel]; the state arrives as an event.
+  const handleCancelFetch = useCallback(() => run(cancelFetch), [run]);
 
   // The list: the core's rows, or the measurement harness's (dev only).
   const tableProps = {
@@ -345,6 +352,7 @@ export function App({ locale }: AppProps) {
               locale={locale}
               onChange={handleChange}
               onFetch={handleFetch}
+              onCancel={handleCancelFetch}
               filterText={filterDraft ?? session.logFilter}
               onFilterTextChange={setFilterDraft}
               onLogFilterChange={handleLogFilter}
@@ -377,6 +385,9 @@ export function App({ locale }: AppProps) {
                 </div>
               )}
               <FetchErrorBanner session={session} t={t} onSsoLogin={handleSsoLogin} />
+              {/* U5:BR5.11: in the error area's place; a cancelled fetch is
+                  not a failure, so the two never show together. */}
+              {session.cancelNotice && <CancelNotice notice={session.cancelNotice} t={t} />}
               {LOG_TABLE_VARIANT === "cloudscape" ? (
                 <LogTableCloudscape {...tableProps} />
               ) : (

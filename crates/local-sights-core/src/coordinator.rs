@@ -21,6 +21,18 @@
 //! Since U7 (U6 review R-04) the held events of a cache write are copied on
 //! a blocking thread too, one chunk per lock, so the async runtime never
 //! waits for the copy; the timeline is therefore shared as an `Arc`.
+//!
+//! Since 261012-parallel-fetch U5 the stop signal carries a reason and cuts
+//! the fetch off at once (NFR4.3, nfr-requirements Q1): the listing and the
+//! read stage wait for it side by side with their calls, the stop first, and
+//! drop the calls under way without awaiting their answers. A close still
+//! discards everything and ends Aborted; a cancel keeps the pages handed on
+//! before it, counts the streams not read to their end in
+//! `FetchJob::unfinished_stream_count`, and ends Cancelled (or as without a
+//! stop when nothing was left, FR5.9), with `cancelled_before_listing` when
+//! the listing had not ended ([`decide_job_status`], U5:BR5.4, BR5.5). A
+//! cancelled fetch is never written to the cache (U5:BR5.7), and a cancel
+//! does not stop a cache hit, which has nothing left to read (NFR6.19).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -45,7 +57,7 @@ use crate::fetcher::{
 use crate::gateway::CloudWatchLogsGateway;
 use crate::pacing::{CallPacer, RegionCallLimit};
 use crate::request::ValidatedFetch;
-use crate::retry::Retrier;
+use crate::retry::{Retrier, StopReason};
 use crate::schedule::StreamSchedule;
 use crate::streams::planner::{ListingProgress, PlanOutcome, plan_streams};
 use crate::streams::{StreamListingStatus, StreamPlan};
@@ -59,14 +71,26 @@ static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
 /// small enough that a viewport read waits for at most one chunk.
 pub const CACHE_COPY_CHUNK_EVENTS: usize = 4_096;
 
-/// BR5.2: the status of a finished fetch.
+/// BR5.2, U5:BR5.5: the status of a finished fetch, from why it was told
+/// to stop (`None`: it was not), the listing (`None`: it did not end),
+/// the failed streams and the streams not read to their end.
+///
+/// A close is Aborted whatever else holds (U5:BR5.6). A cancel is Cancelled
+/// when the listing had not ended or some stream was not read to its end;
+/// a cancel that came after every stream was read is decided as without a
+/// stop (FR5.9, NFR4.5).
 pub fn decide_job_status(
-    aborted: bool,
+    stop: Option<StopReason>,
     plan: Option<&StreamPlan>,
     failed_stream_count: usize,
+    unfinished_stream_count: usize,
 ) -> JobStatus {
-    if aborted {
-        return JobStatus::Aborted;
+    match stop {
+        Some(StopReason::Close) => return JobStatus::Aborted,
+        Some(StopReason::Cancel) if plan.is_none() || unfinished_stream_count > 0 => {
+            return JobStatus::Cancelled;
+        }
+        Some(StopReason::Cancel) | None => {}
     }
     let Some(plan) = plan else {
         return JobStatus::Failed;
@@ -97,7 +121,8 @@ pub struct FailedStream {
 pub struct FetchJob {
     /// Unique, increasing ID of the job.
     pub job_id: u64,
-    /// Running, Completed, CompletedWithFailures, Failed or Aborted.
+    /// Running, Completed, CompletedWithFailures, Failed, Aborted or
+    /// Cancelled.
     pub status: JobStatus,
     /// The range being fetched.
     pub range: TimeRange,
@@ -123,6 +148,12 @@ pub struct FetchJob {
     /// Whether the cache could not be read and the logs were fetched again
     /// from AWS (U6:BR4.1).
     pub read_failed: bool,
+    /// Streams not read to their end when [Cancel] stopped the read stage:
+    /// those being read and those not started yet (U5:BR5.4). 0 unless
+    /// cancelled.
+    pub unfinished_stream_count: usize,
+    /// Whether [Cancel] came before the stream listing ended (U5:BR5.5).
+    pub cancelled_before_listing: bool,
 }
 
 impl FetchJob {
@@ -142,6 +173,8 @@ impl FetchJob {
             served_from_cache: false,
             cache_outcome: CacheOutcome::NotUsed,
             read_failed: false,
+            unfinished_stream_count: 0,
+            cancelled_before_listing: false,
         }
     }
 
@@ -301,11 +334,21 @@ impl TimelineStore for Mutex<EventTimeline> {
 /// failure; the [`StreamSchedule`] owns this rule (U3:BR3.1-BR3.6). The
 /// status is decided from the read stage and the listing (BR5.2, U1:BR1.15).
 ///
-/// When the stop signal fires, no stream and no next page is started, the
-/// calls under way are awaited, any page they return is dropped, and once
-/// every read has ended the timeline is discarded and the job is Aborted
-/// (BR5.5, U1:BR1.16), also when the signal comes after the last stream but
-/// before the job finishes.
+/// When the stop signal fires, no stream and no next page is started and
+/// the calls under way are cut off without awaiting their answers, both
+/// while listing and while reading (since 261012-parallel-fetch U5, NFR4.3;
+/// until then they were awaited). What follows depends on the reason
+/// (U5:BR5.5):
+///
+/// - Close: the timeline is discarded and the job is Aborted (BR5.5,
+///   U1:BR1.16), also when the signal comes after the last stream but
+///   before the job finishes;
+/// - Cancel before the listing ended: the job is Cancelled with
+///   `cancelled_before_listing` and no events;
+/// - Cancel while reading: the pages handed on stay, the streams not read
+///   to their end are counted in `unfinished_stream_count`, and the status
+///   is [`decide_job_status`]'s: Cancelled when some stream is unfinished,
+///   otherwise as without a stop (FR5.9, NFR4.5).
 ///
 /// At the end the one-line summary of the fetch goes to standard error and
 /// to [`FetchSink::on_summary`] (NFR2.2, see [`crate::fetch_stats`]). Its
@@ -340,13 +383,27 @@ where
             // No pacer was made: the lowest rate is the region's ceiling
             // (U2:BR2.7).
             let ceiling = RegionCallLimit::for_region(fetch.request.region()).ceiling_per_second();
+            let close = retrier.stop_signal().reason() != Some(StopReason::Cancel);
+            let status = if close {
+                JobStatus::Aborted
+            } else {
+                JobStatus::Cancelled
+            };
             let ended = FetchEnd {
                 elapsed: Duration::ZERO,
                 min_rate: ceiling,
-                status: JobStatus::Aborted,
+                status,
             };
             report_summary(&job, &stats, ended, sink);
-            return abort(job, timeline, sink);
+            if close {
+                return abort(job, timeline, sink);
+            }
+            // U5:BR5.5: cancelled before the listing ended. Nothing was
+            // added since the discard at the start.
+            job.status = JobStatus::Cancelled;
+            job.cancelled_before_listing = true;
+            sink.on_finished(&job, latest_version);
+            return job;
         }
     };
     job.record_plan(&plan);
@@ -372,7 +429,8 @@ where
     let elapsed = read_started.elapsed();
     let min_rate = pacer.lowest_rate_per_second();
 
-    if retrier.is_stopped() {
+    let stop = retrier.stop_signal().reason();
+    if stop == Some(StopReason::Close) {
         let ended = FetchEnd {
             elapsed,
             min_rate,
@@ -381,7 +439,12 @@ where
         report_summary(&job, &stats, ended, sink);
         return abort(job, timeline, sink);
     }
-    job.status = decide_job_status(false, Some(&plan), job.failed_stream_count());
+    job.status = decide_job_status(
+        stop,
+        Some(&plan),
+        job.failed_stream_count(),
+        job.unfinished_stream_count,
+    );
     let ended = FetchEnd {
         elapsed,
         min_rate,
@@ -431,6 +494,17 @@ where
     /// most eight pages wait to be handed on (U1:BR1.10, BR1.11). The loop
     /// ends when no read is under way and none can be started, so it never
     /// waits on an empty set.
+    ///
+    /// Since U5 the loop waits for the stop signal side by side with the
+    /// reads, the stop first (`biased`, as in
+    /// [`wait_or_stop`](crate::retry::wait_or_stop)). Once it fires, for
+    /// either reason, the reads under way are dropped at once, with their
+    /// waits and their calls, and the loop ends (U5 NFR4.3, nfr-requirements
+    /// Q1); a read that came back but was not handed on yet is dropped too,
+    /// and its stream stays unfinished. Pages handed on before the stop stay.
+    /// The streams being read and those not started yet are then the
+    /// unfinished streams of the job (U5:BR5.4); `finish` is not called for
+    /// them, so the stop never makes a stream give up.
     async fn run<G>(mut self, context: &ReadContext<'_, G>, plan: &StreamPlan) -> u64
     where
         G: CloudWatchLogsGateway,
@@ -450,13 +524,17 @@ where
                 }
                 context.stats.record_in_flight(reads.len());
             }
-            let Some((order, reader, step)) = reads.next().await else {
+            let next = tokio::select! {
+                biased;
+                () = stop.stopped() => break,
+                next = reads.next() => next,
+            };
+            let Some((order, reader, step)) = next else {
                 break;
             };
             if stop.is_stopped() {
-                // U1:BR1.16: whatever comes back after the stop is dropped
-                // and nothing new is started.
-                continue;
+                // U5 NFR4.3: what came back with the stop is not handed on.
+                break;
             }
             match step {
                 PageStep::Page(events) => {
@@ -465,6 +543,10 @@ where
                 }
                 PageStep::Finished(fetched) => self.finish_stream(&mut schedule, order, fetched),
             }
+        }
+        drop(reads);
+        if stop.is_stopped() {
+            self.job.unfinished_stream_count = schedule.outcome().unfinished_streams;
         }
         self.latest_version
     }
@@ -713,7 +795,9 @@ where
 {
     let mut job = FetchJob::start(fetch.range);
     let mut timeline_version = timeline.discard();
-    if retrier.is_stopped() {
+    // U5:BR5.5: only a close stops a hit; a cancel lets it show everything,
+    // since no stream is left unfinished (NFR6.19).
+    if retrier.stop_signal().reason() == Some(StopReason::Close) {
         // The cache is in use but nothing is written (U6 review R-06).
         job.cache_outcome = CacheOutcome::NotSaved;
         sink.on_started(&job, timeline_version);
@@ -866,17 +950,20 @@ mod tests {
     fn an_abort_wins_over_everything() {
         let complete = plan(StreamListingStatus::Complete, 2, 1);
         assert_eq!(
-            decide_job_status(true, Some(&complete), 1),
+            decide_job_status(Some(StopReason::Close), Some(&complete), 1, 0),
             JobStatus::Aborted
         );
-        assert_eq!(decide_job_status(true, None, 0), JobStatus::Aborted);
+        assert_eq!(
+            decide_job_status(Some(StopReason::Close), None, 0, 0),
+            JobStatus::Aborted
+        );
     }
 
     #[test]
     fn a_listing_failing_on_its_first_page_with_nothing_selected_fails() {
         let partial = plan(StreamListingStatus::Partial, 0, 0);
         assert_eq!(
-            decide_job_status(false, Some(&partial), 0),
+            decide_job_status(None, Some(&partial), 0, 0),
             JobStatus::Failed
         );
     }
@@ -885,18 +972,18 @@ mod tests {
     fn failed_streams_or_a_partial_listing_complete_with_failures() {
         let complete = plan(StreamListingStatus::Complete, 3, 1);
         assert_eq!(
-            decide_job_status(false, Some(&complete), 1),
+            decide_job_status(None, Some(&complete), 1, 0),
             JobStatus::CompletedWithFailures
         );
         let partial_later = plan(StreamListingStatus::Partial, 0, 1);
         assert_eq!(
-            decide_job_status(false, Some(&partial_later), 0),
+            decide_job_status(None, Some(&partial_later), 0, 0),
             JobStatus::CompletedWithFailures,
             "a failure on the second page is not a first-page failure"
         );
         let partial_with_streams = plan(StreamListingStatus::Partial, 2, 0);
         assert_eq!(
-            decide_job_status(false, Some(&partial_with_streams), 0),
+            decide_job_status(None, Some(&partial_with_streams), 0, 0),
             JobStatus::CompletedWithFailures
         );
     }
@@ -908,14 +995,83 @@ mod tests {
             StreamListingStatus::StoppedEarly,
         ] {
             assert_eq!(
-                decide_job_status(false, Some(&plan(status, 4, 2)), 0),
+                decide_job_status(None, Some(&plan(status, 4, 2)), 0, 0),
                 JobStatus::Completed
             );
             assert_eq!(
-                decide_job_status(false, Some(&plan(status, 0, 1)), 0),
+                decide_job_status(None, Some(&plan(status, 0, 1)), 0, 0),
                 JobStatus::Completed
             );
         }
+    }
+
+    // ---- 261012-parallel-fetch U5: the status of a cancelled fetch ------
+
+    #[test]
+    fn a_close_wins_over_a_cancel_and_over_unfinished_streams() {
+        // BR5.6: the reason is Close once a close followed the cancel.
+        let complete = plan(StreamListingStatus::Complete, 4, 1);
+        assert_eq!(
+            decide_job_status(Some(StopReason::Close), Some(&complete), 0, 3),
+            JobStatus::Aborted
+        );
+    }
+
+    #[test]
+    fn a_cancel_before_the_listing_ended_is_cancelled() {
+        // BR5.5: no plan yet, so the job never fails for it.
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), None, 0, 0),
+            JobStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn a_cancel_with_unfinished_streams_is_cancelled_even_with_failures() {
+        let complete = plan(StreamListingStatus::Complete, 20, 1);
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), Some(&complete), 0, 13),
+            JobStatus::Cancelled
+        );
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), Some(&complete), 2, 1),
+            JobStatus::Cancelled
+        );
+        let partial = plan(StreamListingStatus::Partial, 3, 1);
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), Some(&partial), 0, 3),
+            JobStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn a_cancel_with_nothing_unfinished_is_decided_as_without_a_stop() {
+        // FR5.9, NFR4.5: every stream was read before the cancel came.
+        let complete = plan(StreamListingStatus::Complete, 3, 1);
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), Some(&complete), 0, 0),
+            JobStatus::Completed
+        );
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), Some(&complete), 1, 0),
+            JobStatus::CompletedWithFailures
+        );
+        let failed_listing = plan(StreamListingStatus::Partial, 0, 0);
+        assert_eq!(
+            decide_job_status(Some(StopReason::Cancel), Some(&failed_listing), 0, 0),
+            JobStatus::Failed
+        );
+    }
+
+    #[test]
+    fn a_new_job_has_nothing_unfinished_and_was_not_cancelled_before_listing() {
+        let range = crate::time_range::TimeRange::from_seconds(0, 60).unwrap();
+        let job = FetchJob::start(range);
+        assert_eq!(job.unfinished_stream_count, 0);
+        assert!(!job.cancelled_before_listing);
+        let json = serde_json::to_value(&job).unwrap();
+        assert_eq!(json["unfinishedStreamCount"], 0);
+        assert_eq!(json["cancelledBeforeListing"], false);
     }
 
     #[test]

@@ -53,6 +53,16 @@
 //! [`ElapsedView`], read when the view is made; [`FetchProgressUpdate`] does
 //! not, and nothing is sent just for the time (BR4.5). The screen advances
 //! it every second by its own clock.
+//! Since 261012-parallel-fetch U5 it decides whether [Cancel] can be pressed
+//! ([`AppSession::fetch_cancel_available`]: while fetching, not cancelling
+//! yet, not writing the cache and not asking about closing, BR5.2), accepts
+//! it ([`AppSession::request_cancel`], which answers the fetch number whose
+//! stop handle the app tells to stop, BR5.1) and shows [Cancelling…] until
+//! any end of the fetch (NFR6.16). A Cancelled fetch ends in Done with its
+//! logs, failures and result kept, no cache notice, and a
+//! [`CancelNoticeView`] of the streams not read to their end; the notice goes
+//! with the next fetch, a connection change or another log group (BR5.8,
+//! BR5.9).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -554,6 +564,16 @@ pub struct ElapsedView {
     pub fetch_number: u64,
 }
 
+/// The notice of a cancelled fetch as the screen receives it
+/// (261012-parallel-fetch U5:BR5.8, NFR8.13): a count only, no text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelNoticeView {
+    /// Streams not read to their end; `None` (`null`) when [Cancel] came
+    /// before the stream listing ended.
+    pub unfinished_streams: Option<usize>,
+}
+
 /// Milliseconds from `start` to `now`; 0 when the clock went back (NFR6.8).
 fn elapsed_ms_between(start: Instant, now: Instant) -> u64 {
     u64::try_from(now.saturating_duration_since(start).as_millis()).unwrap_or(u64::MAX)
@@ -684,6 +704,13 @@ pub struct SessionView {
     /// stopped for closing, and after a connection change cleared the
     /// previous result (see [`ElapsedView`]).
     pub elapsed: Option<ElapsedView>,
+    /// Whether [Cancel] was pressed and the fetch has not ended yet
+    /// (261012-parallel-fetch U5:BR5.1, BR5.10).
+    pub cancelling: bool,
+    /// Whether [Cancel] can be pressed now (U5:BR5.2).
+    pub fetch_cancel_available: bool,
+    /// The notice of the last fetch when it was cancelled (U5:BR5.8).
+    pub cancel_notice: Option<CancelNoticeView>,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -788,6 +815,11 @@ pub struct AppSession {
     clock: SessionClock,
     /// Start and final value of the current or last fetch (BR4.1-BR4.4).
     elapsed: Option<ElapsedRecord>,
+    /// [Cancel] was accepted for the running fetch (261012-parallel-fetch
+    /// U5:BR5.1); every end of the fetch turns it off (NFR6.16).
+    cancelling: bool,
+    /// The notice of the last fetch when it ended Cancelled (U5:BR5.8).
+    cancel_notice: Option<CancelNoticeView>,
 }
 
 /// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
@@ -880,6 +912,8 @@ impl AppSession {
             sso_cli_active: false,
             clock: SessionClock::system(),
             elapsed: None,
+            cancelling: false,
+            cancel_notice: None,
         };
         session.select_startup_profile();
         session.revalidate();
@@ -1360,6 +1394,11 @@ impl AppSession {
         if !listed {
             return Err(SessionError::UnknownLogGroup);
         }
+        // 261012-parallel-fetch U5:BR5.9: another log group drops the cancel
+        // notice; the same one chosen again keeps it.
+        if self.selected_log_group.as_deref() != Some(name.as_str()) {
+            self.cancel_notice = None;
+        }
         self.selected_log_group = Some(name);
         self.revalidate();
         Ok(())
@@ -1450,6 +1489,9 @@ impl AppSession {
         // U6:BR5.3: the cache notices go with the next Fetch.
         self.cache_saving = false;
         self.cache_notices.clear();
+        // 261012-parallel-fetch U5:BR5.9: so does the cancel notice.
+        self.cancelling = false;
+        self.cancel_notice = None;
         Ok(ValidatedFetch {
             request: validated.request.with_connection(profile, region),
             range: validated.range,
@@ -1505,6 +1547,28 @@ impl AppSession {
     /// caller keeps it to recognise its own fetch later (review R-03).
     pub fn fetch_number(&self) -> u64 {
         self.fetch_number
+    }
+
+    /// Whether [Cancel] can be pressed now (261012-parallel-fetch U5:BR5.2):
+    /// while fetching, unless it was already pressed, the fetched logs are
+    /// being written to the cache, or closing awaits an answer.
+    pub fn fetch_cancel_available(&self) -> bool {
+        self.phase == Phase::Fetching
+            && !self.cancelling
+            && !self.cache_saving
+            && self.close_confirmation != CloseConfirmation::Pending
+    }
+
+    /// [Cancel] (U5:BR5.1): when it can be pressed, marks the fetch as
+    /// cancelling and returns the number of the running fetch, whose stop
+    /// handle the caller tells to stop for Cancel. `None`, changing
+    /// nothing, when it cannot be pressed (pressing again is harmless).
+    pub fn request_cancel(&mut self) -> Option<u64> {
+        if !self.fetch_cancel_available() {
+            return None;
+        }
+        self.cancelling = true;
+        Some(self.fetch_number)
     }
 
     /// The progress of the running job, for the light per-page message
@@ -1569,26 +1633,37 @@ impl AppSession {
     }
 
     /// Records the finished job and the timeline version after it:
-    /// Completed and CompletedWithFailures move to Done, Failed to Failed.
-    /// Aborted (only when the window closes) returns to Idle with nothing
-    /// shown and takes the version of the discard (BR4.5, review R-02). A
-    /// job that is still Running, or not the current one, leaves the
-    /// session as it is.
+    /// Completed, CompletedWithFailures and Cancelled move to Done, Failed
+    /// to Failed. Aborted (only when the window closes) returns to Idle
+    /// with nothing shown and takes the version of the discard (BR4.5,
+    /// review R-02). A job that is still Running, or not the current one,
+    /// leaves the session as it is.
+    ///
+    /// Every end turns [Cancelling…] off (261012-parallel-fetch U5:NFR6.16).
+    /// Cancelled keeps the fetched logs, failures and result like any other
+    /// end, has no cache notice (nothing was written) and holds the cancel
+    /// notice: the streams not read to their end, or no count when the
+    /// listing had not ended (U5:BR5.8).
     pub fn finish_fetch(&mut self, job: &FetchJob, timeline_version: u64) {
         let current = self.current_job_id.is_none_or(|id| id == job.job_id);
         if self.phase != Phase::Fetching || !current || job.status == JobStatus::Running {
             return;
         }
+        self.cancelling = false;
         self.set_timeline_version(timeline_version);
         self.current_job_id = Some(job.job_id);
         self.progress = None;
         // U6:BR3.7, BR5.3: the write is over; keep the notices of this job.
         self.cache_saving = false;
-        self.cache_notices = if job.status == JobStatus::Aborted {
+        self.cache_notices = if matches!(job.status, JobStatus::Aborted | JobStatus::Cancelled) {
             Vec::new()
         } else {
             cache_notices(job.served_from_cache, job.read_failed, job.cache_outcome)
         };
+        self.cancel_notice = (job.status == JobStatus::Cancelled).then(|| CancelNoticeView {
+            unfinished_streams: (!job.cancelled_before_listing)
+                .then_some(job.unfinished_stream_count),
+        });
         if job.status == JobStatus::Aborted {
             self.phase = Phase::Idle;
             self.event_count = 0;
@@ -1705,6 +1780,8 @@ impl AppSession {
             return false;
         }
         self.phase = Phase::Failed;
+        // 261012-parallel-fetch U5:NFR6.16: [Cancelling…] ends too.
+        self.cancelling = false;
         // 261012-parallel-fetch U4:BR4.2: ends like a failed fetch.
         self.settle_elapsed();
         // U6 review R-11: as at a normal finish, the write is over.
@@ -1841,6 +1918,9 @@ impl AppSession {
             close_confirmation: self.close_confirmation,
             sso_login: self.sso_login_view(),
             elapsed: self.elapsed_view(),
+            cancelling: self.cancelling,
+            fetch_cancel_available: self.fetch_cancel_available(),
+            cancel_notice: self.cancel_notice,
         }
     }
 
@@ -1907,6 +1987,8 @@ impl AppSession {
         self.listing_failure = None;
         self.failure_list_open = false;
         self.cache_notices.clear();
+        // 261012-parallel-fetch U5:BR5.9: and so does the cancel notice.
+        self.cancel_notice = None;
         // 261012-parallel-fetch U4:BR4.4: the elapsed time goes with the
         // previous result.
         self.elapsed = None;
@@ -5065,5 +5147,282 @@ mod tests {
         assert_eq!(format!("{:?}", SessionClock::default()), "SessionClock");
         let session = AppSession::new();
         assert!(format!("{session:?}").contains("SessionClock"));
+    }
+
+    // --- 261012-parallel-fetch U5: [Cancel] (BR5.1, BR5.2, BR5.8, BR5.9) ---
+
+    /// A session fetching the U1 conditions; returns the started job.
+    fn started_fetch() -> (AppSession, FetchJob) {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job, 1);
+        (session, job)
+    }
+
+    /// `job` ended Cancelled with `events` events, `unfinished` streams not
+    /// read to their end, or before the listing ended.
+    fn cancelled(
+        mut job: FetchJob,
+        events: u64,
+        unfinished: usize,
+        before_listing: bool,
+    ) -> FetchJob {
+        job.status = JobStatus::Cancelled;
+        job.event_count = events;
+        job.unfinished_stream_count = unfinished;
+        job.cancelled_before_listing = before_listing;
+        if !before_listing {
+            job.planned_stream_count = 20;
+            job.finished_stream_count = 7;
+            job.listing_status = Some(StreamListingStatus::Complete);
+        }
+        job
+    }
+
+    fn ended(mut job: FetchJob, status: JobStatus) -> FetchJob {
+        job.status = status;
+        job
+    }
+
+    #[test]
+    fn cancel_is_available_only_while_fetching_and_nothing_else_is_under_way() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert!(!session.fetch_cancel_available(), "Idle");
+        assert_eq!(session.request_cancel(), None);
+
+        let (mut session_fetching, job) = started_fetch();
+        assert!(session_fetching.fetch_cancel_available());
+        session_fetching.on_saving(job.job_id);
+        assert!(
+            !session_fetching.fetch_cancel_available(),
+            "not while the cache is written"
+        );
+        assert_eq!(session_fetching.request_cancel(), None);
+        assert!(!session_fetching.view().cancelling);
+
+        let (mut closing, _job) = started_fetch();
+        assert!(matches!(
+            closing.request_close(),
+            CloseDecision::Prevent { changed: true }
+        ));
+        assert!(
+            !closing.fetch_cancel_available(),
+            "not while closing awaits an answer"
+        );
+        assert_eq!(closing.request_cancel(), None);
+        closing.cancel_close();
+        assert!(closing.fetch_cancel_available(), "back once answered");
+
+        fill_valid(&mut session);
+        assert!(!session.fetch_cancel_available(), "still Idle");
+    }
+
+    #[test]
+    fn request_cancel_marks_cancelling_once_and_answers_the_fetch_number() {
+        let (mut session, _job) = started_fetch();
+        assert_eq!(session.request_cancel(), Some(session.fetch_number()));
+        let view = session.view();
+        assert!(view.cancelling);
+        assert!(!view.fetch_cancel_available);
+        assert_eq!(view.phase, Phase::Fetching);
+        assert_eq!(
+            session.request_cancel(),
+            None,
+            "a second press does nothing"
+        );
+        assert!(session.view().cancelling);
+    }
+
+    #[test]
+    fn every_end_of_a_fetch_turns_cancelling_off() {
+        // NFR6.16: Completed, CompletedWithFailures, Failed, Aborted,
+        // Cancelled and an abnormal stop.
+        for status in [
+            JobStatus::Completed,
+            JobStatus::CompletedWithFailures,
+            JobStatus::Failed,
+            JobStatus::Aborted,
+            JobStatus::Cancelled,
+        ] {
+            let (mut session, job) = started_fetch();
+            session.request_cancel().unwrap();
+            session.finish_fetch(&ended(job, status), 2);
+            assert!(!session.view().cancelling, "{status:?}");
+            assert_ne!(session.phase(), Phase::Fetching, "{status:?}");
+        }
+        let (mut session, _job) = started_fetch();
+        session.request_cancel().unwrap();
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
+        assert!(!session.view().cancelling);
+    }
+
+    #[test]
+    fn a_cancelled_fetch_is_done_keeps_its_logs_and_failures_and_has_a_notice() {
+        let (mut session, job) = started_fetch();
+        session.on_batch(job.job_id, batch(120, 3));
+        session.request_cancel().unwrap();
+        let mut job = cancelled(job, 120, 13, false);
+        job.failed_streams.push(FailedStream {
+            log_stream_name: "s05".to_string(),
+            failure: ApiFailure::new(FailureKind::AccessDenied, &SafeDetailFields::default()),
+        });
+        job.read_failed = true;
+        job.cache_outcome = CacheOutcome::NotSaved;
+        session.finish_fetch(&job, 3);
+
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Done);
+        assert_eq!(view.event_count, 120);
+        assert_eq!(view.failed_streams.len(), 1);
+        assert_eq!(view.listing_status, Some(StreamListingStatus::Complete));
+        let summary = view.last_job.unwrap();
+        assert_eq!(summary.status, JobStatus::Cancelled);
+        assert_eq!(summary.failed_stream_count, 1);
+        assert_eq!(
+            view.cancel_notice,
+            Some(CancelNoticeView {
+                unfinished_streams: Some(13)
+            })
+        );
+        assert!(
+            view.cache_notices.is_empty(),
+            "nothing written, so no cache notice (BR5.8)"
+        );
+        assert!(view.can_fetch, "the inputs are back");
+        assert!(!view.fetch_cancel_available);
+    }
+
+    #[test]
+    fn a_cancel_before_the_listing_ended_has_a_notice_without_a_count() {
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 0, 0, true), 1);
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Done);
+        assert_eq!(view.event_count, 0);
+        assert_eq!(
+            view.cancel_notice,
+            Some(CancelNoticeView {
+                unfinished_streams: None
+            })
+        );
+    }
+
+    #[test]
+    fn only_a_cancelled_fetch_has_a_notice() {
+        for status in [
+            JobStatus::Completed,
+            JobStatus::CompletedWithFailures,
+            JobStatus::Failed,
+            JobStatus::Aborted,
+        ] {
+            let (mut session, job) = started_fetch();
+            session.request_cancel().unwrap();
+            session.finish_fetch(&ended(job, status), 2);
+            assert_eq!(session.view().cancel_notice, None, "{status:?}");
+        }
+    }
+
+    #[test]
+    fn the_notice_goes_with_the_next_fetch_a_connection_change_or_another_log_group() {
+        // BR5.9.
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 2, false), 2);
+        assert!(session.view().cancel_notice.is_some());
+        session
+            .select_log_group(
+                "/aws/lambda/orders".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert!(
+            session.view().cancel_notice.is_some(),
+            "the same log group again keeps it"
+        );
+        session
+            .select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert_eq!(session.view().cancel_notice, None);
+
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 2, false), 2);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.view().cancel_notice, None, "the next fetch");
+        assert!(!session.view().cancelling);
+
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 2, false), 2);
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert!(
+            session.view().cancel_notice.is_some(),
+            "awaiting confirmation: kept"
+        );
+        session.confirm_connection_change().unwrap();
+        assert_eq!(session.view().cancel_notice, None);
+    }
+
+    #[test]
+    fn cancel_then_fetch_then_cancel_leaves_one_notice_of_the_last_fetch() {
+        // NFR6.14.
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 9, false), 2);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job, 3);
+        assert_eq!(session.request_cancel(), Some(session.fetch_number()));
+        session.finish_fetch(&cancelled(job, 2, 4, false), 4);
+        assert_eq!(
+            session.view().cancel_notice,
+            Some(CancelNoticeView {
+                unfinished_streams: Some(4)
+            })
+        );
+    }
+
+    #[test]
+    fn the_view_carries_the_three_cancel_fields_as_numbers_and_flags() {
+        // NFR8.13: a flag, a flag and a count or null; no text.
+        let (mut session, job) = started_fetch();
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(json["cancelling"], false);
+        assert_eq!(json["fetchCancelAvailable"], true);
+        assert!(json["cancelNotice"].is_null());
+
+        session.request_cancel().unwrap();
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(json["cancelling"], true);
+        assert_eq!(json["fetchCancelAvailable"], false);
+
+        session.finish_fetch(&cancelled(job, 1, 3, false), 2);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(
+            json["cancelNotice"],
+            serde_json::json!({ "unfinishedStreams": 3 })
+        );
+        assert_eq!(json["lastJob"]["status"], "Cancelled");
+
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 0, 0, true), 2);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(
+            json["cancelNotice"],
+            serde_json::json!({ "unfinishedStreams": null })
+        );
     }
 }

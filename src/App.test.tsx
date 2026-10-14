@@ -24,6 +24,7 @@ vi.mock("./api", async (importOriginal) => {
     getSession: vi.fn(),
     updateInput: vi.fn(),
     startFetch: vi.fn(),
+    cancelFetch: vi.fn(),
     selectProfile: vi.fn(),
     selectRegion: vi.fn(),
     confirmConnectionChange: vi.fn(),
@@ -121,6 +122,7 @@ describe("App", () => {
       api.cancelSsoLogin,
       api.dismissSsoLogin,
       api.openSsoUrl,
+      api.cancelFetch,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -945,5 +947,102 @@ describe("App", () => {
       "aria-valuenow",
       "40",
     );
+  });
+
+  // ---- 261012-parallel-fetch U5: [Cancel] ----------------------------------
+
+  const cancelledView = (more: Partial<SessionView> = {}) =>
+    sessionView({
+      phase: "Done",
+      currentJobId: 7,
+      eventCount: 3,
+      timelineVersion: 2,
+      lastJob: {
+        jobId: 7,
+        status: "Cancelled",
+        eventCount: 3,
+        plannedStreamCount: 20,
+        finishedStreamCount: 7,
+        failedStreamCount: 0,
+        failure: null,
+      },
+      cancelNotice: { unfinishedStreams: 13 },
+      ...more,
+    });
+
+  it("sends [Cancel] to the core and shows [Cancelling…] once the core says so (BR5.1)", async () => {
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
+    await user.click(screen.getByTestId("fetch-form-submit-button"));
+    expect(api.cancelFetch).toHaveBeenCalledTimes(1);
+    expect(api.startFetch).not.toHaveBeenCalled();
+    push(sessionView({ phase: "Fetching", currentJobId: 7, cancelling: true }));
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("Cancelling…");
+  });
+
+  it("makes [Cancel] unavailable when the progress message says the cache is written (BR5.2)", async () => {
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
+    expect(screen.getByTestId("fetch-form-submit-button")).toBeEnabled();
+    act(() => {
+      handlers.progress?.({
+        jobId: 7,
+        progress: {
+          seenStreamCount: 1,
+          selectedStreamCount: 1,
+          plannedStreamCount: 1,
+          finishedStreamCount: 1,
+          eventCount: 3,
+        },
+        eventCount: 3,
+        timelineVersion: 2,
+        filterSummary: null,
+        filterResultVersion: 0,
+        cacheSaving: true,
+      });
+    });
+    expect(screen.getByTestId("fetch-form-submit-button")).toBeDisabled();
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("Cancel");
+  });
+
+  it("shows the cancel notice above the list, in the error area's place, never with the error (BR5.11)", async () => {
+    render(<App locale="ja" />);
+    await screen.findByTestId("fetch-form");
+    push(cancelledView());
+    const notice = screen.getByTestId("cancel-notice");
+    expect(notice).toHaveTextContent(
+      "取得を中断しました。13 本のストリームは読み終えていないため、一部のログが含まれていません。",
+    );
+    expect(screen.queryByTestId("fetch-error-banner")).not.toBeInTheDocument();
+    expect(screen.getByTestId("status-line-cancelled")).toHaveTextContent("中断");
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    expect(
+      notice.compareDocumentPosition(screen.getByTestId("log-table")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    push(cancelledView({ cancelNotice: null, phase: "Idle", lastJob: null }));
+    expect(screen.queryByTestId("cancel-notice")).not.toBeInTheDocument();
+  });
+
+  it("keeps the fetched rows filterable after a cancel (NFR5.5)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(cancelledView());
+    render(<App locale="en" />);
+    await screen.findByTestId("cancel-notice");
+    const input = logFilter();
+    expect(input).toBeEnabled();
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(input, { target: { value: "middle" } });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(api.setLogFilter).toHaveBeenCalledWith("middle");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

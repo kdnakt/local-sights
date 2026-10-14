@@ -34,6 +34,11 @@
  * and the core's `session.ssoLoginInProgress` / `session.ssoLoginUnavailable`.
  * Since 261012-parallel-fetch U4 the elapsed time of a fetch on the status
  * line (`status.elapsed`, `{time}` is mm:ss or h:mm:ss, BR4.7, BR4.8).
+ * Since 261012-parallel-fetch U5 the [Cancel] button (`fetch.cancel`,
+ * `fetch.cancelling`), the status word of a cancelled fetch
+ * (`status.cancelled`) and the two cancel notices (`cancel.notice.*`, `{n}`
+ * is the number of streams not read to their end), word for word as the
+ * refined mockups' wording list (BR5.13, NFR9.3).
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -209,6 +214,17 @@ export const messages = {
   },
   "status.detail": { en: "Details: {detail}", ja: "詳細：{detail}" },
   "status.elapsed": { en: "Elapsed {time}", ja: "経過 {time}" },
+  "status.cancelled": { en: "Cancelled", ja: "中断" },
+  "fetch.cancel": { en: "Cancel", ja: "中断" },
+  "fetch.cancelling": { en: "Cancelling…", ja: "中断中…" },
+  "cancel.notice.afterListing": {
+    en: "Fetch cancelled. {n} streams were not finished, so some logs are missing.",
+    ja: "取得を中断しました。{n} 本のストリームは読み終えていないため、一部のログが含まれていません。",
+  },
+  "cancel.notice.beforeListing": {
+    en: "Fetch cancelled before the stream listing finished, so some logs are missing.",
+    ja: "ストリームの一覧を読み終える前に中断したため、一部のログが含まれていません。",
+  },
   "failure.kind.AuthRequired": {
     en: "Authentication required",
     ja: "認証が必要",

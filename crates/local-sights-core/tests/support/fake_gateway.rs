@@ -7,8 +7,12 @@
 //! `tokio::time::sleep`, so tests run on the paused clock), and the fake
 //! records when each call started and ended and how many calls were under
 //! way at once. Without a duration it answers at once, as before.
+//!
+//! Since U5 (u5-cancel, nfr-design review R-07) `DescribeLogStreams` can
+//! take time too, and a call of either API can be scripted never to answer,
+//! so a test can cut it off while it is under way.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -58,6 +62,9 @@ pub struct FakeGateway {
     per_stream_duration: HashMap<String, Duration>,
     timed_calls: Mutex<Vec<TimedCall>>,
     in_flight: Mutex<InFlight>,
+    listing_duration: Option<Duration>,
+    listing_never_answers: bool,
+    silent_streams: HashSet<String>,
 }
 
 impl FakeGateway {
@@ -174,6 +181,27 @@ impl FakeGateway {
         self.in_flight.lock().unwrap().max
     }
 
+    /// Every `DescribeLogStreams` call takes `duration` before it answers
+    /// (U5 review R-07).
+    pub fn with_listing_duration(mut self, duration: Duration) -> Self {
+        self.listing_duration = Some(duration);
+        self
+    }
+
+    /// Every `DescribeLogStreams` call is recorded but never answers
+    /// (U5 review R-07); only cutting it off ends it.
+    pub fn with_listing_that_never_answers(mut self) -> Self {
+        self.listing_never_answers = true;
+        self
+    }
+
+    /// The `GetLogEvents` calls of `name` are recorded but never answer
+    /// (U5 NFR4.3); only cutting them off ends them.
+    pub fn stream_never_answers(mut self, name: &str) -> Self {
+        self.silent_streams.insert(name.to_string());
+        self
+    }
+
     fn scripted_answer(&self, stream: &str) -> Result<GetLogEventsPage, ApiFailure> {
         if let Some(script) = self.per_stream.lock().unwrap().get_mut(stream) {
             return script.pop_front().unwrap_or_else(|| {
@@ -202,6 +230,9 @@ impl CloudWatchLogsGateway for FakeGateway {
             .push(format!("GetLogEvents:{}", request.log_stream_name));
         let stream = request.log_stream_name.clone();
         self.calls.lock().unwrap().push(request);
+        if self.silent_streams.contains(&stream) {
+            return std::future::pending().await;
+        }
         let duration = self
             .per_stream_duration
             .get(&stream)
@@ -253,6 +284,12 @@ impl CloudWatchLogsGateway for FakeGateway {
             .unwrap()
             .push("DescribeLogStreams".to_string());
         self.stream_calls.lock().unwrap().push(request);
+        if self.listing_never_answers {
+            return std::future::pending().await;
+        }
+        if let Some(duration) = self.listing_duration {
+            tokio::time::sleep(duration).await;
+        }
         self.stream_responses
             .lock()
             .unwrap()

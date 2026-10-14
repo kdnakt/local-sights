@@ -140,6 +140,22 @@ Changing the profile or the region clears it with the previous result;
 choosing another log group keeps it. Screen readers do not hear the seconds
 tick; the final value is read with the end of the fetch.
 
+While fetching, **Fetch** becomes **Cancel** in the same place. Pressing it
+stops the fetch at once: requests that are under way or waiting are cut off,
+not waited for, and no new request starts. The button reads
+**Cancelling…** until the fetch has stopped, then **Fetch** again; the focus
+stays on it throughout. **Cancel** cannot be pressed while the fetched logs are
+saved to the cache. The logs fetched so far stay listed and can be filtered;
+a warning above the list says how many streams were not read to their end
+("Fetch cancelled. N streams were not finished, so some logs are missing.",
+or that the stream listing had not finished), and the status line says
+"Cancelled" with the count (just "0 events" when nothing came) and the
+elapsed time. A cancelled fetch is never saved to the cache. The warning
+stays until the next **Fetch**, a profile or region change, or another log
+group. A cancel after every stream was already read counts as a finished
+fetch. Closing the window still asks first and discards everything, also
+after **Cancel**.
+
 ## Sign in with SSO
 
 When the SSO session has expired, the log group pane or the error above the
@@ -304,6 +320,16 @@ Elapsed time (261012-parallel-fetch U4):
 - [ ] A fetch longer than an hour reads `1:00:00` and on; with the OS language set to Japanese the text is "経過 mm:ss".
 - [ ] With VoiceOver on, the seconds are not read out while fetching; the end of the fetch is read with the final elapsed time.
 
+Cancel (261012-parallel-fetch U5):
+
+- [ ] Pressing **Fetch** on a log group with many streams turns the button into **Cancel** in the same place, with the focus still on it; pressing **Cancel** shows **Cancelling…** and the fetch stops within a moment, also while requests are being retried or are slow to answer. The button becomes **Fetch** again.
+- [ ] After the cancel the fetched logs stay listed, the log filter still works, a warning above the list says "Fetch cancelled. N streams were not finished, so some logs are missing." (no close button), and the status line reads "Cancelled", the count and the elapsed time. Cancelling while the streams are still being listed says "Fetch cancelled before the stream listing finished, so some logs are missing."
+- [ ] With the cache on, fetching the same range again after a cancel goes to AWS (nothing was saved); **Cancel** cannot be pressed during "Saving to cache".
+- [ ] The warning goes away with the next **Fetch**, a profile or region change, or choosing another log group; choosing the same log group again keeps it.
+- [ ] Pressing **Cancel** and then closing the window still asks "Fetching is in progress." while the fetch has not stopped; **Close** ends the app.
+- [ ] With the OS language set to Japanese the texts are 中断 / 中断中… and the warning reads "取得を中断しました。N 本のストリームは読み終えていないため、一部のログが含まれていません。"; with VoiceOver on, the warning is read once when it appears.
+- [ ] Started from a terminal, the fetch summary of a cancelled fetch ends with `status=Cancelled`.
+
 ## Performance check of the log list
 
 The log list is still the app's own virtual-scroll list, styled with
@@ -365,7 +391,7 @@ was throttled. The screen shows nothing of this. Then come the event, stream
 and failed-stream counts, then each
 failed stream (or an incomplete stream listing) with its failure kind and
 safe detail. Exit code 0 means success, 1 that something failed, 2 invalid
-arguments.
+arguments. The check has no **Cancel**: it always reads to the end.
 
 ## App icon
 

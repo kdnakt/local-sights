@@ -13,12 +13,14 @@ type Overrides = Parameters<typeof sessionView>[0];
 function renderArea(overrides: Overrides = {}, translate = t) {
   const onChange = vi.fn();
   const onFetch = vi.fn();
+  const onCancel = vi.fn();
   const view = (next: Overrides) => (
     <ConditionArea
       session={sessionView({ ...overrides, ...next })}
       t={translate}
       onChange={onChange}
       onFetch={onFetch}
+      onCancel={onCancel}
       filterText=""
       onFilterTextChange={vi.fn()}
       onLogFilterChange={vi.fn()}
@@ -30,6 +32,7 @@ function renderArea(overrides: Overrides = {}, translate = t) {
   return {
     onChange,
     onFetch,
+    onCancel,
     ...result,
     rerender: (next: Overrides) => result.rerender(view(next)),
   };
@@ -494,6 +497,97 @@ describe("ConditionArea calendar limit (gate fix 17b)", () => {
     cell = await openCalendar("start");
     expect(cell("16")).toHaveAttribute("aria-disabled", "false");
     expect(cell("17")).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("ConditionArea [Cancel] (261012-parallel-fetch U5:BR5.10, review R-09)", () => {
+  const ready = withTexts("2024/03/01 10:00:00", "2024/03/01 12:00:00", {
+    canFetch: true,
+    selectedLogGroupName: "/g",
+  });
+  const fetching = (more: Overrides = {}): Overrides => ({
+    ...ready,
+    phase: "Fetching",
+    canFetch: false,
+    ...more,
+  });
+
+  it("is one button whose look follows the R-09 table", () => {
+    const { rerender } = renderArea(ready);
+    // Not fetching: [Fetch], as before.
+    expect(fetchButton()).toHaveTextContent("Fetch");
+    expect(fetchButton()).toBeEnabled();
+    expect(fetchButton()).not.toHaveAttribute("aria-disabled");
+
+    // Fetching, can be pressed: the primary [Cancel].
+    rerender(fetching({ fetchCancelAvailable: true }));
+    expect(fetchButton()).toHaveTextContent("Cancel");
+    expect(fetchButton()).not.toHaveTextContent("Cancelling");
+    expect(fetchButton()).toBeEnabled();
+    expect(fetchButton()).not.toHaveAttribute("aria-disabled");
+
+    // Fetching, cancelling: a loading [Cancelling…] that keeps its element enabled.
+    rerender(fetching({ cancelling: true, fetchCancelAvailable: false }));
+    expect(fetchButton()).toHaveTextContent("Cancelling…");
+    expect(fetchButton()).not.toBeDisabled();
+    expect(fetchButton()).toHaveAttribute("aria-disabled", "true");
+
+    // Fetching, neither (saving to the cache, closing asked): a disabled [Cancel].
+    rerender(fetching({ cancelling: false, fetchCancelAvailable: false, cacheSaving: true }));
+    expect(fetchButton()).toHaveTextContent("Cancel");
+    expect(fetchButton()).not.toHaveTextContent("Cancelling");
+    expect(fetchButton()).toBeDisabled();
+  });
+
+  it("cancels on a press of [Cancel] and does nothing on [Cancelling…]", async () => {
+    const user = userEvent.setup();
+    const { onCancel, onFetch, rerender } = renderArea(fetching({ fetchCancelAvailable: true }));
+    await user.click(fetchButton());
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onFetch).not.toHaveBeenCalled();
+
+    rerender(fetching({ cancelling: true }));
+    await user.click(fetchButton());
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the focus on the button from [Fetch] to [Cancel] to [Cancelling…], and moves it only while saving (NFR10.1)", () => {
+    const { rerender } = renderArea(ready);
+    fetchButton().focus();
+    expect(fetchButton()).toHaveFocus();
+    rerender(fetching({ fetchCancelAvailable: true }));
+    expect(fetchButton()).toHaveFocus();
+    rerender(fetching({ cancelling: true }));
+    expect(fetchButton()).toHaveFocus();
+    rerender({ ...ready, phase: "Done" });
+    expect(fetchButton()).toHaveTextContent("Fetch");
+    expect(fetchButton()).toHaveFocus();
+
+    rerender(fetching({ fetchCancelAvailable: true }));
+    expect(fetchButton()).toHaveFocus();
+    rerender(fetching({ fetchCancelAvailable: false, cacheSaving: true }));
+    expect(filterBox()).toHaveFocus();
+  });
+
+  it("never cancels with Enter in a date or time field", async () => {
+    const user = userEvent.setup();
+    const { onCancel, onFetch } = renderArea(fetching({ fetchCancelAvailable: true }));
+    dateInput("start").focus();
+    await user.keyboard("{Enter}");
+    // The fields are disabled while fetching; send Enter to them directly too.
+    act(() => {
+      dateInput("end").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onFetch).not.toHaveBeenCalled();
+  });
+
+  it("reads 中断 and 中断中… in Japanese", () => {
+    const ja = createTranslator("ja");
+    const { rerender } = renderArea(fetching({ fetchCancelAvailable: true }), ja);
+    expect(fetchButton()).toHaveTextContent("中断");
+    rerender(fetching({ cancelling: true }));
+    expect(fetchButton()).toHaveTextContent("中断中…");
   });
 });
 

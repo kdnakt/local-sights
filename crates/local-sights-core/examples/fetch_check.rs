@@ -147,10 +147,22 @@ fn report(job: &FetchJob) -> ExitCode {
             failed.failure.safe_detail()
         );
     }
-    if job.status == JobStatus::Completed {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(EXIT_FETCH_FAILED)
+    match job.status {
+        JobStatus::Completed => ExitCode::SUCCESS,
+        // 261012-parallel-fetch U5:BR5.14: this check never sends [Cancel]
+        // (its stop signal never fires), so a Cancelled job is not expected;
+        // it would still not be a complete fetch.
+        JobStatus::Cancelled => {
+            eprintln!(
+                "error: the fetch was cancelled; {} streams were not read to their end",
+                job.unfinished_stream_count
+            );
+            ExitCode::from(EXIT_FETCH_FAILED)
+        }
+        JobStatus::Running
+        | JobStatus::Failed
+        | JobStatus::CompletedWithFailures
+        | JobStatus::Aborted => ExitCode::from(EXIT_FETCH_FAILED),
     }
 }
 

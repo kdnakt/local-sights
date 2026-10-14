@@ -29,6 +29,7 @@
     "allow-start-sso-login",
     "allow-cancel-sso-login",
     "allow-dismiss-sso-login",
-    "allow-open-sso-url"
+    "allow-open-sso-url",
+    "allow-cancel-fetch"
   ]
 }

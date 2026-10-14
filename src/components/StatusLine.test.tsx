@@ -525,3 +525,62 @@ describe("StatusLine elapsed time (261012-parallel-fetch U4)", () => {
     expect(drawsOf("status.elapsed")).toBeGreaterThanOrEqual(elapsedDraws + 3);
   });
 });
+
+describe("StatusLine after a cancelled fetch (261012-parallel-fetch U5:BR5.12)", () => {
+  const cancelled = (eventCount: number, more: Partial<SessionView> = {}) =>
+    sessionView({
+      phase: "Done",
+      eventCount,
+      lastJob: {
+        jobId: 4,
+        status: "Cancelled",
+        eventCount,
+        plannedStreamCount: 20,
+        finishedStreamCount: 7,
+        failedStreamCount: 0,
+        failure: null,
+      },
+      cancelNotice: { unfinishedStreams: 13 },
+      elapsed: { running: false, elapsedMs: 12_000, fetchNumber: 1 },
+      ...more,
+    });
+
+  it("says Cancelled with the count, the failed streams and the elapsed time", () => {
+    renderStatus(
+      cancelled(120, {
+        failedStreams: [{ logStreamName: "s1", failure: throttled }],
+      }),
+    );
+    expect(screen.getByTestId("status-line-cancelled")).toHaveTextContent("Cancelled");
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("120 events");
+    expect(screen.getByTestId("status-line-failures-button")).toHaveTextContent(
+      "Failed in 1 streams",
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:12");
+    const parts = [...screen.getByTestId("status-line").querySelectorAll("[data-testid]")].map(
+      (element) => element.getAttribute("data-testid"),
+    );
+    expect(parts.indexOf("status-line-cancelled")).toBeLessThan(parts.indexOf("status-line-count"));
+    expect(parts.indexOf("status-line-count")).toBeLessThan(parts.indexOf("status-line-elapsed"));
+  });
+
+  it("says just 0 events, never that the range has no logs", () => {
+    renderStatus(cancelled(0));
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("0 events");
+    expect(screen.getByTestId("status-line")).not.toHaveTextContent("no logs in this range");
+  });
+
+  it("shows no cache notice", () => {
+    renderStatus(cancelled(5, { cacheNotices: ["ReadFailed"] }));
+    expect(screen.queryByTestId("status-line-cache-ReadFailed")).not.toBeInTheDocument();
+  });
+
+  it("says 中断 and 0 件 in Japanese", () => {
+    render(
+      <StatusLine session={cancelled(0)} t={createTranslator("ja")} onOpenFailures={vi.fn()} />,
+    );
+    expect(screen.getByTestId("status-line-cancelled")).toHaveTextContent("中断");
+    expect(screen.getByTestId("status-line-count")).toHaveTextContent("0 件");
+    expect(screen.getByTestId("status-line")).not.toHaveTextContent("この範囲にログはありません");
+  });
+});

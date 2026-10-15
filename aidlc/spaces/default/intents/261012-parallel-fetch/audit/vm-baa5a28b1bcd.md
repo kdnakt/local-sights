@@ -17643,3 +17643,5294 @@
 **Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
 
 ---
+
+## Checkpoint Verification Recorded
+**Timestamp**: 2026-10-14T13:06:51Z
+**Event**: CHECKPOINT_VERIFICATION_RECORDED
+**Unit**: u5-cancel
+**Kind**: unit
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Verification Id**: 858c63ae-49b7-4528-9afa-68df4db76cea
+**Fingerprint**: sha256:0c1653a4f93fbeaf97d0458f0586ca519a80597eef33f5df7d72d61bf3e7bf53
+**Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Exit Code**: 0
+**Verified**: true
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T13:06:57Z
+**Event**: GATE_APPROVED
+**Unit**: u5-cancel
+**Stage**: code-generation
+**Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Stages**: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation
+**Gate Scope**: unit-end
+**Checkpoint**: construction-unit
+**Fingerprint**: sha256:0c1653a4f93fbeaf97d0458f0586ca519a80597eef33f5df7d72d61bf3e7bf53
+**Run floor**: WORKFLOW_STARTED:2026-10-12T07:12:14Z#1
+**Run floors**: {"functional-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-requirements":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","nfr-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","infrastructure-design":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1","code-generation":"WORKFLOW_STARTED:2026-10-12T07:12:14Z#1"}
+**Verification Command SHA-256**: 48f299c0e4c5da31bc31413b5c09e0baec256108688523fbc0f244c5b2a5e065
+**Verification Id**: 858c63ae-49b7-4528-9afa-68df4db76cea
+**Approved Evidence**: {"functional-design":["sha256:dc5356805c7896dc64f832b12d9aae7981407279a60753d3fd8165ebca56ee93",null],"nfr-requirements":["sha256:0f0efc43b88e296b85728437513efcdaff34a0550814a3b7ae3957c7711bc952",null],"nfr-design":["sha256:3adcb56431835716b8c294ae78c61d90e5994a004a8b2841d4a9e9b74877f141",null],"infrastructure-design":["sha256:f9308d924e2746328cc9753195b91043c2c3bd26da450697d60dcea6342d6c55",null],"code-generation":["sha256:a06191b3f60ddc7609d1a819635a95a37cdaa1808c902afdc040272bfce09cef","sha256:6023bab2aef547b030b3f167670a82546fdfb0b0092bb95ad1d30f9dd8903356",{"\u0000README.md":"100644 638967da3c41fd43bf84d9e0e836bebb7b578b2063cceff4e6bcc566a76fd383","\u0000crates/local-sights-core/examples/fetch_check.rs":"100644 26abc7e2d6e45daf5f44ce90e2c835098e3053a4d95295a473936ef2ac2d4d59","\u0000crates/local-sights-core/src/coordinator.rs":"100644 976ed8222e080c43facee2240c98d3ea9ff07ebc3307c86a45f3be78f68277b5","\u0000crates/local-sights-core/src/fetch_status.rs":"100644 1d481677720e07bad955aa8afc7c6e297ab92f39e89c23f5108867ee1fd38f04","\u0000crates/local-sights-core/src/session.rs":"100644 6fdae8bd6976f5f5fb726e2796cebb1dedc17c355a4213bb5d71af86a6b7ca07","\u0000crates/local-sights-core/src/streams/planner.rs":"100644 d63e2aeb781927f379c907762145d45d56b5bfff6c4c708c27ae780e15b3c0ba","\u0000crates/local-sights-core/tests/support/fake_gateway.rs":"100644 cbe49a8610af5b35a561344dd648a4e52cba22c69bebff9209932211b45f61b8","\u0000crates/local-sights-core/tests/support/recording_sink.rs":"100644 0e7bd59d07eebb4554145a3adca138f326d0b958536c87728bb4a37a1c394812","\u0000crates/local-sights-core/tests/u1_concurrent_fetch.rs":"100644 5c34fe6f80309993dfc987c2eeb92010a5fbaebbbe6b952c159f617e05c95376","\u0000crates/local-sights-core/tests/u5_cancel.rs":"100644 d2efde9e1a03a3c4910cccf160fe50ed9994c383d3417d4b58b27e29e4b4690a","\u0000src/App.test.tsx":"100644 b3ca74a09397f8eb0f0d577ed617c46a54dba8d4d901d9851485d715e21efb04","\u0000src/App.tsx":"100644 49b1cd5440b20093fafe893fe827715964fb7da8a0e8116eebb09db8b3f108bc","\u0000src/api.ts":"100644 deafb173daae607cfd8f152ea8f1be108d152828b48268ccfeba596ff3b72013","\u0000src/components/CancelNotice.test.tsx":"100644 39861191aa0984a66e8585127c0446630c96b45e3a5cb09ca43c15055e309667","\u0000src/components/CancelNotice.tsx":"100644 7db06270ce58d14f015d79ec3596ad68c6b82e521a0b933b9f50de6d4197b63e","\u0000src/components/ConditionArea.test.tsx":"100644 4a7ac5028e941a79732159f93258604391a564cdcea22b8fc14eb6263161f684","\u0000src/components/ConditionArea.tsx":"100644 6f3a3917d90b50ba66210cdfffef30fdcc2d66ca12b2a8502af13c2a33079903","\u0000src/components/StatusLine.test.tsx":"100644 1ce59d8bc03b44aba61f981b7315fc74e37952e50f9b60b2174c095f696bfbbe","\u0000src/components/StatusLine.tsx":"100644 f999a608c5a63f86714474b278cfcef0b130ac9cf85ee5089ece5dce6aedfc83","\u0000src/i18n/messages.test.ts":"100644 20e3ae86d1453332d27a64cbac75fe6f44982a3a926e9e639b6818e0fac4cdee","\u0000src/i18n/messages.ts":"100644 d184b556dcc2ebd5c1f8e7adb03272002986826a1096a6026eeb6721b8d9ccc7","\u0000src/test/fixtures.ts":"100644 47f0e47225a6170f5a9435b2ca2595c4c8734d02f3f9c73ea06e51f444c7dca6","\u0000src-tauri/build.rs":"100644 9952ad965a02cebb34e8a35a89414ab6533b864dbfe12a6982606c6caea3a01c","\u0000src-tauri/capabilities/default.json":"100644 ca7ebfc1ef8f2bb5cd115c986222edbdf35f446bdfc8548bcfc934ddb796a67e","\u0000src-tauri/permissions/autogenerated/cancel_fetch.toml":"100644 4d63817af74cafacb4e2aac5d8951b2940a63b247d1a3c5686a3298d6364bdf9","\u0000src-tauri/src/lib.rs":"100644 bb4c9fec4740b9dc1749ba54b4699be30ef6f88032a5a1a49f19da48299491b8"}]}
+**Autonomous**: true
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:03Z
+**Event**: SENSOR_FIRED
+**Fire id**: 76e8a993
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:03Z
+**Event**: SENSOR_PASSED
+**Fire id**: 76e8a993
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/entities.md
+**Duration ms**: 428
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:04Z
+**Event**: SENSOR_FIRED
+**Fire id**: 33f14f52
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:04Z
+**Event**: SENSOR_PASSED
+**Fire id**: 33f14f52
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/rules.md
+**Duration ms**: 417
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:04Z
+**Event**: SENSOR_FIRED
+**Fire id**: 0f3c59a6
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:05Z
+**Event**: SENSOR_PASSED
+**Fire id**: 0f3c59a6
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md
+**Duration ms**: 415
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:05Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9d224fc1
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:06Z
+**Event**: SENSOR_PASSED
+**Fire id**: 9d224fc1
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+**Duration ms**: 424
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: 74100e0d
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:06Z
+**Event**: SENSOR_PASSED
+**Fire id**: 74100e0d
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/entities.md
+**Duration ms**: 397
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 43c3bc1f
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:07Z
+**Event**: SENSOR_PASSED
+**Fire id**: 43c3bc1f
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/rules.md
+**Duration ms**: 393
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:08Z
+**Event**: SENSOR_FIRED
+**Fire id**: 39c2e192
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:08Z
+**Event**: SENSOR_PASSED
+**Fire id**: 39c2e192
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md
+**Duration ms**: 471
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:09Z
+**Event**: SENSOR_FIRED
+**Fire id**: b4880acd
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:09Z
+**Event**: SENSOR_PASSED
+**Fire id**: b4880acd
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+**Duration ms**: 413
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:09Z
+**Event**: SENSOR_FIRED
+**Fire id**: 870de0c4
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:10Z
+**Event**: SENSOR_PASSED
+**Fire id**: 870de0c4
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/entities.md
+**Duration ms**: 405
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: de0de9a9
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: de0de9a9
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/rules.md
+**Duration ms**: 460
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: d4fc46e8
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:12Z
+**Event**: SENSOR_PASSED
+**Fire id**: d4fc46e8
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md
+**Duration ms**: 550
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:12Z
+**Event**: SENSOR_FIRED
+**Fire id**: dae7be5f
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:13Z
+**Event**: SENSOR_PASSED
+**Fire id**: dae7be5f
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/traceability.json
+**Duration ms**: 472
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:13Z
+**Event**: SENSOR_FIRED
+**Fire id**: ca8e25b9
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:14Z
+**Event**: SENSOR_PASSED
+**Fire id**: ca8e25b9
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/entities.md
+**Duration ms**: 404
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:14Z
+**Event**: SENSOR_FIRED
+**Fire id**: 007fc68b
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:15Z
+**Event**: SENSOR_PASSED
+**Fire id**: 007fc68b
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/rules.md
+**Duration ms**: 456
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:15Z
+**Event**: SENSOR_FIRED
+**Fire id**: f22f44c9
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:16Z
+**Event**: SENSOR_PASSED
+**Fire id**: f22f44c9
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md
+**Duration ms**: 443
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:16Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3e9d56a6
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:16Z
+**Event**: SENSOR_PASSED
+**Fire id**: 3e9d56a6
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+**Duration ms**: 452
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5ede89ce
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:17Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5ede89ce
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/entities.md
+**Duration ms**: 430
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:18Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1676b1ec
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:18Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1676b1ec
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/rules.md
+**Duration ms**: 381
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:19Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2df9f436
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:19Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2df9f436
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/functional-spec.md
+**Duration ms**: 443
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:20Z
+**Event**: SENSOR_FIRED
+**Fire id**: a163c7db
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:20Z
+**Event**: SENSOR_PASSED
+**Fire id**: a163c7db
+**Sensor ID**: required-sections
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/traceability.json
+**Duration ms**: 400
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:20Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2fe9cdf4
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:21Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2fe9cdf4
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/entities.md
+**Duration ms**: 420
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:21Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1d2269a8
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:22Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1d2269a8
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/rules.md
+**Duration ms**: 574
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:22Z
+**Event**: SENSOR_FIRED
+**Fire id**: 87c78cda
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: 87c78cda
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md
+**Duration ms**: 479
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7be02bc8
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:24Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7be02bc8
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/traceability.json
+**Duration ms**: 407
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: b0938174
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: b0938174
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/entities.md
+**Duration ms**: 434
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:25Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2caac81a
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2caac81a
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/rules.md
+**Duration ms**: 419
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:26Z
+**Event**: SENSOR_FIRED
+**Fire id**: d956706f
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:26Z
+**Event**: SENSOR_PASSED
+**Fire id**: d956706f
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md
+**Duration ms**: 407
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:27Z
+**Event**: SENSOR_FIRED
+**Fire id**: d6f3fbd5
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:27Z
+**Event**: SENSOR_PASSED
+**Fire id**: d6f3fbd5
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/traceability.json
+**Duration ms**: 469
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:28Z
+**Event**: SENSOR_FIRED
+**Fire id**: f51a0940
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:28Z
+**Event**: SENSOR_PASSED
+**Fire id**: f51a0940
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/entities.md
+**Duration ms**: 412
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:29Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4f0ad34e
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:29Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4f0ad34e
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/rules.md
+**Duration ms**: 478
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:30Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2e611590
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:30Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2e611590
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md
+**Duration ms**: 442
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:30Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6f0c8566
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:31Z
+**Event**: SENSOR_PASSED
+**Fire id**: 6f0c8566
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/traceability.json
+**Duration ms**: 428
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:31Z
+**Event**: SENSOR_FIRED
+**Fire id**: f72da99a
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:32Z
+**Event**: SENSOR_PASSED
+**Fire id**: f72da99a
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/entities.md
+**Duration ms**: 438
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:32Z
+**Event**: SENSOR_FIRED
+**Fire id**: 169cf5a6
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:33Z
+**Event**: SENSOR_PASSED
+**Fire id**: 169cf5a6
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/rules.md
+**Duration ms**: 487
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:33Z
+**Event**: SENSOR_FIRED
+**Fire id**: dde96e1b
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:34Z
+**Event**: SENSOR_PASSED
+**Fire id**: dde96e1b
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md
+**Duration ms**: 424
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:34Z
+**Event**: SENSOR_FIRED
+**Fire id**: 837c3581
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:35Z
+**Event**: SENSOR_PASSED
+**Fire id**: 837c3581
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/traceability.json
+**Duration ms**: 407
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:35Z
+**Event**: SENSOR_FIRED
+**Fire id**: 116f26e5
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/entities.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:35Z
+**Event**: SENSOR_PASSED
+**Fire id**: 116f26e5
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/entities.md
+**Duration ms**: 438
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:36Z
+**Event**: SENSOR_FIRED
+**Fire id**: e1c01586
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:36Z
+**Event**: SENSOR_PASSED
+**Fire id**: e1c01586
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/rules.md
+**Duration ms**: 405
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:37Z
+**Event**: SENSOR_FIRED
+**Fire id**: ed6e110b
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/functional-spec.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:37Z
+**Event**: SENSOR_PASSED
+**Fire id**: ed6e110b
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/functional-spec.md
+**Duration ms**: 414
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:37Z
+**Event**: SENSOR_FIRED
+**Fire id**: f91a0f80
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:38Z
+**Event**: SENSOR_PASSED
+**Fire id**: f91a0f80
+**Sensor ID**: upstream-coverage
+**Stage slug**: functional-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/traceability.json
+**Duration ms**: 424
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-14T13:07:39Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: functional-design
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T13:07:42Z
+**Event**: GATE_APPROVED
+**Stage**: functional-design
+**Review Finding Dispositions**: {"version":1,"dispositions":[{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-00","fingerprint":"sha256:17efcd1c4224c2d45c7feffd1176e8f76534ffb7e88d77d42b56f23052e92824","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-01","fingerprint":"sha256:f60310f3449607edb7383a1c301eebd9220e05a8308037ff492ccb8360aa0488","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-02","fingerprint":"sha256:29466fb96c618b4a97ea54cf45ba7266486871d8fd2b999f034e353d167dbd1a","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-03","fingerprint":"sha256:fd95682e2dd5de7f0bd7cc03e47afa601caadee226ddfcf367758ae899b3f097","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-04","fingerprint":"sha256:3d2ffe9b8bb46aac50072e36ceaea6ce64d1a1fb89cab1f2b71601238b2c8d80","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-05","fingerprint":"sha256:aba8237bd9bd9c8613aad6f8e96205c8781124435fdaa334009b9560b6cf9c59","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-06","fingerprint":"sha256:723763a6ebb765352f8cbef7521f8b013c895c3391e1b50accae0085f75c2e66","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-07","fingerprint":"sha256:ef0e4b134064ba9afec60fbcb4859a31601d6b513200b060dfd3a477d51c76c2","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/functional-design/functional-spec.md","id":"R-08","fingerprint":"sha256:7eac5c88e1a4b2189aed478db164b6692f47194be5db8ee8ed287da4f598ae15","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u1-concurrent-skeleton/df725d72ea237644/2.json","digest":"sha256:aa48f8c4618e4bf85272d1389b3ac754e2d7203a1ffda637dfd378df0be49784"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/functional-spec.md","id":"R-06","fingerprint":"sha256:86ef872d4460a5e473100c89c57c7b214678a1cebf1fab71624d1a5590829111","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u2-call-pacing/df725d72ea237644/2.json","digest":"sha256:6847daac1d8b4acff493b23e6ec3f271ed87b6dba1cba780f96eaf5435dd8775"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/functional-design/functional-spec.md","id":"R-07","fingerprint":"sha256:c20b0f6cc3e32d06aa25883fd5f7bb10793e46a50f21f0477e891e729b3cec62","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u2-call-pacing/df725d72ea237644/2.json","digest":"sha256:6847daac1d8b4acff493b23e6ec3f271ed87b6dba1cba780f96eaf5435dd8775"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md","id":"R-01","fingerprint":"sha256:1a3562acc70451a573e4e644ebf7f0cfe49ed54678483ce17c9b4eb4b1e9068b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md","id":"R-02","fingerprint":"sha256:b8f015174b0e83be23fae5603fad8df0c0888432cc9f5e79054d551b5c6323db","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md","id":"R-03","fingerprint":"sha256:02dda101da4190fd5ce64828b7b2abcf4c5e484a5f832018910f6e6f82c3dcd1","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md","id":"R-04","fingerprint":"sha256:f7450323de224f9d317de2c66aff19a278c6470e3e7ed54ea40c6dfd106d49ee","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md","id":"R-05","fingerprint":"sha256:1b19408a1cd4a65cba8b2a631603089646e8ab5a370dc77f6f01e8165e9e641b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/functional-design/functional-spec.md","id":"R-06","fingerprint":"sha256:c09b147f22c4a45f2e78ecf45a25bb4d2f98d985e819d917d7baf728ee39e42e","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:04094b83d718799f1a355f021e893e50e36191d39194cf8f1e9fad9c9db836e1"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md","id":"R-01","fingerprint":"sha256:da74ef3a27ea7689ab77229f490b1b6c9383a6285194e50760eb9808be1187a4","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md","id":"R-02","fingerprint":"sha256:aca90e8f646bca4601eb2d2253d68650ba3550a0e1107adf0452a2597cce8f79","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md","id":"R-03","fingerprint":"sha256:921be284a196a2aca9cc5fa56d5eebdc3f10eddf1b74a976b75bf6b3e517ee8a","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md","id":"R-04","fingerprint":"sha256:ef871605236b02d09e00ebe37c2949fc9d10abccbc4647626683a3d4bfbac565","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md","id":"R-05","fingerprint":"sha256:33db8ede2bc99147960addcd3744fb55ff06c9c1d4e53f944250811c54ef38b3","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/functional-design/functional-spec.md","id":"R-06","fingerprint":"sha256:0df736fe1a51a60ed71c8331339302b0b183a276dd57e1a2c68ab20af8d345c1","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:a67ddd50eec0246d831d9ebb4b35cef8df9a2c03f7f45629a83ac6700d6b732a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md","id":"R-06","fingerprint":"sha256:dbda1396eedfdcd17d42162f58f61e71d3b791ef83b154a053ad62ef8b6de92a","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/2.json","digest":"sha256:ca3e1851356873906effd08d23c21cddd2151d2c53e3a52b6101d1b5b90db489"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/functional-design/functional-spec.md","id":"R-07","fingerprint":"sha256:cda2ab18363d7ce37cdeb13f2894ec40acb53c8ebdc2ca8fc5ae80b896883e62","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/functional-design/units/u5-cancel/df725d72ea237644/2.json","digest":"sha256:ca3e1851356873906effd08d23c21cddd2151d2c53e3a52b6101d1b5b90db489"}}]}
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-14T13:07:42Z
+**Event**: STAGE_COMPLETED
+**Stage**: functional-design
+**Validation Basis**: {"graphContract":"sha256:c0dd0abcf729725dd1610dbd62efc46a49c3d6e3d7efed0cf53a65f7d271fd9e","inputs":[{"artifact":"components","contentHash":"sha256:99bdf60be076d11fb284fe8da292be5b3797553809208c9f8e867844e101c435","instanceCount":1,"presentCount":1,"producer":"domain-design","required":true,"structureHash":"sha256:2635290e8e0c07580030e080b9a3acdac6a78e635540744ad470c3be0740db9c"},{"artifact":"contract-summary","contentHash":"sha256:24ffabddd8e62ebc0090ce156fd1aee3c30bffaf14be6af9af1727a9d5f04bfa","instanceCount":1,"presentCount":1,"producer":"contract-design","required":false,"structureHash":"sha256:37d15f54fd334e9bbb54a12f424f9c300cc93bd244c73c82b34e9505c07be1b3"},{"artifact":"requirements","contentHash":"sha256:f655464fb2465070ea77118df95861c796b7d0433bd2ff27bd78b9874492c815","instanceCount":1,"presentCount":1,"producer":"requirements-analysis","required":true,"structureHash":"sha256:ae835753c6e6e91f488bb12ae94d75fb51e0cdbc988349e3cf4958877e7357b0"},{"artifact":"unit-of-work-story-map","contentHash":"sha256:9b81b12b04845ae6b7fcfc5c8e541dfdbb8d61334816e76fdd794e24b9157fed","instanceCount":1,"presentCount":1,"producer":"units-generation","required":false,"structureHash":"sha256:8d94307894067a267e6dedc331e2881a5900d30e08195c58f891040b30a67a57"},{"artifact":"unit-of-work","contentHash":"sha256:0beacf88b6c504b47232a2465ecb98c91c739c0a1a35a3bd12d0d8a6ae96daf6","instanceCount":1,"presentCount":1,"producer":"units-generation","required":true,"structureHash":"sha256:635609cdde0d16c5825d0a446d61feb6caec8fb8c9a4d11301571c15481d70e9"}],"outputs":[{"artifact":"entities","contentHash":"sha256:43dc9c1ede30b5af092a7422a51a7293ecceb5875dc0142682979b608d42ca8e","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:908976ca80e2956bb269b032554fbf44af7ebcf8c008dd93bfb950c14146d913"},{"artifact":"functional-spec","contentHash":"sha256:85ced9727b211926f51cb7fa9486ac5d113c4a93674c311459f31bc6e32f60b3","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:6fc4e4c691b195f0d6772e680e278de591d08e6d29b9cc7b6812f6dd0bf83d3f"},{"artifact":"rules","contentHash":"sha256:68fefd919ab1125bd8d745811baf280f57905a8285fcb3d47eb6346227e70d34","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:e174a5a03ebde1a898aa65eeef8361ccc85d83297d2ca6a9e7b46278425329b2"},{"artifact":"traceability","contentHash":"sha256:82565ded644bebc402e0b052a716c846cb3f0402152f5d063866aa960f71cd7f","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:0985fd272ac91bdc10bdfbd29b91903a4fb962e3802eb92df401be49f0526907"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Functional Design approved by gate
+**Tokens In**: 2906
+**Tokens Out**: 663920
+**Cache Read**: 470495910
+**Cache Write**: 10790443
+**Cost USD**: 165.56
+**By Model**: opus-5-5=146.86; sonnet-5-5=18.70; <synthetic>=null
+**By Agent**: main=112.74; aidlc-architecture-reviewer-agent=18.70; aidlc-developer-agent=34.12
+**Tokens By Model**: opus-5-5=2.2k/610.6k/429.5M/6.8M; sonnet-5-5=694/53.4k/41M/4M
+**Tokens By Agent**: main=1.4k/578.9k/309.5M/4.9M; aidlc-architecture-reviewer-agent=694/53.4k/41M/4M; aidlc-developer-agent=818/31.7k/120.1M/1.9M
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-14T13:07:42Z
+**Event**: STAGE_STARTED
+**Stage**: nfr-requirements
+**Agent**: aidlc-architect-agent
+**Answer Mode**: guide (reused from intent-capture)
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:46Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2f8b5ef4
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/performance-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:46Z
+**Event**: SENSOR_FAILED
+**Fire id**: 2f8b5ef4
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/performance-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-2f8b5ef4.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: b5ddae64
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:47Z
+**Event**: SENSOR_PASSED
+**Fire id**: b5ddae64
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/security-requirements.md
+**Duration ms**: 377
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 92c80383
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:48Z
+**Event**: SENSOR_FAILED
+**Fire id**: 92c80383
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/scalability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-92c80383.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: d2f4481d
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/reliability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:49Z
+**Event**: SENSOR_FAILED
+**Fire id**: d2f4481d
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/reliability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-d2f4481d.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: 72c97d48
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/observability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:50Z
+**Event**: SENSOR_FAILED
+**Fire id**: 72c97d48
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/observability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-72c97d48.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:50Z
+**Event**: SENSOR_FIRED
+**Fire id**: 62c78e2e
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:50Z
+**Event**: SENSOR_FAILED
+**Fire id**: 62c78e2e
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/tech-stack-decisions.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-62c78e2e.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:51Z
+**Event**: SENSOR_FIRED
+**Fire id**: d274b743
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:51Z
+**Event**: SENSOR_PASSED
+**Fire id**: d274b743
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/traceability.json
+**Duration ms**: 357
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5162ad5b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/performance-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:52Z
+**Event**: SENSOR_FAILED
+**Fire id**: 5162ad5b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/performance-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-5162ad5b.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2b57f8c7
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:53Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2b57f8c7
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md
+**Duration ms**: 395
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:53Z
+**Event**: SENSOR_FIRED
+**Fire id**: 121a5884
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:54Z
+**Event**: SENSOR_FAILED
+**Fire id**: 121a5884
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/scalability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-121a5884.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:54Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3bffc7bb
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/reliability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:55Z
+**Event**: SENSOR_FAILED
+**Fire id**: 3bffc7bb
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/reliability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-3bffc7bb.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:55Z
+**Event**: SENSOR_FIRED
+**Fire id**: a80fe2e1
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/observability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:55Z
+**Event**: SENSOR_FAILED
+**Fire id**: a80fe2e1
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/observability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-a80fe2e1.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: e500bfa6
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:07:56Z
+**Event**: SENSOR_FAILED
+**Fire id**: e500bfa6
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/tech-stack-decisions.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-e500bfa6.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:57Z
+**Event**: SENSOR_FIRED
+**Fire id**: 00f42b7e
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:57Z
+**Event**: SENSOR_PASSED
+**Fire id**: 00f42b7e
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+**Duration ms**: 425
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:58Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5a66144b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/performance-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:58Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5a66144b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/performance-requirements.md
+**Duration ms**: 417
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: 31b4e327
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:07:59Z
+**Event**: SENSOR_PASSED
+**Fire id**: 31b4e327
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/security-requirements.md
+**Duration ms**: 433
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:07:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: c88a6820
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:00Z
+**Event**: SENSOR_FAILED
+**Fire id**: c88a6820
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/scalability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-c88a6820.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:00Z
+**Event**: SENSOR_FIRED
+**Fire id**: 53260ab8
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/reliability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:01Z
+**Event**: SENSOR_FAILED
+**Fire id**: 53260ab8
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/reliability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-53260ab8.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:01Z
+**Event**: SENSOR_FIRED
+**Fire id**: e0070338
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/observability-requirements.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:02Z
+**Event**: SENSOR_FAILED
+**Fire id**: e0070338
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/observability-requirements.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-e0070338.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:02Z
+**Event**: SENSOR_FIRED
+**Fire id**: 29050f0b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:03Z
+**Event**: SENSOR_FAILED
+**Fire id**: 29050f0b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/tech-stack-decisions.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-requirements/required-sections-29050f0b.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:03Z
+**Event**: SENSOR_FIRED
+**Fire id**: b7f59391
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:04Z
+**Event**: SENSOR_PASSED
+**Fire id**: b7f59391
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/traceability.json
+**Duration ms**: 571
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:04Z
+**Event**: SENSOR_FIRED
+**Fire id**: 33376de1
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:05Z
+**Event**: SENSOR_PASSED
+**Fire id**: 33376de1
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md
+**Duration ms**: 449
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:05Z
+**Event**: SENSOR_FIRED
+**Fire id**: 8517c509
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:06Z
+**Event**: SENSOR_PASSED
+**Fire id**: 8517c509
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 482
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4f48a747
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:07Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4f48a747
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/traceability.json
+**Duration ms**: 595
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 481f79eb
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:08Z
+**Event**: SENSOR_PASSED
+**Fire id**: 481f79eb
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md
+**Duration ms**: 517
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:08Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2beb7d2b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:09Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2beb7d2b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 530
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:09Z
+**Event**: SENSOR_FIRED
+**Fire id**: d0ceec00
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:10Z
+**Event**: SENSOR_PASSED
+**Fire id**: d0ceec00
+**Sensor ID**: required-sections
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+**Duration ms**: 545
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7a26cc73
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/performance-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7a26cc73
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/performance-requirements.md
+**Duration ms**: 478
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:12Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1e86927e
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:12Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1e86927e
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/security-requirements.md
+**Duration ms**: 466
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:13Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3f06b90b
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:13Z
+**Event**: SENSOR_PASSED
+**Fire id**: 3f06b90b
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/scalability-requirements.md
+**Duration ms**: 496
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:14Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3e80ab84
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/reliability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:14Z
+**Event**: SENSOR_PASSED
+**Fire id**: 3e80ab84
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/reliability-requirements.md
+**Duration ms**: 433
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:14Z
+**Event**: SENSOR_FIRED
+**Fire id**: e5908a29
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/observability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:15Z
+**Event**: SENSOR_PASSED
+**Fire id**: e5908a29
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/observability-requirements.md
+**Duration ms**: 408
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:15Z
+**Event**: SENSOR_FIRED
+**Fire id**: b34ceb48
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:16Z
+**Event**: SENSOR_PASSED
+**Fire id**: b34ceb48
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 394
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:16Z
+**Event**: SENSOR_FIRED
+**Fire id**: 0dc5c78c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:16Z
+**Event**: SENSOR_PASSED
+**Fire id**: 0dc5c78c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/traceability.json
+**Duration ms**: 403
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1a868830
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/performance-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:17Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1a868830
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/performance-requirements.md
+**Duration ms**: 371
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:18Z
+**Event**: SENSOR_FIRED
+**Fire id**: e06fac75
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:18Z
+**Event**: SENSOR_PASSED
+**Fire id**: e06fac75
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md
+**Duration ms**: 405
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:18Z
+**Event**: SENSOR_FIRED
+**Fire id**: 33945519
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:19Z
+**Event**: SENSOR_PASSED
+**Fire id**: 33945519
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/scalability-requirements.md
+**Duration ms**: 390
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:19Z
+**Event**: SENSOR_FIRED
+**Fire id**: 031ae4fd
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/reliability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:20Z
+**Event**: SENSOR_PASSED
+**Fire id**: 031ae4fd
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/reliability-requirements.md
+**Duration ms**: 416
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:20Z
+**Event**: SENSOR_FIRED
+**Fire id**: c3a380c6
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/observability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:21Z
+**Event**: SENSOR_PASSED
+**Fire id**: c3a380c6
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/observability-requirements.md
+**Duration ms**: 413
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:21Z
+**Event**: SENSOR_FIRED
+**Fire id**: cfac4a81
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:21Z
+**Event**: SENSOR_PASSED
+**Fire id**: cfac4a81
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 407
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:22Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2092de4f
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:22Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2092de4f
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/traceability.json
+**Duration ms**: 424
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4db971f0
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/performance-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4db971f0
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/performance-requirements.md
+**Duration ms**: 477
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: 0f40b709
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:24Z
+**Event**: SENSOR_PASSED
+**Fire id**: 0f40b709
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/security-requirements.md
+**Duration ms**: 379
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: 132ae92b
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/scalability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: 132ae92b
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/scalability-requirements.md
+**Duration ms**: 381
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:25Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2442a70d
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/reliability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:26Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2442a70d
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/reliability-requirements.md
+**Duration ms**: 405
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:26Z
+**Event**: SENSOR_FIRED
+**Fire id**: 62975c25
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/observability-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:26Z
+**Event**: SENSOR_PASSED
+**Fire id**: 62975c25
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/observability-requirements.md
+**Duration ms**: 390
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:27Z
+**Event**: SENSOR_FIRED
+**Fire id**: 30baf3a7
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:27Z
+**Event**: SENSOR_PASSED
+**Fire id**: 30baf3a7
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 359
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:28Z
+**Event**: SENSOR_FIRED
+**Fire id**: f76a0aa1
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:28Z
+**Event**: SENSOR_PASSED
+**Fire id**: f76a0aa1
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/traceability.json
+**Duration ms**: 386
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:28Z
+**Event**: SENSOR_FIRED
+**Fire id**: 628eede7
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:29Z
+**Event**: SENSOR_PASSED
+**Fire id**: 628eede7
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md
+**Duration ms**: 370
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:29Z
+**Event**: SENSOR_FIRED
+**Fire id**: bb090688
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:30Z
+**Event**: SENSOR_PASSED
+**Fire id**: bb090688
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 417
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:30Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1c83c239
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:30Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1c83c239
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/traceability.json
+**Duration ms**: 383
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:31Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9ebec75b
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:31Z
+**Event**: SENSOR_PASSED
+**Fire id**: 9ebec75b
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md
+**Duration ms**: 391
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:32Z
+**Event**: SENSOR_FIRED
+**Fire id**: 77548e5d
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/tech-stack-decisions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:32Z
+**Event**: SENSOR_PASSED
+**Fire id**: 77548e5d
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/tech-stack-decisions.md
+**Duration ms**: 392
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:32Z
+**Event**: SENSOR_FIRED
+**Fire id**: bf5cd24c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:33Z
+**Event**: SENSOR_PASSED
+**Fire id**: bf5cd24c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-requirements
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/traceability.json
+**Duration ms**: 397
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-14T13:08:33Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: nfr-requirements
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T13:08:37Z
+**Event**: GATE_APPROVED
+**Stage**: nfr-requirements
+**Review Finding Dispositions**: {"version":1,"dispositions":[{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md","id":"R-01","fingerprint":"sha256:7f063a30a2e42c7c9b0b90c42020b6b4c7fb157cfcefc00718751e8dcf34011e","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md","id":"R-02","fingerprint":"sha256:3a1268699bae4e2b3ef58debe6d6b556424abca9d6edc141291dde3172324e54","status":"Accepted risk","decided_at_severity":"Major","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md","id":"R-03","fingerprint":"sha256:8e26124d0830e17d4cc4dd8cfc211f73b651f0cae83ca5f2a8ec13632c38038f","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md","id":"R-04","fingerprint":"sha256:dcc4357ee70f05ba5f138ec022ebe8b90ded1a2b7a96a053a47cb1541113392a","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md","id":"R-05","fingerprint":"sha256:358aa762048b378a0b787e377a4e3f199e5eb1f27435a09ae5477af737a1a1bb","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-requirements/security-requirements.md","id":"R-06","fingerprint":"sha256:2acca93c6f127c9ec8d9f2b6e270d5c71c0c435c11eb197b96d4ddfd4dbb4546","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:03f82604298774ab55844043da2654af25248ed3003fce80d1c3f518072bcf79"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md","id":"R-01","fingerprint":"sha256:f3f884889452f6109d963a5e796e2c90718e1017485666a013b198db9a463ad0","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:6cd58cf1d3ac2025502064f0cc3a66cf45f9f42905b1a7d0eacd6e97b0eb01c8"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md","id":"R-02","fingerprint":"sha256:b7cb77782f7a3a0288141736870464da3850db62ac240979b9e30af330c9200b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:6cd58cf1d3ac2025502064f0cc3a66cf45f9f42905b1a7d0eacd6e97b0eb01c8"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md","id":"R-03","fingerprint":"sha256:5b1ed6d3706182fa63da9c1623b3c082e13fd7cf755df3ab33ba9c88b0819712","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:6cd58cf1d3ac2025502064f0cc3a66cf45f9f42905b1a7d0eacd6e97b0eb01c8"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-requirements/security-requirements.md","id":"R-04","fingerprint":"sha256:f0d6f2fd1ffa8b3879d84478eda669deddb6b4fbb79d273724bc06310dba3977","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:6cd58cf1d3ac2025502064f0cc3a66cf45f9f42905b1a7d0eacd6e97b0eb01c8"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md","id":"R-01","fingerprint":"sha256:c3f287cde6c31a1ce42cb4012b4bc9cd770c16ac9bd33079e8ef3c9beeff7896","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:72eb77b24a3bef123c4d855232cf1f2d9a8068b2fe981572173a0a0b93357bc2"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md","id":"R-02","fingerprint":"sha256:2bfd6bf9439066a0ab3be4c5c34878ff6bbd274eb67d1524b24543f430fb0d3d","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:72eb77b24a3bef123c4d855232cf1f2d9a8068b2fe981572173a0a0b93357bc2"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md","id":"R-03","fingerprint":"sha256:bb3212a4951f2ef64dd6a908bb0ac0bd38f899449e1eb58e8fee90f3a889b4ef","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:72eb77b24a3bef123c4d855232cf1f2d9a8068b2fe981572173a0a0b93357bc2"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-requirements/security-requirements.md","id":"R-04","fingerprint":"sha256:ef3e3ba8bce1ebc792a60ddcd468035400073cd8d6e239640cacbf322ba2041b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:72eb77b24a3bef123c4d855232cf1f2d9a8068b2fe981572173a0a0b93357bc2"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-requirements/security-requirements.md","id":"R-06","fingerprint":"sha256:83e7a93ee595523b654633ec90b48774f7afa25c1ad30939095f00c49af7ef47","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u4-elapsed-time/df725d72ea237644/2.json","digest":"sha256:e4a1ddb8a653616b41d3058ea1e017b67163d8b641dad71c61b3de4c50946543"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-requirements/security-requirements.md","id":"R-05","fingerprint":"sha256:5735ab3351bd8f98b5308a4f2012ad4fd29ae7c97fd8f6e2a3d33b598c0fc044","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-requirements/units/u5-cancel/df725d72ea237644/2.json","digest":"sha256:dde1db53d8716f6c99f45fe9fbbac8047ceebacf0f160cd4fb06cd8c7fa11a14"}}]}
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-14T13:08:37Z
+**Event**: STAGE_COMPLETED
+**Stage**: nfr-requirements
+**Validation Basis**: {"graphContract":"sha256:42740ba129331fd7be59c025acef08cda33aa1e1b365637b9662dd2b529d969c","inputs":[{"artifact":"contract-summary","contentHash":"sha256:24ffabddd8e62ebc0090ce156fd1aee3c30bffaf14be6af9af1727a9d5f04bfa","instanceCount":1,"presentCount":1,"producer":"contract-design","required":false,"structureHash":"sha256:37d15f54fd334e9bbb54a12f424f9c300cc93bd244c73c82b34e9505c07be1b3"},{"artifact":"functional-spec","contentHash":"sha256:85ced9727b211926f51cb7fa9486ac5d113c4a93674c311459f31bc6e32f60b3","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:6fc4e4c691b195f0d6772e680e278de591d08e6d29b9cc7b6812f6dd0bf83d3f"},{"artifact":"requirements","contentHash":"sha256:f655464fb2465070ea77118df95861c796b7d0433bd2ff27bd78b9874492c815","instanceCount":1,"presentCount":1,"producer":"requirements-analysis","required":true,"structureHash":"sha256:ae835753c6e6e91f488bb12ae94d75fb51e0cdbc988349e3cf4958877e7357b0"},{"artifact":"rules","contentHash":"sha256:68fefd919ab1125bd8d745811baf280f57905a8285fcb3d47eb6346227e70d34","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:e174a5a03ebde1a898aa65eeef8361ccc85d83297d2ca6a9e7b46278425329b2"},{"artifact":"technology-stack","contentHash":"sha256:9a3583d790a8f7baae6fa0a851a4234a4982b29314673e7f1619b837d7cd7118","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:8653e9061c3a40bc56c3e8b38236ece0394b0229b899017e18b4e17b21e9447d"}],"outputs":[{"artifact":"observability-requirements","contentHash":"sha256:8c7b4d3fbaded0d8059623c648595d13e87ec9ec492104aeec828c9c996b5249","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:13275b13b5b5c89e1d7fde9b404608f05fb618e2ff768754429e0f8c76455b5f"},{"artifact":"performance-requirements","contentHash":"sha256:e9bcf9a0f1c64d13071498198f69c193071b2df43dc4772052647a31d9759a21","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:4350cb7f0204024ae8b4881c40d310244c2d4c7d687b4419c12799393c775091"},{"artifact":"reliability-requirements","contentHash":"sha256:c143c15be9d071508ec42e03c4ecd02bf8ed4a7a6f9fa96a77280e6565967051","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:3638787850c34b610ca2750cfa34d1d006936b15b028bf8550ac65112daa68f2"},{"artifact":"scalability-requirements","contentHash":"sha256:1c2df5eb7cef48b5c9be41faa45ff28d0cdeb484078249d4cd50fe18c04b0f25","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:e03e17a8d923a3319f71ecd2429d46a73118e8f7ebf98d336dd2220b2cc7fd44"},{"artifact":"security-requirements","contentHash":"sha256:87c46fa641927bdf2e764d7060e459b09771a46c3718d9453a29e535997e7b24","instanceCount":5,"presentCount":5,"producer":"nfr-requirements","required":true,"structureHash":"sha256:9b02f811ae45dcc2fb68140f042295b80886c5aec1991f46cd06c3d6d44441cc"},{"artifact":"tech-stack-decisions","contentHash":"sha256:33a7191836ebd65d41a1dd2b4b5a1242fc1234f8d19470e3f409e532d7e06e34","instanceCount":5,"presentCount":5,"producer":"nfr-requirements","required":true,"structureHash":"sha256:5849c968af1471cb35d66fd19be501ff2ba235ad1e856be4643713c7db730723"},{"artifact":"traceability","contentHash":"sha256:5e3514d15721817da9c80853aff4e6e85a955f2fc2d829df8d1a7736a4e5438b","instanceCount":5,"presentCount":5,"producer":"nfr-requirements","required":true,"structureHash":"sha256:b9ee097a0a45e3fba4e6f2607663f7272841820b64dd935fce6c672d5fc666f2"}],"projectType":"brownfield","schema":3}
+**Details**: Stage NFR Requirements approved by gate
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-14T13:08:37Z
+**Event**: STAGE_STARTED
+**Stage**: nfr-design
+**Agent**: aidlc-architect-agent
+**Answer Mode**: guide (reused from intent-capture)
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:41Z
+**Event**: SENSOR_FIRED
+**Fire id**: ad928b56
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/performance-design.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:41Z
+**Event**: SENSOR_FAILED
+**Fire id**: ad928b56
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/performance-design.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-ad928b56.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:42Z
+**Event**: SENSOR_FIRED
+**Fire id**: ba043a87
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:42Z
+**Event**: SENSOR_PASSED
+**Fire id**: ba043a87
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md
+**Duration ms**: 385
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:43Z
+**Event**: SENSOR_FIRED
+**Fire id**: ab3603a6
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/scalability-design.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:43Z
+**Event**: SENSOR_FAILED
+**Fire id**: ab3603a6
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/scalability-design.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-ab3603a6.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1df56a21
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/reliability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:44Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1df56a21
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/reliability-design.md
+**Duration ms**: 386
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 48088c93
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/observability-design.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:45Z
+**Event**: SENSOR_FAILED
+**Fire id**: 48088c93
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/observability-design.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-48088c93.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:45Z
+**Event**: SENSOR_FIRED
+**Fire id**: 27cac3ee
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:46Z
+**Event**: SENSOR_PASSED
+**Fire id**: 27cac3ee
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/logical-components.md
+**Duration ms**: 357
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:46Z
+**Event**: SENSOR_FIRED
+**Fire id**: ad5e09f4
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:46Z
+**Event**: SENSOR_PASSED
+**Fire id**: ad5e09f4
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/traceability.json
+**Duration ms**: 370
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: cacc2ec5
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/performance-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:47Z
+**Event**: SENSOR_PASSED
+**Fire id**: cacc2ec5
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/performance-design.md
+**Duration ms**: 361
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 27e7e507
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:48Z
+**Event**: SENSOR_PASSED
+**Fire id**: 27e7e507
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md
+**Duration ms**: 379
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 36430aa4
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/scalability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:49Z
+**Event**: SENSOR_PASSED
+**Fire id**: 36430aa4
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/scalability-design.md
+**Duration ms**: 432
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4faf1b96
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/reliability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:49Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4faf1b96
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/reliability-design.md
+**Duration ms**: 370
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:50Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3c8badf1
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/observability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:50Z
+**Event**: SENSOR_PASSED
+**Fire id**: 3c8badf1
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/observability-design.md
+**Duration ms**: 391
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:51Z
+**Event**: SENSOR_FIRED
+**Fire id**: d17b42c9
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/logical-components.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:51Z
+**Event**: SENSOR_FAILED
+**Fire id**: d17b42c9
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/logical-components.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-d17b42c9.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1f409f38
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:52Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1f409f38
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/traceability.json
+**Duration ms**: 378
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: 144a8b74
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/performance-design.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:53Z
+**Event**: SENSOR_FAILED
+**Fire id**: 144a8b74
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/performance-design.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-144a8b74.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:53Z
+**Event**: SENSOR_FIRED
+**Fire id**: e7d4c65b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:54Z
+**Event**: SENSOR_PASSED
+**Fire id**: e7d4c65b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md
+**Duration ms**: 390
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:54Z
+**Event**: SENSOR_FIRED
+**Fire id**: ee9835e7
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/scalability-design.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:54Z
+**Event**: SENSOR_FAILED
+**Fire id**: ee9835e7
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/scalability-design.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-ee9835e7.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:55Z
+**Event**: SENSOR_FIRED
+**Fire id**: ff0e69cf
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/reliability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:55Z
+**Event**: SENSOR_PASSED
+**Fire id**: ff0e69cf
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/reliability-design.md
+**Duration ms**: 431
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: 18437910
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/observability-design.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:08:56Z
+**Event**: SENSOR_FAILED
+**Fire id**: 18437910
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/observability-design.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-18437910.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: edb51764
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:57Z
+**Event**: SENSOR_PASSED
+**Fire id**: edb51764
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/logical-components.md
+**Duration ms**: 390
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:57Z
+**Event**: SENSOR_FIRED
+**Fire id**: 668e56b8
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:58Z
+**Event**: SENSOR_PASSED
+**Fire id**: 668e56b8
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/traceability.json
+**Duration ms**: 387
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:58Z
+**Event**: SENSOR_FIRED
+**Fire id**: db327c78
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:08:58Z
+**Event**: SENSOR_PASSED
+**Fire id**: db327c78
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/security-design.md
+**Duration ms**: 422
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:08:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7929a944
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/logical-components.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:09:00Z
+**Event**: SENSOR_FAILED
+**Fire id**: 7929a944
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/logical-components.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-7929a944.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:00Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2b70844b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:01Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2b70844b
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/traceability.json
+**Duration ms**: 441
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:01Z
+**Event**: SENSOR_FIRED
+**Fire id**: be62825d
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:02Z
+**Event**: SENSOR_PASSED
+**Fire id**: be62825d
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/security-design.md
+**Duration ms**: 491
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:02Z
+**Event**: SENSOR_FIRED
+**Fire id**: dc577ba0
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/logical-components.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:09:02Z
+**Event**: SENSOR_FAILED
+**Fire id**: dc577ba0
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/logical-components.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/nfr-design/required-sections-dc577ba0.md
+**Findings count**: 1
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:03Z
+**Event**: SENSOR_FIRED
+**Fire id**: 84a98fb7
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:03Z
+**Event**: SENSOR_PASSED
+**Fire id**: 84a98fb7
+**Sensor ID**: required-sections
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/traceability.json
+**Duration ms**: 390
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:04Z
+**Event**: SENSOR_FIRED
+**Fire id**: c1e13a9c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/performance-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:04Z
+**Event**: SENSOR_PASSED
+**Fire id**: c1e13a9c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/performance-design.md
+**Duration ms**: 469
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:05Z
+**Event**: SENSOR_FIRED
+**Fire id**: 838762f7
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:05Z
+**Event**: SENSOR_PASSED
+**Fire id**: 838762f7
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md
+**Duration ms**: 448
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: d64ebae4
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/scalability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:06Z
+**Event**: SENSOR_PASSED
+**Fire id**: d64ebae4
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/scalability-design.md
+**Duration ms**: 391
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: ffaf99db
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/reliability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:07Z
+**Event**: SENSOR_PASSED
+**Fire id**: ffaf99db
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/reliability-design.md
+**Duration ms**: 424
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: c8d4f1b3
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/observability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:08Z
+**Event**: SENSOR_PASSED
+**Fire id**: c8d4f1b3
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/observability-design.md
+**Duration ms**: 409
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:08Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2f067e06
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:08Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2f067e06
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/logical-components.md
+**Duration ms**: 394
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:09Z
+**Event**: SENSOR_FIRED
+**Fire id**: 63504d02
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:09Z
+**Event**: SENSOR_PASSED
+**Fire id**: 63504d02
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/traceability.json
+**Duration ms**: 409
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: 09fb0cda
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/performance-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:10Z
+**Event**: SENSOR_PASSED
+**Fire id**: 09fb0cda
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/performance-design.md
+**Duration ms**: 483
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:11Z
+**Event**: SENSOR_FIRED
+**Fire id**: 36b009f6
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:11Z
+**Event**: SENSOR_PASSED
+**Fire id**: 36b009f6
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md
+**Duration ms**: 446
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:12Z
+**Event**: SENSOR_FIRED
+**Fire id**: 158e0716
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/scalability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:12Z
+**Event**: SENSOR_PASSED
+**Fire id**: 158e0716
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/scalability-design.md
+**Duration ms**: 413
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:13Z
+**Event**: SENSOR_FIRED
+**Fire id**: c0942923
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/reliability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:13Z
+**Event**: SENSOR_PASSED
+**Fire id**: c0942923
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/reliability-design.md
+**Duration ms**: 394
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:13Z
+**Event**: SENSOR_FIRED
+**Fire id**: 04459980
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/observability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:14Z
+**Event**: SENSOR_PASSED
+**Fire id**: 04459980
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/observability-design.md
+**Duration ms**: 413
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:14Z
+**Event**: SENSOR_FIRED
+**Fire id**: e8e79eb1
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:15Z
+**Event**: SENSOR_PASSED
+**Fire id**: e8e79eb1
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/logical-components.md
+**Duration ms**: 389
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:15Z
+**Event**: SENSOR_FIRED
+**Fire id**: e1661448
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:15Z
+**Event**: SENSOR_PASSED
+**Fire id**: e1661448
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/traceability.json
+**Duration ms**: 418
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:16Z
+**Event**: SENSOR_FIRED
+**Fire id**: d05241ee
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/performance-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:16Z
+**Event**: SENSOR_PASSED
+**Fire id**: d05241ee
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/performance-design.md
+**Duration ms**: 365
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1f350a3c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:17Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1f350a3c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md
+**Duration ms**: 397
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:17Z
+**Event**: SENSOR_FIRED
+**Fire id**: e8b1e54c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/scalability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:18Z
+**Event**: SENSOR_PASSED
+**Fire id**: e8b1e54c
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/scalability-design.md
+**Duration ms**: 402
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:18Z
+**Event**: SENSOR_FIRED
+**Fire id**: eb120dba
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/reliability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:19Z
+**Event**: SENSOR_PASSED
+**Fire id**: eb120dba
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/reliability-design.md
+**Duration ms**: 401
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:19Z
+**Event**: SENSOR_FIRED
+**Fire id**: b39f7cd5
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/observability-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:19Z
+**Event**: SENSOR_PASSED
+**Fire id**: b39f7cd5
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/observability-design.md
+**Duration ms**: 400
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:20Z
+**Event**: SENSOR_FIRED
+**Fire id**: 39cc8fc4
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:20Z
+**Event**: SENSOR_PASSED
+**Fire id**: 39cc8fc4
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/logical-components.md
+**Duration ms**: 408
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:21Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3c6ccf9e
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:21Z
+**Event**: SENSOR_PASSED
+**Fire id**: 3c6ccf9e
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/traceability.json
+**Duration ms**: 378
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:22Z
+**Event**: SENSOR_FIRED
+**Fire id**: 561b7962
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:22Z
+**Event**: SENSOR_PASSED
+**Fire id**: 561b7962
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/security-design.md
+**Duration ms**: 432
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6727cfbb
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: 6727cfbb
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/logical-components.md
+**Duration ms**: 424
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 70a5afa0
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:24Z
+**Event**: SENSOR_PASSED
+**Fire id**: 70a5afa0
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/traceability.json
+**Duration ms**: 419
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: b38c34f6
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/security-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: b38c34f6
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/security-design.md
+**Duration ms**: 448
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:25Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9b316572
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/logical-components.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:26Z
+**Event**: SENSOR_PASSED
+**Fire id**: 9b316572
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/logical-components.md
+**Duration ms**: 418
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:26Z
+**Event**: SENSOR_FIRED
+**Fire id**: 47e83be2
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:27Z
+**Event**: SENSOR_PASSED
+**Fire id**: 47e83be2
+**Sensor ID**: upstream-coverage
+**Stage slug**: nfr-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/traceability.json
+**Duration ms**: 511
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-14T13:09:28Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: nfr-design
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T13:09:31Z
+**Event**: GATE_APPROVED
+**Stage**: nfr-design
+**Review Finding Dispositions**: {"version":1,"dispositions":[{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md","id":"R-01","fingerprint":"sha256:ce27b760f9729054d4da54420d9196378a0a42b610c0d732d1ee400224297fad","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:a3c3fa82f81cd21f52c4b0d339f15b82697f1ca4f65f0b093582fedaf2c8ac1b"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md","id":"R-02","fingerprint":"sha256:09546546f950a3bdb9a37126cc0418a7706c4709fb7a1173a397f8984df9c092","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:a3c3fa82f81cd21f52c4b0d339f15b82697f1ca4f65f0b093582fedaf2c8ac1b"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md","id":"R-03","fingerprint":"sha256:7575e40b78bd60f6806a7bf22de98503d4b5b55935418d691d9129270b956d20","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:a3c3fa82f81cd21f52c4b0d339f15b82697f1ca4f65f0b093582fedaf2c8ac1b"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md","id":"R-04","fingerprint":"sha256:6a64d1fdca6400eb75d55dcdc3a303ec60bcd43773f4fd4d3a1e6b563dc5fcd0","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:a3c3fa82f81cd21f52c4b0d339f15b82697f1ca4f65f0b093582fedaf2c8ac1b"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/nfr-design/security-design.md","id":"R-05","fingerprint":"sha256:24e49357208fc87af9f2a85abe1915f3f2a9e5b24edddfb756a3fa9a91737c91","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:a3c3fa82f81cd21f52c4b0d339f15b82697f1ca4f65f0b093582fedaf2c8ac1b"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/nfr-design/security-design.md","id":"R-01","fingerprint":"sha256:61ec232ef5e627dbf640405ab78998e10981cd7e3e336a80db6f68de4836e29c","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:84212e0ba3b7a035169f9c8f36c7af8040686cbc3e07cf77c462fb14a7067c69"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/nfr-design/security-design.md","id":"R-05","fingerprint":"sha256:35eceae0a87ba9843675df361003d3bc6970237a84fcfd374a0e33f5d73932ff","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u3-give-up-rule/df725d72ea237644/2.json","digest":"sha256:63a0112a4a94ae1135aef10a63151b018e01feb0b979a446d87efc9bce59a0a7"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md","id":"R-01","fingerprint":"sha256:f3aa785feb98353b594b54cc22e260fc2d832c2b6a1ae638aa8b3e4f0f7e8b54","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:30dc8496693a96f1484d9f66d42c6275efec622b7d369fcedce4377e00ac337a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md","id":"R-02","fingerprint":"sha256:2d247e8cc78620be77445d430df5604d04876e9cc63825b79203bd7464fedce8","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:30dc8496693a96f1484d9f66d42c6275efec622b7d369fcedce4377e00ac337a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md","id":"R-03","fingerprint":"sha256:81a22f06c31d9fb93ce276773f97b47a9b50a444d1f7a7de2ee8c21a3ba30172","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:30dc8496693a96f1484d9f66d42c6275efec622b7d369fcedce4377e00ac337a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md","id":"R-04","fingerprint":"sha256:37f619916dc80c322bd873f916e6edc10048aa9af361df24efa3217f54b36ab6","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:30dc8496693a96f1484d9f66d42c6275efec622b7d369fcedce4377e00ac337a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/nfr-design/security-design.md","id":"R-05","fingerprint":"sha256:d137d1ae679e3f01598c136b7628eec95a750a101e59908a3c15babef752170e","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:30dc8496693a96f1484d9f66d42c6275efec622b7d369fcedce4377e00ac337a"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md","id":"R-07","fingerprint":"sha256:6efbdd7745a4e825e1fe8163a6ad4597e1086a7a242288f34d6ad3bd14812b21","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/2.json","digest":"sha256:feb9dd582e35205280a7434ebbb96dcc2868fd5e33c9a9ff4807bea2b95ecf2c"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md","id":"R-08","fingerprint":"sha256:ce1f970775c6d9fb9a1369a9280094c401bbcdf9813018f657fd9a2d093d33b6","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/2.json","digest":"sha256:feb9dd582e35205280a7434ebbb96dcc2868fd5e33c9a9ff4807bea2b95ecf2c"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/nfr-design/security-design.md","id":"R-09","fingerprint":"sha256:597c10749c602d68a47e3b8293cdb2b1ceddb8010788a84e281c2ee6a2e29e0c","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/nfr-design/units/u5-cancel/df725d72ea237644/2.json","digest":"sha256:feb9dd582e35205280a7434ebbb96dcc2868fd5e33c9a9ff4807bea2b95ecf2c"}}]}
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-14T13:09:31Z
+**Event**: STAGE_COMPLETED
+**Stage**: nfr-design
+**Validation Basis**: {"graphContract":"sha256:ef880741298a28ff1b153f7995686a9c571a06744a85ec1852b3998a0ee954fb","inputs":[{"artifact":"contract-summary","contentHash":"sha256:24ffabddd8e62ebc0090ce156fd1aee3c30bffaf14be6af9af1727a9d5f04bfa","instanceCount":1,"presentCount":1,"producer":"contract-design","required":false,"structureHash":"sha256:37d15f54fd334e9bbb54a12f424f9c300cc93bd244c73c82b34e9505c07be1b3"},{"artifact":"functional-spec","contentHash":"sha256:85ced9727b211926f51cb7fa9486ac5d113c4a93674c311459f31bc6e32f60b3","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:6fc4e4c691b195f0d6772e680e278de591d08e6d29b9cc7b6812f6dd0bf83d3f"},{"artifact":"observability-requirements","contentHash":"sha256:8c7b4d3fbaded0d8059623c648595d13e87ec9ec492104aeec828c9c996b5249","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:13275b13b5b5c89e1d7fde9b404608f05fb618e2ff768754429e0f8c76455b5f"},{"artifact":"performance-requirements","contentHash":"sha256:e9bcf9a0f1c64d13071498198f69c193071b2df43dc4772052647a31d9759a21","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:4350cb7f0204024ae8b4881c40d310244c2d4c7d687b4419c12799393c775091"},{"artifact":"reliability-requirements","contentHash":"sha256:c143c15be9d071508ec42e03c4ecd02bf8ed4a7a6f9fa96a77280e6565967051","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:3638787850c34b610ca2750cfa34d1d006936b15b028bf8550ac65112daa68f2"},{"artifact":"scalability-requirements","contentHash":"sha256:1c2df5eb7cef48b5c9be41faa45ff28d0cdeb484078249d4cd50fe18c04b0f25","instanceCount":3,"presentCount":3,"producer":"nfr-requirements","required":true,"structureHash":"sha256:e03e17a8d923a3319f71ecd2429d46a73118e8f7ebf98d336dd2220b2cc7fd44"},{"artifact":"security-requirements","contentHash":"sha256:87c46fa641927bdf2e764d7060e459b09771a46c3718d9453a29e535997e7b24","instanceCount":5,"presentCount":5,"producer":"nfr-requirements","required":true,"structureHash":"sha256:9b02f811ae45dcc2fb68140f042295b80886c5aec1991f46cd06c3d6d44441cc"},{"artifact":"tech-stack-decisions","contentHash":"sha256:33a7191836ebd65d41a1dd2b4b5a1242fc1234f8d19470e3f409e532d7e06e34","instanceCount":5,"presentCount":5,"producer":"nfr-requirements","required":true,"structureHash":"sha256:5849c968af1471cb35d66fd19be501ff2ba235ad1e856be4643713c7db730723"}],"outputs":[{"artifact":"logical-components","contentHash":"sha256:e8be85a3c251e1d2ec4902a23b41f3418891bf5ed137be8fa733f5ec65e02168","instanceCount":5,"presentCount":5,"producer":"nfr-design","required":true,"structureHash":"sha256:2a5cbbc8b5f056907d4830b5f8d935225ced5954c734455dabbd98046d0919dd"},{"artifact":"observability-design","contentHash":"sha256:be6a1e3a5b8bfab0bb8f546a725b9d6a0f5ab3ac52849aa5864e73121e4c9c57","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:51df25c83266bdd376536de9964a6a190cabd016be809d6f26baaa4e3f77a502"},{"artifact":"performance-design","contentHash":"sha256:3e424a14dd463eda01acce1a7a207c8dbdf36de9756ecf1bc236709dc2601f97","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:dac96cc03b9fb878c9a45f919059dbee40a6ab1e336349c6f3da91483c6b52a0"},{"artifact":"reliability-design","contentHash":"sha256:846f83f596fea8c50dd0735b3704785d49985276a68d07eef40c1fb5c9805f3e","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:ec49c168ee31601328c94459ab19fcbce43520d97b7cf3d61bf144a3b5885219"},{"artifact":"scalability-design","contentHash":"sha256:c996fbe8a9a10c55f8781e5fff62941fd9ed1987368065c4552194c2f24f40b3","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:999db1c79648b32419d4349184fb893ce904da1371d062229c23c3ce80195444"},{"artifact":"security-design","contentHash":"sha256:3ecd052799dce4051aabb7bb6405325ea1aea3c1462ca34bf4a1d97d8fc44490","instanceCount":5,"presentCount":5,"producer":"nfr-design","required":true,"structureHash":"sha256:b080c34b0192b8d43a2b1de140e3af09ba157d91ff3a58bdd78c79160a9b394d"},{"artifact":"traceability","contentHash":"sha256:fbc517d6f174fc9e3f6f8fb9a1644c927424cd1567e35380c1d32722860a638d","instanceCount":5,"presentCount":5,"producer":"nfr-design","required":true,"structureHash":"sha256:3f37f872c2177e9f828f0f0f81d136d319f705a40d9471e63ffc53743a5badeb"}],"projectType":"brownfield","schema":3}
+**Details**: Stage NFR Design approved by gate
+**Tokens In**: 12
+**Tokens Out**: 1086
+**Cache Read**: 4567113
+**Cache Write**: 2344
+**Cost USD**: 0.95
+**By Model**: opus-5-5=0.95
+**By Agent**: main=0.95
+**Tokens By Model**: opus-5-5=12/1.1k/4.6M/2.3k
+**Tokens By Agent**: main=12/1.1k/4.6M/2.3k
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-14T13:09:31Z
+**Event**: STAGE_STARTED
+**Stage**: infrastructure-design
+**Agent**: aidlc-aws-platform-agent
+**Answer Mode**: guide (reused from intent-capture)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T13:09:32Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:42Z
+**Event**: SENSOR_FIRED
+**Fire id**: d7e641ee
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-specification.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:42Z
+**Event**: SENSOR_PASSED
+**Fire id**: d7e641ee
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-specification.md
+**Duration ms**: 458
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:43Z
+**Event**: SENSOR_FIRED
+**Fire id**: 8d1f87a1
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/monitoring-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:43Z
+**Event**: SENSOR_PASSED
+**Fire id**: 8d1f87a1
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/monitoring-design.md
+**Duration ms**: 441
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:44Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2b7d2c2a
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:44Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2b7d2c2a
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 391
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:45Z
+**Event**: SENSOR_FIRED
+**Fire id**: e0f05b88
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:45Z
+**Event**: SENSOR_PASSED
+**Fire id**: e0f05b88
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/traceability.json
+**Duration ms**: 423
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:45Z
+**Event**: SENSOR_FIRED
+**Fire id**: 40215ccd
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-specification.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:46Z
+**Event**: SENSOR_PASSED
+**Fire id**: 40215ccd
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-specification.md
+**Duration ms**: 433
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:46Z
+**Event**: SENSOR_FIRED
+**Fire id**: 14d3ea0c
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/monitoring-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:47Z
+**Event**: SENSOR_PASSED
+**Fire id**: 14d3ea0c
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/monitoring-design.md
+**Duration ms**: 447
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5bd4ea31
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:48Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5bd4ea31
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 415
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3c56335d
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:49Z
+**Event**: SENSOR_PASSED
+**Fire id**: 3c56335d
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+**Duration ms**: 405
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: bfc46abd
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-specification.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:49Z
+**Event**: SENSOR_PASSED
+**Fire id**: bfc46abd
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-specification.md
+**Duration ms**: 417
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:50Z
+**Event**: SENSOR_FIRED
+**Fire id**: f731b2ca
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/monitoring-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:50Z
+**Event**: SENSOR_PASSED
+**Fire id**: f731b2ca
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/monitoring-design.md
+**Duration ms**: 445
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:51Z
+**Event**: SENSOR_FIRED
+**Fire id**: b88b9220
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:51Z
+**Event**: SENSOR_PASSED
+**Fire id**: b88b9220
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 443
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: fda8d28b
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:52Z
+**Event**: SENSOR_PASSED
+**Fire id**: fda8d28b
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/traceability.json
+**Duration ms**: 400
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: cd72661a
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:53Z
+**Event**: SENSOR_PASSED
+**Fire id**: cd72661a
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 426
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:53Z
+**Event**: SENSOR_FIRED
+**Fire id**: e0551e9b
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:54Z
+**Event**: SENSOR_PASSED
+**Fire id**: e0551e9b
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/traceability.json
+**Duration ms**: 384
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:54Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5670ea13
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:54Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5670ea13
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 444
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:55Z
+**Event**: SENSOR_FIRED
+**Fire id**: a59805d3
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:55Z
+**Event**: SENSOR_PASSED
+**Fire id**: a59805d3
+**Sensor ID**: required-sections
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+**Duration ms**: 494
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4186f687
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-specification.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:56Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4186f687
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/infrastructure-specification.md
+**Duration ms**: 498
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:57Z
+**Event**: SENSOR_FIRED
+**Fire id**: 33bf5f5b
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/monitoring-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:57Z
+**Event**: SENSOR_PASSED
+**Fire id**: 33bf5f5b
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/monitoring-design.md
+**Duration ms**: 411
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:58Z
+**Event**: SENSOR_FIRED
+**Fire id**: a8a792f4
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:58Z
+**Event**: SENSOR_PASSED
+**Fire id**: a8a792f4
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 476
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:09:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: 4a5ff145
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:09:59Z
+**Event**: SENSOR_PASSED
+**Fire id**: 4a5ff145
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/traceability.json
+**Duration ms**: 449
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:00Z
+**Event**: SENSOR_FIRED
+**Fire id**: 9226a215
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-specification.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:00Z
+**Event**: SENSOR_PASSED
+**Fire id**: 9226a215
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/infrastructure-specification.md
+**Duration ms**: 513
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:01Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1e00253d
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/monitoring-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:01Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1e00253d
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/monitoring-design.md
+**Duration ms**: 434
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:02Z
+**Event**: SENSOR_FIRED
+**Fire id**: d7a3732e
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:02Z
+**Event**: SENSOR_PASSED
+**Fire id**: d7a3732e
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 430
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:02Z
+**Event**: SENSOR_FIRED
+**Fire id**: 1586514f
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:03Z
+**Event**: SENSOR_PASSED
+**Fire id**: 1586514f
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/traceability.json
+**Duration ms**: 528
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:04Z
+**Event**: SENSOR_FIRED
+**Fire id**: c394181e
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-specification.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:04Z
+**Event**: SENSOR_PASSED
+**Fire id**: c394181e
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/infrastructure-specification.md
+**Duration ms**: 465
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:05Z
+**Event**: SENSOR_FIRED
+**Fire id**: 46fd8419
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/monitoring-design.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:05Z
+**Event**: SENSOR_PASSED
+**Fire id**: 46fd8419
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/monitoring-design.md
+**Duration ms**: 514
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: 30cacac2
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:06Z
+**Event**: SENSOR_PASSED
+**Fire id**: 30cacac2
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/cicd-pipeline.md
+**Duration ms**: 484
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:06Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6b5b0edc
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:07Z
+**Event**: SENSOR_PASSED
+**Fire id**: 6b5b0edc
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/traceability.json
+**Duration ms**: 539
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:07Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6316835b
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:10:08Z
+**Event**: SENSOR_FAILED
+**Fire id**: 6316835b
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/infrastructure-design/upstream-coverage-6316835b.md
+**Findings count**: 3
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:08Z
+**Event**: SENSOR_FIRED
+**Fire id**: 58d2c69d
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:10:09Z
+**Event**: SENSOR_FAILED
+**Fire id**: 58d2c69d
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/infrastructure-design/upstream-coverage-58d2c69d.md
+**Findings count**: 3
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:09Z
+**Event**: SENSOR_FIRED
+**Fire id**: 55e425ae
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:10:10Z
+**Event**: SENSOR_FAILED
+**Fire id**: 55e425ae
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/infrastructure-design/upstream-coverage-55e425ae.md
+**Findings count**: 3
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:10Z
+**Event**: SENSOR_FIRED
+**Fire id**: 3368ac52
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+
+---
+
+## Sensor Failed
+**Timestamp**: 2026-10-14T13:10:11Z
+**Event**: SENSOR_FAILED
+**Fire id**: 3368ac52
+**Sensor ID**: upstream-coverage
+**Stage slug**: infrastructure-design
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/traceability.json
+**Detail path**: aidlc/spaces/default/intents/261012-parallel-fetch/.aidlc-engine/sensors/infrastructure-design/upstream-coverage-3368ac52.md
+**Findings count**: 3
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-14T13:10:12Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: infrastructure-design
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T13:10:16Z
+**Event**: GATE_APPROVED
+**Stage**: infrastructure-design
+**Review Finding Dispositions**: {"version":1,"dispositions":[{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md","id":"R-01","fingerprint":"sha256:feede633c324c01c9068a831ee2cbf02aea817877af499663d467b903b019b1b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:f1b7f5fba7127716afe1e6c8b993bb9dcf7078571605cf06b99062955b45f726"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md","id":"R-02","fingerprint":"sha256:0fd9e541f7788940873067c3bb1a9d7b7b91d9d8f64d54d7d20dd1e44e72223c","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:f1b7f5fba7127716afe1e6c8b993bb9dcf7078571605cf06b99062955b45f726"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/infrastructure-design/cicd-pipeline.md","id":"R-03","fingerprint":"sha256:dc7c6dbc96506ba871109980b25632c5cbd432d0b1f3e1dd3b97be48d9fcf15b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:f1b7f5fba7127716afe1e6c8b993bb9dcf7078571605cf06b99062955b45f726"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md","id":"R-01","fingerprint":"sha256:c66687d00552350f82ee49f692c42963209762a3491f83ad091623637e454236","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:4f67bb5894560805dffb7b389b64df4a225e857189c59eb1ec89fc519547fcfe"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md","id":"R-02","fingerprint":"sha256:c12b25cfaaead3a900e8c4e63661deb854ff9d063ea207732e014de90292f89b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:4f67bb5894560805dffb7b389b64df4a225e857189c59eb1ec89fc519547fcfe"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/infrastructure-design/cicd-pipeline.md","id":"R-03","fingerprint":"sha256:413e471d8c4dab8db5e53bfa5415b707669de3d928dd0ea35bb076e8848f4d76","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u2-call-pacing/df725d72ea237644/1.json","digest":"sha256:4f67bb5894560805dffb7b389b64df4a225e857189c59eb1ec89fc519547fcfe"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md","id":"R-01","fingerprint":"sha256:9bc158d8486da2d566c87d2b4624f504100ac1a718e9cee24816a819a7537a31","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:9fe0d4e2b0cac7969179524434583430daa72896a50b101df6eec4a58539723c"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md","id":"R-02","fingerprint":"sha256:4b3cfbd21d55a82b26880f760e152cfa9267808f6e4159469097d4675f1b770a","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:9fe0d4e2b0cac7969179524434583430daa72896a50b101df6eec4a58539723c"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/infrastructure-design/cicd-pipeline.md","id":"R-03","fingerprint":"sha256:75de3c84812b6449e07777f3758b334994b24521a8429dae5e9a13994565b6f4","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u3-give-up-rule/df725d72ea237644/1.json","digest":"sha256:9fe0d4e2b0cac7969179524434583430daa72896a50b101df6eec4a58539723c"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/cicd-pipeline.md","id":"R-01","fingerprint":"sha256:76ecba13f5d7859a0163fd516da46caf19641107debfe5a9b1e9e888afd2118b","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:e0c8c75291a0c0b35a2a3e19d606085bde0cbf7a2b91f156ca3722b63c469651"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/infrastructure-design/cicd-pipeline.md","id":"R-02","fingerprint":"sha256:9d4386cf0d625983400687cfbfa17151802588fde92b19a103c638fb07018c9e","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:e0c8c75291a0c0b35a2a3e19d606085bde0cbf7a2b91f156ca3722b63c469651"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/cicd-pipeline.md","id":"R-01","fingerprint":"sha256:00bbd3d20b818ff4094a4dc2d72de241735dc68867cb145b1378b6a1df7d1569","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u5-cancel/df725d72ea237644/1.json","digest":"sha256:1bb11b929569bf2328f3c39cde8a1f9085825a260bf17b4d390f6417458dbc04"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/infrastructure-design/cicd-pipeline.md","id":"R-02","fingerprint":"sha256:66d49a37787e705b8d2d447ff0b5edafd908d4d74f1a86dee79ad42001f96b38","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/infrastructure-design/units/u5-cancel/df725d72ea237644/1.json","digest":"sha256:1bb11b929569bf2328f3c39cde8a1f9085825a260bf17b4d390f6417458dbc04"}}]}
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-14T13:10:16Z
+**Event**: STAGE_COMPLETED
+**Stage**: infrastructure-design
+**Validation Basis**: {"graphContract":"sha256:5b36300e4a848f35345dfd56bbf1a1355d108707996db2db5863ed6de1e50085","inputs":[{"artifact":"components","contentHash":"sha256:99bdf60be076d11fb284fe8da292be5b3797553809208c9f8e867844e101c435","instanceCount":1,"presentCount":1,"producer":"domain-design","required":true,"structureHash":"sha256:2635290e8e0c07580030e080b9a3acdac6a78e635540744ad470c3be0740db9c"},{"artifact":"contract-summary","contentHash":"sha256:24ffabddd8e62ebc0090ce156fd1aee3c30bffaf14be6af9af1727a9d5f04bfa","instanceCount":1,"presentCount":1,"producer":"contract-design","required":false,"structureHash":"sha256:37d15f54fd334e9bbb54a12f424f9c300cc93bd244c73c82b34e9505c07be1b3"},{"artifact":"functional-spec","contentHash":"sha256:85ced9727b211926f51cb7fa9486ac5d113c4a93674c311459f31bc6e32f60b3","instanceCount":5,"presentCount":5,"producer":"functional-design","required":true,"structureHash":"sha256:6fc4e4c691b195f0d6772e680e278de591d08e6d29b9cc7b6812f6dd0bf83d3f"},{"artifact":"logical-components","contentHash":"sha256:e8be85a3c251e1d2ec4902a23b41f3418891bf5ed137be8fa733f5ec65e02168","instanceCount":5,"presentCount":5,"producer":"nfr-design","required":true,"structureHash":"sha256:2a5cbbc8b5f056907d4830b5f8d935225ced5954c734455dabbd98046d0919dd"},{"artifact":"observability-design","contentHash":"sha256:be6a1e3a5b8bfab0bb8f546a725b9d6a0f5ab3ac52849aa5864e73121e4c9c57","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:51df25c83266bdd376536de9964a6a190cabd016be809d6f26baaa4e3f77a502"},{"artifact":"performance-design","contentHash":"sha256:3e424a14dd463eda01acce1a7a207c8dbdf36de9756ecf1bc236709dc2601f97","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:dac96cc03b9fb878c9a45f919059dbee40a6ab1e336349c6f3da91483c6b52a0"},{"artifact":"reliability-design","contentHash":"sha256:846f83f596fea8c50dd0735b3704785d49985276a68d07eef40c1fb5c9805f3e","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:ec49c168ee31601328c94459ab19fcbce43520d97b7cf3d61bf144a3b5885219"},{"artifact":"scalability-design","contentHash":"sha256:c996fbe8a9a10c55f8781e5fff62941fd9ed1987368065c4552194c2f24f40b3","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":true,"structureHash":"sha256:999db1c79648b32419d4349184fb893ce904da1371d062229c23c3ce80195444"},{"artifact":"security-design","contentHash":"sha256:3ecd052799dce4051aabb7bb6405325ea1aea3c1462ca34bf4a1d97d8fc44490","instanceCount":5,"presentCount":5,"producer":"nfr-design","required":true,"structureHash":"sha256:b080c34b0192b8d43a2b1de140e3af09ba157d91ff3a58bdd78c79160a9b394d"}],"outputs":[{"artifact":"cicd-pipeline","contentHash":"sha256:6723ec1afa1bd5cbf074c1e2dea53b0bc1d487766ab97f3d97f645c51791e7e6","instanceCount":5,"presentCount":5,"producer":"infrastructure-design","required":true,"structureHash":"sha256:cc24d381b09670a23aa8230b786f7825103b54f3eb816441512f43e309f44b3f"},{"artifact":"infrastructure-specification","contentHash":"sha256:1a876da9c1fe4d96d51b9e516f3f5085e2a4b238ba695f51c92864262d253645","instanceCount":3,"presentCount":3,"producer":"infrastructure-design","required":true,"structureHash":"sha256:31c4e41dc1b8781282a497987aa1d8aa353d86285caca1ad2158fd3b28629f6c"},{"artifact":"monitoring-design","contentHash":"sha256:14a5c9152f31d8992e69df7f5d4b5ed2fef7cc6f784c37990149a2b30b24a44d","instanceCount":3,"presentCount":3,"producer":"infrastructure-design","required":true,"structureHash":"sha256:82fc8d050ff5be0348042aa6b6dbddcef302c6cac34705e05e56f7f1f57cd742"},{"artifact":"traceability","contentHash":"sha256:286b5ea415a75e5a43e31a750b9b43437f1bcbadc443ee5104e08fcff2cac925","instanceCount":5,"presentCount":5,"producer":"infrastructure-design","required":true,"structureHash":"sha256:8b66f027f34598d67982214662add7c5115044a65ff0a9ecba8e76552ac12d11"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Infrastructure Design approved by gate
+**Tokens In**: 2
+**Tokens Out**: 298
+**Cache Read**: 762717
+**Cache Write**: 1345
+**Cost USD**: 0.17
+**By Model**: opus-5-5=0.17
+**By Agent**: main=0.17
+**Tokens By Model**: opus-5-5=2/298/762.7k/1.3k
+**Tokens By Agent**: main=2/298/762.7k/1.3k
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-14T13:10:16Z
+**Event**: STAGE_STARTED
+**Stage**: code-generation
+**Agent**: aidlc-developer-agent
+**Answer Mode**: guide (reused from intent-capture)
+**Source Baseline**: sha256:8de9568f268b6cb36008da6c4c805c22381f8d4425d2e531ac08065f407d2fe9
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-14T13:10:20Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Checkpoint**: review-receipt
+**Changed**: .github/workflows/ci.yml, .github/workflows/release.yml, docs/install.md, docs/releasing.md, package-lock.json, package.json, scripts/release/signing.test.ts, scripts/release/signing.ts, src-tauri/gen/schemas/acl-manifests.json, src-tauri/gen/schemas/capabilities.json
+**Recorded**: (outside the units)
+**Current**: sha256:87fff6848120eb32a7664676912b48186610e1ee58f532c431fa83db47c6d902
+**Details**: These files changed outside any unit's work in Code Generation: .github/workflows/ci.yml, .github/workflows/release.yml, docs/install.md, docs/releasing.md, package-lock.json, package.json, scripts/release/signing.test.ts, scripts/release/signing.ts, src-tauri/gen/schemas/acl-manifests.json, src-tauri/gen/schemas/capabilities.json and 4 more. Kept them.
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:21Z
+**Event**: SENSOR_FIRED
+**Fire id**: 742cb4d6
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:21Z
+**Event**: SENSOR_PASSED
+**Fire id**: 742cb4d6
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md
+**Duration ms**: 386
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:22Z
+**Event**: SENSOR_FIRED
+**Fire id**: a478f2a3
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/unit-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:22Z
+**Event**: SENSOR_PASSED
+**Fire id**: a478f2a3
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/unit-test-instructions.md
+**Duration ms**: 389
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: a2e8ea88
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: a2e8ea88
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-summary.md
+**Duration ms**: 417
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 87942d7a
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:24Z
+**Event**: SENSOR_PASSED
+**Fire id**: 87942d7a
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/traceability.json
+**Duration ms**: 390
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: c366ebe0
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/code-generation-plan.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: c366ebe0
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/code-generation-plan.md
+**Duration ms**: 392
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:25Z
+**Event**: SENSOR_FIRED
+**Fire id**: 30f4cb5e
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/unit-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: 30f4cb5e
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/unit-test-instructions.md
+**Duration ms**: 396
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:26Z
+**Event**: SENSOR_FIRED
+**Fire id**: 15c62c64
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/code-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:26Z
+**Event**: SENSOR_PASSED
+**Fire id**: 15c62c64
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/code-summary.md
+**Duration ms**: 399
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:27Z
+**Event**: SENSOR_FIRED
+**Fire id**: b2e69225
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:27Z
+**Event**: SENSOR_PASSED
+**Fire id**: b2e69225
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/traceability.json
+**Duration ms**: 403
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:27Z
+**Event**: SENSOR_FIRED
+**Fire id**: dc18e33d
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-generation-plan.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:28Z
+**Event**: SENSOR_PASSED
+**Fire id**: dc18e33d
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-generation-plan.md
+**Duration ms**: 403
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:28Z
+**Event**: SENSOR_FIRED
+**Fire id**: a237e398
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/unit-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:29Z
+**Event**: SENSOR_PASSED
+**Fire id**: a237e398
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/unit-test-instructions.md
+**Duration ms**: 417
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:29Z
+**Event**: SENSOR_FIRED
+**Fire id**: 8a2b7752
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:30Z
+**Event**: SENSOR_PASSED
+**Fire id**: 8a2b7752
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-summary.md
+**Duration ms**: 407
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:30Z
+**Event**: SENSOR_FIRED
+**Fire id**: a1cf7a57
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:30Z
+**Event**: SENSOR_PASSED
+**Fire id**: a1cf7a57
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/traceability.json
+**Duration ms**: 394
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:31Z
+**Event**: SENSOR_FIRED
+**Fire id**: e305298f
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/code-generation-plan.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:31Z
+**Event**: SENSOR_PASSED
+**Fire id**: e305298f
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/code-generation-plan.md
+**Duration ms**: 409
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:32Z
+**Event**: SENSOR_FIRED
+**Fire id**: e31cba98
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/unit-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:32Z
+**Event**: SENSOR_PASSED
+**Fire id**: e31cba98
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/unit-test-instructions.md
+**Duration ms**: 419
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:32Z
+**Event**: SENSOR_FIRED
+**Fire id**: 767bffb3
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/code-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:33Z
+**Event**: SENSOR_PASSED
+**Fire id**: 767bffb3
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/code-summary.md
+**Duration ms**: 416
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:33Z
+**Event**: SENSOR_FIRED
+**Fire id**: ae5a436d
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:34Z
+**Event**: SENSOR_PASSED
+**Fire id**: ae5a436d
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u3-give-up-rule/code-generation/traceability.json
+**Duration ms**: 370
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:34Z
+**Event**: SENSOR_FIRED
+**Fire id**: 445d634f
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:34Z
+**Event**: SENSOR_PASSED
+**Fire id**: 445d634f
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-generation-plan.md
+**Duration ms**: 388
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:35Z
+**Event**: SENSOR_FIRED
+**Fire id**: a0997110
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/unit-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:35Z
+**Event**: SENSOR_PASSED
+**Fire id**: a0997110
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/unit-test-instructions.md
+**Duration ms**: 445
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:36Z
+**Event**: SENSOR_FIRED
+**Fire id**: fdf10f21
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:36Z
+**Event**: SENSOR_PASSED
+**Fire id**: fdf10f21
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/code-summary.md
+**Duration ms**: 404
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-14T13:10:37Z
+**Event**: SENSOR_FIRED
+**Fire id**: 5d2f44f3
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/traceability.json
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-14T13:10:37Z
+**Event**: SENSOR_PASSED
+**Fire id**: 5d2f44f3
+**Sensor ID**: required-sections
+**Stage slug**: code-generation
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/u2-call-pacing/code-generation/traceability.json
+**Duration ms**: 400
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-14T13:10:38Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: code-generation
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-14T13:10:41Z
+**Event**: GATE_APPROVED
+**Stage**: code-generation
+**Review Finding Dispositions**: {"version":1,"dispositions":[{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/code-generation-plan.md","id":"R-01","fingerprint":"sha256:db633dfc1c1eb726586f1f5a63b28f328d5fbe2768859d7fd937a0e537dc1e39","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:96618484750d5ab38de6c2c23fb1d543f64a997ed6adb7a609bf6073b6980c89"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u1-concurrent-skeleton/code-generation/code-generation-plan.md","id":"R-02","fingerprint":"sha256:2f1c7dd187673020f1bf7faeef38d2a74e7547ca60ec2be6b5dcd113b7f543cb","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u1-concurrent-skeleton/df725d72ea237644/1.json","digest":"sha256:96618484750d5ab38de6c2c23fb1d543f64a997ed6adb7a609bf6073b6980c89"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md","id":"R-01","fingerprint":"sha256:7d756c7c434c73ec9f23d524f6bc3d2081c02801126b631c06a427a9db088ab4","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:ac9b60679d0a37230b0612273edffcd89e86c91411d5987b49cdefb2f3d0400e"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u4-elapsed-time/code-generation/code-generation-plan.md","id":"R-02","fingerprint":"sha256:d67946ff3bf3e3bd4aacc37329c3c95cddf6bcc901ffa0fc50eef384b3a657ba","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u4-elapsed-time/df725d72ea237644/1.json","digest":"sha256:ac9b60679d0a37230b0612273edffcd89e86c91411d5987b49cdefb2f3d0400e"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-generation-plan.md","id":"R-01","fingerprint":"sha256:b64612a1ba8c51862774fd68af68eb9bd1db9e51a67529cc9fa9078ba6dba5ca","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u5-cancel/df725d72ea237644/1.json","digest":"sha256:5a577291278a23cce23b40b1993926527a4d02d378fa8c2cbec264c0d85ec2f6"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-generation-plan.md","id":"R-02","fingerprint":"sha256:7b8becf5a0a0e36bc16d3b3edd8404e53d09f40f16d1bcc516e6dfb0d2605d81","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u5-cancel/df725d72ea237644/1.json","digest":"sha256:5a577291278a23cce23b40b1993926527a4d02d378fa8c2cbec264c0d85ec2f6"}},{"artifact":"aidlc/spaces/default/intents/261012-parallel-fetch/construction/u5-cancel/code-generation/code-generation-plan.md","id":"R-03","fingerprint":"sha256:8de6470511182a1993b41041d1ef3a56777159ac8157013fba73a1d8a560a394","status":"Accepted risk","decided_at_severity":"Minor","reviewed_record":{"path":".aidlc-engine/reviews/code-generation/units/u5-cancel/df725d72ea237644/1.json","digest":"sha256:5a577291278a23cce23b40b1993926527a4d02d378fa8c2cbec264c0d85ec2f6"}}]}
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-14T13:10:41Z
+**Event**: STAGE_COMPLETED
+**Stage**: code-generation
+**Validation Basis**: {"graphContract":"sha256:ac0ef7ae03ae2fcfab9e2a94500d84c4fe00d00384d1f8dcff92c96b2e1f50de","inputs":[{"artifact":"contract-summary","contentHash":"sha256:24ffabddd8e62ebc0090ce156fd1aee3c30bffaf14be6af9af1727a9d5f04bfa","instanceCount":1,"presentCount":1,"producer":"contract-design","required":false,"structureHash":"sha256:37d15f54fd334e9bbb54a12f424f9c300cc93bd244c73c82b34e9505c07be1b3"},{"artifact":"entities","contentHash":"sha256:43dc9c1ede30b5af092a7422a51a7293ecceb5875dc0142682979b608d42ca8e","instanceCount":5,"presentCount":5,"producer":"functional-design","required":false,"structureHash":"sha256:908976ca80e2956bb269b032554fbf44af7ebcf8c008dd93bfb950c14146d913"},{"artifact":"functional-spec","contentHash":"sha256:85ced9727b211926f51cb7fa9486ac5d113c4a93674c311459f31bc6e32f60b3","instanceCount":5,"presentCount":5,"producer":"functional-design","required":false,"structureHash":"sha256:6fc4e4c691b195f0d6772e680e278de591d08e6d29b9cc7b6812f6dd0bf83d3f"},{"artifact":"infrastructure-specification","contentHash":"sha256:1a876da9c1fe4d96d51b9e516f3f5085e2a4b238ba695f51c92864262d253645","instanceCount":3,"presentCount":3,"producer":"infrastructure-design","required":false,"structureHash":"sha256:31c4e41dc1b8781282a497987aa1d8aa353d86285caca1ad2158fd3b28629f6c"},{"artifact":"performance-design","contentHash":"sha256:3e424a14dd463eda01acce1a7a207c8dbdf36de9756ecf1bc236709dc2601f97","instanceCount":3,"presentCount":3,"producer":"nfr-design","required":false,"structureHash":"sha256:dac96cc03b9fb878c9a45f919059dbee40a6ab1e336349c6f3da91483c6b52a0"},{"artifact":"requirements","contentHash":"sha256:f655464fb2465070ea77118df95861c796b7d0433bd2ff27bd78b9874492c815","instanceCount":1,"presentCount":1,"producer":"requirements-analysis","required":true,"structureHash":"sha256:ae835753c6e6e91f488bb12ae94d75fb51e0cdbc988349e3cf4958877e7357b0"},{"artifact":"rules","contentHash":"sha256:68fefd919ab1125bd8d745811baf280f57905a8285fcb3d47eb6346227e70d34","instanceCount":5,"presentCount":5,"producer":"functional-design","required":false,"structureHash":"sha256:e174a5a03ebde1a898aa65eeef8361ccc85d83297d2ca6a9e7b46278425329b2"},{"artifact":"security-design","contentHash":"sha256:3ecd052799dce4051aabb7bb6405325ea1aea3c1462ca34bf4a1d97d8fc44490","instanceCount":5,"presentCount":5,"producer":"nfr-design","required":false,"structureHash":"sha256:b080c34b0192b8d43a2b1de140e3af09ba157d91ff3a58bdd78c79160a9b394d"},{"artifact":"unit-of-work","contentHash":"sha256:0beacf88b6c504b47232a2465ecb98c91c739c0a1a35a3bd12d0d8a6ae96daf6","instanceCount":1,"presentCount":1,"producer":"units-generation","required":true,"structureHash":"sha256:635609cdde0d16c5825d0a446d61feb6caec8fb8c9a4d11301571c15481d70e9"}],"outputs":[{"artifact":"code-generation-plan","contentHash":"sha256:80e32f5fde3867dbc0ae0aa09f48c37ac50a5ee29e740677304192f58943178d","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:6e7b04a56d3da5743b59c063efd61ffa76c41e5b440b9fd4d5c12d70f7a76a7c"},{"artifact":"code-summary","contentHash":"sha256:b4dd1d8840a529dea4a36597c3708175e88ea0485f5eddf158929d8916fdab9a","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:3371892e3dbb1e2afc4fe4cec0524bbef445a7963c49724fb2f78252ed18d1ff"},{"artifact":"traceability","contentHash":"sha256:81ad1bc521d7c975958ea4bbbfaf6a3feb8e76e37e81da86046a824dc3155dee","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:b35851ccb29e6ef3d63a2fc7706f998e1035fec1b0524a13fbca3586854ea264"},{"artifact":"unit-test-instructions","contentHash":"sha256:75d8fcc85becc65d2d0dbdec0ca878627467ad1e6cf0b8c862f398bc418543bd","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:5d418bb74a882e00a59eb61190bb121b08354837a9867565a62451e8ae86ea98"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Code Generation approved by gate
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-14T13:10:42Z
+**Event**: STAGE_STARTED
+**Stage**: build-and-test
+**Agent**: aidlc-quality-agent
+**Answer Mode**: guide (reused from intent-capture)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T13:11:32Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T13:13:03Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a7c47e184d3aaef7e
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T13:13:13Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Session Compacted
+**Timestamp**: 2026-10-14T13:14:19Z
+**Event**: SESSION_COMPACTED
+**Current Stage**: build-and-test
+**State Validity**: valid
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T13:15:08Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: ad5adf014fe98477f
+**Message**: <analysis>\nThe session continued AI-DLC Construction for intent 261012-parallel-fetch.\n\nU3 code generation was finished as follows:\n- Dispatched the developer agent.\n- Wrote the summary, manifest and 
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T13:18:18Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-instructions.md
+**Context**: construction > build-and-test > build-instructions.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-14T13:18:23Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-instructions.md
+**Context**: construction > build-and-test > build-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T13:18:38Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/integration-test-instructions.md
+**Context**: construction > build-and-test > integration-test-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T13:19:03Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/performance-test-instructions.md
+**Context**: construction > build-and-test > performance-test-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T13:19:20Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/security-test-instructions.md
+**Context**: construction > build-and-test > security-test-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-14T13:20:48Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/test-results.md
+**Context**: construction > build-and-test > test-results.md
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-14T13:21:02Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log decision --stage build-and-test --questions-file aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-and-test-questions.md
+**Error**: Missing --decision <text>
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-14T13:21:06Z
+**Event**: DECISION_RECORDED
+**Stage**: build-and-test
+**Decision**: 手元の確認（実際の AWS・GUI・VoiceOver）の進め方を利用者に質問
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T13:25:42Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T14:03:29Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T14:03:38Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-14T14:03:38Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: 自動のビルド・テスト・検査はすべて成功しました（Rust 548 件・画面 385 件、行カバレッジ 97.67% / 90.85%）。目標 89 件のうち 5 件はコンテナでは確かめられません。実際の AWS での速さ比べ、GUI の経過表示（スリープをまたぐ場合を含む）、VoiceOver の 2 件です。どう進めますか？
+**Reply**: A (Recommended)
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T14:03:39Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Error Logged
+**Timestamp**: 2026-10-14T14:03:46Z
+**Event**: ERROR_LOGGED
+**Tool**: aidlc-log
+**Command**: aidlc-log engine log answer --stage build-and-test --questions-file aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-and-test-questions.md --answer A
+**Error**: Cannot record this answer: "--answer" is not an option of log answer, so it is probably part of a value that a bare double quote split. Run the command again with each value as one argument, in the person's exact words; in Windows PowerShell write each double quote inside a value as \" (for example --details 'Run \"todo --help\" first'), or as a single quote ('') when the value also holds &, |, <, > or ^. An answer holding any of those, or a quote, $, %, ! or a line break, goes in a file instead: write it to <record>/.aidlc-engine/answer-text/answer.txt with your file tool and pass --details-file .aidlc-engine/answer-text/answer.txt.
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-14T14:03:50Z
+**Event**: QUESTION_ANSWERED
+**Stage**: build-and-test
+**Details**: A (Recommended)
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T14:04:32Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: af547956636c755e7
+**Message**: I haven't committed these changes on purpose. You asked me to commit and push only when a stage finishes, together with that stage's outputs, and not to push audit-log changes on their own. The uncomm
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T14:09:42Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T22:05:04Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T22:05:13Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T22:06:01Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: ab2d5dca25c165ad1
+**Message**: 1：main 同じ行数、枝のほうが速い。2：OK、3：OK
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T22:15:32Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T22:30:09Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-14T22:30:38Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-14T22:31:02Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a3f5c6f026d8df6ee
+**Message**: 記録のファイルも先にコミットして push して
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T22:39:31Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-14T22:57:04Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Session End
+**Timestamp**: 2026-10-14T23:02:02Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-15T00:12:49Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T00:12:57Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-15T00:13:52Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a060eaacb2c0ac679
+**Message**: 1：main 12,345行 85秒／枝 12,345行 31秒、2：OK、3：OK
+
+---
+
+## Session End
+**Timestamp**: 2026-10-15T00:18:18Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-15T07:08:59Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T07:09:06Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-15T07:11:39Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a70cbfd797977c3ef
+**Message**: 全部OKだった。枝のほうが速かった
+
+---
+
+## Session End
+**Timestamp**: 2026-10-15T07:16:47Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-15T10:49:24Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T10:49:31Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-15T10:50:21Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: af65e024f71a5de1d
+**Message**: GUI も VoiceOver も問題なかった
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T10:50:50Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-15T10:51:11Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a1df2889a4eea7842
+**Message**: GUI も問題なかった、経過も中断もOK
+
+---
+
+## Session End
+**Timestamp**: 2026-10-15T10:56:16Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-15T10:56:58Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T10:57:04Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-15T10:57:25Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a641cf743113330b0
+**Message**: VoiceOver も両方大丈夫だった
+
+---
+
+## Session End
+**Timestamp**: 2026-10-15T11:02:16Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-15T11:08:32Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T11:08:48Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-15T11:09:04Z
+**Event**: DECISION_RECORDED
+**Stage**: build-and-test
+**Decision**: VoiceOver の確認を行うかを利用者に質問
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T11:09:33Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Picked**: ["A (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-15T11:09:33Z
+**Event**: QUESTION_REPLIED
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+**Question**: VoiceOver は macOS の読み上げ機能です。要件（NFR9・NFR10）に読み上げの条件はありません。U4 の NFR9.2 と U5 の NFR9.4 の「確かめ方」に「VoiceOver で一度確かめる」と書いた部分だけが残っています。読み上げ用の属性（aria-hidden、role=status）は、画面のテストですでに確かめて通っています。どうしますか？
+**Reply**: A (Recommended)
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-15T11:09:38Z
+**Event**: QUESTION_ANSWERED
+**Stage**: build-and-test
+**Details**: A (Recommended)
+
+---
+
+## Change Accepted
+**Timestamp**: 2026-10-15T11:10:47Z
+**Event**: CHANGE_ACCEPTED
+**Stage**: code-generation
+**Unit**: u5-cancel
+**Checkpoint**: review-receipt
+**Changed**: crates/local-sights-core/examples/fetch_check.rs
+**Recorded**: sha256:6023bab2aef547b030b3f167670a82546fdfb0b0092bb95ad1d30f9dd8903356
+**Current**: sha256:852be69393e53bcac8a05afc35230fad745cebab30c593bb10d22d08aa38254e
+**Details**: crates/local-sights-core/examples/fetch_check.rs changed after the cancel Unit was reviewed; carrying on.
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:47Z
+**Event**: SENSOR_FIRED
+**Fire id**: 66fc104d
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:48Z
+**Event**: SENSOR_PASSED
+**Fire id**: 66fc104d
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-instructions.md
+**Duration ms**: 475
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:48Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6fc435b4
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/integration-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:49Z
+**Event**: SENSOR_PASSED
+**Fire id**: 6fc435b4
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/integration-test-instructions.md
+**Duration ms**: 424
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:49Z
+**Event**: SENSOR_FIRED
+**Fire id**: e95b0cf7
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/performance-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:50Z
+**Event**: SENSOR_PASSED
+**Fire id**: e95b0cf7
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/performance-test-instructions.md
+**Duration ms**: 470
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:50Z
+**Event**: SENSOR_FIRED
+**Fire id**: faa29fba
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/security-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:51Z
+**Event**: SENSOR_PASSED
+**Fire id**: faa29fba
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/security-test-instructions.md
+**Duration ms**: 501
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:51Z
+**Event**: SENSOR_FIRED
+**Fire id**: 876525d4
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-and-test-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:52Z
+**Event**: SENSOR_PASSED
+**Fire id**: 876525d4
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-and-test-summary.md
+**Duration ms**: 428
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:52Z
+**Event**: SENSOR_FIRED
+**Fire id**: 481ae628
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/test-results.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:53Z
+**Event**: SENSOR_PASSED
+**Fire id**: 481ae628
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/test-results.md
+**Duration ms**: 454
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:53Z
+**Event**: SENSOR_FIRED
+**Fire id**: ec8c4efd
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/cross-unit-traceability.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:54Z
+**Event**: SENSOR_PASSED
+**Fire id**: ec8c4efd
+**Sensor ID**: required-sections
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/cross-unit-traceability.md
+**Duration ms**: 493
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:54Z
+**Event**: SENSOR_FIRED
+**Fire id**: 74bb45b9
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:54Z
+**Event**: SENSOR_PASSED
+**Fire id**: 74bb45b9
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-instructions.md
+**Duration ms**: 419
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:55Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7c16cb80
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/integration-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:55Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7c16cb80
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/integration-test-instructions.md
+**Duration ms**: 449
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:56Z
+**Event**: SENSOR_FIRED
+**Fire id**: 2f8896dc
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/performance-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:56Z
+**Event**: SENSOR_PASSED
+**Fire id**: 2f8896dc
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/performance-test-instructions.md
+**Duration ms**: 430
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:57Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7c26b49d
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/security-test-instructions.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:57Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7c26b49d
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/security-test-instructions.md
+**Duration ms**: 437
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:58Z
+**Event**: SENSOR_FIRED
+**Fire id**: ef8ab076
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-and-test-summary.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:58Z
+**Event**: SENSOR_PASSED
+**Fire id**: ef8ab076
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/build-and-test-summary.md
+**Duration ms**: 449
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: a630da12
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/test-results.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:10:59Z
+**Event**: SENSOR_PASSED
+**Fire id**: a630da12
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/test-results.md
+**Duration ms**: 432
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-15T11:10:59Z
+**Event**: SENSOR_FIRED
+**Fire id**: b4fa6539
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/cross-unit-traceability.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-15T11:11:00Z
+**Event**: SENSOR_PASSED
+**Fire id**: b4fa6539
+**Sensor ID**: upstream-coverage
+**Stage slug**: build-and-test
+**Output path**: aidlc/spaces/default/intents/261012-parallel-fetch/construction/build-and-test/cross-unit-traceability.md
+**Duration ms**: 502
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-15T11:11:01Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: build-and-test
+**Recovered**: true
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-15T11:11:03Z
+**Event**: GATE_APPROVED
+**Stage**: build-and-test
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-15T11:11:03Z
+**Event**: STAGE_COMPLETED
+**Stage**: build-and-test
+**Validation Basis**: {"graphContract":"sha256:96b8f13dd5dc4ed374a013c67c59513754aa4e6f9c23c96a9953c7cb00d73f5c","inputs":[{"artifact":"code-generation-plan","contentHash":"sha256:80e32f5fde3867dbc0ae0aa09f48c37ac50a5ee29e740677304192f58943178d","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:6e7b04a56d3da5743b59c063efd61ffa76c41e5b440b9fd4d5c12d70f7a76a7c"},{"artifact":"code-summary","contentHash":"sha256:b4dd1d8840a529dea4a36597c3708175e88ea0485f5eddf158929d8916fdab9a","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:3371892e3dbb1e2afc4fe4cec0524bbef445a7963c49724fb2f78252ed18d1ff"},{"artifact":"unit-test-instructions","contentHash":"sha256:75d8fcc85becc65d2d0dbdec0ca878627467ad1e6cf0b8c862f398bc418543bd","instanceCount":5,"presentCount":5,"producer":"code-generation","required":true,"structureHash":"sha256:5d418bb74a882e00a59eb61190bb121b08354837a9867565a62451e8ae86ea98"}],"outputs":[{"artifact":"build-and-test-summary","contentHash":"sha256:f6159ba4d3a408d7eefefef16004ade997b6bb0bf63aee465447f4dd189fddff","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:98b065044d7b4ead247447847bba5b8ee53f0d8ef5ea707c0f5926f9267d9114"},{"artifact":"build-instructions","contentHash":"sha256:abd231f794013c651e5a6c04f470baabfc1bd69da0748cfe8ab6bc964515e448","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:a9fd3f733d3c6276d254e538878be072a51fff1ecad4cb466661fa1d2cfe4c45"},{"artifact":"build-test-results","contentHash":"sha256:40daf8fee79515c7cc99ebbed8bc0cd36bbe59b2ad392a9905cb5d4a648ff373","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:657a85144c898b3b44e129cbf45ca756f6b1aad3fc71c07de04ce86737b53728"},{"artifact":"cross-unit-traceability","contentHash":"sha256:19124caefa9d493791c35f9f820a166262e432dd31773f6c476c9469fee26a90","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:d25fd92503432224df36487fe1d24e48a0f5a1a9d783ae3c2dbcb3800393868c"},{"artifact":"integration-test-instructions","contentHash":"sha256:3d4e6f832946e9c7f8ffcce76e8db09c8ac0db1e8131e54552ca09713531a7e4","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:def857ebf9e26b31b9ddf66d339b5b430b29c4327fd3060c36340475d9a7cb99"},{"artifact":"performance-test-instructions","contentHash":"sha256:6e51f1ecedb2a19e7d046fed2991eae4a3e50284330f388451e6302f8f7c520e","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:98a5c1888c11b8f8682f80762cf6b009b41c8de490ad54dde11546d7970cb826"},{"artifact":"security-test-instructions","contentHash":"sha256:986cf2f40192eefa857c1ce99eb1b4d234d3e6fb9333eeb868bc755e829a6785","instanceCount":1,"presentCount":1,"producer":"build-and-test","required":true,"structureHash":"sha256:4cde67eb152798a076999d9c1cd99f3a3586cd80873bc3e87de4ffbedea946ae"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Build and Test approved by gate
+**Tokens In**: 224
+**Tokens Out**: 54019
+**Cache Read**: 34971338
+**Cache Write**: 1076115
+**Cost USD**: 16.68
+**By Model**: opus-5-5=16.68
+**By Agent**: main=16.68
+**Tokens By Model**: opus-5-5=224/54k/35M/1.1M
+**Tokens By Agent**: main=224/54k/35M/1.1M
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-15T11:11:03Z
+**Event**: STAGE_STARTED
+**Stage**: ci-pipeline
+**Agent**: aidlc-pipeline-deploy-agent
+**Answer Mode**: guide (reused from intent-capture)
+
+---
+
+## Memory Empty
+**Timestamp**: 2026-10-15T11:11:04Z
+**Event**: MEMORY_EMPTY
+**Stage**: nfr-design
+
+---
+
+## Memory Empty
+**Timestamp**: 2026-10-15T11:11:04Z
+**Event**: MEMORY_EMPTY
+**Stage**: infrastructure-design
+
+---
+
+## Memory Empty
+**Timestamp**: 2026-10-15T11:11:04Z
+**Event**: MEMORY_EMPTY
+**Stage**: code-generation
+
+---

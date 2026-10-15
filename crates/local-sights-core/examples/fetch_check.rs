@@ -38,14 +38,17 @@
 //! Comparing with the version on `main` by hand (U1:NFR2.1, review R-03):
 //! use the same profile, log group and time range for both, and run each
 //! three times under `time`, comparing the median real time and the event
-//! count.
+//! count. Build first (`cargo build --release -p local-sights-core --example
+//! fetch_check`) so the build is not timed. `time` comes first and the
+//! region goes through `env`, because zsh's `time` is a reserved word and
+//! cannot follow a `NAME=value` prefix.
 //!
 //! ```text
 //! # main (no --region argument there; the region comes from the environment)
-//! AWS_REGION=ap-northeast-1 time cargo run --release -p local-sights-core \
+//! time env AWS_REGION=ap-northeast-1 cargo run --release -p local-sights-core \
 //!   --example fetch_check -- --profile NAME --log-group NAME --start ... --end ...
 //! # this version: the same region in the environment and in --region
-//! AWS_REGION=ap-northeast-1 time cargo run --release -p local-sights-core \
+//! time env AWS_REGION=ap-northeast-1 cargo run --release -p local-sights-core \
 //!   --example fetch_check -- --profile NAME --region ap-northeast-1 \
 //!   --log-group NAME --start ... --end ...
 //! ```

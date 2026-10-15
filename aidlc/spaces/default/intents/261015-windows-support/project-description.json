@@ -1,0 +1,1 @@
+"Windows 対応をしたい（IB-16）。今は macOS（Apple Silicon）だけに配っているが、Windows でも動かして配れるようにしたい。終わったら次は Logs Insights 互換のクエリ（IB-11）をやる予定。"

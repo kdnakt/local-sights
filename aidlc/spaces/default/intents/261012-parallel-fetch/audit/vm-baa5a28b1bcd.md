@@ -23361,3 +23361,25 @@
 **Session**: 9439726f-4987-50e0-8a87-0cce07395efd
 
 ---
+
+## Session End
+**Timestamp**: 2026-10-15T12:15:16Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-15T12:19:45Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-15T12:19:49Z
+**Event**: HUMAN_TURN
+**Session**: 9439726f-4987-50e0-8a87-0cce07395efd
+
+---

@@ -128,6 +128,34 @@ read, never credentials (and, from `~/.aws/config`, whether a profile has
 `sso_session` / `sso_start_url` and the name in `source_profile`, for the
 SSO sign-in below; never their values).
 
+The status line below the list says what the fetch is doing and, after it,
+the event count, failed streams and cache notices. From the moment **Fetch**
+is accepted it also ends with the time the fetch has taken, "Elapsed mm:ss"
+("経過 mm:ss" in Japanese; `h:mm:ss` from one hour on, seconds cut, not
+rounded), placed before the log filter's count. It advances every second
+while fetching, also while a request waits to be retried, and stops at the
+final value, which includes saving to the cache and stays until the next
+**Fetch**. A fetch shown from the cache shows it too (usually `00:00`).
+Changing the profile or the region clears it with the previous result;
+choosing another log group keeps it. Screen readers do not hear the seconds
+tick; the final value is read with the end of the fetch.
+
+While fetching, **Fetch** becomes **Cancel** in the same place. Pressing it
+stops the fetch at once: requests that are under way or waiting are cut off,
+not waited for, and no new request starts. The button reads
+**Cancelling…** until the fetch has stopped, then **Fetch** again; the focus
+stays on it throughout. **Cancel** cannot be pressed while the fetched logs are
+saved to the cache. The logs fetched so far stay listed and can be filtered;
+a warning above the list says how many streams were not read to their end
+("Fetch cancelled. N streams were not finished, so some logs are missing.",
+or that the stream listing had not finished), and the status line says
+"Cancelled" with the count (just "0 events" when nothing came) and the
+elapsed time. A cancelled fetch is never saved to the cache. The warning
+stays until the next **Fetch**, a profile or region change, or another log
+group. A cancel after every stream was already read counts as a finished
+fetch. Closing the window still asks first and discards everything, also
+after **Cancel**.
+
 ## Sign in with SSO
 
 When the SSO session has expired, the log group pane or the error above the
@@ -285,6 +313,23 @@ Sign in with SSO (261011-sso-login), on the company Mac with AWS CLI v2:
 - [ ] While the dialog waits, the profile, region, log group list, **Reload**, **Fetch** and the gear button cannot be used, Escape and the dialog's close button do not close it, and **Cancel** is reachable with Tab; after the dialog closes, the focus is back on the **Sign in with SSO** button (or on **Reload** when that button is gone).
 - [ ] Started from a terminal (`npm run tauri dev`), standard error shows only "sso login N ended: …" lines for the sign-in: no URL, code, token or CLI output.
 
+Elapsed time (261012-parallel-fetch U4):
+
+- [ ] Pressing **Fetch** adds "Elapsed 00:00" at the end of the status line (before "Filtered: N of M events" when a filter is in force); it advances once a second while the streams are listed and read, also while nothing new arrives (for example while a throttled request waits), and through "Saving to cache".
+- [ ] When the fetch ends (done, 0 events, some streams failed, failed, or shown from the cache), the time stops at its final value and stays; fetching again starts from `00:00`. Choosing another log group keeps it; changing the profile or the region clears it.
+- [ ] A fetch longer than an hour reads `1:00:00` and on; with the OS language set to Japanese the text is "経過 mm:ss".
+- [ ] With VoiceOver on, the seconds are not read out while fetching; the end of the fetch is read with the final elapsed time.
+
+Cancel (261012-parallel-fetch U5):
+
+- [ ] Pressing **Fetch** on a log group with many streams turns the button into **Cancel** in the same place, with the focus still on it; pressing **Cancel** shows **Cancelling…** and the fetch stops within a moment, also while requests are being retried or are slow to answer. The button becomes **Fetch** again.
+- [ ] After the cancel the fetched logs stay listed, the log filter still works, a warning above the list says "Fetch cancelled. N streams were not finished, so some logs are missing." (no close button), and the status line reads "Cancelled", the count and the elapsed time. Cancelling while the streams are still being listed says "Fetch cancelled before the stream listing finished, so some logs are missing."
+- [ ] With the cache on, fetching the same range again after a cancel goes to AWS (nothing was saved); **Cancel** cannot be pressed during "Saving to cache".
+- [ ] The warning goes away with the next **Fetch**, a profile or region change, or choosing another log group; choosing the same log group again keeps it.
+- [ ] Pressing **Cancel** and then closing the window still asks "Fetching is in progress." while the fetch has not stopped; **Close** ends the app.
+- [ ] With the OS language set to Japanese the texts are 中断 / 中断中… and the warning reads "取得を中断しました。N 本のストリームは読み終えていないため、一部のログが含まれていません。"; with VoiceOver on, the warning is read once when it appears.
+- [ ] Started from a terminal, the fetch summary of a cancelled fetch ends with `status=Cancelled`.
+
 ## Performance check of the log list
 
 The log list is still the app's own virtual-scroll list, styled with
@@ -324,15 +369,29 @@ credentials; tests and CI never run it.
 
 ```bash
 cargo run -p local-sights-core --example fetch_check -- \
-  --profile dev --log-group /aws/lambda/my-function \
+  --profile dev --region ap-northeast-1 --log-group /aws/lambda/my-function \
   --start '2024/01/02 03:00:00' --end '2024/01/02 03:59:59'
 ```
 
+`--region` is required. It is the region the fetch connects to and also sets
+the ceiling on `GetLogEvents` calls, half the region's AWS limit (12 calls a
+second in Tokyo; 5 when the region is unknown), so leaving it to the profile
+would understate the speed.
+
 Events go to standard output in time order
-(`UTC time<TAB>stream name<TAB>message`); the event, stream and failed-stream
-counts, then each failed stream (or an incomplete stream listing) with its
-failure kind and safe detail, go to standard error. Exit code 0 means
-success, 1 that something failed, 2 invalid arguments.
+(`UTC time<TAB>stream name<TAB>message`). Standard error gets the one-line
+fetch summary, for example
+`local-sights: fetch summary streams=180 calls=212 throttled=3 elapsed_ms=18450 max_in_flight=8 min_rate=6 status=Completed`
+(numbers and the status only; the app writes the same line when started from
+a terminal). `min_rate` is the lowest number of `GetLogEvents` calls a second
+the fetch used: when AWS throttles a call, the fetch halves its rate (never
+below 1) and raises it by one again for every five seconds without
+throttling, up to the region's ceiling. It equals the ceiling when nothing
+was throttled. The screen shows nothing of this. Then come the event, stream
+and failed-stream counts, then each
+failed stream (or an incomplete stream listing) with its failure kind and
+safe detail. Exit code 0 means success, 1 that something failed, 2 invalid
+arguments. The check has no **Cancel**: it always reads to the end.
 
 ## App icon
 
@@ -377,7 +436,16 @@ cargo clippy --workspace
 npm run typecheck && npm run lint && npm run format:check
 npm audit
 npm run check:version           # same version in Cargo.toml, Cargo.lock, package.json, tauri.conf.json
+cargo test -p local-sights-core --example fetch_check  # fetch_check argument parsing (--region is required)
 ```
+
+Against real AWS, by hand only: `fetch_check` needs `--region` (see "Check
+against real AWS from the terminal") and prints the one-line fetch summary
+(`streams=… calls=… throttled=… elapsed_ms=… max_in_flight=… min_rate=… status=…`) to
+standard error. To compare the speed with `main`, run both with the same
+profile, log group, time range and `AWS_REGION`, giving this version the same
+region in `--region` too, three times each under `time`, and compare the
+median real time and the event count.
 
 ## Releasing
 

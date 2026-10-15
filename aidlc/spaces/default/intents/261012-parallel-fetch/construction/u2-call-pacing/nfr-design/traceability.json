@@ -1,0 +1,15 @@
+{
+  "stage": "nfr-design",
+  "unit": "u2-call-pacing",
+  "upstream_ids": ["NFR3.5", "NFR3.6", "NFR6.1", "NFR7.1", "NFR7.2", "NFR8.1", "NFR8.7", "NFR8.8"],
+  "coverage": [
+    { "id": "NFR3.5", "status": "OK", "target": "security-design: counted_call から report_throttled、半分に下げる、予約済みの枠は動かさない" },
+    { "id": "NFR3.6", "status": "OK", "target": "security-design: 5 秒ごとに 1 戻し、上限で止める" },
+    { "id": "NFR6.1", "status": "OK", "target": "security-design: 止めた時計と FakeGateway" },
+    { "id": "NFR7.1", "status": "OK", "target": "security-design: 要約の書式のテストだけ直す" },
+    { "id": "NFR7.2", "status": "OK", "target": "security-design: 行カバレッジ 80% を CI で" },
+    { "id": "NFR8.1", "status": "OK", "target": "security-design: trait を変えない、DescribeLogStreams は知らせない" },
+    { "id": "NFR8.7", "status": "OK", "target": "logical-components: FetchStats の min_rate、FetchCoordinator が渡す" },
+    { "id": "NFR8.8", "status": "OK", "target": "security-design: JobStatus・FetchSink・Tauri の命令を変えない（FR2.6）" }
+  ]
+}

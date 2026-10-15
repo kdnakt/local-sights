@@ -91,6 +91,14 @@
 //! The app itself calls no SSO API and never reads or writes the SSO token
 //! cache (BR4.3).
 //!
+//! Since 261012-parallel-fetch U5 `cancel_fetch` is [Cancel]: under the
+//! session lock it asks AppSession whether it can be pressed, tells the
+//! running fetch's stop handle to stop for Cancel and pushes the view with
+//! [Cancelling…] (BR5.1). The handle is registered when the fetch starts,
+//! still under the session lock, so a cancel right after the start always
+//! reaches it (NFR6.17); the lock order is session, then the handle. Closing
+//! still stops the fetch for Close, which wins over a cancel (BR5.6).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
@@ -102,12 +110,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use local_sights_core::cache::LogCache;
 use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::catalog::files::load_catalog;
-use local_sights_core::coordinator::{
-    BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch_with_cache,
-};
+use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch_with_cache};
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_report_progress};
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
@@ -116,7 +124,10 @@ use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_li
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::log_view::{LogView, RowKey, RowPositions};
 use local_sights_core::paging::PageDecision;
-use local_sights_core::retry::{AbortHandle, RandomJitter, Retrier, RetryPolicy, abort_pair};
+use local_sights_core::request::ValidatedFetch;
+use local_sights_core::retry::{
+    RandomJitter, Retrier, RetryPolicy, StopHandle, StopReason, StopSignal, stop_pair,
+};
 use local_sights_core::session::{
     AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, InputField,
     Phase, SessionError, SessionView, SettingsWork, SsoLoginStart,
@@ -166,9 +177,9 @@ struct AppState {
     /// The held events and the log filter (U5 review R-02).
     log_view: Arc<Mutex<LogView>>,
     gateway: Arc<AwsCloudWatchLogsGateway>,
-    /// Abort handle of the running fetch with its fetch number from the
+    /// Stop handle of the running fetch with its fetch number from the
     /// session (BR5.5), so a finished fetch only forgets its own handle.
-    abort: Arc<Mutex<Option<(u64, AbortHandle)>>>,
+    abort: Arc<Mutex<Option<(u64, StopHandle)>>>,
     /// Set by [Close] (U7:BR3.2): the exit and window close that follow are
     /// not stopped again. Read without the session lock.
     exit_allowed: AtomicBool,
@@ -213,10 +224,11 @@ impl AppState {
     }
 
     /// Asks the running fetch, if any, to stop ([Close] or the window being
-    /// destroyed, BR5.5, U7:BR3.2).
+    /// destroyed, BR5.5, U7:BR3.2). Both are a Close: the fetched logs are
+    /// discarded (261012-parallel-fetch U1:BR1.16, contract C7).
     fn abort_fetch(&self) {
         if let Some((_, handle)) = lock(&self.abort).as_ref() {
-            handle.abort();
+            handle.stop(StopReason::Close);
         }
     }
 
@@ -661,23 +673,57 @@ fn start_fetch(
     drop_if_stale(begin_and_spawn_fetch(generation, &app, &state))
 }
 
+/// A fetch AppSession accepted, with the stop signal of its registered
+/// handle.
+struct BegunFetch {
+    validated: ValidatedFetch,
+    fetch_number: u64,
+    cache: Option<LogCache>,
+    view: SessionView,
+    signal: StopSignal,
+}
+
+/// Starts a fetch in the session and registers its stop handle under the
+/// fetch number while the session lock is still held (261012-parallel-fetch
+/// U5:NFR6.17): a [Cancel] accepted right after the start always finds the
+/// new handle, never the previous fetch's or none. The lock order is
+/// session, then the handle (as in [`cancel_running_fetch`]).
+fn begin_registered_fetch(
+    session: &Mutex<AppSession>,
+    abort: &Mutex<Option<(u64, StopHandle)>>,
+    generation: u64,
+) -> Result<BegunFetch, SessionError> {
+    let mut session = lock(session);
+    let validated = session.begin_fetch(generation)?;
+    // U6:BR1.5: `None` when the cache is disabled.
+    let cache = session.fetch_cache();
+    let fetch_number = session.fetch_number();
+    let (handle, signal) = stop_pair();
+    *lock(abort) = Some((fetch_number, handle));
+    Ok(BegunFetch {
+        validated,
+        fetch_number,
+        cache,
+        view: session.view(),
+        signal,
+    })
+}
+
 fn begin_and_spawn_fetch(
     generation: u64,
     app: &AppHandle,
     state: &AppState,
 ) -> Result<(), CommandError> {
-    let (validated, fetch_number, cache, view) = {
-        let mut session = lock(&state.session);
-        let validated = session.begin_fetch(generation)?;
-        // U6:BR1.5: `None` when the cache is disabled.
-        let cache = session.fetch_cache();
-        (validated, session.fetch_number(), cache, session.view())
-    };
+    let BegunFetch {
+        validated,
+        fetch_number,
+        cache,
+        view,
+        signal,
+    } = begin_registered_fetch(&state.session, &state.abort, generation)?;
     let fetch_started_at_ms = now_epoch_ms();
     emit_or_log(app, SESSION_CHANGED, view);
 
-    let (handle, signal) = abort_pair();
-    *lock(&state.abort) = Some((fetch_number, handle));
     let session = Arc::clone(&state.session);
     let log_view = Arc::clone(&state.log_view);
     let gateway = Arc::clone(&state.gateway);
@@ -717,6 +763,42 @@ fn begin_and_spawn_fetch(
         recover_if_still_fetching(&app, &session, fetch_number, ended_normally);
     });
     Ok(())
+}
+
+/// [Cancel] (261012-parallel-fetch U5:BR5.1, security-design 2.3). Always
+/// succeeds: when [Cancel] cannot be pressed nothing changes and nothing is
+/// sent. Otherwise the running fetch is told to stop for Cancel and the
+/// view with [Cancelling…] is pushed.
+#[tauri::command]
+fn cancel_fetch(app: AppHandle, state: State<'_, AppState>) {
+    cancel_running_fetch(&state.session, &state.abort, |view| {
+        emit_or_log(&app, SESSION_CHANGED, view);
+    });
+}
+
+/// Accepts [Cancel] in the session, tells the registered handle of that
+/// same fetch to stop for Cancel, and hands the new view to `send` while
+/// the session lock is still held. The fetch's own end makes its view only
+/// after it took the session lock, so `send` always comes before the end's
+/// view and the screen is never left on a stale [Cancelling…]
+/// (NFR6.16, NFR6.17). Lock order: session, then the handle; the emit does
+/// not wait, so it may run under the lock. Returns whether it was accepted.
+fn cancel_running_fetch(
+    session: &Mutex<AppSession>,
+    abort: &Mutex<Option<(u64, StopHandle)>>,
+    send: impl FnOnce(SessionView),
+) -> bool {
+    let mut session = lock(session);
+    let Some(fetch_number) = session.request_cancel() else {
+        return false;
+    };
+    if let Some((number, handle)) = lock(abort).as_ref() {
+        if *number == fetch_number {
+            handle.stop(StopReason::Cancel);
+        }
+    }
+    send(session.view());
+    true
 }
 
 /// The current time in epoch milliseconds for the default time range at
@@ -1277,14 +1359,24 @@ struct TauriSink {
     log_view: Arc<Mutex<LogView>>,
 }
 
+/// Applies one fetch change to the session under its lock, copies the
+/// filter summary and makes the view, which the caller sends after the lock
+/// is released. The view of the fetch's end is therefore made only after a
+/// [Cancel] that took the lock first has sent its own (U5:NFR6.16).
+fn change_and_view(
+    session: &Mutex<AppSession>,
+    log_view: &Mutex<LogView>,
+    change: impl FnOnce(&mut AppSession),
+) -> SessionView {
+    let mut session = lock(session);
+    change(&mut session);
+    sync_filter(&mut session, log_view);
+    session.view()
+}
+
 impl TauriSink {
     fn update(&self, change: impl FnOnce(&mut AppSession)) {
-        let view = {
-            let mut session = lock(&self.session);
-            change(&mut session);
-            sync_filter(&mut session, &self.log_view);
-            session.view()
-        };
+        let view = change_and_view(&self.session, &self.log_view, change);
         emit_or_log(&self.app, SESSION_CHANGED, view);
     }
 
@@ -1422,7 +1514,8 @@ pub fn run() -> Result<(), tauri::Error> {
             start_sso_login,
             cancel_sso_login,
             dismiss_sso_login,
-            open_sso_url
+            open_sso_url,
+            cancel_fetch
         ])
         .build(tauri::generate_context!())?;
     app.run(|app, event| match event {
@@ -1446,4 +1539,217 @@ pub fn run() -> Result<(), tauri::Error> {
         _ => {}
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! 261012-parallel-fetch U5: the stop handle registered with the start
+    //! (NFR6.17), [Cancel] and the order of the views (NFR6.16), and the
+    //! three lists that grant a command (infrastructure-design review R-01).
+
+    use super::*;
+    use local_sights_core::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind};
+
+    /// A session on `dev` with `/aws/lambda/orders` selected and a valid
+    /// range: [Fetch] can be pressed.
+    fn ready_session() -> Mutex<AppSession> {
+        let catalog = ConnectionCatalog::new(
+            vec![
+                ConnectionProfile {
+                    kind: ProfileKind::SdkDefault,
+                    profile_name: None,
+                    default_region: None,
+                },
+                ConnectionProfile {
+                    kind: ProfileKind::Named,
+                    profile_name: Some("dev".to_string()),
+                    default_region: Some("ap-northeast-1".to_string()),
+                },
+            ],
+            Vec::new(),
+        );
+        let mut session = AppSession::with_catalog(catalog);
+        let listing = session
+            .select_profile(ProfileSelector::Named("dev".to_string()))
+            .unwrap()
+            .listing
+            .unwrap();
+        session.apply_listing_page(
+            &listing.listing_id,
+            vec![LogGroup {
+                log_group_name: "/aws/lambda/orders".to_string(),
+                arn: None,
+                creation_time: None,
+            }],
+            None,
+        );
+        let generation = session.connection_generation();
+        session
+            .select_log_group("/aws/lambda/orders".to_string(), generation)
+            .unwrap();
+        session
+            .update_input(InputField::StartText, "2024/01/02 03:04:05".to_string())
+            .unwrap();
+        session
+            .update_input(InputField::EndText, "2024/01/02 03:05:05".to_string())
+            .unwrap();
+        Mutex::new(session)
+    }
+
+    fn generation(session: &Mutex<AppSession>) -> u64 {
+        lock(session).connection_generation()
+    }
+
+    #[test]
+    fn the_start_registers_the_new_handle_so_an_immediate_cancel_reaches_it() {
+        let session = ready_session();
+        let (old_handle, old_signal) = stop_pair();
+        let abort = Mutex::new(Some((0, old_handle)));
+
+        let begun = begin_registered_fetch(&session, &abort, generation(&session)).unwrap();
+        assert_eq!(begun.view.phase, Phase::Fetching);
+        assert!(begun.view.fetch_cancel_available);
+        assert_eq!(
+            lock(&abort).as_ref().map(|(number, _)| *number),
+            Some(begun.fetch_number),
+            "registered before the session lock was released"
+        );
+
+        let mut sent = Vec::new();
+        assert!(cancel_running_fetch(&session, &abort, |view| sent.push(view)));
+        assert_eq!(begun.signal.reason(), Some(StopReason::Cancel));
+        assert_eq!(old_signal.reason(), None, "the previous fetch is not told");
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].cancelling);
+        assert!(!sent[0].fetch_cancel_available);
+    }
+
+    #[test]
+    fn a_refused_start_registers_nothing() {
+        let session = ready_session();
+        let abort = Mutex::new(None);
+        let stale = generation(&session) + 1;
+        assert!(begin_registered_fetch(&session, &abort, stale).is_err());
+        assert!(lock(&abort).is_none());
+    }
+
+    #[test]
+    fn a_cancel_without_a_running_fetch_does_nothing_and_sends_nothing() {
+        let session = ready_session();
+        let abort = Mutex::new(None);
+        let mut sent = Vec::new();
+        assert!(!cancel_running_fetch(&session, &abort, |view| sent.push(view)));
+        assert!(sent.is_empty());
+        assert!(!lock(&session).view().cancelling);
+    }
+
+    #[test]
+    fn a_second_cancel_does_nothing() {
+        let session = ready_session();
+        let abort = Mutex::new(None);
+        let begun = begin_registered_fetch(&session, &abort, generation(&session)).unwrap();
+        let mut sent = Vec::new();
+        assert!(cancel_running_fetch(&session, &abort, |view| sent.push(view)));
+        assert!(!cancel_running_fetch(&session, &abort, |view| sent.push(view)));
+        assert_eq!(sent.len(), 1, "nothing sent for the second press");
+        assert_eq!(begun.signal.reason(), Some(StopReason::Cancel));
+    }
+
+    #[test]
+    fn a_handle_of_another_fetch_is_not_told_to_stop() {
+        let session = ready_session();
+        let abort = Mutex::new(None);
+        let begun = begin_registered_fetch(&session, &abort, generation(&session)).unwrap();
+        let (other_handle, other_signal) = stop_pair();
+        *lock(&abort) = Some((begun.fetch_number + 1, other_handle));
+        assert!(cancel_running_fetch(&session, &abort, |_| {}));
+        assert_eq!(other_signal.reason(), None);
+        assert_eq!(begun.signal.reason(), None);
+    }
+
+    #[test]
+    fn the_end_of_a_cancelled_fetch_is_the_last_view_sent() {
+        // NFR6.16: the fetch ends right after the stop; its view comes last
+        // and turns [Cancelling…] off.
+        let session = ready_session();
+        let log_view = Mutex::new(LogView::new());
+        let abort = Mutex::new(None);
+        let begun = begin_registered_fetch(&session, &abort, generation(&session)).unwrap();
+        let mut job = FetchJob::start(begun.validated.range);
+        let mut sent = vec![change_and_view(&session, &log_view, |s| {
+            s.on_job_started(&job, 1);
+        })];
+        cancel_running_fetch(&session, &abort, |view| sent.push(view));
+        job.status = JobStatus::Cancelled;
+        job.unfinished_stream_count = 4;
+        sent.push(change_and_view(&session, &log_view, |s| {
+            s.finish_fetch(&job, 1);
+        }));
+
+        let cancelling: Vec<bool> = sent.iter().map(|view| view.cancelling).collect();
+        assert_eq!(cancelling, [false, true, false]);
+        let last = sent.last().unwrap();
+        assert_eq!(last.phase, Phase::Done);
+        assert!(!last.fetch_cancel_available);
+        assert!(last.cancel_notice.is_some());
+    }
+
+    /// The quoted names of the first `.commands(&[ … ])` block.
+    fn manifest_commands(build_rs: &str) -> Vec<String> {
+        let start = build_rs.find(".commands(&[").unwrap();
+        let block = &build_rs[start..];
+        let block = &block[..block.find("])").unwrap()];
+        block
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The names inside the first invoke-handler macro of `run`.
+    fn handler_commands(lib_rs: &str) -> Vec<String> {
+        let marker = concat!("generate_handler", "![");
+        let start = lib_rs.find(marker).unwrap() + marker.len();
+        let block = &lib_rs[start..];
+        let block = &block[..block.find(']').unwrap()];
+        block
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The commands the window may invoke: `allow-<kebab-name>` entries.
+    fn allowed_commands(capability: &str) -> Vec<String> {
+        let json: serde_json::Value = serde_json::from_str(capability).unwrap();
+        json["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|permission| permission.as_str()?.strip_prefix("allow-"))
+            .map(|name| name.replace('-', "_"))
+            .collect()
+    }
+
+    fn sorted(mut names: Vec<String>) -> Vec<String> {
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn the_manifest_the_capability_and_the_handler_list_the_same_commands() {
+        // Infrastructure-design review R-01 (NFR8.15): a command is granted
+        // in three places, and they must name exactly the same commands.
+        let manifest = sorted(manifest_commands(include_str!("../build.rs")));
+        let handler = sorted(handler_commands(include_str!("lib.rs")));
+        let allowed = sorted(allowed_commands(include_str!(
+            "../capabilities/default.json"
+        )));
+        assert!(manifest.contains(&"cancel_fetch".to_string()));
+        assert_eq!(manifest.len(), 26);
+        assert_eq!(handler, manifest);
+        assert_eq!(allowed, manifest);
+    }
 }

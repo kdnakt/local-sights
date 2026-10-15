@@ -1,0 +1,36 @@
+{
+  "stage": "nfr-design",
+  "unit": "u3-give-up-rule",
+  "upstream_ids": [
+    "NFR3.7", "NFR6.1", "NFR7.1", "NFR7.2", "NFR8.1", "NFR8.9",
+    "FR3.1", "FR3.2", "FR3.3", "FR3.4",
+    "AC2.3.1", "AC2.3.2", "AC2.3.3", "AC2.3.4",
+    "BR3.1", "BR3.2", "BR3.3", "BR3.4", "BR3.5", "BR3.6", "BR3.7",
+    "ADR-007", "C2"
+  ],
+  "coverage": [
+    { "id": "NFR3.7", "status": "OK", "target": "security-design: finish が未着手を Skipped、StreamFetchEnd::Failed が ApiFailure を持つ" },
+    { "id": "NFR6.1", "status": "OK", "target": "security-design: 単体テストと FakeGateway" },
+    { "id": "NFR7.1", "status": "OK", "target": "security-design: 直すテストの範囲を限る" },
+    { "id": "NFR7.2", "status": "OK", "target": "security-design: テスト先行、行カバレッジ 80%" },
+    { "id": "NFR8.1", "status": "OK", "target": "security-design: trait を変えない" },
+    { "id": "NFR8.9", "status": "OK", "target": "security-design: ApiFailure を複製して写す" },
+    { "id": "FR3.1", "status": "OK", "target": "security-design 確かめること：成功で数え直す、終わる順の入れ替え" },
+    { "id": "FR3.2", "status": "OK", "target": "security-design 確かめること：3 本で Skipped" },
+    { "id": "FR3.3", "status": "OK", "target": "security-design 確かめること：読み途中は最後まで、数えは動かない" },
+    { "id": "FR3.4", "status": "OK", "target": "security-design 確かめること：使い切り以外で 0" },
+    { "id": "AC2.3.1", "status": "OK", "target": "security-design 確かめること：成功で数え直す" },
+    { "id": "AC2.3.2", "status": "OK", "target": "security-design 確かめること：3 本で Skipped、失敗を写す" },
+    { "id": "AC2.3.3", "status": "OK", "target": "security-design 確かめること：読み途中は最後まで" },
+    { "id": "AC2.3.4", "status": "OK", "target": "security-design 確かめること：使い切り以外で 0" },
+    { "id": "BR3.1", "status": "OK", "target": "logical-components: StreamSchedule の数え" },
+    { "id": "BR3.2", "status": "OK", "target": "security-design: NFR3.7 の仕組み、GiveUp" },
+    { "id": "BR3.3", "status": "OK", "target": "security-design 決まりの正本：あきらめた後の数え" },
+    { "id": "BR3.4", "status": "OK", "target": "logical-components: StreamSchedule の数え" },
+    { "id": "BR3.5", "status": "OK", "target": "security-design 決まりの正本：閉じて止めたもの" },
+    { "id": "BR3.6", "status": "OK", "target": "security-design 決まりの正本：数えの持ち主と本数" },
+    { "id": "BR3.7", "status": "OK", "target": "logical-components: FetchCoordinator は記録の仕方を変えない" },
+    { "id": "ADR-007", "status": "OK", "target": "logical-components: 数えの持ち主の移動" },
+    { "id": "C2", "status": "OK", "target": "security-design: finish・with_limit・ScheduleOutcome.give_up" }
+  ]
+}

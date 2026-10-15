@@ -44,6 +44,10 @@ jobs:
         run: cargo llvm-cov -p local-sights-core --fail-under-lines 80
       - name: doc tests (library)
         run: cargo test -p local-sights-core --doc
+      # The developer-only fetch_check example has its own argument tests
+      # (--region); they never connect to AWS.
+      - name: example tests (library)
+        run: cargo test -p local-sights-core --examples
 
   # Front end: types, lint, format, tests with line coverage, bundle,
   # dependency audit.

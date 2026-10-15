@@ -44,8 +44,29 @@
 //! and the listing that follows a success (BR4.1). While a login runs the
 //! connection, the fetch, the reload and the settings dialog are refused
 //! (BR3.4). The CLI itself is run by the app.
+//! Since 261012-parallel-fetch U4 it records how long a fetch takes
+//! (ADR-005): [`AppSession::begin_fetch`] notes the start on a monotonic
+//! [`SessionClock`] (replaced in tests with [`AppSession::with_clock`],
+//! BR4.10), the end of the fetch, also one that stopped abnormally, fixes
+//! the final value (BR4.2), and a fetch stopped for closing or a connection
+//! change drops it (BR4.3, BR4.4). Every [`SessionView`] carries it as
+//! [`ElapsedView`], read when the view is made; [`FetchProgressUpdate`] does
+//! not, and nothing is sent just for the time (BR4.5). The screen advances
+//! it every second by its own clock.
+//! Since 261012-parallel-fetch U5 it decides whether [Cancel] can be pressed
+//! ([`AppSession::fetch_cancel_available`]: while fetching, not cancelling
+//! yet, not writing the cache and not asking about closing, BR5.2), accepts
+//! it ([`AppSession::request_cancel`], which answers the fetch number whose
+//! stop handle the app tells to stop, BR5.1) and shows [Cancelling…] until
+//! any end of the fetch (NFR6.16). A Cancelled fetch ends in Done with its
+//! logs, failures and result kept, no cache notice, and a
+//! [`CancelNoticeView`] of the streams not read to their end; the notice goes
+//! with the next fetch, a connection change or another log group (BR5.8,
+//! BR5.9).
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
@@ -56,10 +77,11 @@ use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileS
 use crate::connection::{
     ChangeOutcome, ConnectionSelection, ConnectionState, ListingCommand, PendingConnectionChange,
 };
-use crate::coordinator::{BatchProgress, FailedStream, FetchJob, JobStatus};
+use crate::coordinator::{BatchProgress, FailedStream, FetchJob};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
 use crate::failure::{ApiFailure, FailureKind};
+use crate::fetch_status::JobStatus;
 use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -474,6 +496,89 @@ pub struct FilterProgressUpdate {
     pub filter_result_version: u64,
 }
 
+/// The clock the session reads the elapsed time of a fetch from
+/// (261012-parallel-fetch U4:BR4.10): a monotonic "now" that never goes
+/// back. The app uses [`SessionClock::system`] ([`Instant::now`]); tests
+/// pass a clock they move by hand with [`AppSession::with_clock`].
+#[derive(Clone)]
+pub struct SessionClock {
+    now: Arc<dyn Fn() -> Instant + Send + Sync>,
+}
+
+impl SessionClock {
+    /// The monotonic clock of the system.
+    pub fn system() -> Self {
+        Self::from_fn(Instant::now)
+    }
+
+    /// A clock that asks `now` for the current instant.
+    pub fn from_fn(now: impl Fn() -> Instant + Send + Sync + 'static) -> Self {
+        Self { now: Arc::new(now) }
+    }
+
+    /// The current instant.
+    pub fn now(&self) -> Instant {
+        (self.now)()
+    }
+}
+
+impl Default for SessionClock {
+    fn default() -> Self {
+        Self::system()
+    }
+}
+
+impl std::fmt::Debug for SessionClock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SessionClock")
+    }
+}
+
+/// When the current or last fetch started and, once it ended, how long it
+/// took (261012-parallel-fetch U4, entities.md ElapsedRecord).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ElapsedRecord {
+    /// When [`AppSession::begin_fetch`] accepted the fetch (BR4.1).
+    started_at: Instant,
+    /// Milliseconds from the start to the end; `None` while it runs (BR4.2).
+    final_ms: Option<u64>,
+}
+
+/// The elapsed time of a fetch as the screen receives it (261012-parallel-fetch
+/// U4:BR4.5, contract C5). Only a flag and numbers, no text (NFR8.10).
+/// `SessionView.elapsed` is `None` (`null`) when nothing was fetched yet,
+/// when the fetch was stopped for closing (Aborted, BR4.3), and when a
+/// connection change cleared the previous result (BR4.4); this widens the
+/// wording of C5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElapsedView {
+    /// Whether the fetch still runs: the screen then advances the time by
+    /// its own clock every second (BR4.6).
+    pub running: bool,
+    /// Milliseconds since the start when the view was made, or the final
+    /// value once the fetch ended (BR4.2, BR4.5).
+    pub elapsed_ms: u64,
+    /// Number of the fetch ([`AppSession::fetch_number`]); the screen keeps
+    /// a running value only for the same number (nfr-design review R-01).
+    pub fetch_number: u64,
+}
+
+/// The notice of a cancelled fetch as the screen receives it
+/// (261012-parallel-fetch U5:BR5.8, NFR8.13): a count only, no text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelNoticeView {
+    /// Streams not read to their end; `None` (`null`) when [Cancel] came
+    /// before the stream listing ended.
+    pub unfinished_streams: Option<usize>,
+}
+
+/// Milliseconds from `start` to `now`; 0 when the clock went back (NFR6.8).
+fn elapsed_ms_between(start: Instant, now: Instant) -> u64 {
+    u64::try_from(now.saturating_duration_since(start).as_millis()).unwrap_or(u64::MAX)
+}
+
 /// Progress of the running fetch, for the status line (BR6.2).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -594,6 +699,18 @@ pub struct SessionView {
     pub close_confirmation: CloseConfirmation,
     /// The SSO login (261011-sso-login).
     pub sso_login: SsoLoginView,
+    /// The elapsed time of the current or last fetch (261012-parallel-fetch
+    /// U4:BR4.5); `None` when nothing was fetched yet, after a fetch
+    /// stopped for closing, and after a connection change cleared the
+    /// previous result (see [`ElapsedView`]).
+    pub elapsed: Option<ElapsedView>,
+    /// Whether [Cancel] was pressed and the fetch has not ended yet
+    /// (261012-parallel-fetch U5:BR5.1, BR5.10).
+    pub cancelling: bool,
+    /// Whether [Cancel] can be pressed now (U5:BR5.2).
+    pub fetch_cancel_available: bool,
+    /// The notice of the last fetch when it was cancelled (U5:BR5.8).
+    pub cancel_notice: Option<CancelNoticeView>,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -693,6 +810,16 @@ pub struct AppSession {
     /// attempt at once, but its CLI takes up to the stop grace to end; no
     /// new login starts before that, so two CLIs never run (FR2.6).
     sso_cli_active: bool,
+    /// The monotonic clock of the elapsed time (261012-parallel-fetch
+    /// U4:BR4.10).
+    clock: SessionClock,
+    /// Start and final value of the current or last fetch (BR4.1-BR4.4).
+    elapsed: Option<ElapsedRecord>,
+    /// [Cancel] was accepted for the running fetch (261012-parallel-fetch
+    /// U5:BR5.1); every end of the fetch turns it off (NFR6.16).
+    cancelling: bool,
+    /// The notice of the last fetch when it ended Cancelled (U5:BR5.8).
+    cancel_notice: Option<CancelNoticeView>,
 }
 
 /// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
@@ -783,6 +910,10 @@ impl AppSession {
             aws_profile_env: None,
             sso: SsoLoginAttempt::default(),
             sso_cli_active: false,
+            clock: SessionClock::system(),
+            elapsed: None,
+            cancelling: false,
+            cancel_notice: None,
         };
         session.select_startup_profile();
         session.revalidate();
@@ -844,6 +975,44 @@ impl AppSession {
         self.cache_enabled = load_settings(&location.settings_path).cache_enabled();
         self.cache_location = Some(location);
         self
+    }
+
+    /// The same session reading the elapsed time of a fetch from `clock`
+    /// instead of the system's monotonic clock (261012-parallel-fetch
+    /// U4:BR4.10); tests use it to move the time by hand.
+    pub fn with_clock(mut self, clock: SessionClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// Fixes the final elapsed time of the running fetch, once
+    /// (261012-parallel-fetch U4:BR4.2).
+    fn settle_elapsed(&mut self) {
+        let now = self.clock.now();
+        if let Some(record) = self.elapsed.as_mut() {
+            if record.final_ms.is_none() {
+                record.final_ms = Some(elapsed_ms_between(record.started_at, now));
+            }
+        }
+    }
+
+    /// The elapsed time as the screen receives it (261012-parallel-fetch
+    /// U4:BR4.5): the final value once the fetch ended, otherwise the time
+    /// since its start, read now.
+    fn elapsed_view(&self) -> Option<ElapsedView> {
+        let record = self.elapsed?;
+        let (running, elapsed_ms) = match record.final_ms {
+            Some(final_ms) => (false, final_ms),
+            None => (
+                true,
+                elapsed_ms_between(record.started_at, self.clock.now()),
+            ),
+        };
+        Some(ElapsedView {
+            running,
+            elapsed_ms,
+            fetch_number: self.fetch_number,
+        })
     }
 
     /// Whether the disk cache is enabled (U6:BR1.1).
@@ -1225,6 +1394,11 @@ impl AppSession {
         if !listed {
             return Err(SessionError::UnknownLogGroup);
         }
+        // 261012-parallel-fetch U5:BR5.9: another log group drops the cancel
+        // notice; the same one chosen again keeps it.
+        if self.selected_log_group.as_deref() != Some(name.as_str()) {
+            self.cancel_notice = None;
+        }
         self.selected_log_group = Some(name);
         self.revalidate();
         Ok(())
@@ -1297,6 +1471,12 @@ impl AppSession {
         };
         self.phase = Phase::Fetching;
         self.fetch_number += 1;
+        // 261012-parallel-fetch U4:BR4.1: the previous value goes; the new
+        // fetch starts counting now.
+        self.elapsed = Some(ElapsedRecord {
+            started_at: self.clock.now(),
+            final_ms: None,
+        });
         // BR5.6: the previous rows, count, failures and result go away.
         self.current_job_id = None;
         self.event_count = 0;
@@ -1309,6 +1489,9 @@ impl AppSession {
         // U6:BR5.3: the cache notices go with the next Fetch.
         self.cache_saving = false;
         self.cache_notices.clear();
+        // 261012-parallel-fetch U5:BR5.9: so does the cancel notice.
+        self.cancelling = false;
+        self.cancel_notice = None;
         Ok(ValidatedFetch {
             request: validated.request.with_connection(profile, region),
             range: validated.range,
@@ -1364,6 +1547,28 @@ impl AppSession {
     /// caller keeps it to recognise its own fetch later (review R-03).
     pub fn fetch_number(&self) -> u64 {
         self.fetch_number
+    }
+
+    /// Whether [Cancel] can be pressed now (261012-parallel-fetch U5:BR5.2):
+    /// while fetching, unless it was already pressed, the fetched logs are
+    /// being written to the cache, or closing awaits an answer.
+    pub fn fetch_cancel_available(&self) -> bool {
+        self.phase == Phase::Fetching
+            && !self.cancelling
+            && !self.cache_saving
+            && self.close_confirmation != CloseConfirmation::Pending
+    }
+
+    /// [Cancel] (U5:BR5.1): when it can be pressed, marks the fetch as
+    /// cancelling and returns the number of the running fetch, whose stop
+    /// handle the caller tells to stop for Cancel. `None`, changing
+    /// nothing, when it cannot be pressed (pressing again is harmless).
+    pub fn request_cancel(&mut self) -> Option<u64> {
+        if !self.fetch_cancel_available() {
+            return None;
+        }
+        self.cancelling = true;
+        Some(self.fetch_number)
     }
 
     /// The progress of the running job, for the light per-page message
@@ -1428,31 +1633,47 @@ impl AppSession {
     }
 
     /// Records the finished job and the timeline version after it:
-    /// Completed and CompletedWithFailures move to Done, Failed to Failed.
-    /// Aborted (only when the window closes) returns to Idle with nothing
-    /// shown and takes the version of the discard (BR4.5, review R-02). A
-    /// job that is still Running, or not the current one, leaves the
-    /// session as it is.
+    /// Completed, CompletedWithFailures and Cancelled move to Done, Failed
+    /// to Failed. Aborted (only when the window closes) returns to Idle
+    /// with nothing shown and takes the version of the discard (BR4.5,
+    /// review R-02). A job that is still Running, or not the current one,
+    /// leaves the session as it is.
+    ///
+    /// Every end turns [Cancelling…] off (261012-parallel-fetch U5:NFR6.16).
+    /// Cancelled keeps the fetched logs, failures and result like any other
+    /// end, has no cache notice (nothing was written) and holds the cancel
+    /// notice: the streams not read to their end, or no count when the
+    /// listing had not ended (U5:BR5.8).
     pub fn finish_fetch(&mut self, job: &FetchJob, timeline_version: u64) {
         let current = self.current_job_id.is_none_or(|id| id == job.job_id);
         if self.phase != Phase::Fetching || !current || job.status == JobStatus::Running {
             return;
         }
+        self.cancelling = false;
         self.set_timeline_version(timeline_version);
         self.current_job_id = Some(job.job_id);
         self.progress = None;
         // U6:BR3.7, BR5.3: the write is over; keep the notices of this job.
         self.cache_saving = false;
-        self.cache_notices = if job.status == JobStatus::Aborted {
+        self.cache_notices = if matches!(job.status, JobStatus::Aborted | JobStatus::Cancelled) {
             Vec::new()
         } else {
             cache_notices(job.served_from_cache, job.read_failed, job.cache_outcome)
         };
+        self.cancel_notice = (job.status == JobStatus::Cancelled).then(|| CancelNoticeView {
+            unfinished_streams: (!job.cancelled_before_listing)
+                .then_some(job.unfinished_stream_count),
+        });
         if job.status == JobStatus::Aborted {
             self.phase = Phase::Idle;
             self.event_count = 0;
+            // 261012-parallel-fetch U4:BR4.3: no elapsed time when closing.
+            self.elapsed = None;
             return;
         }
+        // 261012-parallel-fetch U4:BR4.2: the cache write ended before this,
+        // so the final value includes it.
+        self.settle_elapsed();
         self.phase = if job.status == JobStatus::Failed {
             Phase::Failed
         } else {
@@ -1559,6 +1780,10 @@ impl AppSession {
             return false;
         }
         self.phase = Phase::Failed;
+        // 261012-parallel-fetch U5:NFR6.16: [Cancelling…] ends too.
+        self.cancelling = false;
+        // 261012-parallel-fetch U4:BR4.2: ends like a failed fetch.
+        self.settle_elapsed();
         // U6 review R-11: as at a normal finish, the write is over.
         self.cache_saving = false;
         self.cache_notices.clear();
@@ -1692,6 +1917,10 @@ impl AppSession {
             discard_generation: self.discard_generation,
             close_confirmation: self.close_confirmation,
             sso_login: self.sso_login_view(),
+            elapsed: self.elapsed_view(),
+            cancelling: self.cancelling,
+            fetch_cancel_available: self.fetch_cancel_available(),
+            cancel_notice: self.cancel_notice,
         }
     }
 
@@ -1758,6 +1987,11 @@ impl AppSession {
         self.listing_failure = None;
         self.failure_list_open = false;
         self.cache_notices.clear();
+        // 261012-parallel-fetch U5:BR5.9: and so does the cancel notice.
+        self.cancel_notice = None;
+        // 261012-parallel-fetch U4:BR4.4: the elapsed time goes with the
+        // previous result.
+        self.elapsed = None;
         if matches!(self.phase, Phase::Done | Phase::Failed) {
             self.phase = Phase::Idle;
         }
@@ -4659,5 +4893,536 @@ mod tests {
         assert!(sso["verificationUrl"].is_null());
         assert!(sso["userCode"].is_null());
         assert!(sso["exitCode"].is_null());
+    }
+
+    // --- 261012-parallel-fetch U4: the elapsed time of a fetch ---
+
+    /// A clock the test moves by hand: `base` plus `offset_ms`. It starts
+    /// 60 seconds after `base` so that a test can also move it back.
+    #[derive(Clone)]
+    struct ManualClock {
+        base: std::time::Instant,
+        offset_ms: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    }
+
+    impl ManualClock {
+        fn new() -> Self {
+            Self {
+                base: std::time::Instant::now(),
+                offset_ms: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(60_000)),
+            }
+        }
+
+        fn advance(&self, ms: u64) {
+            self.offset_ms
+                .fetch_add(ms, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        fn go_back(&self, ms: u64) {
+            self.offset_ms
+                .fetch_sub(ms, std::sync::atomic::Ordering::SeqCst);
+        }
+
+        fn session_clock(&self) -> SessionClock {
+            let clock = self.clone();
+            SessionClock::from_fn(move || {
+                clock.base
+                    + std::time::Duration::from_millis(
+                        clock.offset_ms.load(std::sync::atomic::Ordering::SeqCst),
+                    )
+            })
+        }
+    }
+
+    /// A session with valid input whose clock is `clock`.
+    fn clocked_session(clock: &ManualClock) -> AppSession {
+        let mut session = AppSession::with_catalog(catalog()).with_clock(clock.session_clock());
+        fill_valid(&mut session);
+        session
+    }
+
+    /// Starts a fetch of `session` and its job; returns the job, still Running.
+    fn start_clocked_fetch(session: &mut AppSession) -> FetchJob {
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job, 1);
+        job
+    }
+
+    fn completed(mut job: FetchJob, events: u64) -> FetchJob {
+        job.status = JobStatus::Completed;
+        job.event_count = events;
+        job
+    }
+
+    #[test]
+    fn the_elapsed_time_is_null_before_any_fetch() {
+        let clock = ManualClock::new();
+        let session = clocked_session(&clock);
+        assert_eq!(session.view().elapsed, None);
+        assert_eq!(AppSession::new().view().elapsed, None);
+    }
+
+    #[test]
+    fn a_running_fetch_reports_the_time_since_it_started() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        start_clocked_fetch(&mut session);
+        clock.advance(7_000);
+        assert_eq!(
+            session.view().elapsed,
+            Some(ElapsedView {
+                running: true,
+                elapsed_ms: 7_000,
+                fetch_number: session.fetch_number(),
+            })
+        );
+    }
+
+    #[test]
+    fn the_end_of_a_fetch_fixes_the_final_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(31_400);
+        session.finish_fetch(&completed(job, 5), 2);
+        let expected = Some(ElapsedView {
+            running: false,
+            elapsed_ms: 31_400,
+            fetch_number: session.fetch_number(),
+        });
+        assert_eq!(session.view().elapsed, expected);
+        clock.advance(10_000);
+        assert_eq!(session.view().elapsed, expected, "the final value stays");
+    }
+
+    #[test]
+    fn the_final_elapsed_time_includes_the_cache_write() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(10_000);
+        session.on_saving(job.job_id);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(10_000));
+        clock.advance(3_000);
+        session.finish_fetch(&completed(job, 5), 2);
+        let elapsed = session.view().elapsed.unwrap();
+        assert!(!elapsed.running);
+        assert_eq!(elapsed.elapsed_ms, 13_000);
+    }
+
+    #[test]
+    fn a_refused_fetch_does_not_restart_the_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        start_clocked_fetch(&mut session);
+        clock.advance(5_000);
+        assert_eq!(
+            session.begin_fetch(session.connection_generation()),
+            Err(SessionError::Busy)
+        );
+        clock.advance(2_000);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(7_000));
+
+        // A refused fetch after the end keeps the final value too.
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
+        let before = session.view().elapsed;
+        assert_eq!(
+            session.begin_fetch(session.connection_generation() + 1),
+            Err(SessionError::StaleGeneration)
+        );
+        clock.advance(1_000);
+        assert_eq!(session.view().elapsed, before);
+    }
+
+    #[test]
+    fn the_next_fetch_drops_the_previous_value_and_has_a_new_number() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(31_400);
+        session.finish_fetch(&completed(job, 0), 2);
+        let first = session.view().elapsed.unwrap();
+
+        start_clocked_fetch(&mut session);
+        let second = session.view().elapsed.unwrap();
+        assert!(second.running);
+        assert_eq!(second.elapsed_ms, 0);
+        assert_eq!(second.fetch_number, first.fetch_number + 1);
+    }
+
+    #[test]
+    fn an_aborted_fetch_shows_no_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let mut job = start_clocked_fetch(&mut session);
+        clock.advance(4_000);
+        job.status = JobStatus::Aborted;
+        session.finish_fetch(&job, 2);
+        assert_eq!(session.phase(), Phase::Idle);
+        assert_eq!(session.view().elapsed, None);
+    }
+
+    #[test]
+    fn a_connection_change_drops_the_elapsed_time_but_a_log_group_change_keeps_it() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.advance(2_000);
+        session.finish_fetch(&completed(job, 3), 2);
+        let kept = session.view().elapsed;
+        assert!(kept.is_some());
+
+        session
+            .select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert_eq!(session.view().elapsed, kept, "same connection: kept");
+
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert_eq!(session.view().elapsed, kept, "awaiting confirmation: kept");
+        session.confirm_connection_change().unwrap();
+        assert_eq!(session.view().elapsed, None);
+    }
+
+    #[test]
+    fn a_fetch_that_stopped_abnormally_keeps_its_final_elapsed_time() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        start_clocked_fetch(&mut session);
+        clock.advance(5_250);
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
+        clock.advance(5_000);
+        assert_eq!(
+            session.view().elapsed,
+            Some(ElapsedView {
+                running: false,
+                elapsed_ms: 5_250,
+                fetch_number: session.fetch_number(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_clock_that_goes_back_counts_as_zero() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let job = start_clocked_fetch(&mut session);
+        clock.go_back(3_000);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(0));
+        session.finish_fetch(&completed(job, 1), 2);
+        assert_eq!(session.view().elapsed.map(|e| e.elapsed_ms), Some(0));
+    }
+
+    #[test]
+    fn the_elapsed_time_serializes_as_numbers_and_a_flag_or_null() {
+        let clock = ManualClock::new();
+        let mut session = clocked_session(&clock);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert!(json["elapsed"].is_null());
+
+        start_clocked_fetch(&mut session);
+        clock.advance(7_000);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(
+            json["elapsed"],
+            serde_json::json!({
+                "running": true,
+                "elapsedMs": 7000,
+                "fetchNumber": session.fetch_number(),
+            })
+        );
+    }
+
+    #[test]
+    fn the_session_clock_tells_the_time_and_hides_its_source() {
+        let clock = SessionClock::system();
+        let before = std::time::Instant::now();
+        assert!(clock.now() >= before);
+        assert_eq!(format!("{clock:?}"), "SessionClock");
+        assert_eq!(format!("{:?}", SessionClock::default()), "SessionClock");
+        let session = AppSession::new();
+        assert!(format!("{session:?}").contains("SessionClock"));
+    }
+
+    // --- 261012-parallel-fetch U5: [Cancel] (BR5.1, BR5.2, BR5.8, BR5.9) ---
+
+    /// A session fetching the U1 conditions; returns the started job.
+    fn started_fetch() -> (AppSession, FetchJob) {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job, 1);
+        (session, job)
+    }
+
+    /// `job` ended Cancelled with `events` events, `unfinished` streams not
+    /// read to their end, or before the listing ended.
+    fn cancelled(
+        mut job: FetchJob,
+        events: u64,
+        unfinished: usize,
+        before_listing: bool,
+    ) -> FetchJob {
+        job.status = JobStatus::Cancelled;
+        job.event_count = events;
+        job.unfinished_stream_count = unfinished;
+        job.cancelled_before_listing = before_listing;
+        if !before_listing {
+            job.planned_stream_count = 20;
+            job.finished_stream_count = 7;
+            job.listing_status = Some(StreamListingStatus::Complete);
+        }
+        job
+    }
+
+    fn ended(mut job: FetchJob, status: JobStatus) -> FetchJob {
+        job.status = status;
+        job
+    }
+
+    #[test]
+    fn cancel_is_available_only_while_fetching_and_nothing_else_is_under_way() {
+        let mut session = AppSession::with_catalog(catalog());
+        assert!(!session.fetch_cancel_available(), "Idle");
+        assert_eq!(session.request_cancel(), None);
+
+        let (mut session_fetching, job) = started_fetch();
+        assert!(session_fetching.fetch_cancel_available());
+        session_fetching.on_saving(job.job_id);
+        assert!(
+            !session_fetching.fetch_cancel_available(),
+            "not while the cache is written"
+        );
+        assert_eq!(session_fetching.request_cancel(), None);
+        assert!(!session_fetching.view().cancelling);
+
+        let (mut closing, _job) = started_fetch();
+        assert!(matches!(
+            closing.request_close(),
+            CloseDecision::Prevent { changed: true }
+        ));
+        assert!(
+            !closing.fetch_cancel_available(),
+            "not while closing awaits an answer"
+        );
+        assert_eq!(closing.request_cancel(), None);
+        closing.cancel_close();
+        assert!(closing.fetch_cancel_available(), "back once answered");
+
+        fill_valid(&mut session);
+        assert!(!session.fetch_cancel_available(), "still Idle");
+    }
+
+    #[test]
+    fn request_cancel_marks_cancelling_once_and_answers_the_fetch_number() {
+        let (mut session, _job) = started_fetch();
+        assert_eq!(session.request_cancel(), Some(session.fetch_number()));
+        let view = session.view();
+        assert!(view.cancelling);
+        assert!(!view.fetch_cancel_available);
+        assert_eq!(view.phase, Phase::Fetching);
+        assert_eq!(
+            session.request_cancel(),
+            None,
+            "a second press does nothing"
+        );
+        assert!(session.view().cancelling);
+    }
+
+    #[test]
+    fn every_end_of_a_fetch_turns_cancelling_off() {
+        // NFR6.16: Completed, CompletedWithFailures, Failed, Aborted,
+        // Cancelled and an abnormal stop.
+        for status in [
+            JobStatus::Completed,
+            JobStatus::CompletedWithFailures,
+            JobStatus::Failed,
+            JobStatus::Aborted,
+            JobStatus::Cancelled,
+        ] {
+            let (mut session, job) = started_fetch();
+            session.request_cancel().unwrap();
+            session.finish_fetch(&ended(job, status), 2);
+            assert!(!session.view().cancelling, "{status:?}");
+            assert_ne!(session.phase(), Phase::Fetching, "{status:?}");
+        }
+        let (mut session, _job) = started_fetch();
+        session.request_cancel().unwrap();
+        assert!(session.abort_fetch_with_failure(session.fetch_number(), other_failure()));
+        assert!(!session.view().cancelling);
+    }
+
+    #[test]
+    fn a_cancelled_fetch_is_done_keeps_its_logs_and_failures_and_has_a_notice() {
+        let (mut session, job) = started_fetch();
+        session.on_batch(job.job_id, batch(120, 3));
+        session.request_cancel().unwrap();
+        let mut job = cancelled(job, 120, 13, false);
+        job.failed_streams.push(FailedStream {
+            log_stream_name: "s05".to_string(),
+            failure: ApiFailure::new(FailureKind::AccessDenied, &SafeDetailFields::default()),
+        });
+        job.read_failed = true;
+        job.cache_outcome = CacheOutcome::NotSaved;
+        session.finish_fetch(&job, 3);
+
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Done);
+        assert_eq!(view.event_count, 120);
+        assert_eq!(view.failed_streams.len(), 1);
+        assert_eq!(view.listing_status, Some(StreamListingStatus::Complete));
+        let summary = view.last_job.unwrap();
+        assert_eq!(summary.status, JobStatus::Cancelled);
+        assert_eq!(summary.failed_stream_count, 1);
+        assert_eq!(
+            view.cancel_notice,
+            Some(CancelNoticeView {
+                unfinished_streams: Some(13)
+            })
+        );
+        assert!(
+            view.cache_notices.is_empty(),
+            "nothing written, so no cache notice (BR5.8)"
+        );
+        assert!(view.can_fetch, "the inputs are back");
+        assert!(!view.fetch_cancel_available);
+    }
+
+    #[test]
+    fn a_cancel_before_the_listing_ended_has_a_notice_without_a_count() {
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 0, 0, true), 1);
+        let view = session.view();
+        assert_eq!(view.phase, Phase::Done);
+        assert_eq!(view.event_count, 0);
+        assert_eq!(
+            view.cancel_notice,
+            Some(CancelNoticeView {
+                unfinished_streams: None
+            })
+        );
+    }
+
+    #[test]
+    fn only_a_cancelled_fetch_has_a_notice() {
+        for status in [
+            JobStatus::Completed,
+            JobStatus::CompletedWithFailures,
+            JobStatus::Failed,
+            JobStatus::Aborted,
+        ] {
+            let (mut session, job) = started_fetch();
+            session.request_cancel().unwrap();
+            session.finish_fetch(&ended(job, status), 2);
+            assert_eq!(session.view().cancel_notice, None, "{status:?}");
+        }
+    }
+
+    #[test]
+    fn the_notice_goes_with_the_next_fetch_a_connection_change_or_another_log_group() {
+        // BR5.9.
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 2, false), 2);
+        assert!(session.view().cancel_notice.is_some());
+        session
+            .select_log_group(
+                "/aws/lambda/orders".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert!(
+            session.view().cancel_notice.is_some(),
+            "the same log group again keeps it"
+        );
+        session
+            .select_log_group(
+                "/aws/lambda/MyFunction".to_string(),
+                session.connection_generation(),
+            )
+            .unwrap();
+        assert_eq!(session.view().cancel_notice, None);
+
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 2, false), 2);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.view().cancel_notice, None, "the next fetch");
+        assert!(!session.view().cancelling);
+
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 2, false), 2);
+        session.select_region("eu-west-1".to_string()).unwrap();
+        assert!(
+            session.view().cancel_notice.is_some(),
+            "awaiting confirmation: kept"
+        );
+        session.confirm_connection_change().unwrap();
+        assert_eq!(session.view().cancel_notice, None);
+    }
+
+    #[test]
+    fn cancel_then_fetch_then_cancel_leaves_one_notice_of_the_last_fetch() {
+        // NFR6.14.
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 5, 9, false), 2);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = FetchJob::start(session.validation.clone().unwrap().range);
+        session.on_job_started(&job, 3);
+        assert_eq!(session.request_cancel(), Some(session.fetch_number()));
+        session.finish_fetch(&cancelled(job, 2, 4, false), 4);
+        assert_eq!(
+            session.view().cancel_notice,
+            Some(CancelNoticeView {
+                unfinished_streams: Some(4)
+            })
+        );
+    }
+
+    #[test]
+    fn the_view_carries_the_three_cancel_fields_as_numbers_and_flags() {
+        // NFR8.13: a flag, a flag and a count or null; no text.
+        let (mut session, job) = started_fetch();
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(json["cancelling"], false);
+        assert_eq!(json["fetchCancelAvailable"], true);
+        assert!(json["cancelNotice"].is_null());
+
+        session.request_cancel().unwrap();
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(json["cancelling"], true);
+        assert_eq!(json["fetchCancelAvailable"], false);
+
+        session.finish_fetch(&cancelled(job, 1, 3, false), 2);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(
+            json["cancelNotice"],
+            serde_json::json!({ "unfinishedStreams": 3 })
+        );
+        assert_eq!(json["lastJob"]["status"], "Cancelled");
+
+        let (mut session, job) = started_fetch();
+        session.request_cancel().unwrap();
+        session.finish_fetch(&cancelled(job, 0, 0, true), 2);
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(
+            json["cancelNotice"],
+            serde_json::json!({ "unfinishedStreams": null })
+        );
     }
 }

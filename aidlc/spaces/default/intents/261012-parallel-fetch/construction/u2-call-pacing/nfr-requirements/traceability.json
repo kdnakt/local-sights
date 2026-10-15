@@ -1,0 +1,11 @@
+{
+  "stage": "nfr-requirements",
+  "unit": "u2-call-pacing",
+  "upstream_ids": ["NFR3", "NFR6", "NFR7", "NFR8"],
+  "coverage": [
+    { "id": "NFR3", "status": "OK", "target": "security-requirements.md NFR3.5, NFR3.6" },
+    { "id": "NFR6", "status": "OK", "target": "security-requirements.md NFR6.1" },
+    { "id": "NFR7", "status": "OK", "target": "security-requirements.md NFR7.1, NFR7.2" },
+    { "id": "NFR8", "status": "OK", "target": "security-requirements.md NFR8.1, NFR8.7, NFR8.8" }
+  ]
+}

@@ -1,0 +1,1 @@
+"ロググループ全体の横断取得を高速化したい（IB-07、MVP 後の最優先）。今はストリームを 1 つずつ順に取得しているので、ストリームの多いロググループほど待ち時間が延びる。読み取り API 3 つ（DescribeLogGroups / DescribeLogStreams / GetLogEvents）だけで速くしたい。"

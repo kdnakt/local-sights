@@ -17,6 +17,10 @@ chrono.workspace = true
 chrono-tz.workspace = true
 iana-time-zone.workspace = true
 fastrand.workspace = true
+# 261012-parallel-fetch U1: FuturesUnordered for the concurrent read stage of
+# FetchCoordinator (up to 8 streams in one task, no tokio::spawn). Default
+# features off, "std" only (NFR8.5); checked by cargo-deny in CI.
+futures-util.workspace = true
 home.workspace = true
 regex.workspace = true
 serde.workspace = true

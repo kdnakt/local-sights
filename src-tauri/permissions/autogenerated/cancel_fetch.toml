@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-fetch"
+description = "Enables the cancel_fetch command without any pre-configured scope."
+commands.allow = ["cancel_fetch"]
+
+[[permission]]
+identifier = "deny-cancel-fetch"
+description = "Denies the cancel_fetch command without any pre-configured scope."
+commands.deny = ["cancel_fetch"]

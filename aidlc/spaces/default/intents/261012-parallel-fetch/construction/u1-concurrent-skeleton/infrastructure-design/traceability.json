@@ -1,0 +1,21 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "u1-concurrent-skeleton",
+  "upstream_ids": ["NFR2.1", "NFR2.2", "NFR2.3", "NFR3.1", "NFR3.4", "NFR5.3", "NFR6.1", "NFR7.1", "NFR8.1", "NFR8.2", "NFR8.3", "NFR8.4", "NFR8.5", "NFR8.6"],
+  "coverage": [
+    { "id": "NFR2.1", "status": "OK", "target": "monitoring-design: elapsed_ms と手元の比較、cicd-pipeline の進め方 5" },
+    { "id": "NFR2.2", "status": "OK", "target": "monitoring-design: 要約の 1 行を標準エラー出力へ" },
+    { "id": "NFR2.3", "status": "OK", "target": "monitoring-design: 確認用プログラムの表示" },
+    { "id": "NFR3.1", "status": "OK", "target": "monitoring-design: throttled の目安、infrastructure-specification の速さの上限" },
+    { "id": "NFR3.4", "status": "OK", "target": "infrastructure-specification: GetLogEvents だけ SDK の最大試行回数 1" },
+    { "id": "NFR5.3", "status": "OK", "target": "monitoring-design: max_in_flight が 8 を超えない" },
+    { "id": "NFR6.1", "status": "OK", "target": "cicd-pipeline: テストは FakeGateway、CI に AWS の認証情報を置かない" },
+    { "id": "NFR7.1", "status": "OK", "target": "cicd-pipeline: Rust library と Tauri app のジョブで既存のテストが通ったまま" },
+    { "id": "NFR8.1", "status": "OK", "target": "infrastructure-specification: CloudWatch Logs の読み取り 3 つだけ、新しい権限なし" },
+    { "id": "NFR8.2", "status": "OK", "target": "infrastructure-specification の認証の行、cicd-pipeline の GitGuardian" },
+    { "id": "NFR8.3", "status": "OK", "target": "monitoring-design: 出してよいものは数値と JobStatus の語だけ" },
+    { "id": "NFR8.4", "status": "OK", "target": "monitoring-design: 出し先は標準エラー出力だけ、外へ送らない" },
+    { "id": "NFR8.5", "status": "OK", "target": "cicd-pipeline: cargo-deny のジョブで futures-util を確かめる" },
+    { "id": "NFR8.6", "status": "OK", "target": "monitoring-design: 出してよいもの" }
+  ]
+}

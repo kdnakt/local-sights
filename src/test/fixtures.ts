@@ -50,6 +50,10 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     discardGeneration: 0,
     closeConfirmation: "None",
     ssoLogin: ssoLoginView(),
+    elapsed: null,
+    cancelling: false,
+    fetchCancelAvailable: false,
+    cancelNotice: null,
     ...overrides,
   };
 }

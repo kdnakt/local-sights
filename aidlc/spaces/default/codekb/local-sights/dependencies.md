@@ -1,112 +1,92 @@
-# Dependencies
+# 依存関係（Local Sights）
 
-> リポジトリ `local-sights` の外部依存と内部の相互依存。2026-10-12 の全体スキャン（コミット `9d08cbf`）に基づく。版の一覧は `technology-stack.md`、部品ごとの依存は `component-inventory.md` を参照。
+走査したコミット：`9d08cbf5c6d97820f0ec7f276c3ce6020c903eb5`（2026-10-12）。固定された実際の版は [technology-stack.md](technology-stack.md) にまとめ、ここでは宣言の範囲、どこが何に依存するか、依存の方針を記す。
 
-## Dependency management
-
-- **Rust**: `Cargo.toml` の `[workspace.dependencies]` に版を一元管理し、各クレートは `xxx.workspace = true` で参照。`Cargo.lock` はコミット（team.md）。`deny.toml` で crates.io 以外のソースを拒否、ライセンスは許可リスト（MIT、Apache-2.0、BSD-3-Clause、ISC、Unicode-3.0、Zlib、MPL-2.0 など）、脆弱性・yank は拒否、重複版は警告。
-- **npm**: `package.json` + `package-lock.json`（コミット）。`npm ci` で再現。CI で `npm audit --audit-level=high`。
-- **GitHub Actions**: すべてコミット SHA 固定（版はコメント）。
-- **更新**: Dependabot が cargo（`aws-*`、`tauri*` をグループ化）、npm（`@tauri-apps/*`、testing をグループ化）、github-actions を週次で PR（上限 5 件）。履歴にも Dependabot のマージが並ぶ（#3〜#11）。
-
-## External dependencies（Rust）
-
-| クレート | 直接依存するクレート | 用途 | 備考 |
-|---|---|---|---|
-| aws-sdk-cloudwatchlogs | core | 読み取り 3 API | `default-features = false`、`default-https-client` + `rt-tokio`。rustls 0.21 系を避ける（RUSTSEC-2026-0104） |
-| aws-config、aws-credential-types | core | 認証チェーン、プロファイル解決 | 認証情報を読むのは SDK だけ。アプリは触れない |
-| aws-smithy-runtime-api、aws-smithy-types | core（dev） | テストで SDK エラーを組み立てる | |
-| tokio | core、src-tauri | 非同期・待ち・中止 | core は `time`、テストは `test-util`（一時停止クロック） |
-| chrono、chrono-tz、iana-time-zone | core | 時刻・タイムゾーン | MIT OR Apache-2.0、通信なし |
-| serde、serde_json | core、src-tauri | 直列化、JSON Lines | |
-| thiserror | core | エラー型 | |
-| regex | core | マスク・解析 | |
-| sha2 | core | キャッシュキー名 | |
-| uuid | core | セッション ID | |
-| home | core | `~/.aws` | |
-| fastrand | core | 再試行のジッタ | |
-| libc | src-tauri | `killpg` / `kill` | Unix 専用 |
-| tauri、tauri-build | src-tauri | デスクトップ枠組み | `custom-protocol` feature で `dist/` を埋め込む |
-| tempfile | core（dev）、src-tauri（dev） | 一時フォルダ | |
-
-既知の重複版（`multiple-versions = "warn"` で許容）: `thiserror` 1.0.69 / 2.0.21、`sha2` 0.10.9 / 0.11.0。advisory の除外: `RUSTSEC-2024-0370`（`proc-macro-error` 未保守。tauri → gtk 経由、Linux のみ、除去不能）。
-
-## External dependencies（npm）
-
-| パッケージ | 種別 | 用途 |
-|---|---|---|
-| react、react-dom | dependencies | 画面 |
-| @cloudscape-design/components、design-tokens、global-styles | dependencies | UI 部品、トークン、ベーススタイル |
-| @tauri-apps/api | dependencies | `invoke` / `listen` |
-| @tauri-apps/cli | devDependencies | `tauri dev` / `build` / `icon` |
-| vite、@vitejs/plugin-react | devDependencies | バンドル |
-| typescript | devDependencies | 型検査 |
-| vitest、jsdom、@testing-library/react、dom、jest-dom、user-event | devDependencies | テスト |
-| eslint、@eslint/js、typescript-eslint、eslint-plugin-react-hooks、eslint-plugin-react-refresh、globals | devDependencies | リント |
-| prettier | devDependencies | フォーマット |
-| @resvg/resvg-js | devDependencies | アイコン描画 |
-| @types/react、@types/react-dom | devDependencies | 型 |
-
-## External services and programs
-
-| 相手 | 依存する部品 | 必須か |
-|---|---|---|
-| AWS CloudWatch Logs（読み取り 3 API） | `AwsCloudWatchLogsGateway` | 実利用時のみ。テスト・CI は接続しない |
-| AWS CLI v2（`aws sso login`） | `SsoCli` | 任意（SSO サインイン機能のみ） |
-| macOS `/usr/bin/open` | `TauriApp` | SSO の URL を開くときのみ |
-| `~/.aws/config`、`~/.aws/credentials` | `ConnectionCatalog` | 無くても起動する（通知を出す） |
-| GitHub Actions ランナー（ubuntu-latest、macos-latest arm64）、GitHub Releases、`gh` | `CiWorkflow`、`ReleaseWorkflow`、`ReleaseDryRunWorkflow` | CI/CD |
-| Linux の WebKitGTK / GTK 開発パッケージ | `tauri-app` ジョブ（ubuntu） | CI の Linux ビルドのみ |
-| Apple の署名・公証サービス | なし | 未使用（Developer Program 不参加）。アドホック署名は Apple のサービスを使わず `codesign` だけで行える |
-
-## Internal dependencies（クレート・パッケージ間）
+## 内部の依存（パッケージ間）
 
 ```mermaid
-flowchart TD
-  Screen["src/ (npm local-sights)"] -- "IPC: invoke / listen" --> TauriApp["src-tauri (crate local-sights)"]
-  TauriApp -- "path dependency" --> Core["crates/local-sights-core"]
+flowchart LR
+  Screen["画面 src/（npm: local-sights）"] -- "Tauri IPC（コマンドとイベント）" --> App["src-tauri（crate: local-sights / lib local_sights_app）"]
+  App -- "パス依存" --> Core["crates/local-sights-core"]
   Example["examples/fetch_check.rs"] --> Core
   Tests["crates/local-sights-core/tests/"] --> Core
-  TauriApp -- "frontendDist ../dist (custom-protocol)" --> Dist["dist/ (vite build)"]
-  Screen --> Dist
-  Scripts["scripts/release/"] -. "reads versions of" .-> Files["Cargo.toml, Cargo.lock, package.json, tauri.conf.json"]
-  Workflows[".github/workflows/"] --> Scripts
-  Workflows -- "npm run tauri build" --> TauriApp
+  App -- "beforeBuildCommand: npm run build" --> Screen
 ```
 
-テキスト版: 画面（npm パッケージ）は IPC でだけ Tauri アプリに依存する。Tauri アプリは path 依存で core に依存し、`custom-protocol` feature で `vite build` の `dist/` を埋め込む。`fetch_check` の例と統合テストは core にだけ依存する。`scripts/release/` は 4 つの版ファイルを読み、ワークフローはそのスクリプトと `npm run tauri build` を呼ぶ。core は GUI・Tauri・画面のどれにも依存しない（ADR-001）。
+テキストでの説明：画面は Rust に直接依存せず、Tauri の IPC でアプリとやり取りする。アプリ（`src-tauri`）は中核（`local-sights-core`）にパスで依存する。中核はアプリにも GUI にも依存しない。確認用の `fetch_check` 例と結合テストは中核だけに依存する。アプリのビルド時には画面のビルド（`npm run build`）が先に走り、その出力 `dist/` が埋め込まれる。
 
-## Internal dependencies（core のモジュール間、主要な向き）
+### 中核の中のモジュール依存（取得経路）
 
-```
-session ─────┬─▶ request ─▶ time_range ─▶ time_zone
-             ├─▶ catalog ─▶ catalog/files, catalog/regions
-             ├─▶ connection
-             ├─▶ log_groups ─▶ gateway (trait)
-             ├─▶ cache/settings, cache/plan
-             ├─▶ sso_login ─▶ catalog
-             └─▶ failure
-coordinator ─┬─▶ streams/planner ─▶ streams, gateway, retry
-             ├─▶ fetcher ─▶ gateway, retry, paging
-             ├─▶ log_view (TimelineStore) ─▶ timeline, filter ─▶ event
-             ├─▶ cache ─▶ cache/plan
-             └─▶ failure
-gateway/aws ─▶ gateway (trait), gateway/classify, failure
-```
+- `coordinator` → `streams::planner`、`fetcher`、`retry`、`timeline`、`cache`、`cache::plan`、`gateway`（trait のみ）、`request`、`failure`、`event`
+- `fetcher` → `gateway`、`paging`、`retry`、`request`、`time_range`、`event`、`failure`
+- `streams::planner` → `streams`、`gateway`、`paging`、`retry`、`request`、`time_range`
+- `log_view` → `timeline`、`filter`、`coordinator`（`TimelineStore`／`HeldEvents` を実装）、`cache::plan`
+- `session` → `connection`、`catalog`、`log_groups`、`request`、`date_input`、`time_zone`、`time_range`、`cache`、`cache::plan`、`cache::settings`、`coordinator`（型）、`streams`（型）、`sso_login`、`filter`（型）、`timeline`（型）
+- `gateway::aws` → `gateway`、`gateway::classify`、`failure`、`log_groups`（型）、`streams`（型）
+- `cache::plan` → `coordinator::JobStatus`、`request`、`catalog`、`event`
 
-循環依存は見当たらない（`session` は `coordinator` を知らず、`coordinator` は `session` を知らない。両者を束ねるのは `src-tauri/src/lib.rs`）。
+循環：`coordinator` ↔ `log_view`（`log_view` が `coordinator` の trait を実装し、`coordinator` は trait の総称で `LogView` を名指ししない）と `coordinator` ↔ `cache::plan`（`cache::plan` が `JobStatus` を使い、`coordinator` が `cache::plan` の判断を使う）はモジュール間の相互参照だが、同じクレート内で型と trait を参照し合うだけで、ビルドや初期化の問題は無い。
 
-## Internal dependencies（Tauri 層と画面）
+### アプリ（`src-tauri/src/lib.rs`）が使う中核の口
 
-- `src-tauri/src/lib.rs` → core の `session`、`coordinator`、`log_view`、`gateway::aws`、`catalog`、`log_groups::listing`、`retry`、`filter`、`sso_login`、`time_zone`、`failure` と、同クレートの `sso_cli`。
-- `src-tauri/src/sso_cli.rs` → core の `sso_login`（`extract_login_hints`、`MAX_LINE_BYTES`、`SsoLoginOutcome`）、libc。
-- `src/App.tsx` → `api.ts`、`components/*`（13）、`hooks/*`、`i18n/messages`、`dev/perfRows`。
-- `src/api.ts` → `@tauri-apps/api`、`dev/perfRows`。部品やフックには依存しない。
-- コマンドの整合: `build.rs`、`capabilities/default.json`、`lib.rs`、`api.ts` の 4 か所に同じ 25 コマンド。`src/commandRegistration.test.ts` が検査。
+`session::AppSession` ほか、`coordinator::{run_fetch_with_cache, FetchSink, FetchJob, BatchProgress, JobStatus}`、`gateway::aws::AwsCloudWatchLogsGateway`、`log_groups::listing::{run_listing, ListingSink}`、`log_view::LogView`、`retry::{abort_pair, AbortHandle, RandomJitter, Retrier, RetryPolicy}`、`filter::{should_report_progress, ...}`、`catalog::files::load_catalog`、`time_zone::TimeZoneContext`、`sso_login::*`。
 
-## Configuration coupling（リリース・配布）
+## 外部の依存（Rust）
 
-- 版 `0.1.0` は `Cargo.toml`（`[workspace.package]`）、`Cargo.lock`（2 クレート）、`package.json`（+ `package-lock.json`）、`src-tauri/tauri.conf.json` の 4 か所で一致が必要。`scripts/release/versions.ts` が検査し、`release.yml` の `verify` がタグと照合する。
-- `.app` の名前は `tauri.conf.json` の `productName`（`Local Sights`）から決まり、`release.yml` は `.dmg` を `Local-Sights_<ver>_aarch64.dmg` に改名して上げる。`docs/install.md` の例示ファイル名もこれに合わせている。
-- 署名: `tauri.conf.json` に `bundle.macOS.signingIdentity` が無いため、Tauri CLI の署名動作は `release.yml` / `release-dry-run.yml` のビルドステップの環境変数に完全に依存する。両ワークフローのビルドステップは同じ内容で重複しており、片方だけ変えると挙動が食い違う。
-- `docs/install.md`、`docs/releasing.md`、`README.md`、`release.yml` の `NOTES` は「not signed or notarized」を前提にした文言で結合している。
+ワークスペースの `[workspace.dependencies]` で範囲をまとめて宣言する（`Cargo.toml`）。
+
+| クレート | 宣言 | 使う側 | 目的 |
+|---|---|---|---|
+| `aws-config` | `"1"` | 中核 | 認証と接続先 |
+| `aws-sdk-cloudwatchlogs` | `"1"`、`default-features = false`、`["default-https-client", "rt-tokio"]` | 中核 | CloudWatch Logs |
+| `aws-credential-types` | `"1"` | 中核 | 認証失敗の判定 |
+| `aws-smithy-runtime-api`（`http-1x`）、`aws-smithy-types` | `"1"` | 中核（開発時のみ） | テストで SDK エラーを作る |
+| `tokio` | `"1"`、`["rt-multi-thread", "macros", "sync"]`（中核は `time`、開発時は `test-util` を追加） | 中核、アプリ | 非同期 |
+| `chrono` | `"0.4"`、`default-features = false`、`["std", "clock"]` | 中核 | 日時 |
+| `chrono-tz` | `"0.10"`、`["std"]` | 中核 | タイムゾーン |
+| `iana-time-zone` | `"0.1"` | 中核 | OS のゾーン名 |
+| `regex` | `"1"` | 中核 | 伏せ字 |
+| `serde`（`derive`）、`serde_json` | `"1"` | 中核、アプリ | 受け渡しとファイル |
+| `sha2` | `"0.11"` | 中核 | キャッシュのファイル名 |
+| `thiserror` | `"2"` | 中核 | エラー型 |
+| `uuid`（`v4`） | `"1"` | 中核 | ID |
+| `fastrand` | `"2"` | 中核 | 揺らぎ |
+| `home` | `"0.5"` | 中核 | ホームフォルダ |
+| `tauri` / `tauri-build` | `"2"` | アプリ | デスクトップ |
+| `libc` | `"0.2"` | アプリ | プロセスグループへのシグナル |
+| `tempfile` | `"3"` | 中核・アプリ（開発時のみ） | テスト用フォルダ |
+
+`Cargo.lock` には 495 個のパッケージがある（AWS SDK と Tauri の推移的な依存が大半）。同じクレートの複数の版が入っている例：`sha2` 0.10.9 と 0.11.0、`thiserror` 1.0.69 と 2.0.21（`deny.toml` で `multiple-versions = "warn"`）。
+
+## 外部の依存（npm）
+
+| パッケージ | 宣言 | 区分 |
+|---|---|---|
+| `@cloudscape-design/components` | `^3.0.1396` | 実行時 |
+| `@cloudscape-design/design-tokens` | `^3.0.114` | 実行時 |
+| `@cloudscape-design/global-styles` | `^1.0.71` | 実行時 |
+| `@tauri-apps/api` | `^2.12.2` | 実行時 |
+| `react`、`react-dom` | `^19.3.0` | 実行時 |
+| `@tauri-apps/cli` | `^2.12.1` | 開発時 |
+| `typescript` | `^6.0.3` | 開発時 |
+| `vite`、`@vitejs/plugin-react` | `^8.3.4`、`^6.1.2` | 開発時 |
+| `vitest`、`jsdom` | `^5.0.3`、`^30.1.2` | 開発時 |
+| `@testing-library/react`、`dom`、`jest-dom`、`user-event` | `^16.3.3`、`^10.4.2`、`^7.0.1`、`^14.6.7` | 開発時 |
+| `eslint`、`@eslint/js`、`typescript-eslint`、`eslint-plugin-react-hooks`、`eslint-plugin-react-refresh`、`globals` | `^10.12.0`、`^10.0.1`、`^8.71.1`、`^7.1.1`、`^0.5.7`、`^17.13.0` | 開発時 |
+| `prettier` | `^3.9.10` | 開発時 |
+| `@resvg/resvg-js` | `^2.6.2` | 開発時 |
+
+`package-lock.json` には 321 個のパッケージの項目がある。
+
+## 依存の方針と検査
+
+- `Cargo.lock` と `package-lock.json` はコミットする（team.md Code Style）。
+- `cargo-deny`（`deny.toml`）：既知の脆弱性・メンテナンス終了・取り下げ版は失敗。例外は `RUSTSEC-2024-0370`（`proc-macro-error`、Tauri→gtk→glib-macros 経由、メンテナンス終了のみ）だけ。ライセンスは MIT、Apache-2.0、BSD-3-Clause、ISC、Unicode-3.0、Zlib、MPL-2.0 などの許可リスト。ワイルドカードの版は禁止（ワークスペースのパス依存は可）。取得元は crates.io だけ。
+- npm：CI で `npm audit --audit-level=high`。
+- Dependabot：毎週、まとめ単位は `aws-*`、`tauri*`、`@tauri-apps/*`、テスト系。
+- 新しい依存を足すときの慣習：`Cargo.toml` のコメントにライセンスと「何も外に送らない」ことを書いている（例：`sha2`、`chrono-tz`、`libc`）。
+
+## 今回の intent に関わる依存の注意
+
+- 並行取得と速さの上限は、`tokio`（`sync` の `Semaphore`、`time`）と既存の依存の範囲で作れる見込みで、新しいクレートは必須ではない。
+- `aws-config` の既定の再試行（`BehaviorVersion::latest()`）がアプリの再試行と重なっていると考えられる。呼び出し回数を数えるなら、SDK 側の再試行の設定を明示するかどうかを決める必要がある（[code-quality-assessment.md](code-quality-assessment.md)）。

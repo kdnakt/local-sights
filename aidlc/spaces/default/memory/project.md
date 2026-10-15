@@ -74,6 +74,8 @@ None. (affirmed 2026-10-03)
 
 None. (affirmed 2026-10-11)
 
+None. (affirmed 2026-10-12)
+
 ## Corrections
 
 <!-- Project-specific corrections from human feedback. -->
@@ -94,3 +96,6 @@ None. (affirmed 2026-10-11)
 - [u3-fetch-robustness] ストリームは 1 つずつ順に取得し、再試行は要求ごとに最大 5 回、使い切りが 3 ストリーム続いたら残りを失敗とする（Q1、レビュー R-03） (learned 2026-10-08) <!-- cid:261002-cwlogs-viewer:functional-design:6d59d767a9363c5268cead56212e8b6684687044cf966255c1ab8c4d6c10c221 -->
 - 依頼文の中の「〜したほうがいいかも？」のような相談は、根拠（例：マネジメントコンソールの振る舞い）を添えた推奨つきの追加質問で確認して決める (learned 2026-10-10) <!-- cid:261010-console-ui-polish:intent-capture:40f367fe7c8d1469208a6ccd7773a65f6136edd66a4f4e530d8b7778a4154bd5 -->
 - アプリが利用者の操作で AWS CLI の aws sso login を起動することは、Forbidden の「CloudWatch Logs の読み取り API 以外を呼ばない」と「SSO のトークンを書き込まない」の対象外とする。アプリ自身は SSO の API を呼ばず、トークンを読み書きしない (learned 2026-10-11) <!-- cid:261011-sso-login:intent-capture:b2155b7843696ad2ed4315f53ce0950625508101b5fef4a57d001979208f5710 -->
+- 選択肢の説明に添えた例の数値（例：「半分以下」）は確定した目標値とみなさず、測る条件と数値は後のステージで決める (learned 2026-10-12) <!-- cid:261012-parallel-fetch:intent-capture:0057eaf5e0e1b5719946a1ae0544ced3b84ee9b61be2d1e88549b9c2f666d36c -->
+- 「含めないもの」の質問で選ばれなかった項目は、含めるとも含めないともみなさず、追加の質問で確かめる (learned 2026-10-12) <!-- cid:261012-parallel-fetch:intent-capture:7294424c81c605a135be8bd6e7b9479d249332912f3659665b0181f236684857 -->
+- ALWAYS CI のジョブ名を変えるときは、ブランチの保護ルールの必須チェックの名前と合わせる（PR #20 で名前を変えてマージできなくなった） (learned 2026-10-13) <!-- cid:261012-parallel-fetch:code-generation:42c27d7572a097e518f636f0c205a6d03693f4cadb5891375e6cbc90393ba6bc -->

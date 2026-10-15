@@ -24,6 +24,7 @@ vi.mock("./api", async (importOriginal) => {
     getSession: vi.fn(),
     updateInput: vi.fn(),
     startFetch: vi.fn(),
+    cancelFetch: vi.fn(),
     selectProfile: vi.fn(),
     selectRegion: vi.fn(),
     confirmConnectionChange: vi.fn(),
@@ -121,6 +122,7 @@ describe("App", () => {
       api.cancelSsoLogin,
       api.dismissSsoLogin,
       api.openSsoUrl,
+      api.cancelFetch,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -177,6 +179,88 @@ describe("App", () => {
     push(sessionView({ phase: "Done", currentJobId: 7, eventCount: 3, timelineVersion: 2 }));
     update(7, 50, 5);
     expect(screen.getByTestId("status-line-count")).toHaveTextContent("3 events");
+  });
+
+  it("starts the elapsed clock from getSession and keeps it across progress messages (261012-parallel-fetch U4, NFR6.9)", async () => {
+    const elapsed = { running: true, elapsedMs: 5_999, fetchNumber: 3 };
+    vi.mocked(api.getSession).mockResolvedValue(
+      sessionView({ phase: "Fetching", currentJobId: 7, elapsed }),
+    );
+    render(<App locale="en" />);
+    const part = await screen.findByTestId("status-line-elapsed");
+    expect(part).toHaveAttribute("aria-hidden", "true");
+    // The screen's own clock moves it on without any message from the core.
+    const shownSeconds = () =>
+      Number(
+        /Elapsed 00:(\d\d)/.exec(screen.getByTestId("status-line-elapsed").textContent ?? "")?.[1],
+      );
+    await waitFor(() => expect(shownSeconds()).toBeGreaterThanOrEqual(6));
+    const beforeProgress = shownSeconds();
+
+    act(() => {
+      handlers.progress?.({
+        jobId: 7,
+        progress: {
+          seenStreamCount: 2,
+          selectedStreamCount: 2,
+          plannedStreamCount: 2,
+          finishedStreamCount: 1,
+          eventCount: 3,
+        },
+        eventCount: 3,
+        timelineVersion: 1,
+        filterSummary: null,
+        filterResultVersion: 0,
+        cacheSaving: true,
+      });
+    });
+    expect(screen.getByTestId("status-line-cache-saving")).toBeInTheDocument();
+    expect(shownSeconds()).toBeGreaterThanOrEqual(beforeProgress);
+
+    push(
+      sessionView({
+        phase: "Done",
+        currentJobId: 7,
+        eventCount: 3,
+        elapsed: { running: false, elapsedMs: 31_400, fetchNumber: 3 },
+      }),
+    );
+    expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:31");
+    expect(screen.getByTestId("status-line-elapsed")).not.toHaveAttribute("aria-hidden");
+
+    // A connection change clears the result and the elapsed time with it.
+    push(connectedView({ phase: "Idle", elapsed: null }));
+    expect(screen.queryByTestId("status-line-elapsed")).not.toBeInTheDocument();
+  });
+
+  it("keeps the same elapsed object when progress and filter messages are composed (NFR6.9)", () => {
+    const view = sessionView({
+      phase: "Fetching",
+      currentJobId: 7,
+      filterResultVersion: 2,
+      elapsed: { running: true, elapsedMs: 1_000, fetchNumber: 1 },
+    });
+    const progress = {
+      jobId: 7,
+      progress: {
+        seenStreamCount: 1,
+        selectedStreamCount: 1,
+        plannedStreamCount: 1,
+        finishedStreamCount: 0,
+        eventCount: 1,
+      },
+      eventCount: 1,
+      timelineVersion: 1,
+      filterSummary: null,
+      filterResultVersion: 3,
+      cacheSaving: false,
+    };
+    expect(api.withProgress(view, progress)?.elapsed).toBe(view.elapsed);
+    expect(api.withFilter(view, { filterSummary: null, filterResultVersion: 4 })?.elapsed).toBe(
+      view.elapsed,
+    );
+    const newer = { ...view, filterResultVersion: 1, elapsed: { ...view.elapsed! } };
+    expect(api.mergeSessionView(view, newer).elapsed).toBe(newer.elapsed);
   });
 
   it("sends the connection generation with fetch, reload and log group selection", async () => {
@@ -870,5 +954,102 @@ describe("App", () => {
       "aria-valuenow",
       "40",
     );
+  });
+
+  // ---- 261012-parallel-fetch U5: [Cancel] ----------------------------------
+
+  const cancelledView = (more: Partial<SessionView> = {}) =>
+    sessionView({
+      phase: "Done",
+      currentJobId: 7,
+      eventCount: 3,
+      timelineVersion: 2,
+      lastJob: {
+        jobId: 7,
+        status: "Cancelled",
+        eventCount: 3,
+        plannedStreamCount: 20,
+        finishedStreamCount: 7,
+        failedStreamCount: 0,
+        failure: null,
+      },
+      cancelNotice: { unfinishedStreams: 13 },
+      ...more,
+    });
+
+  it("sends [Cancel] to the core and shows [Cancelling…] once the core says so (BR5.1)", async () => {
+    const user = userEvent.setup();
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
+    await user.click(screen.getByTestId("fetch-form-submit-button"));
+    expect(api.cancelFetch).toHaveBeenCalledTimes(1);
+    expect(api.startFetch).not.toHaveBeenCalled();
+    push(sessionView({ phase: "Fetching", currentJobId: 7, cancelling: true }));
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("Cancelling…");
+  });
+
+  it("makes [Cancel] unavailable when the progress message says the cache is written (BR5.2)", async () => {
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
+    expect(screen.getByTestId("fetch-form-submit-button")).toBeEnabled();
+    act(() => {
+      handlers.progress?.({
+        jobId: 7,
+        progress: {
+          seenStreamCount: 1,
+          selectedStreamCount: 1,
+          plannedStreamCount: 1,
+          finishedStreamCount: 1,
+          eventCount: 3,
+        },
+        eventCount: 3,
+        timelineVersion: 2,
+        filterSummary: null,
+        filterResultVersion: 0,
+        cacheSaving: true,
+      });
+    });
+    expect(screen.getByTestId("fetch-form-submit-button")).toBeDisabled();
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("Cancel");
+  });
+
+  it("shows the cancel notice above the list, in the error area's place, never with the error (BR5.11)", async () => {
+    render(<App locale="ja" />);
+    await screen.findByTestId("fetch-form");
+    push(cancelledView());
+    const notice = screen.getByTestId("cancel-notice");
+    expect(notice).toHaveTextContent(
+      "取得を中断しました。13 本のストリームは読み終えていないため、一部のログが含まれていません。",
+    );
+    expect(screen.queryByTestId("fetch-error-banner")).not.toBeInTheDocument();
+    expect(screen.getByTestId("status-line-cancelled")).toHaveTextContent("中断");
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    expect(
+      notice.compareDocumentPosition(screen.getByTestId("log-table")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    push(cancelledView({ cancelNotice: null, phase: "Idle", lastJob: null }));
+    expect(screen.queryByTestId("cancel-notice")).not.toBeInTheDocument();
+  });
+
+  it("keeps the fetched rows filterable after a cancel (NFR5.5)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(cancelledView());
+    render(<App locale="en" />);
+    await screen.findByTestId("cancel-notice");
+    const input = logFilter();
+    expect(input).toBeEnabled();
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(input, { target: { value: "middle" } });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(api.setLogFilter).toHaveBeenCalledWith("middle");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

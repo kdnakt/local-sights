@@ -11,12 +11,13 @@ mod support;
 
 use std::sync::Mutex;
 
-use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, JobStatus, run_fetch};
+use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch};
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::filter::{FilterChange, FilterStatus, ScanStep, ScanTicket};
 use local_sights_core::log_view::LogView;
 use local_sights_core::request::{FetchInput, ValidatedFetch, validate_fetch_input};
-use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, abort_pair};
+use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, stop_pair};
 use local_sights_core::streams::planner::ListingProgress;
 use support::fake_gateway::{FakeGateway, page, stream_page};
 use support::recording_sink::RecordingSink;
@@ -39,7 +40,7 @@ async fn fetch_into<S: FetchSink + Send>(
     view: &Mutex<LogView>,
     sink: &mut S,
 ) -> FetchJob {
-    let (_handle, signal) = abort_pair();
+    let (_handle, signal) = stop_pair();
     let policy = RetryPolicy::default();
     let jitter = FixedJitter(0.0);
     let retrier = Retrier::new(&policy, &jitter, &signal);

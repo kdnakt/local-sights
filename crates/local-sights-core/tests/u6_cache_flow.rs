@@ -15,11 +15,12 @@ use std::sync::{Arc, Mutex};
 use local_sights_core::cache::plan::{CacheKey, CacheOutcome, CoveredRange};
 use local_sights_core::cache::{HeaderRead, LogCache};
 use local_sights_core::catalog::ProfileSelector;
-use local_sights_core::coordinator::{FetchJob, JobStatus, run_fetch_with_cache};
+use local_sights_core::coordinator::{FetchJob, run_fetch_with_cache};
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::filter::{FilterChange, ScanStep};
 use local_sights_core::log_view::LogView;
 use local_sights_core::request::{FetchInput, ValidatedFetch, validate_fetch_input};
-use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, abort_pair};
+use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, stop_pair};
 use support::fake_gateway::{FakeGateway, page, stream_page};
 use support::recording_sink::RecordingSink;
 
@@ -56,7 +57,7 @@ async fn fetch(
     request: &ValidatedFetch,
     started_at: i64,
 ) -> FetchJob {
-    let (_handle, signal) = abort_pair();
+    let (_handle, signal) = stop_pair();
     let policy = RetryPolicy::default();
     let jitter = FixedJitter(0.0);
     let retrier = Retrier::new(&policy, &jitter, &signal);

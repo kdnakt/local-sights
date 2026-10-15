@@ -1,0 +1,18 @@
+{
+  "stage": "functional-design",
+  "unit": "u4-elapsed-time",
+  "upstream_ids": ["AC2.1.1", "AC2.1.2", "AC2.1.3", "AC2.1.4", "AC2.1.5", "AC2.1.6", "AC2.1.7"],
+  "coverage": [
+    { "id": "AC2.1.1", "status": "OK", "target": "BR4.5, BR4.8" },
+    { "id": "AC2.1.2", "status": "OK", "target": "BR4.1, BR4.6, BR4.10" },
+    { "id": "AC2.1.3", "status": "OK", "target": "BR4.2, BR4.5, BR4.6" },
+    { "id": "AC2.1.4", "status": "OK", "target": "BR4.1, BR4.2, BR4.8" },
+    { "id": "AC2.1.5", "status": "OK", "target": "BR4.7" },
+    { "id": "AC2.1.6", "status": "OK", "target": "BR4.8" },
+    { "id": "AC2.1.7", "status": "OK", "target": "BR4.9" }
+  ],
+  "reverse": [
+    { "id": "BR4.3", "status": "N/A", "target": "閉じて止めた取得（Aborted）の扱い。AC は対象の終わりを成功・一部失敗・失敗・中断に限っている（FR4.3）" },
+    { "id": "BR4.4", "status": "N/A", "target": "接続の変更で前の結果が消えるときの扱い（質問票 Q2）" }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "stage": "nfr-design",
+  "unit": "u5-cancel",
+  "upstream_ids": [
+    "NFR2.5",
+    "NFR4.2",
+    "NFR4.3",
+    "NFR4.4",
+    "NFR4.5",
+    "NFR4.6",
+    "NFR5.5",
+    "NFR6.13",
+    "NFR6.14",
+    "NFR6.15",
+    "NFR6.16",
+    "NFR6.17",
+    "NFR6.18",
+    "NFR6.19",
+    "NFR6.20",
+    "NFR7.4",
+    "NFR8.13",
+    "NFR8.14",
+    "NFR8.15",
+    "NFR9.3",
+    "NFR9.4",
+    "NFR10.1"
+  ],
+  "coverage": [
+    {
+      "id": "NFR2.5",
+      "status": "OK",
+      "target": "observability-design: status に Cancelled"
+    },
+    {
+      "id": "NFR4.2",
+      "status": "OK",
+      "target": "performance-design: 新しい読みを積まず落とす"
+    },
+    {
+      "id": "NFR4.3",
+      "status": "OK",
+      "target": "performance-design: stop.stopped() と並べて待つ"
+    },
+    {
+      "id": "NFR4.4",
+      "status": "OK",
+      "target": "performance-design: 落とした読みは N に入る"
+    },
+    {
+      "id": "NFR4.5",
+      "status": "OK",
+      "target": "performance-design: 止める前に読み終えていれば N = 0"
+    },
+    {
+      "id": "NFR4.6",
+      "status": "OK",
+      "target": "scalability-design: schedule の数から N"
+    },
+    {
+      "id": "NFR5.5",
+      "status": "OK",
+      "target": "performance-design: 一覧の部品に手を入れない"
+    },
+    {
+      "id": "NFR6.13",
+      "status": "OK",
+      "target": "security-design 1 節: FakeGateway と止めた時計"
+    },
+    {
+      "id": "NFR6.14",
+      "status": "OK",
+      "target": "scalability-design: cancel_notice は 1 つ"
+    },
+    {
+      "id": "NFR6.15",
+      "status": "OK",
+      "target": "reliability-design: Close の道は今のまま"
+    },
+    {
+      "id": "NFR6.16",
+      "status": "OK",
+      "target": "reliability-design: すべての終わりで cancelling を戻す"
+    },
+    {
+      "id": "NFR6.17",
+      "status": "OK",
+      "target": "reliability-design: ロックの順と登録"
+    },
+    {
+      "id": "NFR6.18",
+      "status": "OK",
+      "target": "reliability-design: N = 0 は今の終わりの流れ"
+    },
+    {
+      "id": "NFR6.19",
+      "status": "OK",
+      "target": "reliability-design: serve_from_cache の理由の分岐"
+    },
+    {
+      "id": "NFR6.20",
+      "status": "OK",
+      "target": "security-design 3 節: 純粋な判断はテスト先行"
+    },
+    {
+      "id": "NFR7.4",
+      "status": "OK",
+      "target": "security-design 3 節: ライブラリと画面のテスト"
+    },
+    {
+      "id": "NFR8.13",
+      "status": "OK",
+      "target": "security-design 1 節: 本数と決まった語だけ"
+    },
+    {
+      "id": "NFR8.14",
+      "status": "OK",
+      "target": "security-design 1 節: API・依存・送信を足さない"
+    },
+    {
+      "id": "NFR8.15",
+      "status": "OK",
+      "target": "security-design 1 節・2.3: 権限の 3 か所"
+    },
+    {
+      "id": "NFR9.3",
+      "status": "OK",
+      "target": "observability-design: 英日の文言"
+    },
+    {
+      "id": "NFR9.4",
+      "status": "OK",
+      "target": "observability-design: role=status の Alert"
+    },
+    {
+      "id": "NFR10.1",
+      "status": "OK",
+      "target": "observability-design: 1 つのボタン"
+    }
+  ]
+}

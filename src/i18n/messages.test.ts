@@ -446,6 +446,20 @@ describe("message catalog", () => {
     expect(messages["close.close"]).toEqual({ en: "Close", ja: "閉じる" });
   });
 
+  it("has the U5 cancel texts word for word as the refined mockups' wording list (BR5.13, NFR9.3)", () => {
+    expect(messages["fetch.cancel"]).toEqual({ en: "Cancel", ja: "中断" });
+    expect(messages["fetch.cancelling"]).toEqual({ en: "Cancelling…", ja: "中断中…" });
+    expect(messages["status.cancelled"]).toEqual({ en: "Cancelled", ja: "中断" });
+    expect(messages["cancel.notice.afterListing"]).toEqual({
+      en: "Fetch cancelled. {n} streams were not finished, so some logs are missing.",
+      ja: "取得を中断しました。{n} 本のストリームは読み終えていないため、一部のログが含まれていません。",
+    });
+    expect(messages["cancel.notice.beforeListing"]).toEqual({
+      en: "Fetch cancelled before the stream listing finished, so some logs are missing.",
+      ja: "ストリームの一覧を読み終える前に中断したため、一部のログが含まれていません。",
+    });
+  });
+
   it("drops the provisional kind-name texts and uses the same placeholders in both languages", () => {
     for (const gone of ["status.failed", "table.scroll"]) {
       expect(isMessageKey(gone), gone).toBe(false);

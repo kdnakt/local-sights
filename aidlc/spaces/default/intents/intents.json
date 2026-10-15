@@ -31,6 +31,14 @@
     "request": "e3514d11"
   },
   {
+    "uuid": "01a12ef4-71f6-7a92-afe0-2716a1cc1c7e",
+    "slug": "parallel-fetch",
+    "dirName": "261012-parallel-fetch",
+    "scope": "mvp",
+    "status": "complete",
+    "request": "22ebc7bc"
+  },
+  {
     "uuid": "01a12f3c-2ab5-7f0c-b41a-9ca48a3f5e4f",
     "slug": "adhoc-signing",
     "dirName": "261012-adhoc-signing",

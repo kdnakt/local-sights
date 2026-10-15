@@ -1,0 +1,80 @@
+{
+  "stage": "infrastructure-design",
+  "unit": "u5-cancel",
+  "upstream_ids": [
+    "NFR2.5",
+    "NFR4.2",
+    "NFR4.3",
+    "NFR6.13",
+    "NFR6.15",
+    "NFR6.17",
+    "NFR6.20",
+    "NFR7.4",
+    "NFR8.14",
+    "NFR8.15",
+    "NFR9.4",
+    "NFR10.1"
+  ],
+  "coverage": [
+    {
+      "id": "NFR2.5",
+      "status": "OK",
+      "target": "monitoring-design: 要約の status=Cancelled"
+    },
+    {
+      "id": "NFR4.2",
+      "status": "OK",
+      "target": "monitoring-design: SLI 中断の後の呼び出し 0 回"
+    },
+    {
+      "id": "NFR4.3",
+      "status": "OK",
+      "target": "monitoring-design: SLI 止まるまで"
+    },
+    {
+      "id": "NFR6.13",
+      "status": "OK",
+      "target": "cicd-pipeline: 偽物のゲートウェイの拡張、実際の AWS に接続しない"
+    },
+    {
+      "id": "NFR6.15",
+      "status": "OK",
+      "target": "cicd-pipeline: 閉じるときの回帰テスト"
+    },
+    {
+      "id": "NFR6.17",
+      "status": "OK",
+      "target": "cicd-pipeline: Tauri app のジョブで持ち手の登録の順のテスト"
+    },
+    {
+      "id": "NFR6.20",
+      "status": "OK",
+      "target": "cicd-pipeline 進め方 2"
+    },
+    {
+      "id": "NFR7.4",
+      "status": "OK",
+      "target": "cicd-pipeline: 行カバレッジ 80%"
+    },
+    {
+      "id": "NFR8.14",
+      "status": "OK",
+      "target": "infrastructure-specification: ネットワーク・保存を変えない、cicd-pipeline の cargo-deny"
+    },
+    {
+      "id": "NFR8.15",
+      "status": "OK",
+      "target": "infrastructure-specification: 権限の 3 か所"
+    },
+    {
+      "id": "NFR9.4",
+      "status": "OK",
+      "target": "monitoring-design: VoiceOver の手元の確認"
+    },
+    {
+      "id": "NFR10.1",
+      "status": "OK",
+      "target": "monitoring-design: キーボードの手元の確認"
+    }
+  ]
+}

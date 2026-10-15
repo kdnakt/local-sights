@@ -10,11 +10,12 @@ mod support;
 use std::sync::Mutex;
 
 use local_sights_core::catalog::ProfileSelector;
-use local_sights_core::coordinator::{FetchJob, JobStatus, run_fetch};
+use local_sights_core::coordinator::{FetchJob, run_fetch};
 use local_sights_core::failure::FailureKind;
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamStatus;
 use local_sights_core::request::{FetchInput, ValidatedFetch, validate_fetch_input};
-use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, abort_pair};
+use local_sights_core::retry::{FixedJitter, Retrier, RetryPolicy, stop_pair};
 use local_sights_core::timeline::EventTimeline;
 use support::fake_gateway::{FakeGateway, failure, page};
 use support::recording_sink::{Delivered, RecordingSink};
@@ -38,7 +39,7 @@ async fn run_with(
     timeline: &Mutex<EventTimeline>,
 ) -> (FetchJob, RecordingSink) {
     let policy = RetryPolicy::default();
-    let (_handle, signal) = abort_pair();
+    let (_handle, signal) = stop_pair();
     let retrier = Retrier::new(&policy, &FixedJitter(0.0), &signal);
     let mut sink = RecordingSink::default();
     let job = run_fetch(gateway, fetch, timeline, &retrier, &mut sink).await;

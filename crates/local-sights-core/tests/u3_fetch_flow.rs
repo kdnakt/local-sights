@@ -10,11 +10,14 @@ mod support;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use local_sights_core::coordinator::{FetchJob, JobStatus, run_fetch};
+use local_sights_core::coordinator::{FetchJob, run_fetch};
 use local_sights_core::failure::FailureKind;
+use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamStatus;
 use local_sights_core::request::{FetchInput, ValidatedFetch, validate_fetch_input};
-use local_sights_core::retry::{AbortSignal, FixedJitter, Retrier, RetryPolicy, abort_pair};
+use local_sights_core::retry::{
+    FixedJitter, Retrier, RetryPolicy, StopReason, StopSignal, stop_pair,
+};
 use local_sights_core::streams::StreamListingStatus;
 use local_sights_core::timeline::EventTimeline;
 use support::fake_gateway::{FakeGateway, failure, page, stream_page};
@@ -42,7 +45,7 @@ async fn run_with(
     gateway: &FakeGateway,
     timeline: &Mutex<EventTimeline>,
     jitter: f64,
-    signal: &AbortSignal,
+    signal: &StopSignal,
 ) -> (FetchJob, RecordingSink) {
     let policy = RetryPolicy::default();
     let jitter = FixedJitter(jitter);
@@ -53,7 +56,7 @@ async fn run_with(
 }
 
 async fn run(gateway: &FakeGateway, timeline: &Mutex<EventTimeline>) -> (FetchJob, RecordingSink) {
-    let (_handle, signal) = abort_pair();
+    let (_handle, signal) = stop_pair();
     run_with(gateway, timeline, 0.0, &signal).await
 }
 
@@ -118,16 +121,18 @@ async fn streams_are_fetched_one_by_one_and_merged_by_time_then_stream_name() {
             pair("b", "b2"),
         ]
     );
-    // One stream after another, in listing order (BR3.1).
+    // Since 261012-parallel-fetch U1 the streams are started together, in
+    // listing order (U1:BR1.7, BR1.8): b's second page waits for its permit
+    // after the first pages of a and c.
     assert_eq!(
         gateway.api_log(),
         vec![
             "DescribeLogStreams",
             "DescribeLogStreams",
             "GetLogEvents:b",
-            "GetLogEvents:b",
             "GetLogEvents:a",
             "GetLogEvents:c",
+            "GetLogEvents:b",
         ]
     );
     let tokens: Vec<_> = gateway
@@ -287,8 +292,10 @@ async fn throttling_twice_then_succeeding_waits_one_and_two_seconds_and_complete
     assert_eq!(job.status, JobStatus::Completed);
     assert!(job.failed_streams.is_empty());
     assert_eq!(started.elapsed(), Duration::from_secs(3));
-    assert_eq!(job.outcomes[0].retry_count, 2);
-    assert_eq!(job.outcomes[1].retry_count, 0);
+    // Outcomes are in finishing order since U1 (U1:BR1.19): b ends first.
+    assert_eq!(job.outcomes[1].log_stream_name, "a");
+    assert_eq!(job.outcomes[1].retry_count, 2);
+    assert_eq!(job.outcomes[0].retry_count, 0);
     assert_eq!(held(&timeline), vec![pair("a", "a0"), pair("b", "b0")]);
     // The same request (same token) is sent again (BR2.1).
     let tokens: Vec<_> = gateway.calls().into_iter().map(|c| c.next_token).collect();
@@ -302,7 +309,7 @@ async fn the_waits_are_spread_by_the_jitter() {
     let gateway = FakeGateway::with_stream_pages(vec![stream_page(&[("a", None, None)], None)])
         .script_stream("a", first);
     let timeline = Mutex::new(EventTimeline::new());
-    let (_handle, signal) = abort_pair();
+    let (_handle, signal) = stop_pair();
     let started = Instant::now();
     run_with(&gateway, &timeline, 0.2, &signal).await;
     assert_eq!(started.elapsed(), Duration::from_millis(1_200 + 2_400));
@@ -326,9 +333,11 @@ async fn a_stream_that_uses_up_its_retries_fails_and_keeps_its_pages() {
     assert_eq!(job.failed_streams.len(), 1);
     assert_eq!(job.failed_streams[0].log_stream_name, "a");
     assert_eq!(job.failed_streams[0].failure.kind(), FailureKind::Throttled);
-    assert_eq!(job.outcomes[0].status, StreamStatus::Failed);
-    assert_eq!(job.outcomes[0].retry_count, 5);
-    assert_eq!(job.outcomes[0].page_count, 1);
+    // Outcomes are in finishing order since U1 (U1:BR1.19): b ends first.
+    assert_eq!(job.outcomes[1].log_stream_name, "a");
+    assert_eq!(job.outcomes[1].status, StreamStatus::Failed);
+    assert_eq!(job.outcomes[1].retry_count, 5);
+    assert_eq!(job.outcomes[1].page_count, 1);
     assert_eq!(held(&timeline), vec![pair("a", "a0"), pair("b", "b0")]);
     assert_eq!(
         gateway
@@ -341,33 +350,45 @@ async fn a_stream_that_uses_up_its_retries_fails_and_keeps_its_pages() {
 }
 
 /// FR4.10 acceptance criterion 3 (review R-03, R-09).
+///
+/// Since 261012-parallel-fetch U1, eight streams are read at once and the
+/// rule counts streams in finishing order; only streams not started yet are
+/// skipped (U1:BR1.7, BR1.13). So the group has eleven streams that all use
+/// up their retries: s01-s08 start together, s09 and s10 take the places of
+/// s01 and s02, and when s03 makes three in a row, s11 is skipped.
 #[tokio::test(start_paused = true)]
 async fn three_exhausted_streams_in_a_row_fail_the_rest_without_calling() {
-    let names = ["s1", "s2", "s3", "s4", "s5"];
-    let listed: Vec<(&str, Option<i64>, Option<i64>)> =
-        names.iter().map(|name| (*name, None, None)).collect();
+    let names: Vec<String> = (1..=11).map(|i| format!("s{i:02}")).collect();
+    let listed: Vec<(&str, Option<i64>, Option<i64>)> = names
+        .iter()
+        .map(|name| (name.as_str(), None, None))
+        .collect();
     let mut gateway = FakeGateway::with_stream_pages(vec![stream_page(&listed, None)]);
-    for name in &names[..3] {
+    for name in &names[..10] {
         gateway = gateway.script_stream(name, throttled_times(6));
     }
     let timeline = Mutex::new(EventTimeline::new());
     let (job, _) = run(&gateway, &timeline).await;
 
     assert_eq!(job.status, JobStatus::CompletedWithFailures);
-    assert_eq!(job.failed_streams.len(), 5);
-    assert_eq!(job.finished_stream_count, 5);
-    assert_eq!(job.planned_stream_count, 5);
-    let fetched = gateway.fetched_streams();
-    assert!(!fetched.contains(&"s4".to_string()) && !fetched.contains(&"s5".to_string()));
-    for skipped in &job.outcomes[3..] {
-        assert_eq!(skipped.page_count, 0);
-        assert_eq!(skipped.retry_count, 0);
-        assert_eq!(skipped.status, StreamStatus::Failed);
-        assert_eq!(
-            skipped.failure, job.outcomes[2].failure,
-            "the last stream's failure"
-        );
-    }
+    assert_eq!(job.failed_streams.len(), 11);
+    assert_eq!(job.finished_stream_count, 11);
+    assert_eq!(job.planned_stream_count, 11);
+    assert!(!gateway.fetched_streams().contains(&"s11".to_string()));
+    let finished: Vec<&str> = job
+        .outcomes
+        .iter()
+        .map(|outcome| outcome.log_stream_name.as_str())
+        .collect();
+    assert_eq!(&finished[..4], ["s01", "s02", "s03", "s11"]);
+    let skipped = &job.outcomes[3];
+    assert_eq!(skipped.page_count, 0);
+    assert_eq!(skipped.retry_count, 0);
+    assert_eq!(skipped.status, StreamStatus::Failed);
+    assert_eq!(
+        skipped.failure, job.outcomes[2].failure,
+        "the last stream's failure"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -392,17 +413,19 @@ async fn a_failure_without_exhaustion_resets_the_streak() {
 async fn an_abort_during_a_wait_stops_at_once_and_discards_the_logs() {
     let mut first = vec![page(&[(START, "a0")], Some("f/1"))];
     first.extend(throttled_times(1));
+    // Since U1, b is read alongside a (U1:BR1.7) and ends before the stop.
     let gateway = FakeGateway::with_stream_pages(vec![stream_page(
         &[("a", None, None), ("b", None, None)],
         None,
     )])
-    .script_stream("a", first);
+    .script_stream("a", first)
+    .script_stream("b", vec![page(&[(START + 1, "b0")], None)]);
     let timeline = Mutex::new(EventTimeline::new());
-    let (handle, signal) = abort_pair();
+    let (handle, signal) = stop_pair();
     let fetch = run_with(&gateway, &timeline, 0.0, &signal);
     let abort_later = async {
         tokio::time::sleep(Duration::from_millis(500)).await;
-        handle.abort();
+        handle.stop(StopReason::Close);
     };
     let ((job, sink), ()) = tokio::join!(fetch, abort_later);
 
@@ -417,11 +440,15 @@ async fn an_abort_during_a_wait_stops_at_once_and_discards_the_logs() {
         "the version after the discard is reported (review R-02)"
     );
     assert_eq!(
-        gateway.api_log().len(),
-        3,
-        "listing, page 1, the throttled call"
+        gateway.api_log(),
+        vec![
+            "DescribeLogStreams",
+            "GetLogEvents:a",
+            "GetLogEvents:b",
+            "GetLogEvents:a"
+        ],
+        "listing, a's page 1, b, a's throttled call; nothing after the stop"
     );
-    assert!(!gateway.fetched_streams().contains(&"b".to_string()));
     assert!(matches!(
         sink.delivered.last(),
         Some(Delivered::Finished(job)) if job.status == JobStatus::Aborted
@@ -432,11 +459,11 @@ async fn an_abort_during_a_wait_stops_at_once_and_discards_the_logs() {
 async fn an_abort_while_listing_fetches_no_stream() {
     let gateway = FakeGateway::with_stream_pages(vec![Err(failure(FailureKind::Network))]);
     let timeline = Mutex::new(EventTimeline::new());
-    let (handle, signal) = abort_pair();
+    let (handle, signal) = stop_pair();
     let fetch = run_with(&gateway, &timeline, 0.0, &signal);
     let abort_later = async {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        handle.abort();
+        handle.stop(StopReason::Close);
     };
     let ((job, sink), ()) = tokio::join!(fetch, abort_later);
 

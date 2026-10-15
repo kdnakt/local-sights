@@ -1,100 +1,67 @@
-# Technology Stack
+# 技術スタック（Local Sights）
 
-> リポジトリ `local-sights` の言語・フレームワーク・ライブラリと版。2026-10-12 の全体スキャン（コミット `9d08cbf`）に基づく。版は `Cargo.lock` / `package-lock.json` の解決済みの値（宣言は `Cargo.toml` / `package.json`）。外部依存の役割と内部依存は `dependencies.md` を参照。
+走査したコミット：`9d08cbf5c6d97820f0ec7f276c3ce6020c903eb5`（2026-10-12）。版は `Cargo.lock`／`package-lock.json` に固定された実際の版（宣言の範囲は [dependencies.md](dependencies.md)）。
 
-## Languages
+## 言語と実行環境
 
-| 言語 | 版 | 使用箇所 |
+| 項目 | 版・設定 | 根拠 |
 |---|---|---|
-| Rust | stable（最低 `rust-version = "1.85"`、edition 2024） | `crates/local-sights-core/`、`src-tauri/` |
-| TypeScript | 6.0.3（`strict`、`noUncheckedIndexedAccess`、`moduleResolution: bundler`、`jsx: react-jsx`、`noEmit`） | `src/`、`scripts/release/versions.ts`（消去可能構文のみ）、設定ファイル |
-| JavaScript（ESM） | Node.js 22（`check:version` は 22.18+ の型除去 import が必要） | `scripts/*.mjs`、`eslint.config.js` |
-| CSS | — | `src/styles.css`（Cloudscape トークンの CSS 変数を利用） |
-| YAML / TOML / JSON | — | GitHub Actions、Cargo、cargo-deny、Tauri 設定 |
-| Bash | — | ワークフローのステップ内 |
+| Rust | edition 2024、`rust-version = "1.85"`（ワークスペース共通）。CI は stable | `Cargo.toml`、`.github/workflows/ci.yml` |
+| TypeScript | 6.0.3（`strict`、`noUncheckedIndexedAccess`、`noUnusedLocals` など、ES2022、`moduleResolution: bundler`） | `tsconfig.json` |
+| Node.js | 22（CI とリリース） | `.github/workflows/*.yml` |
+| 対象 OS | macOS（Apple Silicon）向けに配布。CI は Linux（WebKitGTK）でもビルドとテストを行う | team.md Deployment、`release.yml` |
 
-## Desktop framework
+## アプリの枠組み
 
-| 技術 | 版 | 役割 |
+| 名前 | 版 | 使い方 |
 |---|---|---|
-| Tauri | 2.12.3（crate `tauri`） | OS の WebView 上で画面を描き、Rust のコマンド／イベントで IPC。`generate_context!`、メニュー、`RunEvent` |
-| tauri-build | 2.7.2 | `build.rs` でコンテキストと権限マニフェストを生成 |
-| @tauri-apps/cli | 2.12.1（npm） | `tauri dev` / `tauri build` / `tauri icon`。macOS 署名は環境変数 `APPLE_SIGNING_IDENTITY` を読む（未設定なら署名せず、`"-"` でアドホック） |
-| @tauri-apps/api | 2.12.2 | 画面側の `invoke` / `listen` |
-| 対象 OS | macOS（Apple Silicon、`aarch64-apple-darwin`） | 配布対象。CI は ubuntu でもビルド（WebKitGTK）。`sso_cli.rs` は Unix 専用 |
+| Tauri | 2.12.3（`tauri-build` 2.7.2、`@tauri-apps/cli` 2.12.1、`@tauri-apps/api` 2.12.2） | デスクトップアプリ。コマンドを権限として宣言し、メインウィンドウにだけ許す。CSP は `self` と IPC だけ。`withGlobalTauri: false`。`custom-protocol` 機能で `dist/` を埋め込む |
+| React | 19.3.0（`react-dom` 19.3.0） | 画面 |
+| Cloudscape Design System | `@cloudscape-design/components` 3.0.1396、`design-tokens` 3.0.114、`global-styles` 1.0.71 | AWS マネジメントコンソール風の部品（Button、Alert、Modal、Table、DatePicker、TimeInput、StatusIndicator など）、OS の明暗に追従 |
+| Vite | 8.3.4（`@vitejs/plugin-react` 6.1.2） | 開発サーバー（ポート 1420 固定）と本番のまとめ（`dist/`、ES2022） |
 
-## Rust libraries（`crates/local-sights-core/`、`src-tauri/`）
+## 中核の主なライブラリ
 
-| クレート | 版 | 役割 |
+| 名前 | 版 | 使い方 |
 |---|---|---|
-| aws-sdk-cloudwatchlogs | 1.156.0 | CloudWatch Logs クライアント。`default-features = false` + `default-https-client`、`rt-tokio`（rustls 0.21 系の RUSTSEC-2026-0104 を避ける） |
-| aws-config | 1.12.0 | プロファイル・リージョンの解決、既定の認証チェーン |
-| aws-credential-types | 1.3.0 | 認証情報型 |
-| aws-smithy-runtime-api / aws-smithy-types | 1.19.0 / 1.8.1 | dev 依存（テストで SDK エラーを組み立てる） |
-| tokio | 1.53.2 | 非同期ランタイム（`rt-multi-thread`、`macros`、`sync`、core は `time`、テストは `test-util`） |
-| chrono / chrono-tz / iana-time-zone | 0.4.45 / 0.10.4 / 0.1.65 | 時刻、IANA タイムゾーン（DST）、OS のゾーン名 |
-| serde / serde_json | 1.0.229 / 1.0.152 | `SessionView` の直列化、キャッシュの JSON Lines、設定ファイル |
-| thiserror | 2.0.21 | エラー型（1.0.69 も推移依存で共存） |
-| regex | 1.13.1 | 秘密らしき文字列のマスク、入力解析 |
-| sha2 | 0.11.0 | キャッシュキーのハッシュ（0.10.9 も推移依存で共存） |
-| uuid | 1.28.0（v4） | セッション ID |
-| home | 0.5.12 | `~/.aws` の場所 |
-| fastrand | 2.5.0 | 再試行待ちのランダムな広がり |
-| libc | 0.2.190 | `killpg` / `kill`（`src-tauri` の SSO CLI 停止） |
-| tempfile | 3.27.0 | dev 依存（テストの一時フォルダ） |
+| aws-sdk-cloudwatchlogs | 1.156.0 | `GetLogEvents`、`DescribeLogStreams`、`DescribeLogGroups`。既定機能から `rustls`（古い rustls 0.21 系、RUSTSEC-2026-0104）を外し、`default-https-client` と `rt-tokio` を使う |
+| aws-config | 1.12.0 | `BehaviorVersion::latest()` の既定チェーンで認証と接続先を解決（再試行・時間切れの設定は明示していない） |
+| aws-credential-types | 1.3.0 | 認証情報・トークン取得の失敗の判定 |
+| tokio | 1.53.2 | 非同期実行（Tauri の実行環境上）、`time`（再試行の待ち）、`sync::watch`（中断信号）、`spawn_blocking`。テストは `test-util` で時計を止める |
+| chrono 0.4.45 / chrono-tz 0.10.4 / iana-time-zone 0.1.65 | — | 日時の読み書き、IANA のゾーン（夏時間）、OS のゾーン名 |
+| serde 1.0.229 / serde_json 1.0.152 | — | 画面への受け渡し（camelCase）、キャッシュファイル（JSON Lines）、設定ファイル |
+| sha2 | 0.11.0 | キャッシュのファイル名（キーの SHA-256） |
+| regex | 1.13.1 | 秘密情報の伏せ字 |
+| thiserror | 2.0.21 | エラー型 |
+| uuid | 1.28.0 | セッション ID、一覧 ID など |
+| fastrand | 2.5.0 | 再試行の待ちの揺らぎ |
+| home | 0.5.12 | `~/.aws/` の場所 |
+| libc | 0.2.190（アプリ側） | AWS CLI のプロセスグループへのシグナル |
 
-## Front-end libraries（`src/`）
+## 開発・テストの道具
 
-| パッケージ | 版 | 役割 |
+| 名前 | 版 | 使い方 |
 |---|---|---|
-| react / react-dom | 19.3.0 | 画面 |
-| @cloudscape-design/components | 3.0.1396 | AWS マネジメントコンソールの部品（TopNavigation、Table、DatePicker、Modal、Alert など）。i18n メッセージ en/ja |
-| @cloudscape-design/design-tokens | 3.0.114 | 自前描画部分の色・間隔 |
-| @cloudscape-design/global-styles | 1.0.71 | ベーススタイル、ライト／ダーク |
-| vite | 8.3.4 | 開発サーバー（port 1420 固定）とバンドル（`dist/`、target es2022） |
-| @vitejs/plugin-react | 6.1.2 | React の変換 |
+| Rust 標準のテスト、`#[tokio::test]` | — | 中核とアプリのテスト。`start_paused = true` で待ちを実時間なしに検証 |
+| tempfile | 3.27.0 | キャッシュ・設定・偽の CLI のテスト用フォルダ |
+| aws-smithy-runtime-api 1.19.0 / aws-smithy-types 1.8.1 | — | SDK エラーをテストで作る（開発時のみ） |
+| Vitest | 5.0.3 | 画面とスクリプトのテスト（jsdom 30.1.2、globals、`src/test/setup.ts`） |
+| Testing Library | `@testing-library/react` 16.3.3、`dom` 10.4.2、`jest-dom` 7.0.1、`user-event` 14.6.7 | 部品のテスト |
+| ESLint | 10.12.0（`@eslint/js` 10.0.1、typescript-eslint 8.71.1、react-hooks 7.1.1、react-refresh 0.5.7） | 画面の lint |
+| Prettier | 3.9.10 | 画面の整形（幅 100、セミコロンあり、ダブルクォート、末尾カンマ all） |
+| rustfmt / clippy | stable | Rust の整形と lint（警告はエラーにしない） |
+| cargo-deny | `EmbarkStudios/cargo-deny-action` v2.1.1 | 脆弱性、ライセンス、重複、出所の検査（`deny.toml`） |
+| `@resvg/resvg-js` | 2.6.2 | アイコンの PNG 生成 |
 
-## Test, lint, format
+## CI/CD と配布
 
-| ツール | 版 | 役割 |
-|---|---|---|
-| `cargo test` | — | Rust のユニット・統合テスト（421 件、`#[ignore]` の性能計測 5 件） |
-| vitest | 5.0.3 | 画面と `scripts/release` のテスト（282 件、24 ファイル、`environment: jsdom`、`globals: true`） |
-| jsdom | 30.1.2 | DOM 環境 |
-| @testing-library/react / dom / jest-dom / user-event | 16.3.3 / 10.4.2 / 7.0.1 / 14.6.7 | 部品テスト |
-| rustfmt / clippy | stable | CI で `cargo fmt --all --check`、`cargo clippy ...`（`-D warnings` は付けない） |
-| eslint | 10.12.0 | `eslint.config.js`（flat config） |
-| typescript-eslint | 8.71.1 | TS ルール |
-| @eslint/js | 10.0.1 | 推奨ルール |
-| eslint-plugin-react-hooks / eslint-plugin-react-refresh | 7.1.1 / 0.5.7 | React のルール |
-| globals | 17.13.0 | ブラウザのグローバル |
-| prettier | 3.9.10 | `printWidth: 100`、`semi`、ダブルクォート、`trailingComma: all` |
-| cargo-deny | v2.1.1（action） | 脆弱性・ライセンス・重複・ソースの検査（`deny.toml`） |
-| npm audit | — | `--audit-level=high` |
-| @resvg/resvg-js | 2.6.2 | アイコン描画（dev） |
+- GitHub Actions：`ci.yml`（PR と `main`）、`release.yml`（`v*` タグ）、`release-dry-run.yml`（手動）。外部の Action はコミットのハッシュで固定（`actions/checkout` v7.0.1、`actions/setup-node` v7.1.0、`dtolnay/rust-toolchain`、`Swatinem/rust-cache` v2.9.2、`actions/upload-artifact` v7.0.2）。権限は既定で `contents: read`、公開ジョブだけ `contents: write`。
+- 配布物：未署名・未公証の `.dmg`（aarch64）。GitHub Releases に置く。
+- Dependabot：cargo、npm、github-actions を毎週（AWS SDK、Tauri、テスト系をまとめる）。
 
-## CI/CD and distribution
+## 実行時の外部とのつながり
 
-| 技術 | 版 | 役割 |
-|---|---|---|
-| GitHub Actions | — | `ci.yml`、`release.yml`、`release-dry-run.yml` |
-| actions/checkout | v7.0.1（SHA 固定） | |
-| actions/setup-node | v7.1.0 | Node 22、npm キャッシュ |
-| dtolnay/rust-toolchain | stable（SHA 固定） | rustfmt、clippy |
-| Swatinem/rust-cache | v2.9.2 | Cargo キャッシュ |
-| EmbarkStudios/cargo-deny-action | v2.1.1 | |
-| actions/upload-artifact | v7.0.2 | ドライランの `.dmg` |
-| GitHub CLI `gh` | ランナー同梱 | Release の作成・差し替え |
-| macOS ランナー | `macos-latest`（arm64 を実行時に検証） | `.dmg` のビルド |
-| Dependabot | v2 設定 | cargo / npm / github-actions 週次 |
-| GitHub Releases | — | `Local-Sights_<ver>_aarch64.dmg` の配布 |
-| Apple 署名・公証 | **未使用** | Developer Program 不参加。`tauri.conf.json` に `bundle.macOS` 節なし、ワークフローに署名の環境変数なし。本インテントで CI にアドホック署名（`APPLE_SIGNING_IDENTITY="-"`）を加える |
-
-## Runtime dependencies on the user's Mac
-
-| もの | 必要性 |
-|---|---|
-| macOS（Apple Silicon） | 配布対象 |
-| `~/.aws/config`（プロファイルと既定リージョン） | 接続先の選択 |
-| AWS CLI v2（`/opt/homebrew/bin/aws` または `/usr/local/bin/aws`） | 任意。アプリからの SSO サインインに使う |
-| IAM 権限 | `logs:DescribeLogGroups`、`logs:DescribeLogStreams`、`logs:GetLogEvents` |
+- AWS CloudWatch Logs（HTTPS、SDK 既定の HTTPS クライアント）。
+- AWS CLI（SSO ログインのときだけ、決まった 2 か所から起動）。
+- OS のフォルダ：設定 `~/Library/Application Support/dev.local-sights.app/`、キャッシュ `~/Library/Caches/dev.local-sights.app/log-cache`（macOS）。
+- 送信は他に無い（テレメトリやクラッシュレポートなし）。

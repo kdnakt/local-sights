@@ -1,0 +1,6 @@
+manifest	5c9e4ef96443aa8150f2e31e756b44a4c1231615b354e2212011189ca26f00a1	-
+	crates/local-sights-core/src/coordinator.rs	100644	849937c03778f4a9bb40d03a6099368a57c0cee18cc235e4da2860ebb8836065
+	crates/local-sights-core/src/fetcher.rs	100644	c117633b3e819af4fd4a5ccbd46cc6db995ed6a9aff93a093c44886031d2ace2
+	crates/local-sights-core/src/retry.rs	100644	0f1dd671ba0b3018282ffaf2efe7d7a7c079ebb2a83173fb3b8233610ba479ec
+	crates/local-sights-core/src/schedule.rs	100644	aea414910623c71de03041a4d7e15821be6ca9c08c99ffeb44f8f7f397167b31
+	crates/local-sights-core/tests/u3_give_up_rule.rs	100644	505ddcad9d7fc6bc8608e41a081c230c753c9cca30e1e8ddaee38100659ec04a

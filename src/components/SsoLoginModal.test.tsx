@@ -9,7 +9,12 @@ import { SsoLoginModal } from "./SsoLoginModal";
 const DEVICE_URL = "https://device.sso.us-east-1.amazonaws.com/";
 
 function renderModal(login: SsoLoginView, translate = t) {
-  const handlers = { onCancel: vi.fn(), onClose: vi.fn(), onOpenUrl: vi.fn() };
+  const handlers = {
+    onCancel: vi.fn(),
+    onClose: vi.fn(),
+    onRetry: vi.fn(),
+    onOpenUrl: vi.fn(),
+  };
   render(<SsoLoginModal login={login} t={translate} {...handlers} />);
   return handlers;
 }
@@ -108,5 +113,36 @@ describe("SsoLoginModal (261011-sso-login FR2.2-FR2.5, FR3.3, FR4.2)", () => {
     expect(screen.getByTestId("sso-login-modal-fallback")).toHaveTextContent(
       "ターミナルで aws sso login を実行してから、[再読み込み] を押してもログインできます。",
     );
+  });
+
+  it("signs in again from a result with [Sign in with SSO]", async () => {
+    const user = userEvent.setup();
+    const { onRetry, onClose } = renderModal(
+      ssoLoginView({ available: true, canStart: true, state: "TimedOut", attemptId: 1 }),
+      createTranslator("ja"),
+    );
+    const retry = screen.getByTestId("sso-login-modal-retry-button");
+    expect(retry).toHaveTextContent("SSO にログイン");
+    await waitFor(() => expect(screen.getByTestId("sso-login-modal-close-button")).toHaveFocus());
+    await user.click(retry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("disables [Sign in with SSO] while a login cannot start, and hides it when none is offered", () => {
+    const { unmount } = render(
+      <SsoLoginModal
+        login={ssoLoginView({ available: true, canStart: false, state: "Failed", exitCode: 1 })}
+        t={t}
+        onCancel={vi.fn()}
+        onClose={vi.fn()}
+        onRetry={vi.fn()}
+        onOpenUrl={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("sso-login-modal-retry-button")).toBeDisabled();
+    unmount();
+    renderModal(ssoLoginView({ state: "TimedOut" }));
+    expect(screen.queryByTestId("sso-login-modal-retry-button")).not.toBeInTheDocument();
   });
 });

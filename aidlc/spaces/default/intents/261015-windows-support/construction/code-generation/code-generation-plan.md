@@ -186,7 +186,7 @@
 
 - [x] `cargo fmt --all`、`cargo clippy --workspace --all-targets`（この環境では Linux だけ）、`cargo test --workspace`、`npx prettier --write .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`cargo deny check`、`npm audit --audit-level=high` を通す。
 - [ ] push して CI の 3 つの OS が通ることを確かめる。`Tauri app (windows-latest)` を `main` のルールセットの必須の状態確認に加える（FR1.3）。これはリポジトリの設定で、コードではないため、**開発者のエージェントは行わず、PR のときに人間（または進行役）が GitHub の設定で行う**。
-- [ ] `code-summary.md` と `traceability.json` を書く（Step 5）。
+- [x] `code-summary.md` と `traceability.json` を書く（Step 5）。
 
 ## 要件との対応
 

@@ -45,5 +45,13 @@
     "scope": "express",
     "status": "complete",
     "request": "dd50e417"
+  },
+  {
+    "uuid": "01a13f92-b933-77af-84ae-bc4cb6852e5c",
+    "slug": "windows-support",
+    "dirName": "261015-windows-support",
+    "scope": "bugfix",
+    "status": "in-flight",
+    "request": "b6688715"
   }
 ]

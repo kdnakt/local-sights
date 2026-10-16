@@ -83,13 +83,25 @@
 //! thread and hands back only the allow-listed URL and code, and every
 //! change pushes `session-changed`. `cancel_sso_login` stops the CLI's
 //! process group, `dismiss_sso_login` puts a result away and
-//! `open_sso_url` opens the attempt's own URL with `/usr/bin/open`. A
-//! success drops the cached SDK clients and lists the log groups again
-//! (BR4.1). Closing the window or ending the app (`ExitRequested`, `Exit`,
-//! `Destroyed`) stops a running CLI; a login does not ask before closing.
-//! `AWS_PROFILE` is read once at startup and given to the session (BR1.3).
-//! The app itself calls no SSO API and never reads or writes the SSO token
-//! cache (BR4.3).
+//! `open_sso_url` opens the attempt's own URL in the default browser
+//! through [`browser`]. A success drops the cached SDK clients and lists
+//! the log groups again (BR4.1). Closing the window or ending the app
+//! (`ExitRequested`, `Exit`, `Destroyed`) stops a running CLI; a login does
+//! not ask before closing. `AWS_PROFILE` is read once at startup and given
+//! to the session (BR1.3). The app itself calls no SSO API and never reads
+//! or writes the SSO token cache (BR4.3).
+//!
+//! Since 261015-windows-support the app also runs on Windows 11 (x64).
+//! Everything that depends on the OS sits behind `cfg` in [`sso_cli`]
+//! (finding, starting and stopping the AWS CLI: a Unix process group or a
+//! Windows job object) and [`browser`] (`/usr/bin/open` or
+//! `ShellExecuteW`); the settings and cache folders come from Tauri's path
+//! resolver on both. The app menu with its own Quit item exists only on
+//! macOS; on Windows there is no menu bar, and closing the window
+//! (the close button, Alt+F4) goes through `CloseRequested` like
+//! everywhere else (FR3.4). Ending the app on Windows stops the CLI's job
+//! on `Exit` as on macOS, and a crash closes the job handle, which stops
+//! the job by itself (FR4.4).
 //!
 //! Since 261012-parallel-fetch U5 `cancel_fetch` is [Cancel]: under the
 //! session lock it asks AppSession whether it can be pressed, tells the
@@ -103,9 +115,9 @@
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
 
+mod browser;
 mod sso_cli;
 
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -139,7 +151,7 @@ use serde::Serialize;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
 
-use crate::sso_cli::{CLI_CANDIDATES, LoginControl, LoginTimes, STOP_GRACE, locate_cli, run_login};
+use crate::sso_cli::{LoginControl, LoginTimes, STOP_GRACE, cli_candidates, locate_cli, run_login};
 
 /// Event carrying the latest [`SessionView`].
 pub const SESSION_CHANGED: &str = "session-changed";
@@ -245,8 +257,9 @@ impl AppState {
 
 /// U6:BR1.6: the settings file in the OS app settings folder and the cache
 /// folder inside the OS cache folder (on macOS `~/Library/Application
-/// Support/<id>/` and `~/Library/Caches/<id>/`). `None`, with a diagnostic,
-/// when the OS gives no folder; the cache then stays disabled.
+/// Support/<id>/` and `~/Library/Caches/<id>/`; on Windows
+/// `%APPDATA%\<id>\` and `%LOCALAPPDATA%\<id>\`, FR3.2). `None`, with a
+/// diagnostic, when the OS gives no folder; the cache then stays disabled.
 fn cache_location(app: &AppHandle) -> Option<CacheLocation> {
     let paths = app.path();
     match (paths.app_config_dir(), paths.app_cache_dir()) {
@@ -445,7 +458,9 @@ fn quit_requested(app: &AppHandle) {
 }
 
 /// Handles this app's menu items: only Quit (Cmd+Q) is its own; the
-/// predefined items (copy, paste, hide, ...) are handled by the OS.
+/// predefined items (copy, paste, hide, ...) are handled by the OS. Only
+/// macOS has the menu; elsewhere no event ever arrives here, and the
+/// handler depends on nothing macOS-specific, so it is registered on all.
 fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     if event.id() == QUIT_MENU_ID {
         quit_requested(app);
@@ -1157,10 +1172,10 @@ fn dismiss_sso_login(app: AppHandle, state: State<'_, AppState>) {
     emit_or_log(&app, SESSION_CHANGED, view);
 }
 
-/// Opens the sign-in URL of the running login in the browser
-/// (functional-design review: URL). Only the URL the CLI printed for the
-/// current attempt, and only when it passes the allow-list again, is handed
-/// to `/usr/bin/open` (a fixed path, no shell).
+/// Opens the sign-in URL of the running login in the default browser
+/// (functional-design review: URL; FR4.5). Only the URL the CLI printed
+/// for the current attempt, and only when it passes the allow-list again,
+/// is handed to [`browser::open_url`] (no shell on either OS).
 ///
 /// # Errors
 /// `ssoLogin.openFailed` when the URL is not the attempt's or cannot be
@@ -1174,26 +1189,14 @@ fn open_sso_url(url: String, state: State<'_, AppState>) -> Result<(), CommandEr
     if !is_current || !is_allowed_login_url(&url) {
         return Err(refused());
     }
-    let child = Command::new("/usr/bin/open")
-        .arg(&url)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    match child {
-        Ok(mut child) => {
-            // `open` ends at once; reap it so no zombie is left.
-            std::thread::spawn(move || child.wait());
-            Ok(())
-        }
-        Err(error) => {
-            eprintln!(
-                "local-sights: sso login: the browser could not be opened ({:?})",
-                error.kind()
-            );
-            Err(refused())
-        }
-    }
+    browser::open_url(&url).map_err(|error| {
+        // The kind only: the message could name local paths.
+        eprintln!(
+            "local-sights: sso login: the browser could not be opened ({:?})",
+            error.kind()
+        );
+        refused()
+    })
 }
 
 /// Runs one login on a blocking thread. If that thread ends abnormally,
@@ -1231,7 +1234,13 @@ fn run_sso_login(
     start: &SsoLoginStart,
     control: &LoginControl,
 ) -> SsoLoginOutcome {
-    let Some(cli) = locate_cli(&CLI_CANDIDATES) else {
+    // 261015-windows-support FR4.1: the candidates are absolute paths; the
+    // first that is an executable file is the one started (review R-05).
+    let candidates = cli_candidates(
+        std::env::var_os("ProgramFiles").as_deref(),
+        std::env::var_os("PATH").as_deref(),
+    );
+    let Some(cli) = locate_cli(&candidates) else {
         return SsoLoginOutcome::CliNotFound;
     };
     let id = start.attempt_id;

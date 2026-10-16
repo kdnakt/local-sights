@@ -396,9 +396,10 @@ impl LogCache {
     /// # Errors
     /// [`CacheError::Io`] when the file exists but cannot be removed.
     pub fn remove_entry(&self, key: &CacheKey) -> Result<(), CacheError> {
-        match fs::remove_file(self.entry_path(key)) {
+        let path = self.entry_path(key);
+        match fs::remove_file(&path) {
             Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) if is_missing(&error, &path) => Ok(()),
             Err(error) => Err(CacheError::io("remove the cache file", &error)),
         }
     }
@@ -509,9 +510,21 @@ enum OpenError {
 fn open_entry(path: &Path) -> Result<BufReader<File>, OpenError> {
     match File::open(path) {
         Ok(file) => Ok(BufReader::new(file)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Err(OpenError::Missing),
+        Err(error) if is_missing(&error, path) => Err(OpenError::Missing),
         Err(_) => Err(OpenError::Unreadable),
     }
+}
+
+/// Whether `error` from `path` means "there is simply no such file".
+///
+/// Unix reports a path below a regular file as "not a directory", Windows
+/// as "not found"; this tells the two apart the same way on every OS so a
+/// file where the cache folder should be never reads as an absent cache.
+fn is_missing(error: &io::Error, path: &Path) -> bool {
+    error.kind() == io::ErrorKind::NotFound
+        && !path
+            .parent()
+            .is_some_and(|parent| parent.exists() && !parent.is_dir())
 }
 
 /// Reads the header, asks `select` which events to read (`None`: none),
@@ -865,6 +878,25 @@ mod tests {
         cache.write(&key(), range(300, 399), Vec::new()).unwrap();
         assert_eq!(mode(cache.directory()), PRIVATE_DIR_MODE);
         assert_eq!(mode(&cache.entry_path(&key())), PRIVATE_FILE_MODE);
+    }
+
+    /// 261015-windows-support FR3.3, NFR3: on Windows the folder is made
+    /// with the OS default permissions (the user's profile is private by
+    /// default) and nothing is tightened; a second call on the existing
+    /// folder is fine too.
+    #[cfg(windows)]
+    #[test]
+    fn the_cache_folder_is_created_with_the_os_default_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("log-cache");
+        assert_eq!(ensure_private_dir(&folder), Ok(()));
+        assert!(folder.is_dir());
+        assert_eq!(ensure_private_dir(&folder), Ok(()), "already there");
+        assert!(!fs::metadata(&folder).unwrap().permissions().readonly());
+
+        let file = dir.path().join("a-file");
+        fs::write(&file, b"x").unwrap();
+        assert_eq!(ensure_private_dir(&file), Err(CacheError::NotADirectory));
     }
 
     #[cfg(unix)]

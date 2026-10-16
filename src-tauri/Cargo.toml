@@ -25,15 +25,33 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build.workspace = true
 
 [dependencies]
-# 261011-sso-login: `killpg` stops the whole process group of the AWS CLI
-# on cancel, time-out and exit (BR3.3). Already in the build through the
-# other crates; MIT OR Apache-2.0.
-libc = "0.2"
 local-sights-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
 tokio.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# 261011-sso-login: `killpg` stops the whole process group of the AWS CLI
+# on cancel, time-out and exit (BR3.3). Already in the build through the
+# other crates; MIT OR Apache-2.0.
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# 261015-windows-support: the job object that stops the AWS CLI with
+# everything it started (FR4.3, FR4.4) and `ShellExecuteW` for the default
+# browser (FR4.5). The version Tauri already builds (Cargo.lock);
+# MIT OR Apache-2.0. `Win32_Security` only names the security-attributes
+# type `CreateJobObjectW` takes; `Win32_UI_WindowsAndMessaging` the show
+# command `ShellExecuteW` takes.
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 # Fake AWS CLI scripts of the sso_cli tests live in temporary folders.

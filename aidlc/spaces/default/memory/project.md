@@ -76,6 +76,8 @@ None. (affirmed 2026-10-11)
 
 None. (affirmed 2026-10-12)
 
+None. (affirmed 2026-10-15)
+
 ## Corrections
 
 <!-- Project-specific corrections from human feedback. -->
@@ -99,3 +101,5 @@ None. (affirmed 2026-10-12)
 - 選択肢の説明に添えた例の数値（例：「半分以下」）は確定した目標値とみなさず、測る条件と数値は後のステージで決める (learned 2026-10-12) <!-- cid:261012-parallel-fetch:intent-capture:0057eaf5e0e1b5719946a1ae0544ced3b84ee9b61be2d1e88549b9c2f666d36c -->
 - 「含めないもの」の質問で選ばれなかった項目は、含めるとも含めないともみなさず、追加の質問で確かめる (learned 2026-10-12) <!-- cid:261012-parallel-fetch:intent-capture:7294424c81c605a135be8bd6e7b9479d249332912f3659665b0181f236684857 -->
 - ALWAYS CI のジョブ名を変えるときは、ブランチの保護ルールの必須チェックの名前と合わせる（PR #20 で名前を変えてマージできなくなった） (learned 2026-10-13) <!-- cid:261012-parallel-fetch:code-generation:42c27d7572a097e518f636f0c205a6d03693f4cadb5891375e6cbc90393ba6bc -->
+- [windows-support] 「macOS 版と同じ」は、今の macOS 版にある機能（取得・表示・絞り込み・キャッシュ・SSO ログイン・中断・経過時間）が Windows でも同じように使えることと解釈する。見た目の細部（メニューの位置など）を OS の慣習に合わせてよいかは要件分析で決める (learned 2026-10-15) <!-- cid:261015-windows-support:intent-capture:2d4ac3be590ff524518810e85ec1b2b02f049634b5aa0e820718d443281a7a20 -->
+- [windows-support] マージ済みの取得の高速化（PR #22）と Windows 版は合わせて v0.2.0 で配る。v0.1.2 のタグは付けない（practices-discovery Q5） (learned 2026-10-15) <!-- cid:261015-windows-support:practices-discovery:31eb34738d8b5966169f1d9da26d9672a091fa2b3a2499f2c228d69aab4bd7c6 -->

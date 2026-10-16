@@ -1,0 +1,11 @@
+# Line endings (261015-windows-support FR1.4, team.md Code Style): every text
+# file is stored and checked out with LF, so `cargo fmt --check` and
+# `prettier --check` give the same result on Windows as on macOS and Linux.
+* text=auto eol=lf
+
+# Binary files are never converted.
+*.png binary
+*.icns binary
+*.ico binary
+*.dmg binary
+*.exe binary

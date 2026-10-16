@@ -1,32 +1,51 @@
-//! Running `aws sso login` of the AWS CLI (261011-sso-login).
+//! Running `aws sso login` of the AWS CLI (261011-sso-login; Windows since
+//! 261015-windows-support).
 //!
 //! The decisions (where to sign in, the arguments, what of the output may
 //! be shown) live in `local_sights_core::sso_login`; this module only finds
 //! the CLI and runs it:
 //!
-//! - [`locate_cli`]: the first candidate that is an executable file, in the
-//!   order `/opt/homebrew/bin/aws`, `/usr/local/bin/aws`. `PATH` is not
-//!   used: an app started from Finder or the Dock does not get the
-//!   terminal's `PATH` (BR2.1).
+//! - [`cli_candidates`] and [`locate_cli`]: the first candidate that is an
+//!   executable file. On Unix the candidates are `/opt/homebrew/bin/aws`
+//!   and `/usr/local/bin/aws`; `PATH` is not used, since an app started
+//!   from Finder or the Dock does not get the terminal's `PATH` (BR2.1).
+//!   On Windows they are the official installer under `Program Files`,
+//!   then `aws.exe` in each absolute `PATH` folder (FR4.1). The path found
+//!   is the one started (review R-05).
 //! - [`run_login`]: starts the CLI without a shell, with the given
 //!   arguments only, standard input closed and the app's environment as is
-//!   (BR2.2, BR2.4), in a new process group. Standard output and standard
-//!   error are read line by line on their own threads; each line (at most
-//!   [`MAX_LINE_BYTES`] bytes of it) is handed to `extract_login_hints` and
-//!   dropped: only the allow-listed URL and the code leave this module,
-//!   nothing is kept or logged (BR3.1, NFR3).
+//!   (BR2.2, BR2.4), inside a process group of its own: a new Unix process
+//!   group, or a Windows job object (FR4.2, FR4.3). Standard output and
+//!   standard error are read line by line on their own threads; each line
+//!   (at most [`MAX_LINE_BYTES`] bytes of it) is handed to
+//!   `extract_login_hints` and dropped: only the allow-listed URL and the
+//!   code leave this module, nothing is kept or logged (BR3.1, NFR3).
 //! - Cancel, the time-out (five minutes, BR3.2) and the app's exit stop the
-//!   whole process group: SIGTERM, then SIGKILL to what is left after the
-//!   grace time (BR3.3, NFR4). A CLI that ends by itself is left alone, so
-//!   a browser it started is not closed.
+//!   whole process group (BR3.3, NFR4, FR4.4): on Unix SIGTERM, then
+//!   SIGKILL to what is left after the grace time; on Windows the job is
+//!   terminated at once, since there is no gentle stop to try first. A CLI
+//!   that ends by itself is left alone, so a browser it started is not
+//!   closed.
 //!
-//! Unix only (the app is distributed for macOS; CI also builds on Linux).
+//! Everything that touches the OS (starting, grouping, stopping) is in the
+//! `unix` and `windows` modules behind one small interface: `spawn_cli`,
+//! `ProcessGroup` and `is_executable_file`. This file holds the decisions
+//! and the output handling, which are the same on both.
 
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+
+#[cfg(unix)]
+use unix as platform;
+#[cfg(windows)]
+use windows as platform;
+
+use std::ffi::OsStr;
 use std::io::{ErrorKind, Read};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -36,12 +55,25 @@ use local_sights_core::sso_login::{
     LoginHints, MAX_LINE_BYTES, SsoLoginOutcome, extract_login_hints,
 };
 
-/// Where the AWS CLI is looked for, in this order (BR2.1): Homebrew on
-/// Apple Silicon, then the official installer.
+use platform::{ProcessGroup, is_executable_file, spawn_cli};
+
+/// Where the AWS CLI is looked for on Unix, in this order (BR2.1): Homebrew
+/// on Apple Silicon, then the official installer.
 pub const CLI_CANDIDATES: [&str; 2] = ["/opt/homebrew/bin/aws", "/usr/local/bin/aws"];
+/// The official installer's folder under `Program Files` on Windows
+/// (261015-windows-support FR4.1).
+#[cfg(windows)]
+const WINDOWS_CLI_UNDER_PROGRAM_FILES: &str = r"Amazon\AWSCLIV2\aws.exe";
+/// `Program Files` when the `ProgramFiles` variable is missing or empty.
+#[cfg(windows)]
+const DEFAULT_PROGRAM_FILES: &str = r"C:\Program Files";
+/// The CLI's file name on Windows, looked for in each `PATH` folder.
+#[cfg(windows)]
+const WINDOWS_CLI_FILE_NAME: &str = "aws.exe";
 /// How long the approval in the browser is waited for (BR3.2).
 pub const LOGIN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// How long a stopped CLI gets to end after SIGTERM before SIGKILL (BR3.3).
+/// On Windows it only bounds the wait for the job to be gone.
 pub const STOP_GRACE: Duration = Duration::from_secs(2);
 /// How often the runner looks at the CLI, the stop request and the clock.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -50,8 +82,40 @@ const READ_CHUNK: usize = 1024;
 /// How long the last output lines are waited for after the CLI ended.
 const DRAIN_LIMIT: Duration = Duration::from_millis(500);
 
+/// The paths the AWS CLI is looked for at, in order (BR2.1, FR4.1).
+///
+/// Unix: the two fixed [`CLI_CANDIDATES`]; `program_files` and `path` are
+/// ignored, since an app started from Finder does not get the terminal's
+/// `PATH`. Windows: the official installer under `program_files` (the
+/// `ProgramFiles` variable, `C:\Program Files` when missing), then `aws.exe`
+/// in each absolute folder of `path` (the `PATH` variable) in order; empty
+/// and relative entries are skipped, so every candidate is an absolute path
+/// and the one found is the one started (review R-05).
+#[cfg(unix)]
+pub fn cli_candidates(_program_files: Option<&OsStr>, _path: Option<&OsStr>) -> Vec<PathBuf> {
+    CLI_CANDIDATES.iter().map(PathBuf::from).collect()
+}
+
+/// See the Unix version above.
+#[cfg(windows)]
+pub fn cli_candidates(program_files: Option<&OsStr>, path: Option<&OsStr>) -> Vec<PathBuf> {
+    let program_files = program_files
+        .filter(|value| !value.is_empty())
+        .map_or_else(|| PathBuf::from(DEFAULT_PROGRAM_FILES), PathBuf::from);
+    let mut candidates = vec![program_files.join(WINDOWS_CLI_UNDER_PROGRAM_FILES)];
+    if let Some(path) = path {
+        candidates.extend(
+            std::env::split_paths(path)
+                .filter(|folder| folder.is_absolute())
+                .map(|folder| folder.join(WINDOWS_CLI_FILE_NAME)),
+        );
+    }
+    candidates
+}
+
 /// The first candidate that is an executable regular file (symbolic links
-/// are followed, as Homebrew's `aws` is one), or `None` (BR2.1).
+/// are followed, as Homebrew's `aws` is one), or `None` (BR2.1). Unix
+/// looks at the execute bits, Windows at the `.exe` extension.
 pub fn locate_cli<P: AsRef<Path>>(candidates: &[P]) -> Option<PathBuf> {
     candidates
         .iter()
@@ -60,18 +124,14 @@ pub fn locate_cli<P: AsRef<Path>>(candidates: &[P]) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-fn is_executable_file(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-}
-
 /// How long [`run_login`] waits; the app uses [`LOGIN_TIMEOUT`] and
 /// [`STOP_GRACE`], tests use shorter times.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoginTimes {
     /// The time-out of the whole login (BR3.2).
     pub timeout: Duration,
-    /// The time between SIGTERM and SIGKILL (BR3.3).
+    /// The time between SIGTERM and SIGKILL (BR3.3); on Windows the most
+    /// the stop waits for the job to be gone.
     pub grace: Duration,
 }
 
@@ -96,8 +156,8 @@ pub struct LoginControl {
 #[derive(Debug, Default)]
 struct ControlState {
     stop_requested: bool,
-    /// The CLI's process group, once it runs.
-    process_group: Option<libc::pid_t>,
+    /// The CLI's process group, once it runs; shared with the runner.
+    process_group: Option<Arc<ProcessGroup>>,
 }
 
 impl LoginControl {
@@ -112,15 +172,15 @@ impl LoginControl {
     }
 
     /// The app ends: asks the runner to stop and stops the CLI's process
-    /// group right here, waiting at most `grace` before SIGKILL (BR3.3).
+    /// group right here, waiting at most `grace` (BR3.3).
     pub fn stop_now(&self, grace: Duration) {
         let process_group = {
             let mut state = self.lock();
             state.stop_requested = true;
-            state.process_group
+            state.process_group.clone()
         };
         if let Some(group) = process_group {
-            terminate_group(group, grace, || false);
+            group.terminate(grace, || false);
         }
     }
 
@@ -131,7 +191,7 @@ impl LoginControl {
     /// Records the CLI's process group; `false` when a stop was asked
     /// before, so the caller stops it at once. Under one lock with
     /// [`LoginControl::stop_now`], so a stop never misses the CLI.
-    fn register(&self, process_group: libc::pid_t) -> bool {
+    fn register(&self, process_group: Arc<ProcessGroup>) -> bool {
         let mut state = self.lock();
         state.process_group = Some(process_group);
         !state.stop_requested
@@ -158,8 +218,8 @@ pub fn run_login(
         return SsoLoginOutcome::Cancelled;
     }
     let started_at = Instant::now();
-    let mut child = match spawn_cli(cli, args) {
-        Ok(child) => child,
+    let (mut child, group) = match spawn_cli(cli, args) {
+        Ok(started) => started,
         Err(error) => {
             // The kind only: the message could name local paths.
             eprintln!(
@@ -169,13 +229,9 @@ pub fn run_login(
             return SsoLoginOutcome::Failed { exit_code: None };
         }
     };
-    let Some(group) = process_group_of(&child) else {
-        eprintln!("local-sights: sso login: the AWS CLI has no usable process id");
-        stop_child(&mut child, None, times.grace);
-        return SsoLoginOutcome::Failed { exit_code: None };
-    };
-    if !control.register(group) {
-        stop_child(&mut child, Some(group), times.grace);
+    let group = Arc::new(group);
+    if !control.register(Arc::clone(&group)) {
+        stop_child(&mut child, &group, times.grace);
         return SsoLoginOutcome::Cancelled;
     }
     let hints = forward_output(&mut child);
@@ -193,6 +249,8 @@ pub fn run_login(
                 if control.stop_requested() {
                     return SsoLoginOutcome::Cancelled;
                 }
+                // Ended by itself: what it may have started is left alone.
+                group.release();
                 drain_hints(&hints, &mut on_hints);
                 return match status.code() {
                     Some(0) => SsoLoginOutcome::Succeeded,
@@ -205,16 +263,16 @@ pub fn run_login(
                     "local-sights: sso login: the AWS CLI could not be watched ({:?})",
                     error.kind()
                 );
-                stop_child(&mut child, Some(group), times.grace);
+                stop_child(&mut child, &group, times.grace);
                 return SsoLoginOutcome::Failed { exit_code: None };
             }
         }
         if control.stop_requested() {
-            stop_child(&mut child, Some(group), times.grace);
+            stop_child(&mut child, &group, times.grace);
             return SsoLoginOutcome::Cancelled;
         }
         if started_at.elapsed() >= times.timeout {
-            stop_child(&mut child, Some(group), times.grace);
+            stop_child(&mut child, &group, times.grace);
             return SsoLoginOutcome::TimedOut;
         }
     }
@@ -232,26 +290,6 @@ fn drain_hints(hints: &Receiver<LoginHints>, on_hints: &mut impl FnMut(LoginHint
             Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => return,
         }
     }
-}
-
-/// Starts the CLI: no shell, the arguments as given, standard input closed,
-/// both outputs piped, the environment inherited, a new process group.
-fn spawn_cli(cli: &Path, args: &[String]) -> std::io::Result<Child> {
-    Command::new(cli)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()
-}
-
-/// The CLI's process group: its own pid (`process_group(0)`). `None` for a
-/// pid that cannot be a group of its own, which is never signalled.
-fn process_group_of(child: &Child) -> Option<libc::pid_t> {
-    libc::pid_t::try_from(child.id())
-        .ok()
-        .filter(|pid| *pid > 1)
 }
 
 /// Reads both outputs on their own threads; only hints come back.
@@ -278,7 +316,8 @@ fn spawn_reader(stream: impl Read + Send + 'static, sender: Sender<LoginHints>) 
 
 /// Splits `stream` into lines of at most [`MAX_LINE_BYTES`] bytes (the
 /// rest of a longer line is dropped), sends the hints of each line and
-/// drops the line (BR3.1, NFR3).
+/// drops the line (BR3.1, NFR3). A `\r` before the `\n` (Windows) is
+/// whitespace to `extract_login_hints`.
 fn forward_hints(mut stream: impl Read, sender: &Sender<LoginHints>) {
     let mut chunk = [0_u8; READ_CHUNK];
     let mut line: Vec<u8> = Vec::with_capacity(256);
@@ -309,22 +348,9 @@ fn send_line_hints(line: &[u8], sender: &Sender<LoginHints>) -> bool {
     hints.is_empty() || sender.send(hints).is_ok()
 }
 
-/// Stops the CLI's process group (or only the CLI without one) and reaps
-/// the CLI.
-fn stop_child(child: &mut Child, group: Option<libc::pid_t>, grace: Duration) {
-    match group {
-        Some(group) => terminate_group(group, grace, || {
-            matches!(child.try_wait(), Ok(Some(_)) | Err(_))
-        }),
-        None => {
-            if let Err(error) = child.kill() {
-                eprintln!(
-                    "local-sights: sso login: the AWS CLI could not be stopped ({:?})",
-                    error.kind()
-                );
-            }
-        }
-    }
+/// Stops the CLI's process group and reaps the CLI.
+fn stop_child(child: &mut Child, group: &ProcessGroup, grace: Duration) {
+    group.terminate(grace, || matches!(child.try_wait(), Ok(Some(_)) | Err(_)));
     if let Err(error) = child.wait() {
         eprintln!(
             "local-sights: sso login: the AWS CLI could not be reaped ({:?})",
@@ -333,89 +359,41 @@ fn stop_child(child: &mut Child, group: Option<libc::pid_t>, grace: Duration) {
     }
 }
 
-/// SIGTERM to the group, then up to `grace` for it to end (`reap` lets the
-/// caller collect the leader meanwhile), then SIGKILL to what is left.
-fn terminate_group(group: libc::pid_t, grace: Duration, mut reap: impl FnMut() -> bool) {
-    signal_group(group, libc::SIGTERM);
-    let deadline = Instant::now() + grace;
-    loop {
-        reap();
-        if !group_exists(group) {
-            return;
-        }
-        if Instant::now() >= deadline {
-            break;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    signal_group(group, libc::SIGKILL);
-    reap();
-}
-
-/// Sends `signal` to every process of `group` (> 1, never this app's own
-/// group, since the CLI was given a group of its own).
-fn signal_group(group: libc::pid_t, signal: libc::c_int) {
-    if group <= 1 {
-        return;
-    }
-    // SAFETY: killpg only sends a signal; `group` is the process group the
-    // CLI was started in, and values that would address this app's own
-    // group (0) or every process (1, -1) are refused above.
-    let result = unsafe { libc::killpg(group, signal) };
-    if result != 0 {
-        let error = std::io::Error::last_os_error();
-        if error.raw_os_error() != Some(libc::ESRCH) {
-            eprintln!("local-sights: sso login: the AWS CLI could not be signalled ({error})");
-        }
-    }
-}
-
-/// Whether any process of `group` still exists.
-fn group_exists(group: libc::pid_t) -> bool {
-    if group <= 1 {
-        return false;
-    }
-    // SAFETY: signal 0 only checks that the group exists; nothing is sent.
-    unsafe { libc::killpg(group, 0) == 0 }
-}
-
-/// These tests run fake AWS CLIs: small `/bin/sh` scripts written to a
-/// temporary folder. The real AWS CLI, AWS and a browser are never used.
+/// Helpers shared by the Unix and Windows tests: a fake CLI runs one at a
+/// time, with short times, and the processes it leaves are looked for.
 #[cfg(test)]
-mod tests {
+mod test_support {
     use std::fs;
-    use std::sync::Mutex as StdMutex;
+    use std::path::Path;
+    use std::str::FromStr;
+    use std::sync::{Mutex as StdMutex, MutexGuard, PoisonError};
+    use std::thread;
+    use std::time::{Duration, Instant};
 
-    use super::*;
+    use local_sights_core::sso_login::{LoginHints, SsoLoginOutcome};
+
+    use super::{LoginControl, LoginTimes, run_login};
 
     /// One fake CLI runs at a time: writing an executable while another
     /// thread forks can fail its start with "text file busy", and the
     /// timing checks stay steady.
     static SERIAL: StdMutex<()> = StdMutex::new(());
 
-    const SHORT: LoginTimes = LoginTimes {
+    pub(super) const SHORT: LoginTimes = LoginTimes {
         timeout: Duration::from_secs(20),
         grace: Duration::from_millis(500),
     };
 
-    fn serial() -> MutexGuard<'static, ()> {
+    pub(super) fn serial() -> MutexGuard<'static, ()> {
         SERIAL.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Writes an executable `#!/bin/sh` script named `name` into `dir`.
-    fn fake_cli(dir: &Path, name: &str, body: &str) -> PathBuf {
-        let path = dir.join(name);
-        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-        path
-    }
-
-    fn args() -> Vec<String> {
+    pub(super) fn args() -> Vec<String> {
         vec!["sso".to_string(), "login".to_string()]
     }
 
     /// Runs `cli` and collects what reaches the caller.
-    fn run(
+    pub(super) fn run(
         cli: &Path,
         control: &LoginControl,
         times: LoginTimes,
@@ -435,6 +413,130 @@ mod tests {
         (outcome, started, hints)
     }
 
+    /// Waits up to two seconds for the process `pid` to be gone, as
+    /// `is_running` sees it (FR4.4: within two seconds).
+    pub(super) fn gone_soon<T: Copy>(pid: T, is_running: impl Fn(T) -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if !is_running(pid) {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    /// Waits up to `wait` until the fake CLI wrote its pid files and reads
+    /// them, in the order of `names`.
+    pub(super) fn read_pids<T: FromStr>(dir: &Path, names: &[&str], wait: Duration) -> Vec<T> {
+        let deadline = Instant::now() + wait;
+        loop {
+            let pids: Option<Vec<T>> = names
+                .iter()
+                .map(|name| {
+                    fs::read_to_string(dir.join(name))
+                        .ok()
+                        .and_then(|text| text.trim().parse().ok())
+                })
+                .collect();
+            if let Some(pids) = pids {
+                return pids;
+            }
+            assert!(Instant::now() < deadline, "the fake CLI did not start");
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+/// Where the AWS CLI is looked for (261015-windows-support FR4.1): pure,
+/// so the order is checked without touching the file system.
+#[cfg(test)]
+mod candidate_tests {
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    use super::cli_candidates;
+
+    #[cfg(windows)]
+    #[test]
+    fn the_official_installer_under_program_files_comes_first() {
+        let candidates = cli_candidates(Some(OsStr::new(r"D:\Programs")), None);
+        assert_eq!(
+            candidates,
+            [PathBuf::from(r"D:\Programs\Amazon\AWSCLIV2\aws.exe")]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_path_folders_follow_in_order_without_empty_or_relative_entries() {
+        let candidates = cli_candidates(
+            Some(OsStr::new(r"C:\Program Files")),
+            Some(OsStr::new(r"C:\a;;C:\b;.;relative\bin")),
+        );
+        assert_eq!(
+            candidates,
+            [
+                PathBuf::from(r"C:\Program Files\Amazon\AWSCLIV2\aws.exe"),
+                PathBuf::from(r"C:\a\aws.exe"),
+                PathBuf::from(r"C:\b\aws.exe"),
+            ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn program_files_defaults_to_the_system_drive_when_the_variable_is_missing() {
+        let missing = cli_candidates(None, None);
+        let empty = cli_candidates(Some(OsStr::new("")), None);
+        let expected = [PathBuf::from(r"C:\Program Files\Amazon\AWSCLIV2\aws.exe")];
+        assert_eq!(missing, expected);
+        assert_eq!(empty, expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_looks_only_at_homebrew_and_the_official_installer() {
+        let expected = [
+            PathBuf::from("/opt/homebrew/bin/aws"),
+            PathBuf::from("/usr/local/bin/aws"),
+        ];
+        assert_eq!(cli_candidates(None, None), expected);
+        assert_eq!(
+            cli_candidates(
+                Some(OsStr::new("/Program Files")),
+                Some(OsStr::new("/usr/bin:/bin"))
+            ),
+            expected,
+            "PATH is never used on Unix (BR2.1)"
+        );
+    }
+}
+
+/// These tests run fake AWS CLIs: small `/bin/sh` scripts written to a
+/// temporary folder. The real AWS CLI, AWS and a browser are never used.
+#[cfg(all(test, unix))]
+mod unix_tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use local_sights_core::sso_login::{MAX_LINE_BYTES, SsoLoginOutcome};
+
+    use super::test_support::{SHORT, gone_soon, run, serial};
+    use super::{LoginControl, LoginTimes, locate_cli, run_login};
+
+    /// Writes an executable `#!/bin/sh` script named `name` into `dir`.
+    fn fake_cli(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
     /// Whether the process `pid` is still running (a zombie counts as gone:
     /// in a container nobody may reap an orphan).
     fn is_running(pid: libc::pid_t) -> bool {
@@ -449,36 +551,9 @@ mod tests {
         unsafe { libc::kill(pid, 0) == 0 }
     }
 
-    /// Waits up to two seconds for `pid` to be gone.
-    fn gone_soon(pid: libc::pid_t) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() < deadline {
-            if !is_running(pid) {
-                return true;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        false
-    }
-
     /// Waits until the script wrote its pid files and reads them.
     fn read_pids(dir: &Path, names: &[&str]) -> Vec<libc::pid_t> {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let pids: Option<Vec<libc::pid_t>> = names
-                .iter()
-                .map(|name| {
-                    fs::read_to_string(dir.join(name))
-                        .ok()
-                        .and_then(|text| text.trim().parse().ok())
-                })
-                .collect();
-            if let Some(pids) = pids {
-                return pids;
-            }
-            assert!(Instant::now() < deadline, "the fake CLI did not start");
-            thread::sleep(Duration::from_millis(20));
-        }
+        super::test_support::read_pids(dir, names, Duration::from_secs(5))
     }
 
     // --- locate_cli (BR2.1) ---
@@ -630,7 +705,7 @@ mod tests {
         assert!(started);
         assert!(begun.elapsed() < Duration::from_secs(5));
         for pid in read_pids(dir.path(), &["cli.pid", "child.pid"]) {
-            assert!(gone_soon(pid), "process {pid} is left");
+            assert!(gone_soon(pid, is_running), "process {pid} is left");
         }
     }
 
@@ -653,7 +728,7 @@ mod tests {
         control.request_stop();
         assert_eq!(runner.join().unwrap(), SsoLoginOutcome::Cancelled);
         for pid in pids {
-            assert!(gone_soon(pid), "process {pid} is left");
+            assert!(gone_soon(pid, is_running), "process {pid} is left");
         }
     }
 
@@ -682,7 +757,7 @@ mod tests {
             "SIGKILL only after the grace time"
         );
         for pid in pids {
-            assert!(gone_soon(pid), "process {pid} is left");
+            assert!(gone_soon(pid, is_running), "process {pid} is left");
         }
     }
 
@@ -704,9 +779,9 @@ mod tests {
         let pids = read_pids(dir.path(), &["cli.pid", "child.pid"]);
         control.stop_now(Duration::from_millis(500));
         // The child was signalled before stop_now returned.
-        assert!(gone_soon(pids[1]), "the CLI's child is left");
+        assert!(gone_soon(pids[1], is_running), "the CLI's child is left");
         assert_eq!(runner.join().unwrap(), SsoLoginOutcome::Cancelled);
-        assert!(gone_soon(pids[0]), "the CLI is left");
+        assert!(gone_soon(pids[0], is_running), "the CLI is left");
     }
 
     #[test]
@@ -721,5 +796,209 @@ mod tests {
         assert_eq!(outcome, SsoLoginOutcome::Cancelled);
         assert!(!started);
         assert!(!marker.exists());
+    }
+}
+
+/// These tests run fake AWS CLIs on Windows: `.cmd` batch files written to
+/// a temporary folder (261015-windows-support NFR2). `Command` starts a
+/// `.cmd` through `cmd.exe`; that is the test tool, not how the app starts
+/// the real `aws.exe`. A fake that needs a child starts PowerShell, which
+/// writes the pids and sleeps. The real AWS CLI, AWS and a browser are
+/// never used.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use local_sights_core::sso_login::SsoLoginOutcome;
+
+    use super::test_support::{SHORT, gone_soon, run, serial};
+    use super::{LoginControl, LoginTimes, locate_cli};
+
+    /// Writes a batch file named `name` into `dir`; `body` is one command
+    /// per line.
+    fn fake_cli(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        let lines: Vec<&str> = body.lines().collect();
+        fs::write(&path, format!("@echo off\r\n{}\r\n", lines.join("\r\n"))).unwrap();
+        path
+    }
+
+    /// A batch whose child (PowerShell) writes its own pid to `child.pid`,
+    /// the batch's `cmd.exe` pid to `cli.pid`, and sleeps for ten minutes.
+    fn sleeping_cli(dir: &Path) -> PathBuf {
+        let folder = dir.display();
+        fake_cli(
+            dir,
+            "aws.cmd",
+            &format!(
+                "powershell -NoProfile -NonInteractive -Command \
+                 \"Set-Content -LiteralPath '{folder}\\child.pid' -Value $PID -Encoding ascii; \
+                 Set-Content -LiteralPath '{folder}\\cli.pid' -Value \
+                 (Get-CimInstance Win32_Process -Filter ('ProcessId = ' + $PID)).ParentProcessId \
+                 -Encoding ascii; \
+                 Start-Sleep -Seconds 600\""
+            ),
+        )
+    }
+
+    /// Whether the process `pid` is still running, as `tasklist` sees it.
+    fn is_running(pid: u32) -> bool {
+        let output = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
+    }
+
+    /// Waits until PowerShell wrote the pid files (it takes a few seconds
+    /// to start on a CI runner) and reads them.
+    fn read_pids(dir: &Path) -> Vec<u32> {
+        super::test_support::read_pids(dir, &["cli.pid", "child.pid"], Duration::from_secs(60))
+    }
+
+    // --- locate_cli (FR4.1) ---
+
+    #[test]
+    fn the_second_exe_candidate_is_used_when_only_it_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let second = dir.path().join("aws-second.EXE");
+        fs::write(&second, b"not run").unwrap();
+        let first = dir.path().join("aws-first.exe");
+        assert_eq!(
+            locate_cli(&[first.as_path(), second.as_path()]),
+            Some(second)
+        );
+    }
+
+    #[test]
+    fn nothing_is_found_without_an_exe_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let batch = dir.path().join("aws.cmd");
+        fs::write(&batch, b"@echo off\r\n").unwrap();
+        let missing = dir.path().join("aws-missing.exe");
+        let directory = dir.path().join("aws-dir.exe");
+        fs::create_dir(&directory).unwrap();
+        assert_eq!(
+            locate_cli(&[batch.as_path(), missing.as_path(), directory.as_path()]),
+            None
+        );
+        assert_eq!(locate_cli::<&Path>(&[]), None);
+    }
+
+    // --- run_login (FR4.2-FR4.4) ---
+
+    #[test]
+    fn a_successful_cli_hands_over_the_url_and_code_and_succeeds() {
+        let _serial = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let cli = fake_cli(
+            dir.path(),
+            "aws.cmd",
+            "echo Attempting to automatically open the SSO authorization page\n\
+             echo https://device.sso.us-east-1.amazonaws.com/\n\
+             >&2 echo Then enter the code:\n\
+             >&2 echo ABCD-EFGH\n\
+             exit 0",
+        );
+        let (outcome, started, hints) = run(&cli, &LoginControl::default(), SHORT);
+        assert_eq!(outcome, SsoLoginOutcome::Succeeded);
+        assert!(started);
+        let urls: Vec<_> = hints
+            .iter()
+            .filter_map(|h| h.verification_url.clone())
+            .collect();
+        let codes: Vec<_> = hints.iter().filter_map(|h| h.user_code.clone()).collect();
+        assert_eq!(urls, ["https://device.sso.us-east-1.amazonaws.com/"]);
+        assert_eq!(codes, ["ABCD-EFGH"]);
+    }
+
+    #[test]
+    fn a_failing_cli_reports_its_exit_code() {
+        let _serial = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let cli = fake_cli(
+            dir.path(),
+            "aws.cmd",
+            ">&2 echo Error loading SSO Token\nexit 3",
+        );
+        let (outcome, started, hints) = run(&cli, &LoginControl::default(), SHORT);
+        assert_eq!(outcome, SsoLoginOutcome::Failed { exit_code: Some(3) });
+        assert!(started);
+        assert!(hints.is_empty(), "the error text is never handed over");
+    }
+
+    #[test]
+    fn a_cli_that_cannot_start_fails_without_an_exit_code() {
+        let _serial = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let (outcome, started, _) = run(
+            &dir.path().join("no-such-aws.exe"),
+            &LoginControl::default(),
+            SHORT,
+        );
+        assert_eq!(outcome, SsoLoginOutcome::Failed { exit_code: None });
+        assert!(!started);
+    }
+
+    #[test]
+    fn a_login_that_takes_too_long_times_out_and_leaves_no_process() {
+        let _serial = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let cli = sleeping_cli(dir.path());
+        // Long enough for PowerShell to start and write the pids first.
+        let times = LoginTimes {
+            timeout: Duration::from_secs(15),
+            grace: Duration::from_millis(500),
+        };
+        let runner = thread::spawn(move || run(&cli, &LoginControl::default(), times));
+        let pids = read_pids(dir.path());
+        let (outcome, started, _) = runner.join().unwrap();
+        assert_eq!(outcome, SsoLoginOutcome::TimedOut);
+        assert!(started);
+        for pid in pids {
+            assert!(gone_soon(pid, is_running), "process {pid} is left");
+        }
+    }
+
+    #[test]
+    fn cancelling_stops_the_whole_job() {
+        let _serial = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let cli = sleeping_cli(dir.path());
+        let control = LoginControl::new();
+        let runner_control = Arc::clone(&control);
+        let runner = thread::spawn(move || run(&cli, &runner_control, SHORT).0);
+        let pids = read_pids(dir.path());
+        let begun = Instant::now();
+        control.request_stop();
+        assert_eq!(runner.join().unwrap(), SsoLoginOutcome::Cancelled);
+        assert!(
+            begun.elapsed() < Duration::from_secs(5),
+            "the job is terminated at once"
+        );
+        for pid in pids {
+            assert!(gone_soon(pid, is_running), "process {pid} is left");
+        }
+    }
+
+    #[test]
+    fn stopping_for_the_app_exit_stops_the_cli_before_returning() {
+        let _serial = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let cli = sleeping_cli(dir.path());
+        let control = LoginControl::new();
+        let runner_control = Arc::clone(&control);
+        let runner = thread::spawn(move || run(&cli, &runner_control, SHORT).0);
+        let pids = read_pids(dir.path());
+        control.stop_now(Duration::from_millis(500));
+        // The job was terminated before stop_now returned.
+        assert!(gone_soon(pids[1], is_running), "the CLI's child is left");
+        assert_eq!(runner.join().unwrap(), SsoLoginOutcome::Cancelled);
+        assert!(gone_soon(pids[0], is_running), "the CLI is left");
     }
 }

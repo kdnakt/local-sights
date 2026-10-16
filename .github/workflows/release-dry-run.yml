@@ -1,9 +1,10 @@
 name: Release dry run
 
-# Builds the unsigned macOS (Apple Silicon) .dmg on demand, without a tag and
-# without publishing anything, so the macOS bundling step can be checked before
-# tagging a release. Run it from the Actions tab ("Run workflow") on any branch;
-# the .dmg is kept as a workflow artifact for 7 days. See docs/releasing.md.
+# Builds the unsigned macOS (Apple Silicon) .dmg and the Windows (x64) NSIS
+# installer on demand, without a tag and without publishing anything, so the
+# bundling steps can be checked before tagging a release. Run it from the
+# Actions tab ("Run workflow") on any branch; each installer is kept as a
+# workflow artifact for 7 days. See docs/releasing.md.
 #
 # Read-only: it creates no Release and uses no secrets. No job talks to AWS.
 on:
@@ -63,5 +64,45 @@ jobs:
         with:
           name: local-sights-dmg-dry-run
           path: target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  # 261015-windows-support FR2.1, FR2.2, FR2.4: the per-user NSIS installer
+  # (no administrator rights; tauri.conf.json bundle.windows.nsis), not signed
+  # with a code-signing certificate.
+  build-windows:
+    name: Build Windows installer (no publish)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: version consistency
+        run: npm run check:version
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: npm ci
+      - name: build the NSIS installer
+        run: npm run tauri build -- --bundles nsis
+      - name: exactly one x64 installer
+        shell: pwsh
+        run: |
+          $setups = @(Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue)
+          if ($setups.Count -ne 1) {
+            Write-Output "::error::Expected exactly one *-setup.exe in target/release/bundle/nsis/, found $($setups.Count)."
+            exit 1
+          }
+          if ($setups[0].Name -notlike '*x64*') {
+            Write-Output "::error::$($setups[0].Name) is not an x64 installer."
+            exit 1
+          }
+          Write-Output "Built $($setups[0].FullName)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: local-sights-windows-dry-run
+          path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
           retention-days: 7

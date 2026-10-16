@@ -33,12 +33,13 @@ and `logs:GetLogEvents`.
 
 ## Install
 
-To use the app on a Mac with Apple Silicon (for example a company PC), install
-the released `.dmg` from
-[GitHub Releases](https://github.com/kdnakt/local-sights/releases): see
-[docs/install.md](docs/install.md) for installing, the first-launch warning
-(the app is ad-hoc signed, not notarized by Apple), updating and going back to
-an earlier version. The AWS
+To use the app on a company PC, install the released build from
+[GitHub Releases](https://github.com/kdnakt/local-sights/releases): the `.dmg`
+on a Mac with Apple Silicon, or the `x64-setup.exe` installer on a Windows 11
+(x64) PC. See [docs/install.md](docs/install.md) for installing, the
+first-launch warning (on macOS the app is ad-hoc signed, not notarized by
+Apple; on Windows the installer is not signed with a code-signing certificate,
+so SmartScreen warns), updating and going back to an earlier version. The AWS
 preparation in [Prerequisites](#prerequisites) is needed there too. The rest of
 this README is for development.
 
@@ -50,7 +51,7 @@ this README is for development.
 | `crates/local-sights-core/examples/fetch_check.rs` | Developer-only command-line check against real AWS                                                                   |
 | `src-tauri/`                                       | Tauri app (`local-sights`): commands and events only                                                                 |
 | `src/`                                             | Screen (Vite + React + TypeScript)                                                                                   |
-| `scripts/release/`                                 | Release version check (`npm run check:version`)                                                                      |
+| `scripts/release/`                                 | Release version check (`npm run check:version`) and the signing checks of the Release workflow                       |
 | `docs/`                                            | Installing the released app and making a release                                                                     |
 
 ## Prerequisites
@@ -66,12 +67,17 @@ this README is for development.
     libjavascriptcoregtk-4.1-dev build-essential pkg-config libssl-dev
   ```
 
-- An AWS CLI-style configuration (`~/.aws/config`) with a default region for
-  the profile you use. Authentication (SSO, access keys, AssumeRole,
-  environment variables) is left to the AWS SDK; for SSO profiles run
-  `aws sso login --profile <name>` first, or sign in from the app (see
-  [Sign in with SSO](#sign-in-with-sso), which needs AWS CLI v2). The app
-  never reads, stores or logs your credentials.
+  On Windows 11: the Visual Studio Build Tools with the "Desktop development
+  with C++" workload (the `x86_64-pc-windows-msvc` toolchain) and the WebView2
+  runtime, which Windows 11 ships. The NSIS installer is downloaded by the
+  Tauri CLI when `npm run tauri build -- --bundles nsis` is first run.
+
+- An AWS CLI-style configuration (`~/.aws/config`; on Windows
+  `%USERPROFILE%\.aws\config`) with a default region for the profile you use.
+  Authentication (SSO, access keys, AssumeRole, environment variables) is left
+  to the AWS SDK; for SSO profiles run `aws sso login --profile <name>` first,
+  or sign in from the app (see [Sign in with SSO](#sign-in-with-sso), which
+  needs AWS CLI v2). The app never reads, stores or logs your credentials.
 
 ## Run the app
 
@@ -185,12 +191,31 @@ terminal instead. While signing in, the profile, the region, the log group
 list, **Reload**, **Fetch** and the settings are disabled. Closing the
 window or quitting the app stops a running CLI; it does not ask first.
 
-The AWS CLI is looked for at `/opt/homebrew/bin/aws` (Homebrew), then
-`/usr/local/bin/aws` (the official installer); `PATH` is not used, because
-an app started from the Finder or the Dock does not get the terminal's
-`PATH`. If neither exists, the dialog says the AWS CLI was not found:
-install [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html),
+On macOS the AWS CLI is looked for at `/opt/homebrew/bin/aws` (Homebrew),
+then `/usr/local/bin/aws` (the official installer); `PATH` is not used,
+because an app started from the Finder or the Dock does not get the
+terminal's `PATH`. On Windows it is looked for at
+`%ProgramFiles%\Amazon\AWSCLIV2\aws.exe` (the official MSI installer;
+`C:\Program Files` when the `ProgramFiles` variable is missing), then as
+`aws.exe` in each absolute folder of the app's `PATH` in order (empty and
+relative entries are skipped). The first executable file found is the one
+started, by its absolute path. If none exists, the dialog says the AWS CLI
+was not found: install
+[AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html),
 or run `aws sso login` in a terminal and press **Reload**.
+
+The CLI is started without a shell on both systems. On macOS it runs in a
+process group of its own, which **Cancel**, the time-out and the app's exit
+end with SIGTERM and, after two seconds, SIGKILL. On Windows it runs without
+a console window inside a job object, which the same three events terminate
+at once (Windows has no gentle stop to try first); the job is set to kill its
+processes when its handle closes, so even an app ended from Task Manager or a
+crash leaves no `aws.exe` behind.
+
+On Windows the app has no menu bar (the Edit menu and the Quit item exist on
+macOS only); the inputs and an expanded message use the standard shortcuts
+Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+A, Ctrl+Z and Ctrl+Y (copy, paste, cut, select
+all, undo, redo), and the window is closed with its close button or Alt+F4.
 
 The app itself calls no SSO API and never reads or writes the SSO token
 cache (`~/.aws/sso/cache`); the CLI signs in and the AWS SDK reads the token.
@@ -330,6 +355,22 @@ Cancel (261012-parallel-fetch U5):
 - [ ] With the OS language set to Japanese the texts are 中断 / 中断中… and the warning reads "取得を中断しました。N 本のストリームは読み終えていないため、一部のログが含まれていません。"; with VoiceOver on, the warning is read once when it appears.
 - [ ] Started from a terminal, the fetch summary of a cancelled fetch ends with `status=Cancelled`.
 
+Windows (261015-windows-support), on the Windows 11 (x64) PC with the app
+installed from the CI-built installer (the **Release dry run** artifact, or a
+Release) and AWS CLI v2, each item matching a macOS item above:
+
+- [ ] Installing: the `x64-setup.exe` runs without administrator rights, SmartScreen's "Windows protected your PC" opens with **More info** → **Run anyway**, and the app appears in the Start menu and in **Settings** → **Apps** → **Installed apps** with the release version. If Smart App Control is on and blocks it, note it (requirements A4): that is the "revisit when apps without a certificate are not allowed" case of team.md.
+- [ ] The app starts, the profile and region selectors work, the log groups are listed and a fetch shows rows, with the cache, the filter, the row expansion, **Cancel** and the elapsed time behaving as on macOS; the texts follow the OS language.
+- [ ] The settings dialog shows the cache location under `%LOCALAPPDATA%\dev.local-sights.app\`; after enabling the cache and restarting, the setting is kept (`%APPDATA%\dev.local-sights.app\settings.json`); the folders have Windows's default rights for your profile (no explicit permissions are set by the app).
+- [ ] Closing the window with the close button or Alt+F4 (instead of Cmd+Q and the app menu's Quit): while not fetching the app closes at once; while fetching the "Fetching is in progress." dialog appears with focus on **Keep fetching**, and **Close** ends the app.
+- [ ] Taskbar (instead of the Dock): the running app shows "Local Sights" with the app icon; **Close window** in the taskbar's right-click menu behaves like the close button (it asks while fetching).
+- [ ] Ending the app from Task Manager (instead of Quit in the Dock menu): no confirmation is possible; it ends at once even while fetching (the fetched logs are lost, nothing is written to the cache) and, with the sign-in dialog waiting, Task Manager shows no `aws.exe` left afterwards.
+- [ ] Alt+Tab (instead of Cmd+Tab) and the window title say "Local Sights"; the taskbar and the Start menu show the app icon.
+- [ ] Narrator (instead of VoiceOver): the seconds of the elapsed time are not read while fetching, the end of the fetch is read with the final value, and the cancel warning is read once.
+- [ ] Ctrl+C copies the selected text of an expanded message, Ctrl+V pastes into the inputs, Ctrl+X, Ctrl+A, Ctrl+Z and Ctrl+Y work in the inputs (instead of the Edit menu and Cmd+C / Cmd+V); there is no menu bar.
+- [ ] **Sign in with SSO** starts the CLI without a console window; **Cancel**, the five-minute time-out and closing the window leave no `aws.exe` in Task Manager (instead of Activity Monitor). With the CLI moved away from `C:\Program Files\Amazon\AWSCLIV2\aws.exe` and out of `PATH`, the dialog says it was not found.
+- [ ] Switching Windows between light and dark mode recolors the window at once, and at 1024×640 nothing overlaps.
+
 ## Performance check of the log list
 
 The log list is still the app's own virtual-scroll list, styled with
@@ -439,6 +480,18 @@ npm run check:version           # same version in Cargo.toml, Cargo.lock, packag
 cargo test -p local-sights-core --example fetch_check  # fetch_check argument parsing (--region is required)
 ```
 
+The OS-specific code (`cfg(unix)` / `cfg(windows)` in `src-tauri/src/sso_cli/`,
+`src-tauri/src/browser.rs` and the cache's folder permissions) is tested on
+its own OS: the Windows tests of `sso_cli` (a fake `aws.cmd` that starts a
+PowerShell child, stopped through the job object) and the cache's Windows
+test compile and run only on Windows, so from Linux or a Mac they are checked
+by the CI job `Tauri app (windows-latest)`, which runs clippy, the app build
+and `cargo test` for the workspace on `windows-latest`; the Linux and macOS
+jobs run the Unix tests. Line coverage is measured on the Linux runner only,
+so the `cfg(windows)` code is outside the 80% floor. Text files are kept at
+LF by `.gitattributes`, so `cargo fmt --check` and `prettier --check` give
+the same result on a Windows checkout.
+
 Against real AWS, by hand only: `fetch_check` needs `--region` (see "Check
 against real AWS from the terminal") and prints the one-line fetch summary
 (`streams=… calls=… throttled=… elapsed_ms=… max_in_flight=… min_rate=… status=…`) to
@@ -450,9 +503,10 @@ median real time and the event count.
 ## Releasing
 
 A tag `vX.Y.Z` pushed on a commit of `main` builds the Apple Silicon `.dmg`
-and publishes it on GitHub Releases. See [docs/releasing.md](docs/releasing.md)
-for raising the version, tagging, and what happens when a run fails or is run
-again.
+and the Windows (x64) installer and publishes both on one GitHub Release, only
+when both could be built. See [docs/releasing.md](docs/releasing.md) for
+raising the version, the dry run, tagging, and what happens when a run fails
+or is run again.
 
 ## Secrets
 

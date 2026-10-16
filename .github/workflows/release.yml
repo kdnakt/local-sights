@@ -1,22 +1,32 @@
 name: Release
 
-# Builds the macOS (Apple Silicon) .dmg for a tag vX.Y.Z pushed on a commit of
-# main and publishes it on GitHub Releases (not a draft). See docs/releasing.md.
+# Builds the macOS (Apple Silicon) .dmg and the Windows (x64) NSIS installer
+# for a tag vX.Y.Z pushed on a commit of main and publishes both on one
+# GitHub Release (not a draft). See docs/releasing.md.
 #
 # - verify: the tag has the form vX.Y.Z, matches the version in Cargo.toml,
 #   Cargo.lock, package.json and src-tauri/tauri.conf.json, and its commit is
 #   on main. Nothing else runs when this fails.
 # - test: the library tests and the screen tests, on the tagged commit.
-# - build-and-publish: runs only after both succeed. It builds the .dmg with
-#   the .app ad-hoc signed, checks that exactly one .dmg exists, verifies the
-#   signature of the .app inside that .dmg, and only then creates the Release
-#   (or, when the tag's Release already exists after a re-run, replaces the
-#   .dmg on it).
+# - build-macos: runs after both succeed. It builds the .dmg with the .app
+#   ad-hoc signed, checks that exactly one .dmg exists, verifies the signature
+#   of the .app inside that .dmg, and keeps the .dmg as a workflow artifact.
+# - build-windows: runs after both succeed, on the Windows runner. It builds
+#   the per-user NSIS installer (no administrator rights; tauri.conf.json
+#   bundle.windows.nsis), checks that exactly one x64 *-setup.exe exists, and
+#   keeps it as a workflow artifact.
+# - publish: runs only after build-macos and build-windows both succeed, so
+#   when either installer cannot be built nothing is published. It downloads
+#   both artifacts, checks that both files are there, and only then creates
+#   the Release with both (or, when the tag's Release already exists after a
+#   re-run, replaces both files on it).
 #
-# The app is ad-hoc signed in CI (APPLE_SIGNING_IDENTITY "-": no Apple
+# The macOS app is ad-hoc signed in CI (APPLE_SIGNING_IDENTITY "-": no Apple
 # certificate) and not notarized; it is not signed with an Apple Developer ID.
-# Only the automatic GITHUB_TOKEN is used: no AWS credentials, no Apple
-# certificates, no other secrets. No job talks to AWS.
+# The Windows installer is not signed with a code-signing certificate, so
+# SmartScreen warns on the first launch (docs/install.md). Only the automatic
+# GITHUB_TOKEN is used: no AWS credentials, no Apple certificates, no other
+# secrets. No job talks to AWS.
 on:
   push:
     tags: ["v*"]
@@ -79,13 +89,14 @@ jobs:
       - name: vitest
         run: npx vitest run
 
-  build-and-publish:
-    name: Build .dmg and publish the Release
+  # Keep this job above build-windows: scripts/release/signing.ts reads the
+  # steps of the whole file in order and expects the first `tauri build` to
+  # be the ad-hoc signed macOS build.
+  build-macos:
+    name: Build .dmg (ad-hoc signed)
     needs: [verify, test]
     runs-on: macos-latest
     timeout-minutes: 40
-    permissions:
-      contents: write
     env:
       TAG: ${{ github.ref_name }}
     steps:
@@ -165,17 +176,107 @@ jobs:
               exit 1
               ;;
           esac
-      - name: publish the Release (or replace the .dmg on a re-run)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dmg
+          path: ${{ steps.dmg.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # 261015-windows-support FR2.1, FR2.3: the per-user NSIS installer, built on
+  # the Windows runner and published together with the .dmg by `publish`.
+  build-windows:
+    name: Build Windows installer
+    needs: [verify, test]
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: build the NSIS installer
+        run: npm run tauri build -- --bundles nsis
+      - name: exactly one x64 installer
+        id: setup
+        shell: pwsh
+        run: |
+          $setups = @(Get-ChildItem -Path target/release/bundle/nsis -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue)
+          if ($setups.Count -ne 1) {
+            Write-Output "::error::Expected exactly one *-setup.exe in target/release/bundle/nsis/, found $($setups.Count)."
+            exit 1
+          }
+          if ($setups[0].Name -notlike '*x64*') {
+            Write-Output "::error::$($setups[0].Name) is not an x64 installer."
+            exit 1
+          }
+          # Upload a copy whose name has no spaces (GitHub rewrites them in
+          # asset names); a re-run then replaces the same asset name.
+          $version = $env:TAG -replace '^v', ''
+          $upload = Join-Path $env:RUNNER_TEMP "Local-Sights_${version}_x64-setup.exe"
+          Copy-Item -Path $setups[0].FullName -Destination $upload
+          Write-Output "Built $($setups[0].FullName); uploading as $(Split-Path -Leaf $upload)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "path=$upload"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows
+          path: ${{ steps.setup.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the Release
+    needs: [verify, test, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dmg
+          path: release/dmg
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-windows
+          path: release/windows
+      - name: both installers are present
+        id: files
+        run: |
+          shopt -s nullglob
+          dmgs=(release/dmg/*.dmg)
+          setups=(release/windows/*-setup.exe)
+          if [ "${#dmgs[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .dmg from build-macos, found ${#dmgs[@]}. Nothing is published."
+            exit 1
+          fi
+          if [ "${#setups[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one -setup.exe from build-windows, found ${#setups[@]}. Nothing is published."
+            exit 1
+          fi
+          echo "Publishing $(basename "${dmgs[0]}") and $(basename "${setups[0]}")"
+          echo "dmg=${dmgs[0]}" >> "$GITHUB_OUTPUT"
+          echo "setup=${setups[0]}" >> "$GITHUB_OUTPUT"
+      - name: publish the Release (or replace the files on a re-run)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          DMG: ${{ steps.dmg.outputs.path }}
-          NOTES: "Built from commit ${{ github.sha }} (tag ${{ github.ref_name }}) by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Ad-hoc signed (not notarized) macOS (Apple Silicon) build: see docs/install.md."
+          DMG: ${{ steps.files.outputs.dmg }}
+          SETUP: ${{ steps.files.outputs.setup }}
+          NOTES: "Built from commit ${{ github.sha }} (tag ${{ github.ref_name }}) by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. macOS (Apple Silicon) .dmg: ad-hoc signed, not notarized. Windows 11 (x64) installer: not signed with a code-signing certificate, so SmartScreen warns on the first launch (More info, then Run anyway). Installing on either OS: see docs/install.md."
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Release $TAG exists: replacing its .dmg."
-            gh release upload "$TAG" "$DMG" --clobber
+            echo "Release $TAG exists: replacing its .dmg and its Windows installer."
+            gh release upload "$TAG" "$DMG" "$SETUP" --clobber
           else
-            gh release create "$TAG" "$DMG" --verify-tag --title "Local Sights $TAG" \
+            gh release create "$TAG" "$DMG" "$SETUP" --verify-tag --title "Local Sights $TAG" \
               --notes "$NOTES" --generate-notes
           fi

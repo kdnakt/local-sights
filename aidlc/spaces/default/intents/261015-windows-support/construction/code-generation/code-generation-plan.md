@@ -146,26 +146,26 @@
 
 - [x] `src-tauri/tauri.conf.json` の `bundle` に `windows` を足す：`nsis.installMode: "currentUser"`（管理者の権限なし、利用者ごと。FR2.1）、`webviewInstallMode: { "type": "downloadBootstrapper" }`（Q5：ない PC でだけ取得。Tauri の既定を明示する）、`allowDowngrades: true`（FR2.8、OQ2：前の版のインストーラで戻せる）。`targets` は `"all"` のまま、どのインストーラを作るかはワークフローの `--bundles` で決める。
 - [x] `.github/workflows/release-dry-run.yml` に `build-windows` ジョブを足す：`windows-latest`、`npm run check:version`、`npm ci`、`npm run tauri build -- --bundles nsis`、`target/release/bundle/nsis/` に `*-setup.exe` がちょうど 1 つあり名前に `x64` を含むことを PowerShell で確かめ、`local-sights-windows-dry-run` という成果物として 7 日残す。既存の macOS のジョブは `build-dmg` のまま変えない。
-- [ ] ここまでを 1 つのコミットにして枝 `claude/windows-support` に push する。**ここで Part A は終わり**：CI の `Tauri app (windows-latest)` が通ること、「Release dry run」を手で動かして Windows のインストーラができることを確かめ、開発者が Windows 11 の PC に入れて、起動・プロファイルとリージョンの選択・取得・表示を目で確かめる。macOS でも前と同じに動くことを確かめる（NFR1）。人間の承認を待つ。
+- [x] ここまでを 1 つのコミットにして枝 `claude/windows-support` に push する。**ここで Part A は終わり**：CI の `Tauri app (windows-latest)` が通ること、「Release dry run」を手で動かして Windows のインストーラができることを確かめ、開発者が Windows 11 の PC に入れて、起動・プロファイルとリージョンの選択・取得・表示を目で確かめる。macOS でも前と同じに動くことを確かめる（NFR1）。人間の承認を待つ。
 
 ## Part B — 残りの機能、リリース、手順書
 
 ### Step B1: リリースのワークフローを両 OS にする（FR2.3、FR2.5、FR2.6）
 
-- [ ] `.github/workflows/release.yml` を 5 つのジョブにする。ファイル内の並びは **`verify` → `test` → `build-macos` → `build-windows` → `publish`** にする（`scripts/release/signing.ts` は、`tauri build` を含む最初のステップの `APPLE_SIGNING_IDENTITY` と、`codesign --verify` が `tauri build`・`.dmg` の選別の後、`gh release` の前にあることを、ファイル全体のステップの並びで見るため）。
+- [x] `.github/workflows/release.yml` を 5 つのジョブにする。ファイル内の並びは **`verify` → `test` → `build-macos` → `build-windows` → `publish`** にする（`scripts/release/signing.ts` は、`tauri build` を含む最初のステップの `APPLE_SIGNING_IDENTITY` と、`codesign --verify` が `tauri build`・`.dmg` の選別の後、`gh release` の前にあることを、ファイル全体のステップの並びで見るため）。
   - `build-macos`：今の `build-and-publish` から、`.dmg` を作る・1 つだけ確かめる・署名を検証するまでを移し、`Local-Sights_<ver>_aarch64.dmg` を成果物として上げる。
   - `build-windows`：`windows-latest` で `npm run tauri build -- --bundles nsis`、`*-setup.exe` が 1 つで `x64` を含むことを確かめ、`Local-Sights_<ver>_x64-setup.exe` という名前の複製を成果物として上げる。
   - `publish`：`needs: [build-macos, build-windows]`。両方の成果物を取得し、`gh release create`（または既存の Release への `upload --clobber`）で 2 つを 1 つの Release に載せる。どちらかのビルドが失敗すれば `publish` は動かない（FR2.3）。`NOTES` に Windows が未署名で SmartScreen が出ることを書く。
-- [ ] `scripts/release/signing.test.ts` に、ジョブが分かれた形のワークフローのテストを足す（`readTauriBuildSigningIdentity` が macOS のジョブの `tauri build` を拾うこと、`findSignatureCheckStep` が `publish` ジョブの `gh release` の前にあると判定すること、Windows のジョブの `tauri build` が先にあると失敗すること、の 3〜4 件）。既存のテストは変えない。`signing.ts` の読み方（ファイル全体のステップの並び）で足りるなら、`signing.ts` は変えない。
-- [ ] `versions.ts` と `check-version.mjs` は変えない。
+- [x] `scripts/release/signing.test.ts` に、ジョブが分かれた形のワークフローのテストを足す（`readTauriBuildSigningIdentity` が macOS のジョブの `tauri build` を拾うこと、`findSignatureCheckStep` が `publish` ジョブの `gh release` の前にあると判定すること、Windows のジョブの `tauri build` が先にあると失敗すること、の 3〜4 件）。既存のテストは変えない。`signing.ts` の読み方（ファイル全体のステップの並び）で足りるなら、`signing.ts` は変えない。
+- [x] `versions.ts` と `check-version.mjs` は変えない。
 
 ### Step B2: 版を 0.2.0 にする（FR2.9）
 
-- [ ] `Cargo.toml` の `[workspace.package] version = "0.2.0"`、`npm version 0.2.0 --no-git-tag-version`（`package.json` と `package-lock.json`）、`src-tauri/tauri.conf.json` の `"version": "0.2.0"`、`cargo update -w`。`npm run check:version` が `0.2.0` を出すことを確かめる。
+- [x] `Cargo.toml` の `[workspace.package] version = "0.2.0"`、`npm version 0.2.0 --no-git-tag-version`（`package.json` と `package-lock.json`）、`src-tauri/tauri.conf.json` の `"version": "0.2.0"`、`cargo update -w`。`npm run check:version` が `0.2.0` を出すことを確かめる。
 
 ### Step B3: 手順書（FR5.1、FR5.3、R-06）
 
-- [ ] `docs/install.md` を「macOS」と「Windows」の節に分ける。macOS の節は今の内容のまま。Windows の節に書くこと：
+- [x] `docs/install.md` を「macOS」と「Windows」の節に分ける。macOS の節は今の内容のまま。Windows の節に書くこと：
   - 対象（Microsoft がサポートしている版の Windows 11、x64）。
   - 会社のルールの確認（未署名のアプリ。**スマート アプリ コントロール**がオンだと開けないこと、Windows セキュリティでの確認の場所。A4）。
   - 取得（`x64-setup.exe`）と入れ方（ダブルクリック、管理者の権限は不要、利用者ごとに入る）。
@@ -174,17 +174,17 @@
   - 設定とキャッシュの場所（`%APPDATA%\dev.local-sights.app\`、`%LOCALAPPDATA%\dev.local-sights.app\`）と、権限は Windows の既定のままであること（Q3）。
   - 更新：**アプリを閉じてから**新しい版のインストーラを実行する（R-06）。戻し方：前の版のインストーラを実行する。アンインストール：設定 → アプリ。
   - 署名についての言い回しは、`signing.test.ts` の `findUnsignedClaims` が「署名がまったくない」と読む書き方（`unsigned`、`not signed`）を避け、何の署名がないか（`not signed with a code-signing certificate`）を書く。`npx vitest run scripts/release/signing.test.ts` で確かめる。
-- [ ] `docs/releasing.md`：Windows のインストーラも作られ、両方がそろったときだけ公開されること。dry run が両方を作ること。**タグを付ける前の順序**（R-01）：dry run を通し、両 OS で入れて起動・取得を確かめてからタグを付ける。公開後に壊れていたら、タグは動かさず次のパッチ版（`v0.2.1`）で直す。
+- [x] `docs/releasing.md`：Windows のインストーラも作られ、両方がそろったときだけ公開されること。dry run が両方を作ること。**タグを付ける前の順序**（R-01）：dry run を通し、両 OS で入れて起動・取得を確かめてからタグを付ける。公開後に壊れていたら、タグは動かさず次のパッチ版（`v0.2.1`）で直す。
 
 ### Step B4: README（FR5.2、FR4.1、R-04）
 
-- [ ] 「Install」「Prerequisites」「Sign in with SSO」に Windows の記述を足す（AWS CLI の探し方、Ctrl+C／Ctrl+V／Ctrl+X／Ctrl+A／Ctrl+Z／Ctrl+Y の標準の操作、メニューバーがないこと）。
-- [ ] 「Manual GUI check」に Windows の項目を足す。macOS の各項目に対応させる：Cmd+Q とアプリのメニューの終了 → Alt+F4 と閉じるボタン、Dock → タスクバー、Cmd+Tab → Alt+Tab、VoiceOver → ナレーター、アクティビティモニタ → タスク マネージャー、Cmd+C／Cmd+V → Ctrl+C／Ctrl+V、Dock とアイコン → タスクバーとスタートメニューのアイコン。Dock の「終了」に当たる項目は「タスク マネージャーからの終了：確認は出ない。`aws.exe` が残らない」とする（OQ4）。
-- [ ] 「Tests and checks」に、Windows でしか動かないテストと CI の Windows のジョブのことを書く。
+- [x] 「Install」「Prerequisites」「Sign in with SSO」に Windows の記述を足す（AWS CLI の探し方、Ctrl+C／Ctrl+V／Ctrl+X／Ctrl+A／Ctrl+Z／Ctrl+Y の標準の操作、メニューバーがないこと）。
+- [x] 「Manual GUI check」に Windows の項目を足す。macOS の各項目に対応させる：Cmd+Q とアプリのメニューの終了 → Alt+F4 と閉じるボタン、Dock → タスクバー、Cmd+Tab → Alt+Tab、VoiceOver → ナレーター、アクティビティモニタ → タスク マネージャー、Cmd+C／Cmd+V → Ctrl+C／Ctrl+V、Dock とアイコン → タスクバーとスタートメニューのアイコン。Dock の「終了」に当たる項目は「タスク マネージャーからの終了：確認は出ない。`aws.exe` が残らない」とする（OQ4）。
+- [x] 「Tests and checks」に、Windows でしか動かないテストと CI の Windows のジョブのことを書く。
 
 ### Step B5: 仕上げ
 
-- [ ] `cargo fmt --all`、`cargo clippy --workspace --all-targets`（この環境では Linux だけ）、`cargo test --workspace`、`npx prettier --write .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`cargo deny check`、`npm audit --audit-level=high` を通す。
+- [x] `cargo fmt --all`、`cargo clippy --workspace --all-targets`（この環境では Linux だけ）、`cargo test --workspace`、`npx prettier --write .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`cargo deny check`、`npm audit --audit-level=high` を通す。
 - [ ] push して CI の 3 つの OS が通ることを確かめる。`Tauri app (windows-latest)` を `main` のルールセットの必須の状態確認に加える（FR1.3）。これはリポジトリの設定で、コードではないため、**開発者のエージェントは行わず、PR のときに人間（または進行役）が GitHub の設定で行う**。
 - [ ] `code-summary.md` と `traceability.json` を書く（Step 5）。
 

@@ -149,6 +149,76 @@ describe("findSignatureCheckStep", () => {
   });
 });
 
+// 261015-windows-support (FR2.3, FR2.6): the release workflow builds the .dmg
+// and the Windows installer in jobs of their own and publishes in a third.
+// signing.ts reads the steps of the whole file in order, so the checks hold
+// as long as the macOS build job comes before the Windows one and the
+// publish job comes last.
+const WINDOWS_BUILD_STEP = [
+  "      - name: build the NSIS installer",
+  "        run: npm run tauri build -- --bundles nsis",
+];
+
+const DOWNLOAD_STEP = [
+  "      - uses: actions/download-artifact@v8",
+  "        with:",
+  "          name: release-dmg",
+];
+
+function job(name: string, runsOn: string, steps: string[][]): string[] {
+  return [
+    `  ${name}:`,
+    `    runs-on: ${runsOn}`,
+    "    steps:",
+    "      - uses: actions/checkout@v7",
+    ...steps.flat(),
+  ];
+}
+
+function splitWorkflow(jobs: string[][]): string {
+  return ["name: Release", "jobs:", ...jobs.flat(), ""].join("\n");
+}
+
+const MACOS_JOB = job("build-macos", "macos-latest", [BUILD_STEP, DMG_STEP, CHECK_STEP]);
+const WINDOWS_JOB = job("build-windows", "windows-latest", [WINDOWS_BUILD_STEP]);
+const PUBLISH_JOB = job("publish", "ubuntu-latest", [DOWNLOAD_STEP, PUBLISH_STEP]);
+
+describe("split build and publish jobs", () => {
+  // 16
+  it("reads the signing identity from the macOS job when it comes before the Windows job", () => {
+    const text = splitWorkflow([MACOS_JOB, WINDOWS_JOB, PUBLISH_JOB]);
+    expect(readTauriBuildSigningIdentity(text)).toBe("-");
+  });
+
+  // 17
+  it("finds the signature check in the macOS job before the publish job's gh release", () => {
+    const text = splitWorkflow([MACOS_JOB, WINDOWS_JOB, PUBLISH_JOB]);
+    expect(findSignatureCheckStep(text)).toEqual({
+      ok: true,
+      value: { name: "verify the signature", checksAdhoc: true },
+    });
+  });
+
+  // 18
+  it("reads no identity when the Windows job's tauri build comes before the macOS job", () => {
+    const text = splitWorkflow([WINDOWS_JOB, MACOS_JOB, PUBLISH_JOB]);
+    expect(readTauriBuildSigningIdentity(text)).toBeUndefined();
+    // The ordering check itself still holds: codesign is after the first
+    // tauri build and before gh release.
+    expect(findSignatureCheckStep(text)).toMatchObject({ ok: true });
+  });
+
+  // 19
+  it("fails when the publish job comes before the macOS job", () => {
+    const text = splitWorkflow([PUBLISH_JOB, MACOS_JOB, WINDOWS_JOB]);
+    const result = findSignatureCheckStep(text);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("after the Release is published");
+    }
+  });
+});
+
 describe("findUnsignedClaims", () => {
   // 5
   it("returns the lines of sentences that read as no signature at all", () => {
@@ -304,5 +374,22 @@ describe("repository", () => {
     expect(steps).toContain("**Open Anyway**");
     expect(steps).toContain("is damaged");
     expect(section(releasingMd, "## When something fails")).toContain("Signature=adhoc");
+  });
+
+  // 20 (261015-windows-support FR2.3, FR2.6): the macOS build job is read
+  // first, the Windows build job after it, and publishing waits for both.
+  it("release.yml builds the .dmg before the Windows installer and publishes only after both", () => {
+    const macos = releaseYml.indexOf("\n  build-macos:\n");
+    const windows = releaseYml.indexOf("\n  build-windows:\n");
+    const publish = releaseYml.indexOf("\n  publish:\n");
+    expect(macos).toBeGreaterThan(0);
+    expect(windows).toBeGreaterThan(macos);
+    expect(publish).toBeGreaterThan(windows);
+    expect(releaseYml.slice(publish)).toContain(
+      "needs: [verify, test, build-macos, build-windows]",
+    );
+    expect(releaseYml).toContain("--bundles nsis");
+    expect(releaseYml.match(/gh release/g)?.length).toBeGreaterThan(0);
+    expect(releaseYml.indexOf("gh release")).toBeGreaterThan(publish);
   });
 });

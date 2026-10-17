@@ -8,6 +8,7 @@
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 - 2026-10-17T11:54:21Z — 期間とロググループの選択は 2 つの画面で別々に持つことにした（取得済みのログだけを共有）; 要件は取得済みの範囲の共有だけを決めており、入力まで共有すると一方の画面の操作がもう一方を黙って変えてしまうため。
+- 2026-10-17T23:30:00Z — [insights-query] 要件の見直し（RA Q3b：取得済みのログを共有しない）に合わせ、画面設計は「2 つの画面の間の約束」・画面 4 の注記・補完の候補元だけを直し、画面の構成は変えなかった; 共有の有無は画面の見た目には出ず、どちらの画面の取得がもう一方を変えないことを書けば足りるため。
 
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->

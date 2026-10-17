@@ -113,3 +113,5 @@ None. (affirmed 2026-10-15)
 - 部品の一覧には新しく作る部品と変える部品だけを載せ、変えない部品（FilterEngine など）は codekb の一覧のままとした (learned 2026-10-17) <!-- cid:261017-insights-query:domain-design:766a7c4ba7c4b78c2ea5688d6dd037d37ab2cd84a7149ab997d2cd3a867c118d -->
 - 範囲の定義の B5「クエリの中で期間とロググループを指定」を、クエリの画面に置く専用の欄で指定することと読み替えた（A1） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:5a1635440369bc5d17d1f42ac879d0cb20314de0ecca16013394185acfe406da -->
 - [insights-query] 2 つの画面は取得済みのログを共有しないと見直した（RA Q3b、Q3a の見直し）。普段は片方の画面で済むため、同じログを 2 回取得しメモリも 2 つ分持つことを受け入れた (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:6c9acb731de9834c403d122751199640fe0d2b5faf6e6b98caad88bca0b29c89 -->
+- [insights-query] 要件の見直し（RA Q3b：取得済みのログを共有しない）に合わせ、画面設計は「2 つの画面の間の約束」・画面 4 の注記・補完の候補元だけを直し、画面の構成は変えなかった (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:6435c6759b97dded6f5b9d65bcf1dca0dc145fc258b6a7815bbb0fa649b2f067 -->
+- [insights-query] 訂正：期間とロググループの選択も取得済みのログも、2 つの画面で別々に持つ（RA Q3b。前の「取得済みのログだけを共有」を改める） (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:2d6e1d0f9f42b74d02de1a8022e398f5c8da21c9807fe291b1323a4aae95a979 -->

@@ -111,3 +111,5 @@ None. (affirmed 2026-10-15)
 - 期間とロググループの選択は 2 つの画面で別々に持つことにした（取得済みのログだけを共有） (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:5259c99276b5f4b17776439fde4549fa47560438df4505f2d8f8b93840c706de -->
 - クエリ欄は利用者の選択どおり最初から CodeEditor（Ace）にした (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:97d255501f19db213a8ee12e5f5ddfbabbe215c969d2f43ce6e1e4e593037c8b -->
 - 部品の一覧には新しく作る部品と変える部品だけを載せ、変えない部品（FilterEngine など）は codekb の一覧のままとした (learned 2026-10-17) <!-- cid:261017-insights-query:domain-design:766a7c4ba7c4b78c2ea5688d6dd037d37ab2cd84a7149ab997d2cd3a867c118d -->
+- 範囲の定義の B5「クエリの中で期間とロググループを指定」を、クエリの画面に置く専用の欄で指定することと読み替えた（A1） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:5a1635440369bc5d17d1f42ac879d0cb20314de0ecca16013394185acfe406da -->
+- [insights-query] 2 つの画面は取得済みのログを共有しないと見直した（RA Q3b、Q3a の見直し）。普段は片方の画面で済むため、同じログを 2 回取得しメモリも 2 つ分持つことを受け入れた (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:6c9acb731de9834c403d122751199640fe0d2b5faf6e6b98caad88bca0b29c89 -->

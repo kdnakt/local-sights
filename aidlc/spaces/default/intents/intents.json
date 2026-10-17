@@ -53,5 +53,13 @@
     "scope": "bugfix",
     "status": "complete",
     "request": "b6688715"
+  },
+  {
+    "uuid": "01a147c2-8f44-775b-b3b0-1994b08e1f09",
+    "slug": "insights-query",
+    "dirName": "261017-insights-query",
+    "scope": "refactor",
+    "status": "in-flight",
+    "request": "3859bb18"
   }
 ]

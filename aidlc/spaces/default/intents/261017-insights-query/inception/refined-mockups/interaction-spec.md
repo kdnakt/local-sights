@@ -61,27 +61,27 @@ stateDiagram-v2
 | Field | Value |
 |---|---|
 | Component | AppNavigation（`<SideNavigation>`） |
-| Description | Log events と Logs Insights を切り替える |
+| Description | Log Management と Logs Insights を切り替える |
 | Category | navigation |
 
 | State | Description | Trigger |
 |---|---|---|
-| default | 2 項目、今の画面を強調 | 起動時は Log events |
-| collapsed | アイコンボタン 1 つに畳む | 畳むボタン |
+| default | 2 項目、今の画面を強調 | 起動時は Log Management |
+| collapsed | 閉じて、左端に [≡]（開く）だけを残す。開閉の状態はアプリを閉じるまで覚える | 見出しの右の [×]（閉じる）、[≡] で開く |
 | disabled | なし（どの状態でも切り替えられる） | — |
 
 | Requirement | Implementation |
 |---|---|
 | ARIA role | `navigation`（部品の既定）、今の項目に `aria-current="page"` |
 | Keyboard interaction | Tab で入り、Enter で切り替え。Ctrl+1 / Ctrl+2（macOS は Cmd+1 / Cmd+2）でも切り替える |
-| Focus management | 切り替えたら、行き先の画面の最初の欄（Log events はロググループの検索、Logs Insights はロググループの選択）に焦点を移す |
+| Focus management | 切り替えたら、行き先の画面の最初の欄（Log Management はロググループの検索、Logs Insights はロググループの選択）に焦点を移す |
 | Screen reader | 切り替えたら画面名を読み上げる（`aria-live="polite"` の領域に画面名） |
 
 ### LogGroupMultiselect（ロググループ）
 
 | Prop | Type | Required | Default | Description |
 |---|---|---|---|---|
-| options | ロググループ名の一覧 | yes | — | Log events の左ペインと同じ一覧 |
+| options | ロググループ名の一覧 | yes | — | Log Management の左ペインと同じ一覧 |
 | selected | 名前の一覧 | yes | 空 | 選んだもの |
 | disabled | boolean | no | false | 実行中は true |
 
@@ -95,7 +95,7 @@ stateDiagram-v2
 
 - 名前の部分一致で候補を絞る（`filteringType="auto"`）。選んだものは欄の下にトークンで出し、× で外せる。
 - 選べる数の上限は Domain Design で決める（要件のレビュー R-05）。上限があるときは、プレースホルダと上限に達したときの文で示す。
-- 接続を変えたら、選んだものは空に戻す（今の Log events がロググループの選択を外すのと同じ）。
+- 接続を変えたら、選んだものは空に戻す（今の Log Management がロググループの選択を外すのと同じ）。
 
 ### QueryEditor（クエリ欄）
 
@@ -146,13 +146,13 @@ stateDiagram-v2
 | partial | 結果の囲みの上に警告 | 一部のストリームの失敗 |
 
 - 行を開く：▶ を押すか、行を選んで Enter / Space。開いた中身は項目と値の一覧（決まった項目 → JSON の項目、名前の順）。
-- 行の選び方とスクロールの決まりは Log events の表と同じ（↑↓ で行、見えている行だけを読む）。
+- 行の選び方とスクロールの決まりは Log Management の表と同じ（↑↓ で行、見えている行だけを読む）。
 
 ## 文言表
 
 | キー | English | 日本語 |
 |---|---|---|
-| nav.logEvents | Log events | ログイベント |
+| nav.logManagement | Log Management | ログ管理 |
 | nav.logsInsights | Logs Insights | Logs Insights |
 | insights.logGroups.label | Log groups | ロググループ |
 | insights.logGroups.placeholder | Select log groups | ロググループを選ぶ |
@@ -182,5 +182,5 @@ stateDiagram-v2
 ## 2 つの画面の間の約束
 
 - 接続（プロファイル・リージョン）とタイムゾーンは共通。期間・ロググループの選択・入力は画面ごとに別。
-- 取得済みのログは共有する（要件 FR2.1）。Log events で取得したログは、クエリの画面の「足りない分」の計算に使われる。
-- Log events の取得中・クエリの画面の実行中でも、画面は切り替えられる。同じロググループに両方から取得が走るときの扱いは Domain Design で決める（要件 OQ4、レビュー R-03）。
+- 取得済みのログは共有する（要件 FR2.1）。Log Management で取得したログは、クエリの画面の「足りない分」の計算に使われる。
+- Log Management の取得中・クエリの画面の実行中でも、画面は切り替えられる。同じロググループに両方から取得が走るときの扱いは Domain Design で決める（要件 OQ4、レビュー R-03）。

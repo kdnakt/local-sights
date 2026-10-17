@@ -6,15 +6,15 @@
 
 | 画面の部分 | Cloudscape の部品 | 設定 | 出典 |
 |---|---|---|---|
-| 画面の切り替え | `SideNavigation` | 項目 2 つ（Log events、Logs Insights）、`activeHref` で今の画面 | Q1、FR1.1 |
+| 画面の切り替え | `SideNavigation` | 項目 2 つ（Log Management、Logs Insights）、`activeHref` で今の画面 | Q1、FR1.1 |
 | 全体の枠 | 今の 2 ペインの枠＋左端にナビゲーションの列 | ナビゲーションは畳める | Q1 |
 | クエリの画面の囲み | `Container` + `Header`（「Logs Insights」） | | FR1.2 |
 | ロググループ | `FormField` + `Multiselect` | `filteringType="auto"`、`tokenLimit` で並べる数を絞り「+N」表示、`statusType` で loading / error | Q2、FR1.3 |
-| 期間 | `FormField` + `DatePicker` + `TimeInput` | Log events と同じ設定（`yyyy/mm/dd`、`hh:mm:ss`、24 時間） | FR1.4 |
+| 期間 | `FormField` + `DatePicker` + `TimeInput` | Log Management と同じ設定（`yyyy/mm/dd`、`hh:mm:ss`、24 時間） | FR1.4 |
 | クエリ欄 | `FormField` + `CodeEditor` | 独自の言語の定義（色分け）、補完の提供、エラーの印（下線と行番号の横の印）、`preferences` は固定、`loading` を使う | Q3、Q5、FR6、FR9 |
 | 実行 | `Button variant="primary"`（Run query）、`Button`（Cancel）、`ButtonDropdown`（Examples） | | FR1.7、FR2.4、FR9.3 |
 | 実行中の表示 | `StatusIndicator type="loading"` | 結果の囲みの中 | FR2.4 |
-| 結果 | `Container` + `Header`（件数、`counter`）+ 結果の表 | 表は Log events の表と同じ作り（下の「結果の表」） | FR7 |
+| 結果 | `Container` + `Header`（件数、`counter`）+ 結果の表 | 表は Log Management の表と同じ作り（下の「結果の表」） | FR7 |
 | 行の項目と値 | `KeyValuePairs` か、2 列の簡単な表 | 決まった項目 → JSON の項目 | Q4、FR7.4 |
 | エラー・警告・知らせ | `Alert`（error / warning / info、dismissible） | | FR2.5、FR2.6 |
 | 欄の不備 | `FormField` の `errorText` | | FR1.6 |
@@ -33,9 +33,9 @@
 
 ## 結果の表
 
-- Log events の表（自前の仮想スクロール＋デザイントークン）を元に、列を可変にした版を作る。見えている行だけを中核から読む作りは同じ（FR7.5）。
+- Log Management の表（自前の仮想スクロール＋デザイントークン）を元に、列を可変にした版を作る。見えている行だけを中核から読む作りは同じ（FR7.5）。
 - 列の見出しは項目名そのまま（`@timestamp` など）。時刻の列は `@timestamp (Local)` のようにタイムゾーンを添える。
-- 行を開く印（▶ / ▼）、行の選び方、開いた中身の表示は Log events と同じ部品を使い、中身だけを項目と値の一覧にする。
+- 行を開く印（▶ / ▼）、行の選び方、開いた中身の表示は Log Management と同じ部品を使い、中身だけを項目と値の一覧にする。
 
 ## デザイントークン
 

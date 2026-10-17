@@ -5,6 +5,7 @@
 #
 # 使い方：
 #   PROFILE=my-profile REGION=ap-northeast-1 GROUP=/aws/lambda/my-func ./timestamp-check.sh
+#   期間は END（UNIX 秒、既定は今）と START（既定は END の 1 時間前）で変えられる。
 # 出力（件数と状態だけ。認証情報は出ない）を、そのまま貼って返してください。
 set -u
 
@@ -12,8 +13,8 @@ set -u
 : "${REGION:?REGION を指定してください}"
 : "${GROUP:?GROUP を指定してください}"
 
-END=$(date +%s)
-START=$((END - 3600))
+END=${END:-$(date +%s)}
+START=${START:-$((END - 3600))}
 MID_S=$(((START + END) / 2))
 MID_MS=$((MID_S * 1000))
 MID_UTC=$(date -u -r "$MID_S" '+%Y-%m-%d %H:%M:%S.000')
@@ -35,7 +36,7 @@ run() {
   echo "[$label] $status 件数=$(printf '%s' "$out" | jq -r '.results[0][0].value // "0"')"
 }
 
-echo "期間：$START 〜 $END（秒）、境目：$MID_MS ms = $MID_UTC UTC"
+echo "期間：${START} 〜 ${END}（秒）、境目：${MID_MS} ms = ${MID_UTC} UTC"
 run "1 全体" "stats count(*)"
 run "2 toMillis と数値" "filter toMillis(@timestamp) > $MID_MS | stats count(*)"
 run "3 そのまま数値" "filter @timestamp > $MID_MS | stats count(*)"

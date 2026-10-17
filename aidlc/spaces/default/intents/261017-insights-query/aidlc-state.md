@@ -10,7 +10,7 @@
 - **Start Date**: 2026-10-17T02:48:15Z
 - **Question Id**: 3859bb18
 - **State Version**: 8
-- **Active Agent**: aidlc-product-agent
+- **Active Agent**: aidlc-delivery-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**:
@@ -36,14 +36,20 @@
 
 ## Execution Plan Summary
 - **Total Stages**: 14
-- **Completed**: 4
-- **In Progress**: scope-definition
+- **Completed**: 5
+- **In Progress**: approval-handoff
 
 ## Runtime State
 - **Revision Count**: 0
 - **Construction Checkpoints**: enabled
 - **Construction Iteration**: unit-major
 - **Construction Execution**: serial
+
+- **Parked**: 2026-10-17T05:13:05Z
+
+- **Parked At Stage**: approval-handoff
+
+- **Parked By**: person
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
@@ -66,10 +72,10 @@
 - [x] intent-capture — EXECUTE
 - [ ] market-research — SKIP
 - [ ] feasibility — SKIP
-- [-] scope-definition — EXECUTE
+- [x] scope-definition — EXECUTE
 - [ ] team-formation — SKIP
 - [ ] rough-mockups — SKIP
-- [ ] approval-handoff — EXECUTE
+- [-] approval-handoff — EXECUTE
 
 ### INCEPTION PHASE
 - [ ] reverse-engineering — EXECUTE
@@ -103,12 +109,12 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: IDEATION
-- **Current Stage**: scope-definition
-- **Next Stage**: approval-handoff
+- **Current Stage**: approval-handoff
+- **Next Stage**: reverse-engineering
 - **Status**: Running
-- **Last Updated**: 2026-10-17T03:10:05Z
+- **Last Updated**: 2026-10-17T05:13:05Z
 
 ## Session Resume Point
-- **Last Completed Stage**: intent-capture
-- **Next Action**: Execute Scope Definition
+- **Last Completed Stage**: scope-definition
+- **Next Action**: Execute Approval & Handoff
 - **Pending Artifacts**: none

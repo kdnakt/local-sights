@@ -107,3 +107,6 @@ None. (affirmed 2026-10-15)
 - [windows-support] マージ済みの取得の高速化（PR #22）と Windows 版は合わせて v0.2.0 で配る。v0.1.2 のタグは付けない（practices-discovery Q5） (learned 2026-10-15) <!-- cid:261015-windows-support:practices-discovery:31eb34738d8b5966169f1d9da26d9672a091fa2b3a2499f2c228d69aab4bd7c6 -->
 - 古いコード知識ベース（parallel-fetch のとき）は Windows 対応などの後で古くなっていたため、利用者の選んだ全面の読み直しで 9 つの文書を作り直した (learned 2026-10-17) <!-- cid:261017-insights-query:reverse-engineering:95ef0198bfb0b69690975c0518b9c4289b6963d7ecbebbe6f7166cb3a92702d3 -->
 - コンソールの振る舞いの細部（fields の既定の列、sort の既定、型の違う値の比較など）は要件では「コンソールと同じ」とだけ書き、中身は Functional Design で AWS の資料から確かめることにした（OQ2） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:419e40ce8b21876881d41a32d352e3205205674310736a5e953f31449c091f43 -->
+- ラフな画面設計がないため、要件と今の画面（261010 の mockups と今のコード）から画面を起こした (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:9d52652f7d7c5c57f9588557755c208f2b2a55df45fad83eeb814bfd906c596b -->
+- 期間とロググループの選択は 2 つの画面で別々に持つことにした（取得済みのログだけを共有） (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:5259c99276b5f4b17776439fde4549fa47560438df4505f2d8f8b93840c706de -->
+- クエリ欄は利用者の選択どおり最初から CodeEditor（Ace）にした (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:97d255501f19db213a8ee12e5f5ddfbabbe215c969d2f43ce6e1e4e593037c8b -->

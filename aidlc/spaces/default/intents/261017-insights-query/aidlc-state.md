@@ -48,6 +48,8 @@
 
 
 
+- **Skeleton Stance**: on
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 

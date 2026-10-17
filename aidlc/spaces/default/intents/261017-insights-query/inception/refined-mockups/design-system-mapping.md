@@ -6,9 +6,9 @@
 
 | 画面の部分 | Cloudscape の部品 | 設定 | 出典 |
 |---|---|---|---|
-| 画面の切り替え | `SideNavigation` | 項目 2 つ（Log Management、Logs Insights）、`activeHref` で今の画面 | Q1、FR1.1 |
+| 画面の切り替え | `SideNavigation` | 項目 2 つ（Log Management、Log Analytics）、`activeHref` で今の画面 | Q1、FR1.1 |
 | 全体の枠 | 今の 2 ペインの枠＋左端にナビゲーションの列 | ナビゲーションは畳める | Q1 |
-| クエリの画面の囲み | `Container` + `Header`（「Logs Insights」） | | FR1.2 |
+| クエリの画面の囲み | `Container` + `Header`（「Log Analytics」） | | FR1.2 |
 | ロググループ | `FormField` + `Multiselect` | `filteringType="auto"`、`tokenLimit` で並べる数を絞り「+N」表示、`statusType` で loading / error | Q2、FR1.3 |
 | 期間 | `FormField` + `DatePicker` + `TimeInput` | Log Management と同じ設定（`yyyy/mm/dd`、`hh:mm:ss`、24 時間） | FR1.4 |
 | クエリ欄 | `FormField` + `CodeEditor` | 独自の言語の定義（色分け）、補完の提供、エラーの印（下線と行番号の横の印）、`preferences` は固定、`loading` を使う | Q3、Q5、FR6、FR9 |

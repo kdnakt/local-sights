@@ -7,9 +7,9 @@
 ```
 Flow: クエリを書いて実行する
 Persona: 開発者本人（同僚・OSS の利用者も同じ）
-Trigger: 左端のナビゲーションで Logs Insights を選ぶ
+Trigger: 左端のナビゲーションで Log Analytics を選ぶ
 Steps:
-  1. Logs Insights（画面 2） -> ロググループを 1 つ以上選ぶ -> 欄の下にトークンが並ぶ
+  1. Log Analytics（画面 2） -> ロググループを 1 つ以上選ぶ -> 欄の下にトークンが並ぶ
   2. 同 -> 開始・終了を入れる -> 時刻は焦点が外れたときに補う
   3. 同 -> クエリを書く（補完・色分けは Should）
   4. 同 -> [Run query] か Cmd/Ctrl+Enter -> クエリを読み取る
@@ -23,7 +23,7 @@ Error paths:
   - [Cancel] -> 止めた知らせ（画面 6d） -> 再実行
 ```
 
-<!-- Text fallback: 上の流れは、ナビゲーションで Logs Insights を選び、ロググループと期間とクエリを入れて実行し、足りない分を取得してから評価して結果を出すまでを表す。エラーの道は 5 つ。 -->
+<!-- Text fallback: 上の流れは、ナビゲーションで Log Analytics を選び、ロググループと期間とクエリを入れて実行し、足りない分を取得してから評価して結果を出すまでを表す。エラーの道は 5 つ。 -->
 
 ## 状態の移り変わり（クエリの画面）
 
@@ -61,7 +61,7 @@ stateDiagram-v2
 | Field | Value |
 |---|---|
 | Component | AppNavigation（`<SideNavigation>`） |
-| Description | Log Management と Logs Insights を切り替える |
+| Description | Log Management と Log Analytics を切り替える |
 | Category | navigation |
 
 | State | Description | Trigger |
@@ -74,7 +74,7 @@ stateDiagram-v2
 |---|---|
 | ARIA role | `navigation`（部品の既定）、今の項目に `aria-current="page"` |
 | Keyboard interaction | Tab で入り、Enter で切り替え。Ctrl+1 / Ctrl+2（macOS は Cmd+1 / Cmd+2）でも切り替える |
-| Focus management | 切り替えたら、行き先の画面の最初の欄（Log Management はロググループの検索、Logs Insights はロググループの選択）に焦点を移す |
+| Focus management | 切り替えたら、行き先の画面の最初の欄（Log Management はロググループの検索、Log Analytics はロググループの選択）に焦点を移す |
 | Screen reader | 切り替えたら画面名を読み上げる（`aria-live="polite"` の領域に画面名） |
 
 ### LogGroupMultiselect（ロググループ）
@@ -153,7 +153,7 @@ stateDiagram-v2
 | キー | English | 日本語 |
 |---|---|---|
 | nav.logManagement | Log Management | ログ管理 |
-| nav.logsInsights | Logs Insights | Logs Insights |
+| nav.logAnalytics | Log Analytics | Log Analytics |
 | insights.logGroups.label | Log groups | ロググループ |
 | insights.logGroups.placeholder | Select log groups | ロググループを選ぶ |
 | insights.logGroups.required | Choose at least one log group. | ロググループを 1 つ以上選んでください。 |

@@ -1,16 +1,29 @@
-//! The shape of a read query (261017-insights-query U1, entities.md
-//! QueryPlan, Condition, FieldRef, Literal, Span, QueryProblem).
+//! The shape of a read query (261017-insights-query U1 and U2, entities.md
+//! QueryPlan, Command, SortKey, Condition, FieldRef, Literal, Span,
+//! QueryProblem).
 //!
-//! A [`QueryPlan`] is the list of `filter` conditions of one query, in the
-//! order they were written; an event is kept when it meets every one of them
-//! (U1:BR3.2). A [`QueryProblem`] is why a query cannot be read, with the
-//! place in the query text (U1:BR3.9).
+//! A [`QueryPlan`] is the list of the query's commands (`fields`, `filter`,
+//! `sort`, `limit`) in the order they were written; they are applied in that
+//! order (261017-insights-query U2:BR3.1). Every part of a condition tree has
+//! its place in the query text (U2:BR10.3). A [`QueryProblem`] is why a query
+//! cannot be read, with its place (U1:BR3.9, U2:BR2.2).
+
+use std::hash::{Hash, Hasher};
 
 use regex::Regex;
 use serde::Serialize;
 
+/// Most rows a `limit` can ask for (U2:BR5.1, Q1a 7a, 7b).
+pub const MAX_LIMIT: u32 = 100_000;
+
+/// Rows of a result when no `limit` from 1 to [`MAX_LIMIT`] is written
+/// (U2:BR5.2, OQ1).
+pub const DEFAULT_RESULT_LIMIT: usize = 10_000;
+
 /// A place in the query text (entities.md Span). Lines and columns start at
 /// 1 and count Unicode scalar values, so a Japanese character is one column.
+/// A span may run over several lines; its length then counts the line
+/// breaks too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Span {
@@ -87,8 +100,50 @@ impl QueryProblem {
     }
 }
 
-/// A field a U1 condition can read (U1:BR3.6, BR4.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A JSON field: the keys from the outermost object inwards, and the name
+/// as written in the query (U2:BR1.1, BR1.3). `http.status` is the keys
+/// `http`, `status`; `` `user.id` `` is the one key `user.id`. Two paths are
+/// the same field when their keys are the same, however they were written.
+#[derive(Debug, Clone, Eq)]
+pub struct JsonPath {
+    keys: Vec<String>,
+    text: String,
+}
+
+impl JsonPath {
+    /// The path of `keys`, written `text` in the query.
+    pub fn new(keys: Vec<String>, text: impl Into<String>) -> Self {
+        Self {
+            keys,
+            text: text.into(),
+        }
+    }
+
+    /// The keys, outermost first.
+    pub fn keys(&self) -> &[String] {
+        &self.keys
+    }
+
+    /// The name as written in the query (the column heading).
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+impl PartialEq for JsonPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.keys == other.keys
+    }
+}
+
+impl Hash for JsonPath {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.keys.hash(state);
+    }
+}
+
+/// A field a query can read (U1:BR3.6, BR4.1, U2:BR1.1).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FieldRef {
     /// `@timestamp`: the event time in epoch milliseconds.
     Timestamp,
@@ -100,12 +155,27 @@ pub enum FieldRef {
     LogStream,
     /// `@log`: the log group name, without an account ID (U1:BR4.1).
     Log,
+    /// A field of the message read as a JSON object (U2:BR1.1-BR1.4).
+    Json(JsonPath),
 }
 
 impl FieldRef {
     /// Whether the field holds the event time (a number).
-    pub fn is_timestamp(self) -> bool {
+    pub fn is_timestamp(&self) -> bool {
         matches!(self, FieldRef::Timestamp | FieldRef::TimestampMillis)
+    }
+
+    /// The name of the field: the fixed name, or the JSON field as written
+    /// (the column heading, entities.md FieldRef.text).
+    pub fn name(&self) -> &str {
+        match self {
+            FieldRef::Timestamp => "@timestamp",
+            FieldRef::TimestampMillis => "toMillis(@timestamp)",
+            FieldRef::Message => "@message",
+            FieldRef::LogStream => "@logStream",
+            FieldRef::Log => "@log",
+            FieldRef::Json(path) => path.text(),
+        }
     }
 }
 
@@ -190,14 +260,31 @@ pub enum LikePattern {
     Regex(QueryRegex),
 }
 
-/// The condition tree of one `filter` (entities.md Condition).
+/// One part of a condition tree with its place in the query text
+/// (entities.md Condition, U2:BR10.3).
 #[derive(Debug, Clone, PartialEq)]
-pub enum Condition {
+pub struct Condition {
+    /// What the part is.
+    pub kind: ConditionKind,
+    /// From its first word to its last, parentheses inside it included.
+    pub span: Span,
+}
+
+impl Condition {
+    /// The part `kind` written at `span`.
+    pub fn new(kind: ConditionKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+}
+
+/// The kinds of the parts of a condition tree (entities.md Condition.kind).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConditionKind {
     /// Both hold.
     And(Box<Condition>, Box<Condition>),
     /// Either holds.
     Or(Box<Condition>, Box<Condition>),
-    /// Does not hold.
+    /// `not (…)`: does not hold (U2:BR2.4).
     Not(Box<Condition>),
     /// `field op value`.
     Compare {
@@ -235,10 +322,166 @@ pub enum Condition {
     },
 }
 
-/// A read query: the conditions of its `filter` commands, in order
-/// (U1:BR3.2).
+/// The direction of one `sort` field (U2:BR4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDirection {
+    /// `asc`, also when nothing is written (Q1b 1a).
+    Asc,
+    /// `desc`.
+    Desc,
+}
+
+/// One field of a `sort` with its direction (entities.md SortKey).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SortKey {
+    /// The field compared.
+    pub field: FieldRef,
+    /// Ascending or descending.
+    pub direction: SortDirection,
+}
+
+/// What one command does (entities.md Command.kind).
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommandKind {
+    /// `filter`: keeps the rows that meet the condition.
+    Filter(Condition),
+    /// `fields`: adds these columns, rows unchanged (U2:BR3.2).
+    Fields(Vec<FieldRef>),
+    /// `sort`: orders the rows by these keys (U2:BR4.1-BR4.4).
+    Sort(Vec<SortKey>),
+    /// `limit`: the first rows only; 0 keeps every row (U2:BR5.1).
+    Limit(u32),
+}
+
+/// One command with the place of its name (entities.md Command).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Command {
+    /// What it does.
+    pub kind: CommandKind,
+    /// Where its name was written.
+    pub span: Span,
+}
+
+/// A read query: its commands in the order written (U2:BR3.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryPlan {
-    /// At least one condition; an event is kept when it meets all of them.
-    pub filters: Vec<Condition>,
+    /// At least one command.
+    pub commands: Vec<Command>,
+}
+
+impl QueryPlan {
+    /// The conditions of the `filter` commands, in order.
+    pub fn filters(&self) -> impl Iterator<Item = &Condition> {
+        self.commands
+            .iter()
+            .filter_map(|command| match &command.kind {
+                CommandKind::Filter(condition) => Some(condition),
+                _ => None,
+            })
+    }
+
+    /// Whether a `fields` command is written (entities.md QueryPlan.hasFields).
+    pub fn has_fields(&self) -> bool {
+        self.commands
+            .iter()
+            .any(|command| matches!(command.kind, CommandKind::Fields(_)))
+    }
+
+    /// Whether a `sort` command is written (entities.md QueryPlan.hasSort).
+    pub fn has_sort(&self) -> bool {
+        self.commands
+            .iter()
+            .any(|command| matches!(command.kind, CommandKind::Sort(_)))
+    }
+
+    /// The columns of the result before the empty ones are left out: the
+    /// fields of every `fields` command in the order written, each field
+    /// once (U2:BR3.2), or `@timestamp` and `@message` without one
+    /// (U2:BR3.3, Q1a 2a, 2b).
+    pub fn columns(&self) -> Vec<FieldRef> {
+        let mut columns: Vec<FieldRef> = Vec::new();
+        for command in &self.commands {
+            if let CommandKind::Fields(fields) = &command.kind {
+                for field in fields {
+                    if !columns.contains(field) {
+                        columns.push(field.clone());
+                    }
+                }
+            }
+        }
+        if columns.is_empty() && !self.has_fields() {
+            columns = vec![FieldRef::Timestamp, FieldRef::Message];
+        }
+        columns
+    }
+
+    /// Whether a `limit` from 1 to [`MAX_LIMIT`] is written; without one the
+    /// result is cut at [`DEFAULT_RESULT_LIMIT`] (U2:BR5.2, `limit 0` alone
+    /// included, provisional: functional-design review R-04).
+    pub fn has_row_limit(&self) -> bool {
+        self.commands
+            .iter()
+            .any(|command| matches!(command.kind, CommandKind::Limit(count) if count > 0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const AT: Span = Span {
+        line: 1,
+        column: 1,
+        length: 1,
+    };
+
+    fn json(keys: &[&str], text: &str) -> FieldRef {
+        FieldRef::Json(JsonPath::new(
+            keys.iter().map(|key| (*key).to_string()).collect(),
+            text,
+        ))
+    }
+
+    fn command(kind: CommandKind) -> Command {
+        Command { kind, span: AT }
+    }
+
+    #[test]
+    fn json_paths_are_the_same_field_when_their_keys_are_the_same() {
+        assert_eq!(json(&["a", "b"], "a.b"), json(&["a", "b"], "`a`.b"));
+        assert_ne!(json(&["a.b"], "`a.b`"), json(&["a", "b"], "a.b"));
+        assert_eq!(json(&["a", "b"], "`a`.b").name(), "`a`.b");
+        assert_eq!(FieldRef::Message.name(), "@message");
+        assert!(FieldRef::TimestampMillis.is_timestamp());
+        assert!(!json(&["@timestamp"], "`@timestamp`").is_timestamp());
+    }
+
+    #[test]
+    fn the_columns_are_the_fields_in_order_once_or_the_default_two() {
+        // U2:BR3.2, BR3.3.
+        let plan = QueryPlan {
+            commands: vec![
+                command(CommandKind::Fields(vec![
+                    FieldRef::Timestamp,
+                    json(&["a"], "a"),
+                ])),
+                command(CommandKind::Limit(5)),
+                command(CommandKind::Fields(vec![
+                    FieldRef::LogStream,
+                    json(&["a"], "`a`"),
+                ])),
+            ],
+        };
+        assert_eq!(
+            plan.columns(),
+            vec![FieldRef::Timestamp, json(&["a"], "a"), FieldRef::LogStream]
+        );
+        assert!(plan.has_fields() && !plan.has_sort() && plan.has_row_limit());
+        let bare = QueryPlan {
+            commands: vec![command(CommandKind::Limit(0))],
+        };
+        assert_eq!(bare.columns(), vec![FieldRef::Timestamp, FieldRef::Message]);
+        assert!(!bare.has_row_limit(), "limit 0 asks for no limit");
+        assert_eq!(bare.filters().count(), 0);
+    }
 }

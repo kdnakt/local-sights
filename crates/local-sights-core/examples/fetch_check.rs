@@ -40,8 +40,12 @@
 //! instead, into a QueryStore by the QueryRunner (the same FetchCoordinator,
 //! U1:BR2.2), and the query is read and evaluated on it as the app does.
 //! Date texts compared with `@timestamp` are read as UTC, like `--start` and
-//! `--end`. Standard output is then `matched N of M events` and the first
-//! [`FIRST_ROWS`] matching events in the format above; standard error has
+//! `--end`. Standard output is then `matched N of M events, showing S`
+//! (with ` (cut at C)` when the result was cut at the row limit, U2:BR6.3),
+//! a `columns:` line with the result's column names (U2:BR7.1, from
+//! `fields` or the default columns), and the cells of the first
+//! [`FIRST_ROWS`] result rows, separated by tabs, in the result's order
+//! (`sort`, `limit` and JSON fields apply as in the app); standard error has
 //! the fetch summary and counts as without a query. A query that cannot be
 //! read is an argument error (exit 2) naming its line, column and message
 //! key; nothing is fetched then (U1:BR3.9).
@@ -80,12 +84,13 @@ use local_sights_core::event::LogEvent;
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::query::evaluator::QueryResult;
+use local_sights_core::query::evaluator::{QueryResult, row_cells};
+use local_sights_core::query::fields::EventFields;
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
-use local_sights_core::query::plan::QueryPlan;
+use local_sights_core::query::plan::{FieldRef, QueryPlan};
 use local_sights_core::query::runner::{QueryRun, QuerySink, run_query};
-use local_sights_core::query::store::{HoldingKey, QueryStore};
+use local_sights_core::query::store::{HeldRows, HoldingKey, QueryStore};
 use local_sights_core::request::{
     FetchInput, ValidatedFetch, ValidationError, validate_fetch_input,
 };
@@ -181,8 +186,8 @@ fn read_query(text: &str) -> Result<QueryPlan, String> {
 }
 
 /// 261017-insights-query U1: fetches the range into a QueryStore with the
-/// QueryRunner, evaluates the query and prints the count and the first
-/// matching events.
+/// QueryRunner, evaluates the query and prints the counts, the columns and
+/// the first result rows (U2).
 async fn check_query(
     gateway: &AwsCloudWatchLogsGateway,
     validated: ValidatedFetch,
@@ -215,20 +220,50 @@ async fn check_query(
         return ExitCode::from(EXIT_FETCH_FAILED);
     };
     let positions = result.window(result.run_id, result.holdings_epoch, 0, FIRST_ROWS);
-    let first = store
-        .rows_at(result.holdings_epoch, positions)
-        .map(|rows| rows.events)
-        .unwrap_or_default();
-    println!(
-        "matched {} of {} events",
-        result.row_count(),
-        result.evaluated_count
-    );
-    if let Err(error) = write_events(&first) {
+    let first = store.rows_at(result.holdings_epoch, positions);
+    if let Err(error) = write_query_result(&result, first.as_ref()) {
         eprintln!("error: could not write to standard output: {error}");
         return ExitCode::from(EXIT_FETCH_FAILED);
     }
     code
+}
+
+/// 261017-insights-query U2:BR6.1, BR6.3, BR7.1: the counts (matched,
+/// shown and, when the result was cut, where), the columns, then the cells
+/// of the first rows, one row a line, separated by tabs. A cell without a
+/// value is empty; newlines in a value become spaces.
+fn write_query_result(result: &QueryResult, first: Option<&HeldRows>) -> io::Result<()> {
+    let mut out = BufWriter::new(io::stdout().lock());
+    write!(
+        out,
+        "matched {} of {} events, showing {}",
+        result.matched_count(),
+        result.evaluated_count,
+        result.row_count()
+    )?;
+    if let Some(cut) = result.truncated_at() {
+        write!(out, " (cut at {cut})")?;
+    }
+    writeln!(out)?;
+    let names: Vec<&str> = result.columns().iter().map(FieldRef::name).collect();
+    writeln!(out, "columns: {}", names.join("\t"))?;
+    if let Some(rows) = first {
+        for event in &rows.events {
+            let fields = EventFields::new(event, &rows.log_group_name);
+            let cells = row_cells(result.columns(), &fields, &format_utc_millis);
+            let line: Vec<String> = cells
+                .into_iter()
+                .map(|cell| one_line(&cell.unwrap_or_default()))
+                .collect();
+            writeln!(out, "{}", line.join("\t"))?;
+        }
+    }
+    out.flush()
+}
+
+/// The value on one line: every line break becomes a space.
+fn one_line(value: &str) -> String {
+    value.replace("\r\n", " ").replace(['\r', '\n'], " ")
 }
 
 /// Prints the counts and the failures to standard error and chooses the
@@ -349,10 +384,7 @@ fn describe(error: ValidationError) -> &'static str {
 fn write_events(events: &[LogEvent]) -> io::Result<()> {
     let mut out = BufWriter::new(io::stdout().lock());
     for event in events {
-        let message = event
-            .message
-            .replace("\r\n", " ")
-            .replace(['\r', '\n'], " ");
+        let message = one_line(&event.message);
         writeln!(
             out,
             "{}\t{}\t{message}",
@@ -426,6 +458,10 @@ impl QuerySink for QueryCheckSink {
     }
 
     fn on_evaluation_stopped(&mut self, _run_id: u64) {}
+
+    fn on_field_names(&mut self, _run_id: u64, _names: Vec<String>) {}
+
+    fn on_evaluation_failed(&mut self, _run_id: u64) {}
 }
 
 /// Argument parsing only; nothing here connects to AWS (`cargo test -p
@@ -528,5 +564,27 @@ mod tests {
         );
         assert!(read_query("filter @timestamp > '2025-08-24 16:43:26'").is_ok());
         assert!(read_query("filter @timestamp > 'yesterday'").is_err());
+    }
+
+    // ---- 261017-insights-query U2: fields, sort, limit, JSON -----------
+
+    #[test]
+    fn a_query_with_fields_sort_limit_and_json_fields_is_read() {
+        let plan = read_query(
+            "fields @timestamp, level, http.status\n| filter level = 'ERROR'\n\
+             | sort http.status desc\n| limit 5",
+        )
+        .unwrap();
+        let columns = plan.columns();
+        let names: Vec<&str> = columns.iter().map(FieldRef::name).collect();
+        assert_eq!(names, ["@timestamp", "level", "http.status"]);
+        assert!(plan.has_sort());
+        assert!(plan.has_row_limit());
+    }
+
+    #[test]
+    fn a_value_is_written_on_one_line() {
+        assert_eq!(one_line("a\r\nb\nc\rd"), "a b c d");
+        assert_eq!(one_line(""), "");
     }
 }

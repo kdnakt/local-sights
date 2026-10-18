@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from "react";
+import { firstLine } from "../analytics";
 import {
+  getQueryRowDetail,
   getQueryRows,
   type QueryRow,
+  type QueryRowDetail,
   type QueryRowWindow,
   type ResultSummary,
   type TimeZoneChoice,
@@ -15,7 +18,7 @@ import {
   visibleRange,
 } from "../rowLayout";
 
-/** Height of an opened row's details: the message and the two names (scrolls inside). */
+/** Height of an opened row's details: its fields and values (scrolls inside). */
 export const DETAIL_HEIGHT = 240;
 /** Viewport height used until the list is measured (for example in tests). */
 const FALLBACK_VIEWPORT = 440;
@@ -27,24 +30,37 @@ export interface QueryResultTableProps {
   onError: (error: unknown) => void;
 }
 
-/** The first line of a message, as the Log Management list shows it. */
-function firstLine(message: string): string {
-  const end = message.search(/\r?\n/);
-  return end < 0 ? message : message.slice(0, end);
+/** The class of a column's cells: the time and the message keep their widths. */
+function columnClass(name: string): string {
+  if (name === "@timestamp") {
+    return "query-result-time";
+  }
+  return name === "@message" ? "query-result-message" : "query-result-cell";
+}
+
+/** What a cell shows (U2:BR7.1): the first line of the message, any other value as it is. */
+function cellText(row: QueryRow | null, index: number, name: string): string {
+  const value = row?.values[index] ?? null;
+  if (value === null) {
+    return "";
+  }
+  return name === "@message" ? firstLine(value) : value;
 }
 
 /**
- * The rows of the last result (261017-insights-query U1:BR6.3, BR6.4,
- * refined-mockups screen 5): two fixed columns, `@timestamp` in the chosen
- * zone (with the zone in its heading) and the first line of `@message`, in
- * the holdings' time order. Only the rows that cover the viewport are read,
- * with `get_query_rows` and the result's run number and holdings epoch; an
- * answer for another result or an older request is dropped, and the screen
- * waits for the newer state. The row positions come from the Log Management
- * list's layout (`rowLayout.ts`). ▶ or Enter / Space on the selected row
- * opens it below its line with the whole message and `@logStream` and
- * `@log`; ↑ and ↓ move the selection as on Log Management. Rows can be opened
- * several at once. `fields` columns, `sort` and `limit` come with U2.
+ * The rows of the last result (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1,
+ * BR7.3, BR7.4, refined-mockups screen 5): one column per result column, in
+ * its order (`fields`, or `@timestamp` and `@message`), `@timestamp` in the
+ * chosen zone with the zone in its heading, `@message` by its first line,
+ * other values as they are, a cell without a value empty. Only the rows that
+ * cover the viewport are read, with `get_query_rows` and the result's run
+ * number and holdings epoch; an answer for another result or an older
+ * request is dropped, and the screen waits for the newer state. The row
+ * positions come from the Log Management list's layout (`rowLayout.ts`).
+ * ▶ or Enter / Space on the selected row opens it below its line with every
+ * field and value, read with `get_query_row_detail`: the four fixed fields,
+ * then the JSON fields by name (U2:BR7.3); ↑ and ↓ move the selection as on
+ * Log Management. Rows can be opened several at once.
  */
 export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTableProps) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -53,6 +69,7 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
   const [opened, setOpened] = useState<ReadonlySet<number>>(() => new Set());
   const [selected, setSelected] = useState<number | null>(null);
   const [answer, setAnswer] = useState<QueryRowWindow | null>(null);
+  const [details, setDetails] = useState<ReadonlyMap<string, QueryRowDetail>>(() => new Map());
   const latestRequest = useRef(0);
 
   const layout = useMemo(
@@ -101,6 +118,40 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
     );
   }, [runId, holdingsEpoch, range.first, range.count, timeZone, onError]);
 
+  // U2:BR7.3: an opened row's fields, read once per result, row and zone.
+  const detailKey = (position: number) => `${runId}:${holdingsEpoch}:${timeZone}:${position}`;
+  const requested = useRef(new Set<string>());
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    for (const position of opened) {
+      const key = `${runId}:${holdingsEpoch}:${timeZone}:${position}`;
+      if (requested.current.has(key)) {
+        continue;
+      }
+      requested.current.add(key);
+      getQueryRowDetail(runId, holdingsEpoch, position).then(
+        (detail) => {
+          const current = detail.runId === runId && detail.holdingsEpoch === holdingsEpoch;
+          if (mounted.current && current) {
+            setDetails((previous) => new Map(previous).set(key, detail));
+          }
+        },
+        (error: unknown) => {
+          requested.current.delete(key);
+          if (mounted.current) {
+            onError(error);
+          }
+        },
+      );
+    }
+  }, [opened, runId, holdingsEpoch, timeZone, onError]);
+
   const rowAt = (position: number): QueryRow | null => {
     if (answer === null || answer.runId !== runId || answer.holdingsEpoch !== holdingsEpoch) {
       return null;
@@ -146,16 +197,19 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
   };
 
   const zone = t(timeZoneLabelKey(timeZone));
+  const heading = (name: string) =>
+    name === "@timestamp" ? t("insights.results.column.timestamp", { zone }) : name;
   const positions = Array.from({ length: range.count }, (_, index) => range.first + index);
 
   return (
     <div className="query-result-table" data-testid="query-result-table">
-      <div className="query-result-header" role="presentation">
+      <div className="query-result-header" role="presentation" data-testid="query-result-header">
         <span className="query-result-toggle-cell" />
-        <span className="query-result-time">
-          {t("insights.results.column.timestamp", { zone })}
-        </span>
-        <span className="query-result-message">{t("insights.results.column.message")}</span>
+        {result.columns.map((name, index) => (
+          <span key={`${index}:${name}`} className={columnClass(name)}>
+            {heading(name)}
+          </span>
+        ))}
       </div>
       <div
         ref={listRef}
@@ -163,6 +217,7 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
         role="grid"
         aria-label={t("insights.results.title")}
         aria-rowcount={result.rowCount}
+        aria-colcount={result.columns.length + 1}
         tabIndex={0}
         onScroll={(event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop)}
         onKeyDown={handleKeyDown}
@@ -200,14 +255,18 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
                         {open ? "▼" : "▶"}
                       </button>
                     </span>
-                    <span className="query-result-time" role="gridcell">
-                      {row?.displayTime ?? ""}
-                    </span>
-                    <span className="query-result-message" role="gridcell">
-                      {row === null ? "" : firstLine(row.message)}
-                    </span>
+                    {result.columns.map((name, index) => (
+                      <span
+                        key={`${index}:${name}`}
+                        className={columnClass(name)}
+                        role="gridcell"
+                        data-testid="query-result-cell"
+                      >
+                        {cellText(row, index, name)}
+                      </span>
+                    ))}
                   </div>
-                  {open && row !== null && <RowDetails row={row} t={t} />}
+                  {open && <RowDetails detail={details.get(detailKey(position)) ?? null} t={t} />}
                 </div>
               );
             })}
@@ -219,18 +278,12 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
 }
 
 interface RowDetailsProps {
-  row: QueryRow;
+  detail: QueryRowDetail | null;
   t: Translate;
 }
 
-/** An opened row: the whole message and the two names (U1:BR6.3). */
-function RowDetails({ row, t }: RowDetailsProps) {
-  const fields: Array<[string, string]> = [
-    ["@timestamp", row.displayTime],
-    ["@log", row.logGroupName],
-    ["@logStream", row.logStreamName],
-    ["@message", row.message],
-  ];
+/** An opened row: every field with its value (U2:BR7.3), or that they are being read. */
+function RowDetails({ detail, t }: RowDetailsProps) {
   return (
     <div
       className="query-result-details"
@@ -238,24 +291,30 @@ function RowDetails({ row, t }: RowDetailsProps) {
       style={{ height: DETAIL_HEIGHT }}
       data-testid="query-result-details"
     >
-      <table className="query-result-fields">
-        <thead>
-          <tr>
-            <th scope="col">{t("insights.results.field")}</th>
-            <th scope="col">{t("insights.results.value")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map(([name, value]) => (
-            <tr key={name}>
-              <th scope="row">{name}</th>
-              <td className="query-result-value" data-testid={`query-result-field-${name}`}>
-                {value}
-              </td>
+      {detail === null ? (
+        <span data-testid="query-result-details-loading">
+          {t("insights.results.detailLoading")}
+        </span>
+      ) : (
+        <table className="query-result-fields">
+          <thead>
+            <tr>
+              <th scope="col">{t("insights.results.field")}</th>
+              <th scope="col">{t("insights.results.value")}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {detail.fields.map(({ name, value }) => (
+              <tr key={name}>
+                <th scope="row">{name}</th>
+                <td className="query-result-value" data-testid={`query-result-field-${name}`}>
+                  {value ?? ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

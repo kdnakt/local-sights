@@ -32,6 +32,11 @@
  * `getQueryRows` drive it. The query is read and run by the core; a reading
  * problem comes back as the QueryError phase with its place, never as a
  * refusal (U1:BR3.9).
+ * Since 261017-insights-query U2 a result carries its columns, the matched
+ * count and the cut (U2:BR3.2-BR3.4, BR5.3), each row its cells for those
+ * columns (U2:BR7.1), `getQueryRowDetail` gives the fields of one opened row
+ * (U2:BR7.3), `getCompletionCandidates` the words the query field completes
+ * (U2:BR9.1), and a run can end `EvaluationFailed` (U2:BR10.2).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -225,7 +230,14 @@ export type FetchOwner = "None" | "LogManagement" | "LogAnalytics";
 
 /** Phase of the last query run (261017-insights-query functional-spec 4). */
 export type AnalyticsPhase =
-  "Idle" | "Fetching" | "Evaluating" | "Done" | "QueryError" | "FetchFailed" | "Cancelled";
+  | "Idle"
+  | "Fetching"
+  | "Evaluating"
+  | "Done"
+  | "QueryError"
+  | "FetchFailed"
+  | "Cancelled"
+  | "EvaluationFailed";
 
 /** A field of the Log Analytics screen; an empty log group deselects it. */
 export type AnalyticsField = "logGroup" | "startText" | "endText" | "queryText";
@@ -262,8 +274,15 @@ export interface InsightsProgress {
 export interface ResultSummary {
   runId: number;
   holdingsEpoch: number;
+  /** Result rows shown (U2:BR7.2). */
   rowCount: number;
   evaluatedCount: number;
+  /** The column headings: the fields' names as written (U2:BR3.2-BR3.4). */
+  columns: string[];
+  /** Rows that matched before the cut (U2:BR5.3). */
+  matchedCount: number;
+  /** The rows shown when a `limit` or the default 10,000 cut dropped some (U2:BR5.3). */
+  truncatedAt: number | null;
 }
 
 /** The Log Analytics screen as the core shows it (261017-insights-query U1). */
@@ -301,6 +320,33 @@ export interface InsightsView {
 export interface QueryRow extends LogEvent {
   displayTime: string;
   logGroupName: string;
+  /** One cell per result column; `null` without a value (U2:BR7.1). */
+  values: (string | null)[];
+}
+
+/** One field of an opened row (U2:BR7.3). */
+export interface QueryDetailField {
+  /** A JSON field as the core writes it: backquoted when it holds a `.` and the like. */
+  name: string;
+  value: string | null;
+}
+
+/** The fields of one opened result row (U2:BR7.3). */
+export interface QueryRowDetail {
+  runId: number;
+  holdingsEpoch: number;
+  index: number;
+  /** `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; empty when stale. */
+  fields: QueryDetailField[];
+}
+
+/** What a completion candidate is (U2:BR9.1). */
+export type CompletionKind = "Command" | "Keyword" | "FixedField" | "JsonField";
+
+/** One completion candidate of the query field (U2:BR9.1). */
+export interface CompletionCandidate {
+  text: string;
+  kind: CompletionKind;
 }
 
 /** The result rows of one viewport request (U1:BR6.4). */
@@ -765,6 +811,20 @@ export function getQueryRows(
   limit: number,
 ): Promise<QueryRowWindow> {
   return invoke<QueryRowWindow>("get_query_rows", { runId, holdingsEpoch, offset, limit });
+}
+
+/** The fields of result row `index` of the shown result (U2:BR7.3). */
+export function getQueryRowDetail(
+  runId: number,
+  holdingsEpoch: number,
+  index: number,
+): Promise<QueryRowDetail> {
+  return invoke<QueryRowDetail>("get_query_row_detail", { runId, holdingsEpoch, index });
+}
+
+/** The words and field names the query field completes (U2:BR9.1, Should). */
+export function getCompletionCandidates(): Promise<CompletionCandidate[]> {
+  return invoke<CompletionCandidate[]>("get_completion_candidates");
 }
 
 /** The selector that identifies a profile row. */

@@ -20,7 +20,8 @@ use crate::cache::plan::CoveredRange;
 use crate::catalog::ProfileSelector;
 use crate::coordinator::{HeldEvents, TimelineStore, copy_chunk_in_range};
 use crate::event::LogEvent;
-use crate::query::evaluator::{EvalItem, Evaluation};
+use crate::query::evaluator::{Evaluation, GroupEvents};
+use crate::query::fields::{FIELD_NAME_SCAN_EVENTS, collect_json_field_names};
 use crate::query::plan::QueryPlan;
 use crate::timeline::EventTimeline;
 
@@ -114,40 +115,42 @@ impl QueryStore {
         self.len() == 0
     }
 
-    /// U1:BR5.8: evaluates the next chunk of `evaluation` under one lock,
-    /// lending the events of that chunk with their log group name in time
-    /// order. Returns `false`, evaluating nothing, when the holdings are no
-    /// longer those of `epoch` (a newer run or a connection change discarded
-    /// them).
-    pub fn evaluate_chunk(
-        &self,
-        plan: &QueryPlan,
-        evaluation: &mut Evaluation,
-        epoch: u64,
-    ) -> bool {
+    /// U1:BR5.8, U2:BR3.1: does the next step of `evaluation` (one chunk of
+    /// work and what follows it without one) under one lock, lending the
+    /// held events with their log group name in time order. Returns
+    /// `false`, doing nothing, when the holdings are no longer those of
+    /// `epoch` (a newer run or a connection change discarded them).
+    pub fn evaluate_step(&self, plan: &QueryPlan, evaluation: &mut Evaluation, epoch: u64) -> bool {
         let holdings = self.lock();
         if holdings.epoch != epoch {
             return false;
         }
-        let Some(chunk) = evaluation.next_chunk() else {
-            return true;
+        let items = GroupEvents {
+            events: holdings.timeline.events(),
+            log_group_name: holdings
+                .key
+                .as_ref()
+                .map_or("", |key| key.log_group_name.as_str()),
         };
-        let log_group_name = holdings
-            .key
-            .as_ref()
-            .map_or("", |key| key.log_group_name.as_str());
-        let events = holdings.timeline.events();
-        let end = chunk.end.min(events.len());
-        let start = chunk.start.min(end);
-        let items: Vec<EvalItem<'_>> = events[start..end]
-            .iter()
-            .map(|event| EvalItem {
-                event,
-                log_group_name,
-            })
-            .collect();
-        evaluation.evaluate_chunk(plan, &items);
+        evaluation.step(plan, &items);
         true
+    }
+
+    /// U2:BR1.7: the JSON field names of the first
+    /// [`FIELD_NAME_SCAN_EVENTS`] held events, when the holdings are still
+    /// those of `epoch`.
+    pub fn json_field_names(&self, epoch: u64) -> Option<Vec<String>> {
+        let holdings = self.lock();
+        if holdings.epoch != epoch {
+            return None;
+        }
+        let messages = holdings
+            .timeline
+            .events()
+            .iter()
+            .take(FIELD_NAME_SCAN_EVENTS)
+            .map(|event| event.message.as_str());
+        Some(collect_json_field_names(messages))
     }
 
     /// The events at `positions` (R-05: positions in the holdings), when the
@@ -303,24 +306,40 @@ mod tests {
     }
 
     #[test]
-    fn evaluation_reads_the_chunk_with_the_group_name_and_stops_on_a_new_epoch() {
+    fn evaluation_reads_the_events_with_the_group_name_and_stops_on_a_new_epoch() {
         let store = QueryStore::new();
         let epoch = store.begin_run(key("/aws/lambda/orders"));
         store.add(vec![event(1, "a", 0), event(2, "b", 0), event(3, "a", 1)]);
         let plan = parse_query("filter @log = '/aws/lambda/orders' and @logStream = 'a'").unwrap();
-        let mut evaluation = Evaluation::new(store.len());
-        assert!(store.evaluate_chunk(&plan, &mut evaluation, epoch));
+        let mut evaluation = Evaluation::new(&plan, store.len());
+        assert!(store.evaluate_step(&plan, &mut evaluation, epoch));
         assert_eq!(evaluation.evaluated(), 3);
-        assert!(
-            store.evaluate_chunk(&plan, &mut evaluation, epoch),
-            "nothing left"
+        assert!(evaluation.is_done());
+        assert_eq!(
+            evaluation.into_output().map(|output| output.rows),
+            Some(vec![2, 0]),
+            "newest first (U2:BR4.4)"
         );
-        assert_eq!(evaluation.into_rows(), vec![0, 2]);
 
-        let mut late = Evaluation::new(store.len());
+        let mut late = Evaluation::new(&plan, store.len());
         store.discard_all();
-        assert!(!store.evaluate_chunk(&plan, &mut late, epoch));
+        assert!(!store.evaluate_step(&plan, &mut late, epoch));
         assert_eq!(late.evaluated(), 0, "nothing was evaluated");
+    }
+
+    #[test]
+    fn json_field_names_come_from_the_holdings_of_the_epoch() {
+        // U2:BR1.7.
+        let store = QueryStore::new();
+        let epoch = store.begin_run(key("/g"));
+        let mut json = event(1, "a", 0);
+        json.message = r#"{"level":"error","http":{"status":500}}"#.to_string();
+        store.add(vec![json, event(2, "a", 1)]);
+        assert_eq!(
+            store.json_field_names(epoch),
+            Some(vec!["http.status".to_string(), "level".to_string()])
+        );
+        assert_eq!(store.json_field_names(epoch + 1), None);
     }
 
     #[test]

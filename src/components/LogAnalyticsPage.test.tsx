@@ -3,12 +3,24 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InsightsView, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
-import { connectedView, insightsView, queryRow, queryRowWindow, t } from "../test/fixtures";
+import {
+  connectedView,
+  insightsView,
+  queryRow,
+  queryRowWindow,
+  resultSummary,
+  t,
+} from "../test/fixtures";
 import { LogAnalyticsPage } from "./LogAnalyticsPage";
 
 vi.mock("../api", async (importOriginal) => {
   const original = await importOriginal<typeof import("../api")>();
-  return { ...original, getQueryRows: vi.fn() };
+  return {
+    ...original,
+    getQueryRows: vi.fn(),
+    getQueryRowDetail: vi.fn(),
+    getCompletionCandidates: vi.fn(),
+  };
 });
 vi.mock("../aceLoader", () => ({ loadAce: () => Promise.resolve({}) }));
 vi.mock("@cloudscape-design/components/code-editor", () => import("../test/codeEditorMock"));
@@ -42,6 +54,8 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
       queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, epoch),
     );
+    vi.mocked(api.getCompletionCandidates).mockReset();
+    vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
   });
 
   it("lays out the log group, the range, the query and the run row, with no results yet", () => {
@@ -152,7 +166,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     const { rerender } = renderPage(
       view({
         phase: "Done",
-        result: { runId: 1, holdingsEpoch: 2, rowCount: 0, evaluatedCount: 40 },
+        result: resultSummary({ rowCount: 0 }),
       }),
     );
     expect(screen.getByTestId("log-analytics-no-match")).toHaveTextContent("No matching events.");
@@ -176,7 +190,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     renderPage(
       view({
         phase: "Done",
-        result: { runId: 1, holdingsEpoch: 2, rowCount: 2, evaluatedCount: 40 },
+        result: resultSummary(),
       }),
     );
     expect(results()).toHaveTextContent("(2 matched)");
@@ -198,7 +212,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
             failure: { kind: "AccessDenied", safeDetail: "", retryable: false },
           },
         ],
-        result: { runId: 1, holdingsEpoch: 2, rowCount: 2, evaluatedCount: 40 },
+        result: resultSummary(),
       }),
     );
     expect(screen.getByTestId("log-analytics-partial")).toHaveTextContent(
@@ -219,14 +233,14 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
       view({
         phase: "Done",
         runId: 1,
-        result: { runId: 1, holdingsEpoch: 2, rowCount: 2, evaluatedCount: 40 },
+        result: resultSummary(),
       }),
     );
     rerender(
       view({
         phase: "QueryError",
         runId: 2,
-        result: { runId: 1, holdingsEpoch: 2, rowCount: 2, evaluatedCount: 40 },
+        result: resultSummary(),
         problem: {
           kind: "Unsupported",
           messageKey: "query.unsupported.command",
@@ -236,7 +250,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
       }),
     );
     expect(screen.getByTestId("query-problem")).toHaveTextContent(
-      'Line 1, column 30: "stats" is not supported in this version. Supported commands: filter.',
+      'Line 1, column 30: "stats" is not supported in this version. Supported commands: fields, filter, sort, limit.',
     );
     expect(editor()).toHaveValue("filter @message like /ERROR/");
     await act(async () => undefined);
@@ -262,5 +276,131 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
       "2 行 8 列：括弧が閉じていません。",
     );
     expect(results()).toHaveTextContent("まだ結果はありません。");
+  });
+
+  // ---- 261017-insights-query U2 ---------------------------------------
+
+  it("says how many matched and Showing N when the result was cut (U2:BR5.3, BR7.2)", () => {
+    const { rerender } = renderPage(
+      view({
+        phase: "Done",
+        result: resultSummary({ rowCount: 20, matchedCount: 1284, truncatedAt: 20 }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(20 of 1284 matched)");
+    expect(screen.getByTestId("log-analytics-truncated")).toHaveTextContent("Showing 20");
+    rerender(view({ phase: "Done", result: resultSummary({ rowCount: 7, matchedCount: 7 }) }));
+    expect(results()).toHaveTextContent("(7 matched)");
+    expect(screen.queryByTestId("log-analytics-truncated")).not.toBeInTheDocument();
+  });
+
+  it("takes a reading problem's words away once the text is changed (U2:BR6.1)", () => {
+    const { onChange } = renderPage(
+      view({
+        phase: "QueryError",
+        runId: 3,
+        problem: {
+          kind: "Syntax",
+          messageKey: "query.syntax.notNeedsParen",
+          word: "not",
+          span: { line: 1, column: 8, length: 3 },
+        },
+      }),
+    );
+    expect(screen.getByTestId("query-problem")).toHaveTextContent(
+      "Line 1, column 8: Put the condition after not in parentheses",
+    );
+    fireEvent.change(editor(), { target: { value: "filter not (@message like /x/)" } });
+    expect(onChange).toHaveBeenCalledWith("queryText", "filter not (@message like /x/)");
+    expect(screen.queryByTestId("query-problem")).not.toBeInTheDocument();
+  });
+
+  it("says an evaluation failure in its own words, without a result or a fetch error (U2:BR10.2)", () => {
+    renderPage(view({ phase: "EvaluationFailed", runId: 4, result: null, canRun: true }));
+    const alert = screen.getByTestId("log-analytics-evaluation-failed");
+    expect(alert).toHaveTextContent("The query could not be evaluated.");
+    expect(alert).toHaveTextContent("Run the query again.");
+    expect(screen.queryByTestId("log-analytics-fetch-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("query-result-table")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("log-analytics-initial")).not.toBeInTheDocument();
+    expect(runButton()).toBeEnabled();
+  });
+
+  /** Chooses the example named `name` from [Examples]. */
+  async function chooseExample(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(screen.getByRole("button", { name: "Examples" }));
+    await user.click(await screen.findByRole("menuitem", { name }));
+  }
+
+  it("puts an example in an empty field at once (U2:BR9.3)", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPage(view({ queryText: "" }));
+    await chooseExample(user, "HTTP status 500 and above, largest first");
+    expect(editor()).toHaveValue(
+      "fields @timestamp, http.status, http.path\n| filter http.status >= 500\n| sort http.status desc, @timestamp desc\n| limit 50",
+    );
+    expect(onChange).toHaveBeenLastCalledWith("queryText", expect.stringContaining("http.status"));
+    expect(screen.queryByTestId("replace-query-dialog")).not.toBeInTheDocument();
+  });
+
+  it("asks before an example replaces a written query, and can keep it (U2:BR9.3)", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPage();
+    await chooseExample(user, "Errors that are not timeouts");
+    expect(screen.getByTestId("replace-query-dialog")).toHaveTextContent(
+      "The query you wrote is replaced by the example.",
+    );
+    await user.click(screen.getByTestId("replace-query-cancel-button"));
+    expect(editor()).toHaveValue("filter @message like /ERROR/");
+    expect(onChange).not.toHaveBeenCalled();
+    await chooseExample(user, "Errors that are not timeouts");
+    await user.click(screen.getByTestId("replace-query-button"));
+    expect((editor() as HTMLTextAreaElement).value).toContain("not like /timeout/");
+    expect(screen.queryByTestId("replace-query-dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers no example while the query runs (U2:BR9.3, U1:BR2.4)", () => {
+    renderPage(view({ phase: "Fetching", canRun: false, cancelAvailable: true }));
+    expect(screen.getByRole("button", { name: "Examples" })).toBeDisabled();
+  });
+
+  it("asks the core for the completion candidates whenever the run changes (U2:BR9.1)", async () => {
+    vi.mocked(api.getCompletionCandidates).mockResolvedValue([
+      { text: "filter", kind: "Command" },
+      { text: "http.status", kind: "JsonField" },
+    ]);
+    const { rerender } = renderPage();
+    await waitFor(() => expect(api.getCompletionCandidates).toHaveBeenCalledTimes(1));
+    rerender(view({ phase: "Fetching", runId: 1, canRun: false }));
+    rerender(view({ phase: "Done", runId: 1, result: resultSummary() }));
+    await waitFor(() => expect(api.getCompletionCandidates).toHaveBeenCalledTimes(3));
+  });
+
+  it("shows the columns of fields with their cells (U2:BR7.1)", async () => {
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
+      queryRowWindow(
+        [queryRow(0, "ERROR 0", ["core time 0", "500", null])],
+        offset,
+        limit,
+        runId,
+        epoch,
+      ),
+    );
+    renderPage(
+      view({
+        phase: "Done",
+        result: resultSummary({ rowCount: 1, columns: ["@timestamp", "http.status", "level"] }),
+      }),
+    );
+    const header = screen.getByTestId("query-result-header");
+    expect(header).toHaveTextContent("@timestamp (Local)");
+    expect(header).toHaveTextContent("http.status");
+    await waitFor(() =>
+      expect(screen.getAllByTestId("query-result-cell").map((cell) => cell.textContent)).toEqual([
+        "core time 0",
+        "500",
+        "",
+      ]),
+    );
   });
 });

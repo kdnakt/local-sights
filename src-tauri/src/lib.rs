@@ -126,6 +126,14 @@
 //! (U1:BR7.2). Lock order: session, then the QueryStore; the run never holds
 //! both. The query fetch calls the same three read APIs only (U1:BR2.2).
 //!
+//! Since 261017-insights-query U2 `get_query_rows` gives each row its cells
+//! for the result's columns (U2:BR7.1), `get_query_row_detail` the fields of
+//! one opened row (U2:BR7.3) and `get_completion_candidates` the words and
+//! field names the query field completes (U2:BR9.1, Should). An evaluation
+//! that ends abnormally shows as an evaluation failure, also when the run's
+//! task is lost while evaluating, never as a failed GetLogEvents
+//! (U2:BR10.2).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
@@ -147,7 +155,9 @@ use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_report_progress};
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
-use local_sights_core::insights_session::{AnalyticsField, QueryBegin, QueryRowWindow, QueryStart};
+use local_sights_core::insights_session::{
+    AnalyticsField, CompletionCandidate, QueryBegin, QueryRowDetail, QueryRowWindow, QueryStart,
+};
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::log_view::{LogView, RowKey, RowPositions};
@@ -1006,8 +1016,10 @@ fn spawn_query(
 }
 
 /// As [`recover_if_still_fetching`] for a query run: a run whose task ended
-/// without its end being reported is failed (kind Other) and the screen is
-/// told. Only run `run_id` is touched.
+/// without its end being reported is failed and the screen is told. A run
+/// still fetching fails as a fetch (kind Other); one evaluating is an
+/// evaluation failure without the fetch's API name (the session decides,
+/// U2:BR10.2). Only run `run_id` is touched.
 fn recover_if_query_still_running(
     app: &AppHandle,
     session: &Mutex<AppSession>,
@@ -1105,6 +1117,51 @@ fn query_rows(
     let positions = session.query_row_positions(run_id, holdings_epoch, offset, limit);
     let held = store.rows_at(holdings_epoch, &positions);
     session.display_query_rows(run_id, holdings_epoch, offset, held)
+}
+
+/// The fields of result row `index` of the run and holdings epoch the screen
+/// shows (261017-insights-query U2:BR7.3); no field when either is not the
+/// shown one.
+#[tauri::command]
+fn get_query_row_detail(
+    run_id: u64,
+    holdings_epoch: u64,
+    index: u64,
+    state: State<'_, AppState>,
+) -> QueryRowDetail {
+    query_row_detail(
+        &state.session,
+        &state.query_store,
+        run_id,
+        holdings_epoch,
+        index,
+    )
+}
+
+/// Reads [`get_query_row_detail`]: the position from the session's result,
+/// then the one event from the QueryStore (lock order: session, then the
+/// store).
+fn query_row_detail(
+    session: &Mutex<AppSession>,
+    store: &QueryStore,
+    run_id: u64,
+    holdings_epoch: u64,
+    index: u64,
+) -> QueryRowDetail {
+    let index = usize::try_from(index).unwrap_or(usize::MAX);
+    let session = lock(session);
+    let held = session
+        .query_row_position(run_id, holdings_epoch, index)
+        .and_then(|position| store.rows_at(holdings_epoch, &[position]));
+    session.display_query_row_detail(run_id, holdings_epoch, index, held)
+}
+
+/// The completion candidates of the query field (261017-insights-query
+/// U2:BR9.1, Should): the commands, words and fixed fields, and the JSON
+/// field names of the query screen's last fetch.
+#[tauri::command]
+fn get_completion_candidates(state: State<'_, AppState>) -> Vec<CompletionCandidate> {
+    lock(&state.session).query_completion_candidates()
 }
 
 /// The current time in epoch milliseconds for the default time range at
@@ -1858,6 +1915,15 @@ impl QuerySink for TauriQuerySink {
     fn on_evaluation_stopped(&mut self, run_id: u64) {
         self.update(|session| session.stop_query_evaluation(run_id));
     }
+
+    /// The names change no view; they are read by `get_completion_candidates`.
+    fn on_field_names(&mut self, run_id: u64, names: Vec<String>) {
+        lock(&self.session).set_query_field_names(run_id, names);
+    }
+
+    fn on_evaluation_failed(&mut self, run_id: u64) {
+        self.update(|session| session.fail_query_evaluation(run_id));
+    }
 }
 
 /// Starts the desktop app.
@@ -1943,7 +2009,9 @@ pub fn run() -> Result<(), tauri::Error> {
             update_analytics_input,
             run_query,
             cancel_query,
-            get_query_rows
+            get_query_rows,
+            get_query_row_detail,
+            get_completion_candidates
         ])
         .build(tauri::generate_context!())?;
     app.run(|app, event| match event {
@@ -2176,8 +2244,9 @@ mod tests {
             "../capabilities/default.json"
         )));
         assert!(manifest.contains(&"cancel_fetch".to_string()));
-        // 26 until 261017-insights-query U1 added the four query commands.
-        assert_eq!(manifest.len(), 30);
+        // 26 until 261017-insights-query U1 added the four query commands,
+        // 30 until U2 added the row detail and the completion candidates.
+        assert_eq!(manifest.len(), 32);
         assert_eq!(handler, manifest);
         assert_eq!(allowed, manifest);
     }
@@ -2200,6 +2269,8 @@ mod tests {
             "run_query",
             "cancel_query",
             "get_query_rows",
+            "get_query_row_detail",
+            "get_completion_candidates",
         ] {
             let command = command.to_string();
             assert!(manifest.contains(&command), "{command} in build.rs");
@@ -2373,6 +2444,183 @@ mod tests {
                 .is_empty(),
             "discarded holdings give no rows"
         );
+    }
+
+    // ---- 261017-insights-query U2 ---------------------------------------
+
+    use local_sights_core::query::evaluator::EvalOutput;
+    use local_sights_core::query::plan::{FieldRef, JsonPath};
+
+    /// A query run of `session` that fetched `events` into `store` and is
+    /// evaluating; returns the run number and the holdings epoch.
+    fn query_evaluating(
+        session: &Mutex<AppSession>,
+        store: &QueryStore,
+        events: Vec<LogEvent>,
+    ) -> (u64, u64) {
+        let abort = Mutex::new(None);
+        let start = query_begun(session, &abort, "filter @message like 'ERROR'")
+            .start
+            .unwrap();
+        store.begin_run(start.key.clone());
+        let count = events.len() as u64;
+        store.add(events);
+        let mut job = FetchJob::start(start.fetch.range);
+        job.status = JobStatus::Completed;
+        job.event_count = count;
+        assert!(lock(session).finish_query_fetch(start.run_id, &job));
+        (start.run_id, store.epoch())
+    }
+
+    fn json_event(timestamp: i64, message: &str) -> LogEvent {
+        LogEvent {
+            timestamp,
+            ingestion_time: None,
+            message: message.to_string(),
+            log_stream_name: "s".to_string(),
+            sequence: 0,
+        }
+    }
+
+    /// Ends the evaluation of `run_id` with the columns @timestamp and
+    /// `level` over the rows `rows`.
+    fn finish_with_level_column(
+        session: &Mutex<AppSession>,
+        run_id: u64,
+        epoch: u64,
+        rows: Vec<usize>,
+    ) {
+        lock(session).finish_query_evaluation(QueryResult::from_output(
+            run_id,
+            epoch,
+            EvalOutput {
+                matched_count: rows.len(),
+                rows,
+                columns: vec![
+                    FieldRef::Timestamp,
+                    FieldRef::Json(JsonPath::new(vec!["level".to_string()], "level")),
+                ],
+                truncated_at: None,
+                evaluated_count: 2,
+            },
+        ));
+    }
+
+    #[test]
+    fn query_rows_carry_one_cell_per_result_column() {
+        // U2:BR7.1, BR7.4: the cells are read with the rows.
+        let session = query_ready_session();
+        let store = QueryStore::new();
+        let (run_id, epoch) = query_evaluating(
+            &session,
+            &store,
+            vec![
+                json_event(1_704_164_646_000, r#"{"level":"error"}"#),
+                json_event(1_704_164_647_000, "plain"),
+            ],
+        );
+        finish_with_level_column(&session, run_id, epoch, vec![1, 0]);
+        let window = query_rows(&session, &store, run_id, epoch, (0, 50));
+        let json = serde_json::to_value(&window).unwrap();
+        assert_eq!(json["rows"][0]["values"][0], "2024/01/02 03:04:07.000");
+        assert!(
+            json["rows"][0]["values"][1].is_null(),
+            "no level: an empty cell"
+        );
+        assert_eq!(json["rows"][1]["values"][1], "error");
+        let summary = serde_json::to_value(&lock(&session).view().insights.result).unwrap();
+        assert_eq!(
+            summary["columns"],
+            serde_json::json!(["@timestamp", "level"])
+        );
+        assert_eq!(summary["matchedCount"], 2);
+    }
+
+    #[test]
+    fn an_opened_row_lists_its_fields_only_for_the_shown_result() {
+        // U2:BR7.3.
+        let session = query_ready_session();
+        let store = QueryStore::new();
+        let (run_id, epoch) = query_evaluating(
+            &session,
+            &store,
+            vec![json_event(
+                1_704_164_646_000,
+                r#"{"level":"error","http":{"status":500}}"#,
+            )],
+        );
+        finish_with_level_column(&session, run_id, epoch, vec![0]);
+        let detail = query_row_detail(&session, &store, run_id, epoch, 0);
+        let json = serde_json::to_value(&detail).unwrap();
+        let names: Vec<&str> = json["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| field["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "@timestamp",
+                "@log",
+                "@logStream",
+                "@message",
+                "http.status",
+                "level"
+            ]
+        );
+        assert_eq!(json["fields"][4]["value"], "500");
+        assert_eq!(json["runId"], run_id);
+        for (run, held_epoch, index) in [
+            (run_id + 1, epoch, 0),
+            (run_id, epoch + 1, 0),
+            (run_id, epoch, 1),
+        ] {
+            assert!(
+                query_row_detail(&session, &store, run, held_epoch, index)
+                    .fields
+                    .is_empty(),
+                "{run} {held_epoch} {index}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_query_task_lost_while_evaluating_is_an_evaluation_failure() {
+        // U2:BR10.2 (U1 code review R-03): the recovery's failure names
+        // GetLogEvents, but an evaluating run is not said to have failed to
+        // fetch.
+        let session = query_ready_session();
+        let store = QueryStore::new();
+        let (run_id, _) = query_evaluating(&session, &store, vec![json_event(1, "ERROR")]);
+        let failure = ApiFailure::new(
+            FailureKind::Other,
+            &SafeDetailFields {
+                api_name: Some(GET_LOG_EVENTS.to_string()),
+                ..SafeDetailFields::default()
+            },
+        );
+        assert!(lock(&session).abort_query_with_failure(run_id, failure));
+        let insights = lock(&session).view().insights;
+        assert_eq!(insights.phase, AnalyticsPhase::EvaluationFailed);
+        assert_eq!(insights.failure, None);
+        let json = serde_json::to_value(&insights).unwrap();
+        assert_eq!(json["phase"], "EvaluationFailed");
+    }
+
+    #[test]
+    fn completion_candidates_add_the_field_names_of_the_last_fetch() {
+        // U2:BR1.7, BR9.1.
+        let session = query_ready_session();
+        let store = QueryStore::new();
+        let before = lock(&session).query_completion_candidates();
+        assert!(before.iter().any(|candidate| candidate.text == "filter"));
+        let (run_id, _) = query_evaluating(&session, &store, vec![json_event(1, "ERROR")]);
+        lock(&session).set_query_field_names(run_id, vec!["http.status".to_string()]);
+        let after = serde_json::to_value(lock(&session).query_completion_candidates()).unwrap();
+        let last = after.as_array().unwrap().last().unwrap();
+        assert_eq!(last["text"], "http.status");
+        assert_eq!(last["kind"], "JsonField");
     }
 
     #[test]

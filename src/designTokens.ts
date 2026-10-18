@@ -22,6 +22,7 @@ import {
   colorTextBodyDefault,
   colorTextBodySecondary,
   colorTextHeadingDefault,
+  colorTextStatusError,
   fontFamilyBase,
   fontFamilyMonospace,
   fontSizeBodyM,
@@ -47,6 +48,8 @@ export const APP_DESIGN_TOKENS: Readonly<Record<string, string>> = {
   "--ls-color-border-secondary": colorBorderDividerSecondary,
   "--ls-color-border-selected": colorBorderItemSelected,
   "--ls-color-focus": colorBorderItemFocused,
+  // 261017-insights-query U2:BR6.1: the underline of a query's problem.
+  "--ls-color-error": colorTextStatusError,
   "--ls-font-family": fontFamilyBase,
   "--ls-font-family-monospace": fontFamilyMonospace,
   "--ls-font-size": fontSizeBodyM,

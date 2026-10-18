@@ -2,15 +2,24 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Alert from "@cloudscape-design/components/alert";
 import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
+import ButtonDropdown from "@cloudscape-design/components/button-dropdown";
 import Container from "@cloudscape-design/components/container";
 import DatePicker from "@cloudscape-design/components/date-picker";
 import FormField from "@cloudscape-design/components/form-field";
 import Header from "@cloudscape-design/components/header";
+import Modal from "@cloudscape-design/components/modal";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import TimeInput from "@cloudscape-design/components/time-input";
-import { problemText } from "../analytics";
-import type { AnalyticsField, InsightsView, SessionView } from "../api";
+import { QUERY_EXAMPLES, problemText, type QueryExample } from "../analytics";
+import {
+  getCompletionCandidates,
+  type AnalyticsField,
+  type CompletionCandidate,
+  type InsightsView,
+  type ResultSummary,
+  type SessionView,
+} from "../api";
 import {
   completeTime,
   fieldReasons,
@@ -85,6 +94,18 @@ function synced(insights: InsightsView, drafts: Record<Side, DateTimeParts>, que
  * problem is written under the query field with its line and column, and
  * the field takes the focus with the cursor there (U1:BR3.9); the previous
  * result stays meanwhile.
+ *
+ * Since 261017-insights-query U2 the problem is also underlined and marked
+ * in the field, and its words, underline and mark go as soon as the text is
+ * changed (U2:BR6.1). The results heading counts the rows shown, and when a
+ * `limit` or the default cut dropped rows that matched it says how many
+ * matched and "Showing N" (U2:BR5.3, BR7.2). An evaluation that ended
+ * abnormally is said in its own words above the results, apart from a
+ * failed fetch (U2:BR10.2). The query field completes the commands, words,
+ * fixed fields and the JSON field names of the last fetch, asked of the
+ * core after every change of the run (U2:BR9.1), and [Examples] puts an
+ * example in the field, asking first when the field holds another query
+ * (U2:BR9.3); both are Should.
  */
 export function LogAnalyticsPage({
   session,
@@ -104,10 +125,39 @@ export function LogAnalyticsPage({
   const [query, setQuery] = useState(insights.queryText);
   const [failuresOpen, setFailuresOpen] = useState(false);
   const [focusRequest, setFocusRequest] = useState(0);
+  // U2:BR6.1: the text a reading problem was found in; `null` once it was changed.
+  const [problemQuery, setProblemQuery] = useState<string | null>(() =>
+    insights.phase === "QueryError" ? insights.queryText : null,
+  );
+  const [candidates, setCandidates] = useState<readonly CompletionCandidate[]>([]);
+  const [pendingExample, setPendingExample] = useState<QueryExample | null>(null);
   const draftsRef = useRef(drafts);
   const queryRef = useRef(query);
   const pendingRunRef = useRef(false);
   const shownProblemRun = useRef<number | null>(null);
+
+  // U2:BR9.1: the core gathers the JSON field names when a fetch ends, so
+  // the candidates are asked again whenever the run changes.
+  useEffect(() => {
+    let current = true;
+    Promise.resolve()
+      .then(getCompletionCandidates)
+      .then(
+        (list) => {
+          if (current && Array.isArray(list)) {
+            setCandidates(list);
+          }
+        },
+        (error: unknown) => {
+          if (current) {
+            onError(error);
+          }
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [insights.runId, insights.phase, onError]);
 
   const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
   const dialogOpen = session.pendingChange !== null || session.settingsDialog === "Open";
@@ -144,6 +194,9 @@ export function LogAnalyticsPage({
   const handleQuery = (value: string) => {
     queryRef.current = value;
     setQuery(value);
+    // U2:BR6.1: changing the text takes the problem's words and marks away
+    // until the next run.
+    setProblemQuery(null);
     onChange("queryText", value);
   };
 
@@ -176,9 +229,24 @@ export function LogAnalyticsPage({
   useEffect(() => {
     if (insights.phase === "QueryError" && shownProblemRun.current !== insights.runId) {
       shownProblemRun.current = insights.runId;
+      setProblemQuery(queryRef.current);
       setFocusRequest((count) => count + 1);
     }
   }, [insights.phase, insights.runId]);
+
+  /** U2:BR9.3: an example replaces the query at once when nothing else is written. */
+  const chooseExample = (id: string) => {
+    const example = QUERY_EXAMPLES.find((candidate) => candidate.id === id);
+    if (example === undefined || locked) {
+      return;
+    }
+    const written = queryRef.current.trim();
+    if (written === "" || written === example.text) {
+      handleQuery(example.text);
+    } else {
+      setPendingExample(example);
+    }
+  };
 
   const handleFieldKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
@@ -187,7 +255,9 @@ export function LogAnalyticsPage({
     }
   };
 
-  const problem = insights.phase === "QueryError" ? insights.problem : null;
+  const problem =
+    insights.phase === "QueryError" && problemQuery !== null ? insights.problem : null;
+  const problemWords = problem === null ? "" : problemText(problem, t);
 
   return (
     <div className="log-analytics-page" data-testid="log-analytics-page">
@@ -266,6 +336,8 @@ export function LogAnalyticsPage({
                 value={query}
                 readOnly={locked}
                 problem={problem}
+                problemMessage={problemWords}
+                candidates={candidates}
                 focusRequest={focusRequest}
                 mac={mac}
                 t={t}
@@ -276,7 +348,7 @@ export function LogAnalyticsPage({
             {problem !== null && (
               <div role="alert" aria-live="assertive" data-testid="query-problem">
                 <StatusIndicator type="error" iconAriaLabel={t("failure.kind.Other")}>
-                  {problemText(problem, t)}
+                  {problemWords}
                 </StatusIndicator>
               </div>
             )}
@@ -287,6 +359,7 @@ export function LogAnalyticsPage({
               t={t}
               onRun={run}
               onCancel={onCancel}
+              onExample={chooseExample}
             />
           </SpaceBetween>
         </Container>
@@ -308,7 +381,55 @@ export function LogAnalyticsPage({
           onClose={() => setFailuresOpen(false)}
         />
       )}
+      {pendingExample !== null && (
+        <ReplaceQueryDialog
+          t={t}
+          onReplace={() => {
+            handleQuery(pendingExample.text);
+            setPendingExample(null);
+          }}
+          onCancel={() => setPendingExample(null)}
+        />
+      )}
     </div>
+  );
+}
+
+interface ReplaceQueryDialogProps {
+  t: Translate;
+  onReplace: () => void;
+  onCancel: () => void;
+}
+
+/**
+ * U2:BR9.3: asks before an example replaces a query the field holds
+ * (refined-mockups screen 8: the written text is never dropped silently).
+ * Escape or the close button keeps the query.
+ */
+function ReplaceQueryDialog({ t, onReplace, onCancel }: ReplaceQueryDialogProps) {
+  return (
+    <Modal
+      visible
+      size="small"
+      header={t("insights.examples.confirm.title")}
+      closeAriaLabel={t("insights.examples.confirm.cancel")}
+      onDismiss={onCancel}
+      footer={
+        <Box float="right">
+          <SpaceBetween direction="horizontal" size="xs">
+            <Button onClick={onCancel} data-testid="replace-query-cancel-button">
+              {t("insights.examples.confirm.cancel")}
+            </Button>
+            <Button variant="primary" onClick={onReplace} data-testid="replace-query-button">
+              {t("insights.examples.confirm.replace")}
+            </Button>
+          </SpaceBetween>
+        </Box>
+      }
+      data-testid="replace-query-dialog"
+    >
+      <p>{t("insights.examples.confirm.message")}</p>
+    </Modal>
   );
 }
 
@@ -319,10 +440,11 @@ interface RunBarProps {
   t: Translate;
   onRun: () => void;
   onCancel: () => void;
+  onExample: (id: string) => void;
 }
 
-/** The run row (interaction-spec RunBar, U1:BR1.5, BR2.4). */
-function RunBar({ insights, locked, mac, t, onRun, onCancel }: RunBarProps) {
+/** The run row (interaction-spec RunBar, U1:BR1.5, BR2.4), with [Examples] (U2:BR9.3). */
+function RunBar({ insights, locked, mac, t, onRun, onCancel, onExample }: RunBarProps) {
   const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
   return (
     <div className="log-analytics-run" data-testid="log-analytics-run">
@@ -353,6 +475,14 @@ function RunBar({ insights, locked, mac, t, onRun, onCancel }: RunBarProps) {
         <Box variant="small" color="text-body-secondary">
           {t(mac ? "insights.shortcut.mac" : "insights.shortcut.other")}
         </Box>
+        <ButtonDropdown
+          items={QUERY_EXAMPLES.map((example) => ({ id: example.id, text: t(example.labelKey) }))}
+          disabled={locked}
+          onItemClick={({ detail }) => onExample(detail.id)}
+          data-testid="log-analytics-examples"
+        >
+          {t("insights.examples")}
+        </ButtonDropdown>
         {!running && insights.runBlocker !== null && (
           <span data-testid="log-analytics-run-reason">
             <StatusIndicator type="info">{t(insights.runBlocker)}</StatusIndicator>
@@ -368,6 +498,16 @@ interface ResultAreaProps {
   t: Translate;
   onError: (error: unknown) => void;
   onShowFailures: () => void;
+}
+
+/**
+ * The count beside the results heading (U2:BR5.3, BR7.2): the rows shown,
+ * and the matched rows too when a cut dropped some.
+ */
+function resultCount(result: ResultSummary, t: Translate): string {
+  return result.truncatedAt === null
+    ? t("insights.results.matched", { count: result.rowCount })
+    : t("insights.results.count", { shown: result.rowCount, matched: result.matchedCount });
 }
 
 /** The notices above the results and the results container (U1:BR2.4-BR2.7, BR6.1). */
@@ -405,14 +545,25 @@ function ResultArea({ session, t, onError, onShowFailures }: ResultAreaProps) {
           </Alert>
         </div>
       )}
+      {insights.phase === "EvaluationFailed" && (
+        <div role="alert" data-testid="log-analytics-evaluation-failed">
+          <Alert type="error" statusIconAriaLabel={t("failure.kind.Other")}>
+            <div>{t("insights.evaluationFailed")}</div>
+            <div>{t("insights.evaluationFailed.next")}</div>
+          </Alert>
+        </div>
+      )}
       <Container
         header={
           <Header
             variant="h2"
-            counter={
-              showsRows && result !== null
-                ? `(${t("insights.results.matched", { count: result.rowCount })})`
-                : undefined
+            counter={showsRows && result !== null ? `(${resultCount(result, t)})` : undefined}
+            actions={
+              showsRows && result !== null && result.truncatedAt !== null ? (
+                <Box data-testid="log-analytics-truncated">
+                  {t("insights.results.truncated", { shown: result.truncatedAt })}
+                </Box>
+              ) : undefined
             }
           >
             {t("insights.results.title")}
@@ -473,7 +624,11 @@ function ResultBody({
     }
     return <QueryResultTable result={result} timeZone={session.timeZone} t={t} onError={onError} />;
   }
-  if (insights.phase === "Cancelled" || insights.phase === "FetchFailed") {
+  if (
+    insights.phase === "Cancelled" ||
+    insights.phase === "FetchFailed" ||
+    insights.phase === "EvaluationFailed"
+  ) {
     return null;
   }
   return <Box data-testid="log-analytics-initial">{t("insights.results.initial")}</Box>;

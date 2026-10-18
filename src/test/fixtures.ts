@@ -3,6 +3,7 @@ import type {
   InsightsView,
   QueryRow,
   QueryRowWindow,
+  ResultSummary,
   RowWindow,
   SessionView,
   SsoLoginView,
@@ -96,11 +97,38 @@ export function insightsView(overrides: Partial<InsightsView> = {}): InsightsVie
   };
 }
 
-/** A result row as `get_query_rows` gives it. */
-export function queryRow(sequence: number, message = `ERROR ${sequence}`): QueryRow {
+/**
+ * A shown result with `rowCount` rows and the two default columns, nothing
+ * cut (261017-insights-query U2:BR3.3).
+ */
+export function resultSummary(overrides: Partial<ResultSummary> = {}): ResultSummary {
+  const rowCount = overrides.rowCount ?? 2;
   return {
-    ...logEvent(sequence, message),
+    runId: 1,
+    holdingsEpoch: 2,
+    rowCount,
+    evaluatedCount: 40,
+    columns: ["@timestamp", "@message"],
+    matchedCount: rowCount,
+    truncatedAt: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A result row as `get_query_rows` gives it, with the cells of the two
+ * default columns unless `values` are given.
+ */
+export function queryRow(
+  sequence: number,
+  message = `ERROR ${sequence}`,
+  values?: (string | null)[],
+): QueryRow {
+  const event = logEvent(sequence, message);
+  return {
+    ...event,
     logGroupName: "/aws/lambda/MyFunction",
+    values: values ?? [event.displayTime, message],
   };
 }
 

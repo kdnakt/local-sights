@@ -45,6 +45,14 @@
  * (`insights.blocked.*`), the reading problems of a query (`query.syntax.*`,
  * `query.unsupported.*`, `{word}` is the query's own word only, FR6.4), and
  * the core's `session.queryRunning` and `session.staleInput`.
+ * Since 261017-insights-query U2 the reading problems of `fields`, `sort`,
+ * `limit`, `not` and JSON fields, the results' counts and cut
+ * (`insights.results.count`, `insights.results.truncated`, the refined
+ * mockups' wording), the opened row's loading text, the evaluation failure
+ * (`insights.evaluationFailed*`, U2:BR10.2), the commands this version runs
+ * (`insights.error.supportedList`, the refined mockups' wording) and the
+ * examples and completion of the query field (`insights.examples*`,
+ * `insights.completion.*`, Should).
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -484,6 +492,39 @@ export const messages = {
     en: "The editor could not be loaded.",
     ja: "エディタを読み込めませんでした。",
   },
+  "insights.query.language": { en: "Logs Insights query", ja: "Logs Insights のクエリ" },
+  "insights.completion.command": { en: "command", ja: "命令" },
+  "insights.completion.keyword": { en: "keyword", ja: "言葉" },
+  "insights.completion.field": { en: "field", ja: "項目" },
+  "insights.completion.jsonField": { en: "JSON field", ja: "JSON の項目" },
+  "insights.examples": { en: "Examples", ja: "例" },
+  "insights.examples.errors": {
+    en: "Errors that are not timeouts",
+    ja: "タイムアウト以外のエラー",
+  },
+  "insights.examples.jsonLevel": {
+    en: "JSON logs at error or warn level",
+    ja: "JSON のログで level が error か warn",
+  },
+  "insights.examples.httpStatus": {
+    en: "HTTP status 500 and above, largest first",
+    ja: "HTTP の状態が 500 以上、大きい順",
+  },
+  "insights.examples.excluded": {
+    en: "Error codes other than two",
+    ja: "2 つを除いたエラーコード",
+  },
+  "insights.examples.stream": {
+    en: "One kind of stream without health checks, oldest first",
+    ja: "ヘルスチェックを除いた特定のストリーム、古い順",
+  },
+  "insights.examples.confirm.title": { en: "Replace the query?", ja: "クエリを置き換えますか？" },
+  "insights.examples.confirm.message": {
+    en: "The query you wrote is replaced by the example.",
+    ja: "書いたクエリは例に置き換わります。",
+  },
+  "insights.examples.confirm.replace": { en: "Replace", ja: "置き換える" },
+  "insights.examples.confirm.cancel": { en: "Keep my query", ja: "今のクエリを残す" },
   "insights.run": { en: "Run query", ja: "クエリを実行" },
   "insights.cancel": { en: "Cancel", ja: "中止" },
   "insights.cancelling": { en: "Cancelling…", ja: "中止中…" },
@@ -514,6 +555,23 @@ export const messages = {
   },
   "insights.results.title": { en: "Results", ja: "結果" },
   "insights.results.matched": { en: "{count} matched", ja: "{count} 件が一致" },
+  "insights.results.count": {
+    en: "{shown} of {matched} matched",
+    ja: "{matched} 件中 {shown} 件",
+  },
+  "insights.results.truncated": { en: "Showing {shown}", ja: "{shown} 件まで表示" },
+  "insights.results.detailLoading": {
+    en: "Loading the fields",
+    ja: "項目を読み込み中",
+  },
+  "insights.evaluationFailed": {
+    en: "The query could not be evaluated.",
+    ja: "クエリを評価できませんでした。",
+  },
+  "insights.evaluationFailed.next": {
+    en: "Run the query again. The logs are fetched again.",
+    ja: "もう一度クエリを実行してください。ログは取得し直します。",
+  },
   "insights.results.initial": {
     en: "No results yet. Choose log groups and a time range, write a query, then choose Run query.",
     ja: "まだ結果はありません。ロググループと期間を選び、クエリを書いて「クエリを実行」を押してください。",
@@ -556,12 +614,12 @@ export const messages = {
     ja: "{line} 行 {column} 列：",
   },
   "insights.error.supportedList": {
-    en: "Supported commands: filter.",
-    ja: "使える命令：filter",
+    en: "Supported commands: fields, filter, sort, limit.",
+    ja: "使える命令：fields、filter、sort、limit",
   },
   "query.syntax.noCommand": {
-    en: "The query has no command. Start it with filter.",
-    ja: "クエリに命令がありません。filter で始めてください。",
+    en: "The query has no command. Start it with fields, filter, sort or limit.",
+    ja: "クエリに命令がありません。fields、filter、sort、limit のどれかで始めてください。",
   },
   "query.syntax.emptyCommand": {
     en: 'There is no command before or after "|".',
@@ -660,8 +718,8 @@ export const messages = {
     ja: "「{word}」にはこの版では対応していません。",
   },
   "query.unsupported.field": {
-    en: 'The field "{word}" cannot be used in this version. Use @timestamp, @message, @logStream or @log.',
-    ja: "項目「{word}」はこの版では使えません。@timestamp、@message、@logStream、@log を使ってください。",
+    en: 'The field "{word}" cannot be used in this version. Use @timestamp, @message, @logStream, @log or a JSON field.',
+    ja: "項目「{word}」はこの版では使えません。@timestamp、@message、@logStream、@log か JSON の項目を使ってください。",
   },
   "query.unsupported.function": {
     en: 'The function "{word}" is not supported in this version. Only toMillis(@timestamp) can be used.',
@@ -682,6 +740,46 @@ export const messages = {
   "query.unsupported.fieldComparison": {
     en: 'Comparing with "{word}" is not supported in this version. Compare with a string or a number.',
     ja: "「{word}」との比較にはこの版では対応していません。文字列か数値と比べてください。",
+  },
+  "query.syntax.notNeedsParen": {
+    en: "Put the condition after not in parentheses, such as not (@message like /x/). Use not like, not in or != after a field.",
+    ja: "not の後ろの条件は not (@message like /x/) のように括弧で囲んでください。項目の後ろには not like、not in、!= を使えます。",
+  },
+  "query.syntax.missingFields": {
+    en: "{word} needs at least one field.",
+    ja: "{word} の後ろに項目がありません。",
+  },
+  "query.syntax.expectedField": {
+    en: "A field name is needed here.",
+    ja: "ここには項目の名前が要ります。",
+  },
+  "query.syntax.invalidSortDirection": {
+    en: 'Write asc or desc after a sort field, not "{word}".',
+    ja: "sort の項目の後ろには「{word}」ではなく asc か desc を書いてください。",
+  },
+  "query.syntax.missingLimit": {
+    en: "limit needs a number of rows.",
+    ja: "limit の後ろに件数がありません。",
+  },
+  "query.syntax.invalidLimit": {
+    en: "limit takes a whole number from 0 to 100,000.",
+    ja: "limit には 0 から 100,000 までの整数を書いてください。",
+  },
+  "query.syntax.limitTooLarge": {
+    en: "limit can be at most 100,000.",
+    ja: "limit は 100,000 までです。",
+  },
+  "query.unsupported.arrayElement": {
+    en: 'Array elements such as "{word}" cannot be used in this version. A key made of digits can be written in backquotes.',
+    ja: "「{word}」のような配列の要素にはこの版では対応していません。数字だけのキーは ` で囲めば使えます。",
+  },
+  "query.unsupported.alias": {
+    en: 'Naming a field with "{word}" is not supported in this version.',
+    ja: "「{word}」で項目に名前を付けることにはこの版では対応していません。",
+  },
+  "query.unsupported.limitAny": {
+    en: 'limit "{word}" is not supported in this version.',
+    ja: "limit の「{word}」にはこの版では対応していません。",
   },
 } as const satisfies Record<string, Record<Locale, string>>;
 

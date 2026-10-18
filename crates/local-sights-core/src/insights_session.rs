@@ -6,8 +6,17 @@
 //! from the Log Management screen's and stays when the screens are switched
 //! (U1:BR1.2). Only the time zone is shared; AppSession passes it in. A run
 //! goes through the phases of functional-spec 4: Idle → Fetching →
-//! Evaluating → Done, or QueryError (nothing fetched), FetchFailed or
-//! Cancelled. Reading the query is one call and leaves no phase of its own.
+//! Evaluating → Done, or QueryError (nothing fetched), FetchFailed,
+//! Cancelled or, since 261017-insights-query U2, EvaluationFailed (U2:BR10.2).
+//! Reading the query is one call and leaves no phase of its own. A [Cancel]
+//! that comes after the last evaluation step still ends the run Cancelled
+//! without a result (U2:BR10.1).
+//!
+//! Since U2 the result carries its columns, the matched count and the cut
+//! (U2:BR3.2-BR3.4, BR5.3); the rows give their cells for those columns and
+//! one row opened gives every field (U2:BR7.1, BR7.3). The JSON field names
+//! of the last fetch are kept for completion until the connection changes
+//! (U2:BR1.7, BR9.1, Should).
 //!
 //! Every notice of a fetch or an evaluation carries the run number; a notice
 //! of another run is dropped, so only the last run started is shown
@@ -28,7 +37,8 @@ use crate::event::LogEvent;
 use crate::failure::ApiFailure;
 use crate::fetch_status::JobStatus;
 use crate::log_groups::ListingStatus;
-use crate::query::evaluator::QueryResult;
+use crate::query::evaluator::{QueryResult, row_cells, row_detail};
+use crate::query::fields::EventFields;
 use crate::query::plan::{QueryPlan, QueryProblem};
 use crate::query::store::{HeldRows, HoldingKey};
 use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
@@ -40,10 +50,27 @@ use crate::time_range::format_display_in_zone;
 /// (StartQuery's queryString, functional-design Q4).
 pub const MAX_QUERY_CHARS: usize = 10_000;
 
-/// The query the screen opens with (entities.md AnalyticsInput.queryText).
-/// U1 reads only `filter`, so the example is a filter; the console's default
-/// query with `fields`, `sort` and `limit` comes with U2.
-pub const DEFAULT_QUERY: &str = "filter @message like /ERROR/";
+/// The query the screen opens with (entities.md AnalyticsInput.queryText):
+/// the console's default columns, newest first, with U1's filter of errors.
+pub const DEFAULT_QUERY: &str = "fields @timestamp, @message, @logStream, @log\n\
+     | filter @message like /ERROR/\n\
+     | sort @timestamp desc\n\
+     | limit 10000";
+
+/// The commands a query can use, for completion (U2:BR2.1, BR9.1).
+const COMMAND_WORDS: [&str; 4] = ["fields", "filter", "sort", "limit"];
+
+/// The other words, for completion (U2:BR9.1).
+const KEYWORD_WORDS: [&str; 7] = ["and", "or", "not", "like", "in", "asc", "desc"];
+
+/// The fixed fields and the one function, for completion (U2:BR9.1).
+const FIXED_FIELD_WORDS: [&str; 5] = [
+    "@timestamp",
+    "@message",
+    "@logStream",
+    "@log",
+    "toMillis(@timestamp)",
+];
 
 /// Phase of the last run (functional-spec 4, entities.md InsightsRun.phase).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -63,6 +90,31 @@ pub enum AnalyticsPhase {
     FetchFailed,
     /// [Cancel] stopped the run (U1:BR2.7).
     Cancelled,
+    /// The evaluation ended abnormally; nothing is shown (U2:BR10.2).
+    EvaluationFailed,
+}
+
+/// What a completion candidate is (entities.md CompletionCandidate.kind).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum CompletionKind {
+    /// `fields`, `filter`, `sort`, `limit`.
+    Command,
+    /// `and`, `or`, `not`, `like`, `in`, `asc`, `desc`.
+    Keyword,
+    /// One of the fixed fields, or `toMillis(@timestamp)`.
+    FixedField,
+    /// A JSON field of the fetched logs.
+    JsonField,
+}
+
+/// One completion candidate (entities.md CompletionCandidate, U2:BR9.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionCandidate {
+    /// The text put in the query.
+    pub text: String,
+    /// What it is.
+    pub kind: CompletionKind,
 }
 
 /// A field of the Log Analytics screen's input.
@@ -194,17 +246,24 @@ pub struct InsightsProgress {
 
 /// The result of the last run as the screen shows it; the rows are read with
 /// these numbers (U1:BR6.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultSummary {
     /// The run that made it.
     pub run_id: u64,
     /// The holdings epoch its rows point into.
     pub holdings_epoch: u64,
-    /// Matching events.
+    /// Result rows (U2:BR7.2).
     pub row_count: u64,
     /// Events evaluated.
     pub evaluated_count: u64,
+    /// The column headings, the fields' names as written (U2:BR3.2-BR3.4).
+    pub columns: Vec<String>,
+    /// Rows that matched before the cut (U2:BR5.3, review R-08).
+    pub matched_count: u64,
+    /// The rows shown, when a `limit` or the default cut dropped rows that
+    /// matched (U2:BR5.3).
+    pub truncated_at: Option<u64>,
 }
 
 /// The Log Analytics screen as the screen shows it.
@@ -258,7 +317,7 @@ pub struct InsightsView {
     pub cancel_available: bool,
 }
 
-/// One result row as the screen shows it (U1:BR6.3).
+/// One result row as the screen shows it (U1:BR6.3, U2:BR7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryRow {
@@ -269,6 +328,33 @@ pub struct QueryRow {
     pub display_time: String,
     /// `@log`.
     pub log_group_name: String,
+    /// One cell per result column, `None` without a value (U2:BR7.1).
+    pub values: Vec<Option<String>>,
+}
+
+/// One field of an opened row (U2:BR7.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailField {
+    /// The field's name, a JSON field as the screen writes it (R-09).
+    pub name: String,
+    /// Its value as a cell shows it, `None` without one.
+    pub value: Option<String>,
+}
+
+/// The fields of one opened result row (U2:BR7.3, functional-spec 3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryRowDetail {
+    /// The run asked for.
+    pub run_id: u64,
+    /// The holdings epoch asked for.
+    pub holdings_epoch: u64,
+    /// The row's place in the result.
+    pub index: u64,
+    /// The fixed fields, then the JSON fields by name; empty when the run
+    /// or the epoch is not the shown one.
+    pub fields: Vec<DetailField>,
 }
 
 /// The result rows of one viewport request (U1:BR6.4).
@@ -315,6 +401,8 @@ pub struct InsightsSession {
     query_text: String,
     revision: u64,
     run: InsightsRun,
+    /// The JSON field names of the last fetch (U2:BR1.7).
+    field_names: Vec<String>,
 }
 
 impl Default for InsightsSession {
@@ -328,6 +416,27 @@ fn millis_between(start: Instant, now: Instant) -> u64 {
     u64::try_from(now.saturating_duration_since(start).as_millis()).unwrap_or(u64::MAX)
 }
 
+fn count(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
+/// The screen's summary of `result` (U1:BR6.4, U2:BR5.3, BR7.2).
+fn summary_of(result: &QueryResult) -> ResultSummary {
+    ResultSummary {
+        run_id: result.run_id,
+        holdings_epoch: result.holdings_epoch,
+        row_count: count(result.row_count()),
+        evaluated_count: count(result.evaluated_count),
+        columns: result
+            .columns()
+            .iter()
+            .map(|column| column.name().to_string())
+            .collect(),
+        matched_count: count(result.matched_count()),
+        truncated_at: result.truncated_at().map(count),
+    }
+}
+
 impl InsightsSession {
     /// Nothing selected, empty times and the example query.
     pub fn new() -> Self {
@@ -338,6 +447,7 @@ impl InsightsSession {
             query_text: DEFAULT_QUERY.to_string(),
             revision: 0,
             run: InsightsRun::default(),
+            field_names: Vec::new(),
         }
     }
 
@@ -674,9 +784,16 @@ impl InsightsSession {
         true
     }
 
-    /// The evaluation of the current run finished (UC1 12).
+    /// The evaluation of the current run finished (UC1 12). When [Cancel]
+    /// was pressed meanwhile, even after the last step or with nothing held
+    /// to evaluate, the result is dropped and the run is Cancelled
+    /// (U2:BR10.1, U1 code review R-02).
     pub fn finish_evaluation(&mut self, result: QueryResult, now: Instant) {
         if self.run.run_id != result.run_id || !self.is_evaluating() {
+            return;
+        }
+        if self.run.cancel_requested {
+            self.stop_evaluation(result.run_id, now);
             return;
         }
         self.run.phase = AnalyticsPhase::Done;
@@ -684,6 +801,56 @@ impl InsightsSession {
         self.run.progress = None;
         self.run.cancel_requested = false;
         self.settle(now);
+    }
+
+    /// The evaluation of `run_id` ended abnormally (U2:BR10.2): no result
+    /// is shown (the previous one went when the fetch started, U1:BR2.9;
+    /// review R-08), and the fetch is not said to have failed.
+    pub fn fail_evaluation(&mut self, run_id: u64, now: Instant) {
+        if self.run.run_id != run_id || !self.is_evaluating() {
+            return;
+        }
+        self.run.phase = AnalyticsPhase::EvaluationFailed;
+        self.run.result = None;
+        self.run.failure = None;
+        self.run.progress = None;
+        self.run.cancel_requested = false;
+        self.settle(now);
+    }
+
+    /// U2:BR1.7: the JSON field names of the logs `run_id` fetched, kept
+    /// for completion; names of another run are dropped.
+    pub fn set_field_names(&mut self, run_id: u64, names: Vec<String>) {
+        if self.run.run_id == run_id {
+            self.field_names = names;
+        }
+    }
+
+    /// The JSON field names kept for completion.
+    pub fn field_names(&self) -> &[String] {
+        &self.field_names
+    }
+
+    /// U2:BR9.1: the commands, the words, the fixed fields and the JSON
+    /// field names of the last fetch (none before one).
+    pub fn completion_candidates(&self) -> Vec<CompletionCandidate> {
+        let words = |words: &[&str], kind| {
+            words
+                .iter()
+                .map(move |word| CompletionCandidate {
+                    text: (*word).to_string(),
+                    kind,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut candidates = words(&COMMAND_WORDS, CompletionKind::Command);
+        candidates.extend(words(&KEYWORD_WORDS, CompletionKind::Keyword));
+        candidates.extend(words(&FIXED_FIELD_WORDS, CompletionKind::FixedField));
+        candidates.extend(self.field_names.iter().map(|name| CompletionCandidate {
+            text: name.clone(),
+            kind: CompletionKind::JsonField,
+        }));
+        candidates
     }
 
     /// The evaluation of `run_id` stopped before its end (U1:BR2.7, BR5.8).
@@ -716,11 +883,18 @@ impl InsightsSession {
         Some(self.run.run_id)
     }
 
-    /// Ends a run whose task stopped without reporting (it panicked): the
-    /// run fails with `failure`. Returns whether the session changed.
+    /// Ends a run whose task stopped without reporting (it panicked): a
+    /// fetching run fails with `failure`, an evaluating one is an
+    /// evaluation failure without it (U2:BR10.2: the fetch did not fail).
+    /// Returns whether the session changed.
     pub fn abort_with_failure(&mut self, run_id: u64, failure: ApiFailure, now: Instant) -> bool {
         if self.run.run_id != run_id || !self.is_running() {
             return false;
+        }
+        if self.is_evaluating() {
+            self.fail_evaluation(run_id, now);
+            self.run.cache_saving = false;
+            return true;
         }
         self.run.phase = AnalyticsPhase::FetchFailed;
         self.run.failure = Some(failure);
@@ -741,11 +915,14 @@ impl InsightsSession {
             run_id: self.run.run_id,
             ..InsightsRun::default()
         };
+        self.field_names.clear();
         self.revision += 1;
     }
 
     /// The rows of one viewport request, from the rows `held` read for
-    /// `positions_offset` (U1:BR6.3, BR6.4).
+    /// `positions_offset` (U1:BR6.3, BR6.4), with their cells for the
+    /// result's columns (U2:BR7.1). Each message is read as JSON once, now,
+    /// and nothing is kept (U2:BR7.4).
     pub fn display_rows(
         &self,
         run_id: u64,
@@ -757,13 +934,23 @@ impl InsightsSession {
         let total_count = self.result().map_or(0, |result| {
             u64::try_from(result.row_count()).unwrap_or(u64::MAX)
         });
+        let columns = self.result().map_or(&[][..], QueryResult::columns);
+        let format_time = |time| format_display_in_zone(time, zone);
         let rows = held.map_or_else(Vec::new, |held| {
             held.events
                 .into_iter()
-                .map(|event| QueryRow {
-                    display_time: format_display_in_zone(event.timestamp, zone),
-                    log_group_name: held.log_group_name.clone(),
-                    event,
+                .map(|event| {
+                    let values = row_cells(
+                        columns,
+                        &EventFields::new(&event, &held.log_group_name),
+                        &format_time,
+                    );
+                    QueryRow {
+                        display_time: format_time(event.timestamp),
+                        log_group_name: held.log_group_name.clone(),
+                        values,
+                        event,
+                    }
                 })
                 .collect()
         });
@@ -773,6 +960,45 @@ impl InsightsSession {
             offset: u64::try_from(offset).unwrap_or(u64::MAX),
             rows,
             total_count,
+        }
+    }
+
+    /// The holdings position of result row `index` of the shown result, when
+    /// `run_id` and `holdings_epoch` are its own (U2:BR7.3, BR7.4).
+    pub fn row_position(&self, run_id: u64, holdings_epoch: u64, index: usize) -> Option<usize> {
+        self.result()?.row_at(run_id, holdings_epoch, index)
+    }
+
+    /// The fields of result row `index`, from the one event `held` read for
+    /// it (U2:BR7.3); no field when it was not read.
+    pub fn display_row_detail(
+        &self,
+        run_id: u64,
+        holdings_epoch: u64,
+        index: usize,
+        held: Option<HeldRows>,
+        zone: Tz,
+    ) -> QueryRowDetail {
+        let format_time = |time| format_display_in_zone(time, zone);
+        let fields = held
+            .and_then(|held| {
+                let event = held.events.into_iter().next()?;
+                Some(
+                    row_detail(
+                        &EventFields::new(&event, &held.log_group_name),
+                        &format_time,
+                    )
+                    .into_iter()
+                    .map(|(name, value)| DetailField { name, value })
+                    .collect(),
+                )
+            })
+            .unwrap_or_default();
+        QueryRowDetail {
+            run_id,
+            holdings_epoch,
+            index: u64::try_from(index).unwrap_or(u64::MAX),
+            fields,
         }
     }
 
@@ -800,12 +1026,7 @@ impl InsightsSession {
             partial: run.partial,
             failed_streams: run.failed_streams.clone(),
             listing_failure: run.listing_failure.clone(),
-            result: run.result.as_ref().map(|result| ResultSummary {
-                run_id: result.run_id,
-                holdings_epoch: result.holdings_epoch,
-                row_count: u64::try_from(result.row_count()).unwrap_or(u64::MAX),
-                evaluated_count: u64::try_from(result.evaluated_count).unwrap_or(u64::MAX),
-            }),
+            result: run.result.as_ref().map(summary_of),
             elapsed: run.started_at.map(|started| ElapsedView {
                 running: run.final_ms.is_none(),
                 elapsed_ms: run.final_ms.unwrap_or_else(|| millis_between(started, now)),
@@ -1248,5 +1469,228 @@ mod tests {
             view.run_blocker.as_deref(),
             Some("insights.blocked.logGroupRequired")
         );
+    }
+
+    // ---- 261017-insights-query U2 ---------------------------------------
+
+    /// A run that fetched `events` events and now evaluates.
+    fn evaluating(session: &mut InsightsSession, now: Instant, events: u64) -> u64 {
+        let run_id = start(session, now).run_id;
+        assert!(session.finish_fetch(run_id, &job(JobStatus::Completed, events), now));
+        assert!(session.is_evaluating());
+        run_id
+    }
+
+    #[test]
+    fn a_cancel_after_the_last_evaluation_step_drops_the_result() {
+        // U2:BR10.1 (U1 code review R-02): the evaluation had nothing left
+        // to stop, but [Cancel] was pressed.
+        let mut session = ready();
+        let now = Instant::now();
+        let run_id = evaluating(&mut session, now, 3);
+        assert_eq!(session.request_cancel(false), Some(run_id));
+        session.finish_evaluation(QueryResult::new(run_id, 1, 3, vec![0, 1]), now);
+        let view = session.view(&connected(), now);
+        assert_eq!(view.phase, AnalyticsPhase::Cancelled);
+        assert_eq!(view.result, None);
+        assert!(!view.cancelling);
+        assert!(!session.has_result_rows());
+    }
+
+    #[test]
+    fn a_cancel_with_nothing_held_still_ends_cancelled() {
+        // U2:BR10.1: no event, so no evaluation step at all.
+        let mut session = ready();
+        let now = Instant::now();
+        let run_id = evaluating(&mut session, now, 0);
+        assert_eq!(session.request_cancel(false), Some(run_id));
+        session.finish_evaluation(QueryResult::new(run_id, 1, 0, Vec::new()), now);
+        assert_eq!(session.phase(), AnalyticsPhase::Cancelled);
+    }
+
+    #[test]
+    fn an_evaluation_failure_shows_no_result_and_no_fetch_failure() {
+        // U2:BR10.2, review R-08: the previous result went when the fetch
+        // started; a connection change goes back to Idle.
+        let mut session = ready();
+        let now = Instant::now();
+        done(&mut session, now, vec![0]);
+        let run_id = evaluating(&mut session, now, 5);
+        let later = now + Duration::from_secs(2);
+        session.fail_evaluation(run_id + 1, later);
+        assert!(session.is_evaluating(), "another run's failure is dropped");
+        session.fail_evaluation(run_id, later);
+        let view = session.view(&connected(), later);
+        assert_eq!(view.phase, AnalyticsPhase::EvaluationFailed);
+        assert_eq!(view.result, None);
+        assert_eq!(view.failure, None, "the fetch did not fail");
+        assert_eq!(view.progress, None);
+        assert_eq!(
+            view.elapsed.map(|e| (e.running, e.elapsed_ms)),
+            Some((false, 2_000))
+        );
+        assert!(view.can_run, "it can run again");
+        session.on_connection_changed();
+        assert_eq!(session.phase(), AnalyticsPhase::Idle);
+    }
+
+    #[test]
+    fn a_task_lost_while_evaluating_is_an_evaluation_failure() {
+        // U2:BR10.2 (U1 code review R-03): the recovery does not call it a
+        // failed GetLogEvents.
+        let mut session = ready();
+        let now = Instant::now();
+        let run_id = evaluating(&mut session, now, 5);
+        let failure = ApiFailure::new(FailureKind::Other, &SafeDetailFields::default());
+        assert!(session.abort_with_failure(run_id, failure, now));
+        let view = session.view(&connected(), now);
+        assert_eq!(view.phase, AnalyticsPhase::EvaluationFailed);
+        assert_eq!(view.failure, None);
+    }
+
+    #[test]
+    fn the_summary_carries_the_columns_the_matched_count_and_the_cut() {
+        // U2:BR3.2, BR5.3, BR7.2.
+        use crate::query::evaluator::EvalOutput;
+        use crate::query::plan::{FieldRef, JsonPath};
+        let mut session = ready();
+        let now = Instant::now();
+        let run_id = evaluating(&mut session, now, 12_000);
+        session.finish_evaluation(
+            QueryResult::from_output(
+                run_id,
+                4,
+                EvalOutput {
+                    rows: (0..10_000).collect(),
+                    columns: vec![
+                        FieldRef::Timestamp,
+                        FieldRef::Json(JsonPath::new(vec!["user.id".to_string()], "`user.id`")),
+                    ],
+                    matched_count: 12_000,
+                    truncated_at: Some(10_000),
+                    evaluated_count: 12_000,
+                },
+            ),
+            now,
+        );
+        let summary = session.view(&connected(), now).result.unwrap();
+        assert_eq!(summary.columns, vec!["@timestamp", "`user.id`"]);
+        assert_eq!(
+            (
+                summary.row_count,
+                summary.matched_count,
+                summary.truncated_at
+            ),
+            (10_000, 12_000, Some(10_000))
+        );
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["matchedCount"], 12_000);
+        assert_eq!(json["truncatedAt"], 10_000);
+    }
+
+    #[test]
+    fn rows_give_their_cells_and_an_opened_row_its_fields() {
+        // U2:BR7.1, BR7.3.
+        use crate::query::evaluator::EvalOutput;
+        use crate::query::plan::{FieldRef, JsonPath};
+        let mut session = ready();
+        let now = Instant::now();
+        let run_id = evaluating(&mut session, now, 1);
+        let level = FieldRef::Json(JsonPath::new(vec!["level".to_string()], "level"));
+        let gone = FieldRef::Json(JsonPath::new(vec!["gone".to_string()], "gone"));
+        session.finish_evaluation(
+            QueryResult::from_output(
+                run_id,
+                4,
+                EvalOutput {
+                    rows: vec![0],
+                    columns: vec![FieldRef::Timestamp, level, gone],
+                    matched_count: 1,
+                    truncated_at: None,
+                    evaluated_count: 1,
+                },
+            ),
+            now,
+        );
+        let held = || HeldRows {
+            log_group_name: GROUP.to_string(),
+            events: vec![LogEvent {
+                timestamp: 0,
+                ingestion_time: None,
+                message: r#"{"level":"error","n":1}"#.to_string(),
+                log_stream_name: "s".to_string(),
+                sequence: 0,
+            }],
+        };
+        let window = session.display_rows(run_id, 4, 0, Some(held()), UTC);
+        assert_eq!(
+            window.rows[0].values,
+            vec![
+                Some("1970/01/01 00:00:00.000".to_string()),
+                Some("error".to_string()),
+                None
+            ]
+        );
+        assert_eq!(session.row_position(run_id, 4, 0), Some(0));
+        assert_eq!(session.row_position(run_id, 5, 0), None, "another epoch");
+        let detail = session.display_row_detail(run_id, 4, 0, Some(held()), UTC);
+        let names: Vec<&str> = detail.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["@timestamp", "@log", "@logStream", "@message", "level", "n"]
+        );
+        assert_eq!(detail.fields[1].value.as_deref(), Some(GROUP));
+        assert!(
+            session
+                .display_row_detail(run_id, 4, 0, None, UTC)
+                .fields
+                .is_empty(),
+            "nothing read, nothing listed"
+        );
+    }
+
+    #[test]
+    fn field_names_are_kept_for_the_current_run_and_go_with_the_connection() {
+        // U2:BR1.7, BR9.1.
+        let mut session = ready();
+        let now = Instant::now();
+        let before: Vec<CompletionKind> = session
+            .completion_candidates()
+            .iter()
+            .map(|candidate| candidate.kind)
+            .collect();
+        assert!(
+            !before.contains(&CompletionKind::JsonField),
+            "nothing fetched yet"
+        );
+        let texts = |session: &InsightsSession| -> Vec<String> {
+            session
+                .completion_candidates()
+                .into_iter()
+                .map(|candidate| candidate.text)
+                .collect()
+        };
+        assert!(texts(&session).contains(&"fields".to_string()));
+        assert!(texts(&session).contains(&"@logStream".to_string()));
+        let run_id = evaluating(&mut session, now, 2);
+        session.set_field_names(run_id + 1, vec!["other".to_string()]);
+        assert!(session.field_names().is_empty(), "another run's names");
+        session.set_field_names(run_id, vec!["http.status".to_string()]);
+        let last = session.completion_candidates().pop().unwrap();
+        assert_eq!(
+            (last.text.as_str(), last.kind),
+            ("http.status", CompletionKind::JsonField)
+        );
+        session.finish_evaluation(QueryResult::new(run_id, 1, 2, vec![]), now);
+        session.on_connection_changed();
+        assert!(session.field_names().is_empty());
+    }
+
+    #[test]
+    fn the_default_query_is_read_with_its_four_commands() {
+        // The console's default columns, sort and limit with U1's filter.
+        let plan = parse_query(DEFAULT_QUERY).unwrap();
+        assert_eq!(plan.commands.len(), 4);
+        assert!(plan.has_fields() && plan.has_sort() && plan.has_row_limit());
     }
 }

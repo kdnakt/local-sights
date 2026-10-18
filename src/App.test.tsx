@@ -15,6 +15,7 @@ import {
   logEvent,
   queryRow,
   queryRowWindow,
+  resultSummary,
   rowWindow,
   sessionView,
   ssoLoginView,
@@ -60,6 +61,8 @@ vi.mock("./api", async (importOriginal) => {
     runQuery: vi.fn(),
     cancelQuery: vi.fn(),
     getQueryRows: vi.fn(),
+    getQueryRowDetail: vi.fn(),
+    getCompletionCandidates: vi.fn(async () => []),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
       handlers.session = handler;
       return () => undefined;
@@ -1216,7 +1219,7 @@ describe("App", () => {
           pendingChange: pending,
           insights: insightsView({
             phase: "Done",
-            result: { runId: 1, holdingsEpoch: 2, rowCount: 2, evaluatedCount: 9 },
+            result: resultSummary({ rowCount: 2, evaluatedCount: 9 }),
           }),
         }),
       );

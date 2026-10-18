@@ -98,8 +98,8 @@ use crate::failure::{ApiFailure, FailureKind};
 use crate::fetch_status::JobStatus;
 use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
 use crate::insights_session::{
-    AnalyticsField, InsightsSession, InsightsView, QueryBegin, QueryRowWindow, QuerySnapshot,
-    RunContext,
+    AnalyticsField, CompletionCandidate, InsightsSession, InsightsView, QueryBegin, QueryRowDetail,
+    QueryRowWindow, QuerySnapshot, RunContext,
 };
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -2530,6 +2530,47 @@ impl AppSession {
     pub fn stop_query_evaluation(&mut self, run_id: u64) {
         let now = self.clock.now();
         self.insights.stop_evaluation(run_id, now);
+    }
+
+    /// The evaluation ended abnormally (261017-insights-query U2:BR10.2).
+    pub fn fail_query_evaluation(&mut self, run_id: u64) {
+        let now = self.clock.now();
+        self.insights.fail_evaluation(run_id, now);
+    }
+
+    /// The JSON field names of the logs `run_id` fetched (U2:BR1.7).
+    pub fn set_query_field_names(&mut self, run_id: u64, names: Vec<String>) {
+        self.insights.set_field_names(run_id, names);
+    }
+
+    /// The completion candidates of the query field (U2:BR9.1).
+    pub fn query_completion_candidates(&self) -> Vec<CompletionCandidate> {
+        self.insights.completion_candidates()
+    }
+
+    /// The holdings position of result row `index` of the shown result
+    /// (U2:BR7.3), or `None`.
+    pub fn query_row_position(
+        &self,
+        run_id: u64,
+        holdings_epoch: u64,
+        index: usize,
+    ) -> Option<usize> {
+        self.insights.row_position(run_id, holdings_epoch, index)
+    }
+
+    /// The fields of one opened result row, its time in the chosen zone
+    /// (U2:BR7.3).
+    pub fn display_query_row_detail(
+        &self,
+        run_id: u64,
+        holdings_epoch: u64,
+        index: usize,
+        held: Option<HeldRows>,
+    ) -> QueryRowDetail {
+        let zone = self.time_zones.zone(self.time_zone);
+        self.insights
+            .display_row_detail(run_id, holdings_epoch, index, held, zone)
     }
 
     /// [Cancel] of the query screen (UC4, R-01, R-02): the run number whose
@@ -5888,7 +5929,11 @@ mod tests {
         assert_eq!(view.phase, AnalyticsPhase::Idle);
         assert_eq!(view.selected_log_group_name, None);
         assert_eq!(view.result, None);
-        assert_eq!(view.query_text, "filter @message like /ERROR/");
+        assert_eq!(
+            view.query_text,
+            crate::insights_session::DEFAULT_QUERY,
+            "the query text stays"
+        );
         assert_eq!(view.start_input.text(), "2024/01/02 03:04:05");
 
         // A result without rows asks nothing.

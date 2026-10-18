@@ -14,8 +14,9 @@ no telemetry or crash reports anywhere.
 > and end as a date (`yyyy/mm/dd`, typed or picked from a calendar) and a
 > time (`hh:mm:ss`) in local time or UTC and press
 > **Fetch**: every stream of the group that matters for the range is read,
-> one after another, and the events are listed in time order as they arrive
-> ("time / stream / message"). Throttling and network errors are retried;
+> up to eight streams side by side, and the events are listed in time order
+> as they arrive ("time / stream / message"). Throttling and network errors
+> are retried;
 > streams that still fail are listed separately while the rest is shown.
 > The list draws only the visible rows, so a million events scroll smoothly.
 > The log filter narrows the fetched events to those whose message contains
@@ -26,7 +27,9 @@ no telemetry or crash reports anywhere.
 > message; the reason why **Fetch** is unavailable is shown under the field
 > it belongs to, a failed fetch is an error alert above the list that says
 > what happened and what to do next; closing the window while fetching asks
-> first.
+> first. A second screen, **Log Analytics** (the navigation on the left),
+> runs CloudWatch Logs Insights-style queries on logs it fetches for itself;
+> see [Log Analytics queries](#log-analytics-queries).
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -161,6 +164,31 @@ stays until the next **Fetch**, a profile or region change, or another log
 group. A cancel after every stream was already read counts as a finished
 fetch. Closing the window still asks first and discards everything, also
 after **Cancel**.
+
+## Log Analytics queries
+
+The Log Analytics screen fetches the chosen log group and time range with the
+same three read APIs and evaluates the query on your machine; it never calls
+the Logs Insights APIs (`StartQuery` and the like). The query is written as in
+the console; see the AWS documentation,
+[CloudWatch Logs Insights query syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html),
+for how to write one. This version reads the following part of it.
+
+| Supported                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (up to 100,000; without one, 10,000 rows), joined with `\|` and applied in the order written                                                      |
+| Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``) |
+| Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                            |
+| `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                  |
+
+| Not supported                                                                                                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------- |
+| The other commands (`stats`, `parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)           |
+| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and comparing two fields |
+| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                         |
+
+A query that uses what is not supported, or has a writing mistake, is not run;
+the screen says what and where, without fetching anything.
 
 ## Sign in with SSO
 

@@ -14,11 +14,17 @@
 //!   (functional-design review R-01, U1:BR2.7);
 //! - Failed, Cancelled or Aborted: nothing is evaluated (U1:BR2.6, BR2.7).
 //!
-//! The evaluation goes [`EVALUATION_CHUNK`](crate::query::evaluator::EVALUATION_CHUNK)
-//! events at a time, each chunk on a blocking thread under one lock of the
-//! store, and between chunks the stop signal, the sink's answer to the
-//! progress and the store's epoch are checked (U1:BR5.8). The Log Management
-//! screen's timeline is never touched (U1:BR1.7).
+//! When the fetch ended with logs, the JSON field names of the first
+//! held events are gathered for completion (U2:BR1.7, Should).
+//!
+//! The evaluation goes step by step, each step one chunk of
+//! [`EVALUATION_CHUNK`](crate::query::evaluator::EVALUATION_CHUNK) rows (and
+//! what follows it without a chunk) on a blocking thread under one lock of
+//! the store, and between steps the stop signal, the sink's answer to the
+//! progress and the store's epoch are checked (U1:BR5.8, U2:BR3.1). A step
+//! that ends abnormally (its thread panics) is an evaluation failure, told
+//! as such, never as a failed fetch (U2:BR10.2, U1 code review R-03). The Log
+//! Management screen's timeline is never touched (U1:BR1.7).
 
 use std::sync::Arc;
 
@@ -33,12 +39,15 @@ use crate::request::ValidatedFetch;
 use crate::retry::Retrier;
 
 /// Receives one run's progress: the fetch's notices as any fetch sink, then
-/// the end of the fetch, the evaluation's progress and its end.
+/// the end of the fetch, the field names, the evaluation's progress and its
+/// end.
 pub trait QuerySink: FetchSink + Send {
     /// The fetch of `run_id` ended with `job` (its `on_finished` is not
     /// sent). Returns whether the run may still be evaluated: `false` once
     /// [Cancel] was pressed or the run is no longer the current one (R-01).
     fn on_fetch_ended(&mut self, run_id: u64, job: &FetchJob) -> bool;
+    /// The JSON field names of the logs `run_id` fetched (U2:BR1.7).
+    fn on_field_names(&mut self, run_id: u64, names: Vec<String>);
     /// `evaluated` of `total` events were evaluated. Returns whether to go
     /// on (U1:BR2.4, BR5.8).
     fn on_evaluation_progress(&mut self, run_id: u64, evaluated: usize, total: usize) -> bool;
@@ -47,7 +56,13 @@ pub trait QuerySink: FetchSink + Send {
     /// The evaluation stopped before its end; what it found is dropped
     /// (U1:BR2.7, BR5.8).
     fn on_evaluation_stopped(&mut self, run_id: u64);
+    /// The evaluation ended abnormally; nothing was found (U2:BR10.2).
+    fn on_evaluation_failed(&mut self, run_id: u64);
 }
+
+/// One step of an evaluation over the store: [`QueryStore::evaluate_step`],
+/// or in tests one that fails.
+type EvaluateStep = fn(&QueryStore, &QueryPlan, &mut Evaluation, u64) -> bool;
 
 /// What one run needs (UC1 6-9).
 #[derive(Debug, Clone)]
@@ -78,8 +93,8 @@ pub enum QueryOutcome {
     NotEvaluated(JobStatus),
     /// The evaluation was stopped between two chunks.
     EvaluationStopped,
-    /// An evaluation chunk ended abnormally (its thread panicked); the sink
-    /// heard nothing and the caller's recovery ends the run.
+    /// An evaluation step ended abnormally (its thread panicked); the sink
+    /// heard [`QuerySink::on_evaluation_failed`] (U2:BR10.2).
     EvaluationFailed,
 }
 
@@ -116,22 +131,39 @@ where
         JobStatus::Completed | JobStatus::CompletedWithFailures
     );
     let allowed = sink.on_fetch_ended(run.run_id, &job);
+    if fetched {
+        gather_field_names(run.run_id, store, sink).await;
+    }
     if !fetched || !allowed {
         return QueryOutcome::NotEvaluated(job.status);
     }
-    evaluate_held(run, store, retrier, sink).await
+    evaluate_held(run, store, retrier, sink, QueryStore::evaluate_step).await
 }
 
-/// UC1 11-12: evaluates the holdings chunk by chunk.
+/// U2:BR1.7: the JSON field names of the held logs, read on a blocking
+/// thread. A read that ends abnormally only leaves completion without the
+/// names (it is a Should, FR9.1).
+async fn gather_field_names<S: QuerySink>(run_id: u64, store: &Arc<QueryStore>, sink: &mut S) {
+    let epoch = store.epoch();
+    let task_store = Arc::clone(store);
+    match tokio::task::spawn_blocking(move || task_store.json_field_names(epoch)).await {
+        Ok(Some(names)) => sink.on_field_names(run_id, names),
+        Ok(None) => {}
+        Err(_) => eprintln!("local-sights: query: reading the field names ended abnormally"),
+    }
+}
+
+/// UC1 11-12: evaluates the holdings step by step with `step`.
 async fn evaluate_held<S: QuerySink>(
     run: &QueryRun,
     store: &Arc<QueryStore>,
     retrier: &Retrier<'_>,
     sink: &mut S,
+    step: EvaluateStep,
 ) -> QueryOutcome {
     let epoch = store.epoch();
-    let mut evaluation = Evaluation::new(store.len());
-    while evaluation.next_chunk().is_some() {
+    let mut evaluation = Evaluation::new(&run.plan, store.len());
+    while !evaluation.is_done() {
         if retrier.is_stopped() {
             sink.on_evaluation_stopped(run.run_id);
             return QueryOutcome::EvaluationStopped;
@@ -139,16 +171,13 @@ async fn evaluate_held<S: QuerySink>(
         let task_store = Arc::clone(store);
         let plan = Arc::clone(&run.plan);
         let task = tokio::task::spawn_blocking(move || {
-            let current = task_store.evaluate_chunk(&plan, &mut evaluation, epoch);
+            let current = step(&task_store, &plan, &mut evaluation, epoch);
             (evaluation, current)
         });
         let current;
         (evaluation, current) = match task.await {
             Ok(done) => done,
-            Err(_) => {
-                eprintln!("local-sights: query: an evaluation chunk ended abnormally");
-                return QueryOutcome::EvaluationFailed;
-            }
+            Err(_) => return evaluation_failed(run.run_id, sink),
         };
         let go_on = current
             && sink.on_evaluation_progress(run.run_id, evaluation.evaluated(), evaluation.total());
@@ -157,11 +186,19 @@ async fn evaluate_held<S: QuerySink>(
             return QueryOutcome::EvaluationStopped;
         }
     }
-    let evaluated = evaluation.evaluated();
-    let rows = evaluation.into_rows();
-    let count = rows.len();
-    sink.on_evaluated(QueryResult::new(run.run_id, epoch, evaluated, rows));
+    let Some(output) = evaluation.into_output() else {
+        return evaluation_failed(run.run_id, sink);
+    };
+    let count = output.rows.len();
+    sink.on_evaluated(QueryResult::from_output(run.run_id, epoch, output));
     QueryOutcome::Evaluated { rows: count }
+}
+
+/// U2:BR10.2: tells the sink that the evaluation of `run_id` failed.
+fn evaluation_failed<S: QuerySink>(run_id: u64, sink: &mut S) -> QueryOutcome {
+    eprintln!("local-sights: query: an evaluation step ended abnormally");
+    sink.on_evaluation_failed(run_id);
+    QueryOutcome::EvaluationFailed
 }
 
 #[cfg(test)]
@@ -287,6 +324,7 @@ mod tests {
         ended: Option<JobStatus>,
         results: Vec<QueryResult>,
         progress: Vec<(usize, usize)>,
+        names: Vec<(u64, Vec<String>)>,
     }
 
     impl Recorder {
@@ -337,6 +375,13 @@ mod tests {
         }
         fn on_evaluation_stopped(&mut self, run_id: u64) {
             self.heard.push(format!("stopped {run_id}"));
+        }
+        fn on_field_names(&mut self, run_id: u64, names: Vec<String>) {
+            self.heard.push(format!("names {run_id}"));
+            self.names.push((run_id, names));
+        }
+        fn on_evaluation_failed(&mut self, run_id: u64) {
+            self.heard.push(format!("evaluation failed {run_id}"));
         }
     }
 
@@ -426,14 +471,24 @@ mod tests {
         assert_eq!(outcome, QueryOutcome::Evaluated { rows: 2 });
         assert_eq!(
             recorder.heard,
-            vec!["started", "planned", "fetch ended 7", "evaluated"],
+            vec![
+                "started",
+                "planned",
+                "fetch ended 7",
+                "names 7",
+                "evaluated"
+            ],
             "the fetch's own end is held back"
         );
         assert_eq!(recorder.ended, Some(JobStatus::Completed));
         let result = &recorder.results[0];
         assert_eq!((result.run_id, result.evaluated_count), (7, 3));
         assert_eq!(result.holdings_epoch, store.epoch());
-        assert_eq!(messages(&store, result), vec!["ERROR one", "ERROR three"]);
+        assert_eq!(
+            messages(&store, result),
+            vec!["ERROR three", "ERROR one"],
+            "newest first (U2:BR4.4)"
+        );
         assert_eq!(
             store.key().map(|key| key.log_group_name),
             Some(GROUP.to_string())
@@ -550,5 +605,124 @@ mod tests {
         assert!(matches!(outcome, QueryOutcome::Evaluated { .. }));
         assert_eq!(store.len(), 3);
         assert_eq!(log_view.lock().unwrap().rows(0, 10), before);
+    }
+
+    // ---- 261017-insights-query U2 ---------------------------------------
+
+    /// `count` JSON events on one stream, a second apart, with `n` from 0
+    /// to 6 and `level` on every other one.
+    fn json_logs(count: i64) -> FakeLogs {
+        let events: Vec<(String, i64, String)> = (0..count)
+            .map(|i| {
+                let level = if i % 2 == 0 {
+                    r#","level":"error""#
+                } else {
+                    ""
+                };
+                (
+                    "s".to_string(),
+                    START + i,
+                    format!(r#"{{"n":{}{level}}}"#, i % 7),
+                )
+            })
+            .collect();
+        FakeLogs {
+            events,
+            ..FakeLogs::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_query_with_json_fields_sort_and_limit_runs_to_its_end() {
+        // UC1 with U2:BR3.1-BR5.2: the columns, the order and the cut.
+        let store = Arc::new(QueryStore::new());
+        let (outcome, recorder) = query_with(
+            &json_logs(30),
+            &store,
+            "fields @timestamp, n, level | filter n >= 5 | sort n desc, @timestamp | limit 3",
+            |_| {},
+            false,
+        )
+        .await;
+        assert_eq!(outcome, QueryOutcome::Evaluated { rows: 3 });
+        let result = &recorder.results[0];
+        let names: Vec<&str> = result.columns().iter().map(|field| field.name()).collect();
+        assert_eq!(names, vec!["@timestamp", "n", "level"]);
+        assert_eq!(result.matched_count(), 8, "n is 5 or 6 for 8 of 30");
+        assert_eq!(result.truncated_at(), Some(3));
+        let stamps: Vec<i64> = store
+            .rows_at(
+                result.holdings_epoch,
+                result.window(7, result.holdings_epoch, 0, 9),
+            )
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.timestamp - START)
+            .collect();
+        assert_eq!(stamps, vec![6, 13, 20], "n = 6, oldest first among equals");
+    }
+
+    #[tokio::test]
+    async fn a_cancel_while_the_sort_values_are_taken_stops_before_the_next_chunk() {
+        // R-02: the values of a JSON sort are taken chunk by chunk, and
+        // [Cancel] is seen between two of them.
+        let store = Arc::new(QueryStore::new());
+        let (outcome, recorder) = query_with(
+            &json_logs(25_000),
+            &store,
+            "sort n desc",
+            |recorder| recorder.cancel_after_first_chunk = true,
+            false,
+        )
+        .await;
+        assert_eq!(outcome, QueryOutcome::EvaluationStopped);
+        assert_eq!(recorder.progress, vec![(10_000, 25_000)]);
+        assert!(recorder.results.is_empty());
+    }
+
+    /// A step whose thread panics, as an abnormal end of the evaluation.
+    fn panicking_step(_: &QueryStore, _: &QueryPlan, _: &mut Evaluation, _: u64) -> bool {
+        panic!("an evaluation step that ends abnormally (test)");
+    }
+
+    #[tokio::test]
+    async fn an_evaluation_that_ends_abnormally_is_told_as_an_evaluation_failure() {
+        // U2:BR10.2 (U1 code review R-03): not a failed fetch.
+        let store = Arc::new(QueryStore::new());
+        let run = run("filter @message like 'E'");
+        store.begin_run(run.key.clone());
+        store.add(vec![LogEvent {
+            timestamp: START,
+            ingestion_time: None,
+            message: "ERROR".to_string(),
+            log_stream_name: "s".to_string(),
+            sequence: 0,
+        }]);
+        let policy = RetryPolicy::default();
+        let jitter = FixedJitter(0.0);
+        let (_handle, signal) = stop_pair();
+        let retrier = Retrier::new(&policy, &jitter, &signal);
+        let mut recorder = Recorder::default();
+        let outcome = evaluate_held(&run, &store, &retrier, &mut recorder, panicking_step).await;
+        assert_eq!(outcome, QueryOutcome::EvaluationFailed);
+        assert_eq!(recorder.heard, vec!["evaluation failed 7"]);
+        assert!(recorder.results.is_empty());
+        assert_eq!(store.len(), 1, "the fetched logs stay");
+    }
+
+    #[tokio::test]
+    async fn the_field_names_of_the_fetched_logs_are_told_after_the_fetch() {
+        // U2:BR1.7: only when the fetch ended with logs.
+        let store = Arc::new(QueryStore::new());
+        let (_, recorder) = query_with(&json_logs(4), &store, "limit 1", |_| {}, false).await;
+        assert_eq!(
+            recorder.names,
+            vec![(7, vec!["level".to_string(), "n".to_string()])]
+        );
+        let mut failing = json_logs(4);
+        failing.failing_listing = true;
+        let (_, recorder) = query_with(&failing, &store, "limit 1", |_| {}, false).await;
+        assert!(recorder.names.is_empty(), "a failed fetch has no names");
     }
 }

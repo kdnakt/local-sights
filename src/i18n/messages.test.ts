@@ -100,6 +100,17 @@ const QUERY_PROBLEM_KEYS = [
   "query.unsupported.timestampOperator",
   "query.unsupported.operator",
   "query.unsupported.fieldComparison",
+  // 261017-insights-query U2.
+  "query.syntax.notNeedsParen",
+  "query.syntax.missingFields",
+  "query.syntax.expectedField",
+  "query.syntax.invalidSortDirection",
+  "query.syntax.missingLimit",
+  "query.syntax.invalidLimit",
+  "query.syntax.limitTooLarge",
+  "query.unsupported.arrayElement",
+  "query.unsupported.alias",
+  "query.unsupported.limitAny",
 ];
 
 describe("message catalog", () => {
@@ -117,7 +128,8 @@ describe("message catalog", () => {
   });
 
   it("has every reading problem of the query in both languages, with its word (261017-insights-query NFR9)", () => {
-    expect(QUERY_PROBLEM_KEYS).toHaveLength(31);
+    // The core's keys::ALL: 31 in U1, 41 since U2.
+    expect(QUERY_PROBLEM_KEYS).toHaveLength(41);
     for (const key of QUERY_PROBLEM_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
@@ -128,6 +140,23 @@ describe("message catalog", () => {
       "「stats」にはこの版では対応していません。",
     );
     expect(translate("ja", "insights.error.at", { line: 2, column: 3 })).toBe("2 行 3 列：");
+  });
+
+  it("has the U2 result texts in the refined mockups' words (261017-insights-query U2:BR5.3, BR10.2)", () => {
+    expect(translate("en", "insights.results.count", { shown: 20, matched: 1284 })).toBe(
+      "20 of 1284 matched",
+    );
+    expect(translate("ja", "insights.results.count", { shown: 20, matched: 1284 })).toBe(
+      "1284 件中 20 件",
+    );
+    expect(translate("en", "insights.results.truncated", { shown: 20 })).toBe("Showing 20");
+    expect(translate("en", "insights.error.supportedList")).toBe(
+      "Supported commands: fields, filter, sort, limit.",
+    );
+    expect(translate("en", "insights.evaluationFailed")).not.toMatch(/GetLogEvents/);
+    expect(translate("ja", "query.syntax.missingFields", { word: "sort" })).toBe(
+      "sort の後ろに項目がありません。",
+    );
   });
 
   it("has every SSO login text in both languages (261011-sso-login NFR5)", () => {

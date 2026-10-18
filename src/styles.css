@@ -480,6 +480,16 @@ body {
 }
 
 /*
+ * 261017-insights-query U2:BR6.1: the words of a reading problem, underlined
+ * by an Ace text marker; the mark beside the line number and the words under
+ * the field say the same without the color.
+ */
+.query-editor .query-problem-mark {
+  position: absolute;
+  border-bottom: 2px solid var(--ls-color-error);
+}
+
+/*
  * U1:BR6.3, BR6.4: the result rows, drawn like the Log Management list:
  * 22 px lines, the two fixed columns, only the rows in view.
  */
@@ -542,6 +552,16 @@ body {
 
 .query-result-message {
   flex: 1;
+  min-width: 0;
+  padding: 0 var(--ls-space-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* U2:BR7.1: any other column of `fields`, sharing the width left. */
+.query-result-cell {
+  flex: 1 1 6rem;
   min-width: 0;
   padding: 0 var(--ls-space-xs);
   white-space: nowrap;

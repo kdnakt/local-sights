@@ -20,7 +20,9 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use chrono_tz::Tz;
 
 use crate::query::parser::keys;
-use crate::query::plan::{Condition, Literal, QueryPlan, QueryProblem};
+use crate::query::plan::{
+    Command, CommandKind, Condition, ConditionKind, Literal, QueryPlan, QueryProblem,
+};
 use crate::time_range::{DateTimeParseError, instant_in_zone};
 
 /// Why a date text has no instant.
@@ -115,12 +117,22 @@ fn number(digits: &[u8]) -> Option<u32> {
 /// chosen when the query runs (U1:BR5.9), or returns the first text that has
 /// no instant.
 pub fn resolve_date_texts(plan: QueryPlan, zone: Tz) -> Result<QueryPlan, QueryProblem> {
-    let filters = plan
-        .filters
+    let commands = plan
+        .commands
         .into_iter()
-        .map(|condition| resolve_condition(condition, zone))
-        .collect::<Result<_, _>>()?;
-    Ok(QueryPlan { filters })
+        .map(|command| {
+            Ok(Command {
+                kind: match command.kind {
+                    CommandKind::Filter(condition) => {
+                        CommandKind::Filter(resolve_condition(condition, zone)?)
+                    }
+                    other => other,
+                },
+                span: command.span,
+            })
+        })
+        .collect::<Result<_, QueryProblem>>()?;
+    Ok(QueryPlan { commands })
 }
 
 fn resolve_condition(condition: Condition, zone: Tz) -> Result<Condition, QueryProblem> {
@@ -130,26 +142,26 @@ fn resolve_condition(condition: Condition, zone: Tz) -> Result<Condition, QueryP
             Box::new(resolve_condition(*right, zone)?),
         ))
     };
-    Ok(match condition {
-        Condition::And(left, right) => {
+    let kind = match condition.kind {
+        ConditionKind::And(left, right) => {
             let (left, right) = both(left, right)?;
-            Condition::And(left, right)
+            ConditionKind::And(left, right)
         }
-        Condition::Or(left, right) => {
+        ConditionKind::Or(left, right) => {
             let (left, right) = both(left, right)?;
-            Condition::Or(left, right)
+            ConditionKind::Or(left, right)
         }
-        Condition::Not(inner) => Condition::Not(Box::new(resolve_condition(*inner, zone)?)),
-        Condition::Compare { field, op, value } => Condition::Compare {
+        ConditionKind::Not(inner) => ConditionKind::Not(Box::new(resolve_condition(*inner, zone)?)),
+        ConditionKind::Compare { field, op, value } => ConditionKind::Compare {
             field,
             op,
             value: resolve_literal(value, zone)?,
         },
-        Condition::In {
+        ConditionKind::In {
             field,
             values,
             negated,
-        } => Condition::In {
+        } => ConditionKind::In {
             field,
             values: values
                 .into_iter()
@@ -157,8 +169,9 @@ fn resolve_condition(condition: Condition, zone: Tz) -> Result<Condition, QueryP
                 .collect::<Result<_, _>>()?,
             negated,
         },
-        other @ (Condition::Like { .. } | Condition::Match { .. }) => other,
-    })
+        other @ (ConditionKind::Like { .. } | ConditionKind::Match { .. }) => other,
+    };
+    Ok(Condition::new(kind, condition.span))
 }
 
 fn resolve_literal(literal: Literal, zone: Tz) -> Result<Literal, QueryProblem> {
@@ -180,7 +193,7 @@ fn resolve_literal(literal: Literal, zone: Tz) -> Result<Literal, QueryProblem> 
 mod tests {
     use super::*;
     use crate::query::parser::parse_query;
-    use crate::query::plan::{CompareOp, FieldRef, ProblemKind, Span};
+    use crate::query::plan::{CompareOp, ConditionKind, FieldRef, ProblemKind, Span};
 
     const TOKYO: Tz = chrono_tz::Asia::Tokyo;
     const NEW_YORK: Tz = chrono_tz::America::New_York;
@@ -315,26 +328,60 @@ mod tests {
             "filter @timestamp > '2025-08-25 01:43:26' and toMillis(@timestamp) in ['2025-08-24T16:43:26Z']",
         )
         .unwrap();
+        let spans_before: Vec<Span> = plan.filters().map(|condition| condition.span).collect();
         let resolved = resolve_date_texts(plan, TOKYO).unwrap();
+        let condition = resolved.filters().next().unwrap();
+        let ConditionKind::And(left, right) = &condition.kind else {
+            panic!("no and: {condition:?}");
+        };
         assert_eq!(
-            resolved.filters,
-            vec![Condition::And(
-                Box::new(Condition::Compare {
-                    field: FieldRef::Timestamp,
-                    op: CompareOp::Gt,
-                    value: Literal::Instant(EDGE),
-                }),
-                Box::new(Condition::In {
-                    field: FieldRef::TimestampMillis,
-                    values: vec![Literal::Instant(EDGE)],
-                    negated: false,
-                }),
-            )]
+            left.kind,
+            ConditionKind::Compare {
+                field: FieldRef::Timestamp,
+                op: CompareOp::Gt,
+                value: Literal::Instant(EDGE),
+            }
         );
-        let skipped = parse_query("filter not @timestamp < \"2024-03-10 02:30:00\"").unwrap();
+        assert_eq!(
+            right.kind,
+            ConditionKind::In {
+                field: FieldRef::TimestampMillis,
+                values: vec![Literal::Instant(EDGE)],
+                negated: false,
+            }
+        );
+        assert_eq!(
+            resolved
+                .filters()
+                .map(|condition| condition.span)
+                .collect::<Vec<_>>(),
+            spans_before,
+            "the places stay (U2:BR10.3)"
+        );
+        let skipped = parse_query("filter not (@timestamp < \"2024-03-10 02:30:00\")").unwrap();
         let problem = resolve_date_texts(skipped, NEW_YORK).unwrap_err();
         assert_eq!(problem.kind, ProblemKind::Syntax);
         assert_eq!(problem.message_key, keys::NONEXISTENT_DATE_TIME);
-        assert_eq!(problem.span, Span::new(1, 25, 21));
+        assert_eq!(problem.span, Span::new(1, 26, 21));
+    }
+
+    #[test]
+    fn date_texts_of_every_filter_are_resolved_and_other_commands_stay() {
+        let plan = parse_query(
+            "fields @timestamp | filter @timestamp > '2025-08-25 01:43:26' \
+             | sort @timestamp desc | filter @timestamp <= '2025-08-24T16:43:26Z' | limit 3",
+        )
+        .unwrap();
+        let resolved = resolve_date_texts(plan.clone(), TOKYO).unwrap();
+        assert_eq!(resolved.commands.len(), 5);
+        assert_eq!(resolved.commands[0], plan.commands[0]);
+        assert_eq!(resolved.commands[2], plan.commands[2]);
+        assert_eq!(resolved.commands[4], plan.commands[4]);
+        for condition in resolved.filters() {
+            let ConditionKind::Compare { value, .. } = &condition.kind else {
+                panic!("no comparison: {condition:?}");
+            };
+            assert_eq!(value, &Literal::Instant(EDGE));
+        }
     }
 }

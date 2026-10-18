@@ -123,10 +123,13 @@ aws_logs() {
 }
 
 # BR1.4: the conditions, for compat_check to fetch the same period.
+# `$end` is not a valid name on jq 1.6 (`end` is a keyword there): use
+# start_seconds and end_seconds.
 jq -n --arg profile "$PROFILE" --arg region "$REGION" --arg group "$GROUP" \
-  --argjson start "$START" --argjson end "$END" --argjson at "$NOW" \
+  --argjson start_seconds "$START" --argjson end_seconds "$END" --argjson at "$NOW" \
   '{profile: (if $profile == "" then null else $profile end), region: $region,
-    logGroup: $group, startSeconds: $start, endSeconds: $end, exportedAtSeconds: $at}' \
+    logGroup: $group, startSeconds: $start_seconds, endSeconds: $end_seconds,
+    exportedAtSeconds: $at}' \
   >"$OUT_REAL/settings.json" || fail "settings.json cannot be written"
 
 # The last line of the CLI's error without its request ID (entities.md

@@ -1,6 +1,15 @@
 {
   "stage": "domain-design",
   "upstream_ids": [
+    "FR1",
+    "FR2",
+    "FR3",
+    "FR4",
+    "FR5",
+    "FR6",
+    "FR7",
+    "FR8",
+    "FR9",
     "FR1.1",
     "FR1.2",
     "FR1.3",
@@ -52,6 +61,15 @@
     "FR9.3"
   ],
   "coverage": [
+    { "id": "FR1", "status": "OK", "target": "LogAnalyticsPage, InsightsSession, QueryRunner" },
+    { "id": "FR2", "status": "OK", "target": "QueryStore, FetchCoordinator, QueryRunner" },
+    { "id": "FR3", "status": "OK", "target": "QueryParser, QueryEvaluator" },
+    { "id": "FR4", "status": "OK", "target": "EventFieldReader" },
+    { "id": "FR5", "status": "OK", "target": "QueryParser, QueryEvaluator" },
+    { "id": "FR6", "status": "OK", "target": "QueryParser, InsightsSession, QueryEditor" },
+    { "id": "FR7", "status": "OK", "target": "QueryResultTable, QueryEvaluator" },
+    { "id": "FR8", "status": "N/A", "target": "README の記述で、書くコードの部品ではない（作る段階で README を直す）" },
+    { "id": "FR9", "status": "OK", "target": "QueryEditor, EventFieldReader, QueryParser" },
     {
       "id": "FR1.1",
       "status": "OK",
@@ -90,12 +108,12 @@
     {
       "id": "FR1.8",
       "status": "OK",
-      "target": "LogView"
+      "target": "AppShell"
     },
     {
       "id": "FR2.1",
       "status": "OK",
-      "target": "LogStore"
+      "target": "QueryStore"
     },
     {
       "id": "FR2.2",
@@ -105,7 +123,7 @@
     {
       "id": "FR2.3",
       "status": "OK",
-      "target": "LogStore"
+      "target": "QueryStore"
     },
     {
       "id": "FR2.4",
@@ -125,12 +143,12 @@
     {
       "id": "FR2.7",
       "status": "OK",
-      "target": "LogStore"
+      "target": "QueryStore"
     },
     {
       "id": "FR2.8",
       "status": "OK",
-      "target": "LogEvent"
+      "target": "QueryStore"
     },
     {
       "id": "FR3.1",

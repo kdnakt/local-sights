@@ -7,6 +7,8 @@
 #   PROFILE=my-profile REGION=us-east-1 GROUP=/aws/xxx FIELD=level ./console-check.sh
 #   GROUP は JSON のメッセージを含むロググループ。FIELD は、一部のイベントにだけある JSON の項目の名前
 #   （入れ子なら a.b）。期間は END（UNIX 秒、既定は今）と START（既定は END の 1 時間前）で変えられる。
+#   優先順位の確かめ（4a〜4f）で @message に当てる 3 つの言葉は PA・PB・PC で変えられる（既定は e・o・a）。
+#   どのイベントにも入っている言葉だと件数が分かれないため、ログに合わせて選ぶ。
 # 出力（件数・時刻・項目の名前・エラーの文、FIELD の値は先頭 12 文字まで。認証情報は出ない）を、
 # そのまま貼って返してください。ログのメッセージの中身は出さない。
 set -u
@@ -18,6 +20,9 @@ set -u
 
 END=${END:-$(date +%s)}
 START=${START:-$((END - 3600))}
+PA=${PA:-e}
+PB=${PB:-o}
+PC=${PC:-a}
 
 # クエリを流して結果の JSON を返す。失敗したら "ERROR: ..." を返す。
 query() {
@@ -87,13 +92,13 @@ count "3b AND・OR・NOT" "filter @message like /./ AND NOT @message like /^$/ |
 count "3c IN" "filter @logStream IN [\"x\"] | stats count(*)"
 count "3d Fields・Sort・Limit" "Fields @timestamp | Sort @timestamp Desc | Limit 1 | stats count(*)"
 
-echo "--- 優先順位（a=/e/、b=/o/、c=/a/ を @message に当てる）"
-count "4a a or b and c" "filter @message like /e/ or @message like /o/ and @message like /a/ | stats count(*)"
-count "4b a or (b and c)" "filter @message like /e/ or (@message like /o/ and @message like /a/) | stats count(*)"
-count "4c (a or b) and c" "filter (@message like /e/ or @message like /o/) and @message like /a/ | stats count(*)"
-count "4d not a and b" "filter not @message like /e/ and @message like /o/ | stats count(*)"
-count "4e (not a) and b" "filter (not @message like /e/) and @message like /o/ | stats count(*)"
-count "4f not (a and b)" "filter not (@message like /e/ and @message like /o/) | stats count(*)"
+echo "--- 優先順位（a=/${PA}/、b=/${PB}/、c=/${PC}/ を @message に当てる）"
+count "4a a or b and c" "filter @message like /${PA}/ or @message like /${PB}/ and @message like /${PC}/ | stats count(*)"
+count "4b a or (b and c)" "filter @message like /${PA}/ or (@message like /${PB}/ and @message like /${PC}/) | stats count(*)"
+count "4c (a or b) and c" "filter (@message like /${PA}/ or @message like /${PB}/) and @message like /${PC}/ | stats count(*)"
+count "4d not a and b" "filter not @message like /${PA}/ and @message like /${PB}/ | stats count(*)"
+count "4e (not a) and b" "filter (not @message like /${PA}/) and @message like /${PB}/ | stats count(*)"
+count "4f not (a and b)" "filter not (@message like /${PA}/ and @message like /${PB}/) | stats count(*)"
 
 echo "--- ない項目（FIELD は一部のイベントにだけある）"
 count "5a 全体" "stats count(*)"

@@ -98,8 +98,8 @@ use crate::failure::{ApiFailure, FailureKind};
 use crate::fetch_status::JobStatus;
 use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
 use crate::insights_session::{
-    AnalyticsField, CompletionCandidate, InsightsSession, InsightsView, QueryBegin, QueryRowDetail,
-    QueryRowWindow, QuerySnapshot, RunContext,
+    AnalyticsField, AnalyticsValue, CompletionCandidate, InsightsSession, InsightsView, QueryBegin,
+    QueryRowDetail, QueryRowWindow, QuerySnapshot, RunContext,
 };
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -109,7 +109,7 @@ use crate::log_groups::{
 use crate::paging::PageDecision;
 use crate::query::evaluator::QueryResult;
 use crate::query::plan::{QueryPlan, QueryProblem};
-use crate::query::store::HeldRows;
+use crate::query::runner::QueryRunSummary;
 use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
 use crate::sso_login::{
     LoginHints, SsoLoginOutcome, SsoLoginTarget, cli_args, resolve_login_target,
@@ -2419,14 +2419,15 @@ impl AppSession {
         &self.insights
     }
 
-    /// Changes one field of the query screen (U1:BR1.3, BR1.4). A log
-    /// group must be in the current list and is dropped when made for an
-    /// older connection (U3:BR6.7). Refused while the query runs (U1:BR2.4)
-    /// and while a dialog awaits an answer (U2:BR2.6, U6:BR5.1).
+    /// Changes one field of the query screen (U1:BR1.3, BR1.4). The log
+    /// groups (up to 50, 261017-insights-query U3:BR4.1) must be in the
+    /// current list and are dropped when chosen for an older connection
+    /// (U3:BR6.7). Refused while the query runs (U1:BR2.4) and while a
+    /// dialog awaits an answer (U2:BR2.6, U6:BR5.1).
     pub fn update_analytics_input(
         &mut self,
         field: AnalyticsField,
-        value: String,
+        value: impl Into<AnalyticsValue>,
         generation: u64,
     ) -> Result<(), SessionError> {
         if field == AnalyticsField::LogGroup {
@@ -2487,6 +2488,21 @@ impl AppSession {
         self.insights.on_planned(run_id, job);
     }
 
+    /// The query run reads the disk cache (261017-insights-query U3:BR2.7).
+    pub fn on_query_reading_cache(&mut self, run_id: u64) {
+        self.insights.on_reading_cache(run_id);
+    }
+
+    /// Chosen log group `index` of `count` starts its fetch (U3:BR2.7).
+    pub fn on_query_group_started(&mut self, run_id: u64, index: usize, count: usize) {
+        self.insights.on_group_started(run_id, index, count);
+    }
+
+    /// One range of the query run was fetched (U3:BR2.7, R-04).
+    pub fn on_query_range_fetched(&mut self, run_id: u64, job: &FetchJob) {
+        self.insights.on_range_fetched(run_id, job);
+    }
+
     /// One page was added to the query holdings.
     pub fn on_query_batch(&mut self, run_id: u64, job_id: u64, batch: BatchProgress) {
         self.insights.on_batch(run_id, job_id, batch);
@@ -2502,11 +2518,11 @@ impl AppSession {
         self.insights.on_saving(run_id, job_id);
     }
 
-    /// The query fetch of `run_id` ended; returns whether to evaluate
-    /// (UC1 10, R-01).
-    pub fn finish_query_fetch(&mut self, run_id: u64, job: &FetchJob) -> bool {
+    /// The query fetch of `run_id` ended with `summary`; returns whether to
+    /// evaluate (UC1 8, U3:BR2.5, U1 R-01).
+    pub fn finish_query_fetch(&mut self, run_id: u64, summary: &QueryRunSummary) -> bool {
         let now = self.clock.now();
-        self.insights.finish_fetch(run_id, job, now)
+        self.insights.finish_fetch(run_id, summary, now)
     }
 
     /// Progress of the evaluation; returns whether to go on (U1:BR5.8).
@@ -2548,29 +2564,17 @@ impl AppSession {
         self.insights.completion_candidates()
     }
 
-    /// The holdings position of result row `index` of the shown result
-    /// (U2:BR7.3), or `None`.
-    pub fn query_row_position(
-        &self,
-        run_id: u64,
-        holdings_epoch: u64,
-        index: usize,
-    ) -> Option<usize> {
-        self.insights.row_position(run_id, holdings_epoch, index)
-    }
-
-    /// The fields of one opened result row, its time in the chosen zone
-    /// (U2:BR7.3).
+    /// The fields of one opened result row of the shown result, its time in
+    /// the chosen zone (U2:BR7.3, U3:BR3.2).
     pub fn display_query_row_detail(
         &self,
         run_id: u64,
         holdings_epoch: u64,
         index: usize,
-        held: Option<HeldRows>,
     ) -> QueryRowDetail {
         let zone = self.time_zones.zone(self.time_zone);
         self.insights
-            .display_row_detail(run_id, holdings_epoch, index, held, zone)
+            .display_row_detail(run_id, holdings_epoch, index, zone)
     }
 
     /// [Cancel] of the query screen (UC4, R-01, R-02): the run number whose
@@ -2588,34 +2592,19 @@ impl AppSession {
         self.insights.abort_with_failure(run_id, failure, now)
     }
 
-    /// The holdings positions of the result rows asked for (U1:BR6.4):
-    /// empty unless `run_id` and `holdings_epoch` are the shown result's.
-    pub fn query_row_positions(
-        &self,
-        run_id: u64,
-        holdings_epoch: u64,
-        offset: usize,
-        limit: usize,
-    ) -> Vec<usize> {
-        self.insights.result().map_or_else(Vec::new, |result| {
-            result
-                .window(run_id, holdings_epoch, offset, limit)
-                .to_vec()
-        })
-    }
-
-    /// The rows read from the QueryStore, with their times written in the
-    /// chosen zone (U1:BR6.3).
+    /// At most `limit` rows from `offset` of the shown result, read from
+    /// its own copies when `run_id` is its run (U1:BR6.3, U3:BR3.2), with
+    /// their times written in the chosen zone.
     pub fn display_query_rows(
         &self,
         run_id: u64,
         holdings_epoch: u64,
         offset: usize,
-        held: Option<HeldRows>,
+        limit: usize,
     ) -> QueryRowWindow {
         let zone = self.time_zones.zone(self.time_zone);
         self.insights
-            .display_rows(run_id, holdings_epoch, offset, held, zone)
+            .display_rows(run_id, holdings_epoch, (offset, limit), zone)
     }
 }
 
@@ -5822,11 +5811,51 @@ mod tests {
         job
     }
 
-    /// Runs one query to Done with `rows` matching positions.
+    /// The end of a query run's fetch of its one log group (U3:BR2.5).
+    fn query_ended(status: JobStatus) -> QueryRunSummary {
+        use crate::query::runner::{GroupFetchOutcome, GroupFetchStatus};
+        let group = match status {
+            JobStatus::Completed | JobStatus::Running => GroupFetchStatus::Completed,
+            JobStatus::CompletedWithFailures => GroupFetchStatus::CompletedWithFailures,
+            JobStatus::Failed => GroupFetchStatus::Failed,
+            JobStatus::Cancelled | JobStatus::Aborted => GroupFetchStatus::Cancelled,
+        };
+        QueryRunSummary {
+            groups: vec![GroupFetchOutcome {
+                log_group_name: "/aws/lambda/orders".to_string(),
+                status: group,
+                failed_streams: Vec::new(),
+                failure: None,
+            }],
+            partial: status == JobStatus::CompletedWithFailures,
+            from_aws: true,
+            stopped: matches!(status, JobStatus::Cancelled | JobStatus::Aborted),
+            closed: status == JobStatus::Aborted,
+        }
+    }
+
+    /// Result rows copied at the times `positions`.
+    fn query_rows_at(positions: Vec<usize>) -> Vec<crate::query::evaluator::ResultRow> {
+        positions
+            .into_iter()
+            .map(|position| crate::query::evaluator::ResultRow {
+                event: LogEvent {
+                    timestamp: i64::try_from(position).unwrap(),
+                    ingestion_time: None,
+                    message: format!("ERROR {position}"),
+                    log_stream_name: "s".to_string(),
+                    sequence: 0,
+                },
+                log_group_name: "/aws/lambda/orders".to_string(),
+            })
+            .collect()
+    }
+
+    /// Runs one query to Done with rows at `rows`.
     fn query_done(session: &mut AppSession, rows: Vec<usize>) -> u64 {
         let run_id = query_started(session).run_id;
-        assert!(session.finish_query_fetch(run_id, &query_job(JobStatus::Completed)));
-        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, rows));
+        assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
+        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, query_rows_at(rows)));
         run_id
     }
 
@@ -5895,7 +5924,7 @@ mod tests {
         // UC7, U1:BR7.3.
         let mut session = insights_ready_session();
         let run_id = query_started(&mut session).run_id;
-        assert!(session.finish_query_fetch(run_id, &query_job(JobStatus::Completed)));
+        assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
         assert_eq!(session.insights().phase(), AnalyticsPhase::Evaluating);
         assert_eq!(session.fetch_owner(), FetchOwner::None);
         let view = session.view();
@@ -5927,7 +5956,7 @@ mod tests {
         assert!(effect.logs_cleared, "the app discards the QueryStore too");
         let view = session.view().insights;
         assert_eq!(view.phase, AnalyticsPhase::Idle);
-        assert_eq!(view.selected_log_group_name, None);
+        assert!(view.selected_log_group_names.is_empty());
         assert_eq!(view.result, None);
         assert_eq!(
             view.query_text,
@@ -5963,7 +5992,7 @@ mod tests {
         let mut session = insights_ready_session();
         let run_id_2 = query_started(&mut session).run_id;
         assert_eq!(run_id, run_id_2);
-        assert!(session.finish_query_fetch(run_id_2, &query_job(JobStatus::Completed)));
+        assert!(session.finish_query_fetch(run_id_2, &query_ended(JobStatus::Completed)));
         assert_eq!(session.request_close(), CloseDecision::Allow);
     }
 
@@ -5980,11 +6009,55 @@ mod tests {
         assert_eq!(session.request_query_cancel(), None);
         let mut ended = job;
         ended.status = JobStatus::Completed;
-        assert!(session.finish_query_fetch(run_id, &ended));
+        session.on_query_range_fetched(run_id, &ended);
+        assert!(
+            session.view().insights.cancel_available,
+            "the write ended with its range"
+        );
+        assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
         assert_eq!(session.request_query_cancel(), Some(run_id));
         assert!(!session.on_query_evaluation_progress(run_id, 1, 4));
         session.stop_query_evaluation(run_id);
         assert_eq!(session.insights().phase(), AnalyticsPhase::Cancelled);
+    }
+
+    #[test]
+    fn query_screen_takes_several_listed_log_groups_and_a_connection_change_drops_them() {
+        // 261017-insights-query U3:BR4.1, BR4.2: the names come as a list;
+        // each must be in the current listing.
+        let mut session = insights_ready_session();
+        let generation = session.connection_generation();
+        let both = vec![
+            "/aws/lambda/orders".to_string(),
+            "/aws/lambda/MyFunction".to_string(),
+        ];
+        session
+            .update_analytics_input(AnalyticsField::LogGroup, both.clone(), generation)
+            .unwrap();
+        assert_eq!(session.view().insights.selected_log_group_names, both);
+        let started = query_started(&mut session);
+        assert_eq!(
+            started
+                .keys
+                .iter()
+                .map(|key| key.log_group_name.as_str())
+                .collect::<Vec<_>>(),
+            ["/aws/lambda/orders", "/aws/lambda/MyFunction"]
+        );
+        assert!(session.finish_query_fetch(started.run_id, &query_ended(JobStatus::Completed)));
+        session.finish_query_evaluation(QueryResult::new(started.run_id, 2, 0, Vec::new()));
+        assert_eq!(
+            session.update_analytics_input(
+                AnalyticsField::LogGroup,
+                vec!["/not/listed".to_string()],
+                generation
+            ),
+            Err(SessionError::UnknownLogGroup)
+        );
+        session
+            .select_profile(ProfileSelector::Named("prod".to_string()))
+            .unwrap();
+        assert!(session.view().insights.selected_log_group_names.is_empty());
     }
 
     #[test]
@@ -6006,19 +6079,27 @@ mod tests {
 
     #[test]
     fn query_rows_are_read_only_for_the_shown_result_and_old_notices_are_dropped() {
-        // U1:BR6.2, BR6.4.
+        // U1:BR6.2, U3:BR3.2 (the run is checked), BR3.4 (the previous
+        // result stays while the next run fetches).
         let mut session = insights_ready_session();
         let run_id = query_done(&mut session, vec![1, 3]);
-        assert_eq!(session.query_row_positions(run_id, 2, 0, 10), vec![1, 3]);
-        assert!(session.query_row_positions(run_id, 3, 0, 10).is_empty());
-        assert!(session.query_row_positions(run_id + 1, 2, 0, 10).is_empty());
+        let times = |window: QueryRowWindow| -> Vec<i64> {
+            window.rows.iter().map(|row| row.event.timestamp).collect()
+        };
+        assert_eq!(
+            times(session.display_query_rows(run_id, 2, 0, 10)),
+            vec![1, 3]
+        );
+        assert_eq!(times(session.display_query_rows(run_id, 2, 1, 10)), vec![3]);
+        assert!(times(session.display_query_rows(run_id + 1, 2, 0, 10)).is_empty());
         let next = query_started(&mut session).run_id;
-        assert!(!session.finish_query_fetch(run_id, &query_job(JobStatus::Completed)));
-        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, vec![0]));
+        assert!(!session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
+        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, query_rows_at(vec![0])));
         assert_eq!(session.insights().phase(), AnalyticsPhase::Fetching);
-        assert!(
-            session.query_row_positions(run_id, 2, 0, 10).is_empty(),
-            "U1:BR2.9"
+        assert_eq!(
+            times(session.display_query_rows(run_id, 2, 0, 10)),
+            vec![1, 3],
+            "the previous result is read while the next run fetches"
         );
         let json = serde_json::to_value(session.view()).unwrap();
         assert_eq!(json["fetchOwner"], "LogAnalytics");

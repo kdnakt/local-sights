@@ -214,6 +214,20 @@ export interface FailedStream {
   failure: ApiFailure;
 }
 
+/**
+ * A stream of the query screen that could not be fetched, with its log group
+ * (261017-insights-query U3:BR2.6): two log groups may have streams of one name.
+ */
+export interface GroupFailedStream extends FailedStream {
+  logGroupName: string;
+}
+
+/** A log group of the query screen whose fetch failed, with why (U3:BR2.6). */
+export interface GroupFailure {
+  logGroupName: string;
+  failure: ApiFailure;
+}
+
 export type StreamListingStatus = "Complete" | "StoppedEarly" | "Partial";
 
 export interface LogGroupListView {
@@ -239,7 +253,10 @@ export type AnalyticsPhase =
   | "Cancelled"
   | "EvaluationFailed";
 
-/** A field of the Log Analytics screen; an empty log group deselects it. */
+/**
+ * A field of the Log Analytics screen. `logGroup` takes the chosen log groups as
+ * a list (up to 50, U3:BR4.1; an empty list deselects every one), the others a text.
+ */
 export type AnalyticsField = "logGroup" | "startText" | "endText" | "queryText";
 
 /** A place in the query text: line and column from 1, in characters. */
@@ -259,18 +276,32 @@ export interface QueryProblem {
   span: QuerySpan;
 }
 
-/** Progress of the running query (U1:BR2.4). */
+/** Progress of the running query (U1:BR2.4, U3:BR2.7). */
 export interface InsightsProgress {
+  /** The disk cache is being read. */
+  readingCache: boolean;
+  /** The log group being fetched from AWS, from 1; `null` before the first. */
+  groupNumber: number | null;
+  /** The chosen log groups. */
+  groupCount: number;
+  /** Log groups whose fetch failed so far. */
+  failedGroupCount: number;
+  /** Streams of the current log group's fetch. */
   selectedStreamCount: number;
   /** `null` while the streams are being listed. */
   plannedStreamCount: number | null;
   finishedStreamCount: number;
+  /** Events fetched from AWS by the run so far. */
   eventCount: number;
   evaluatedCount: number;
   totalCount: number;
 }
 
-/** The shown result; its rows are read with `runId` and `holdingsEpoch` (U1:BR6.4). */
+/**
+ * The shown result; its rows are read with `runId` (U3:BR3.2: the core keeps copies of
+ * them, so they stay readable while the next run fetches, U3:BR3.4). `holdingsEpoch`
+ * is sent with the requests and comes back unchanged.
+ */
 export interface ResultSummary {
   runId: number;
   holdingsEpoch: number;
@@ -287,7 +318,10 @@ export interface ResultSummary {
 
 /** The Log Analytics screen as the core shows it (261017-insights-query U1). */
 export interface InsightsView {
-  selectedLogGroupName: string | null;
+  /** The chosen log groups, in the order chosen (U3:BR4.1). */
+  selectedLogGroupNames: string[];
+  /** The most log groups that can be chosen (50). */
+  maxLogGroups: number;
   /** Every log group of the current list, ascending: Log Management's before its filter. */
   logGroupOptions: string[];
   /** How that list stands; `null` without a complete connection. */
@@ -304,11 +338,14 @@ export interface InsightsView {
   phase: AnalyticsPhase;
   progress: InsightsProgress | null;
   problem: QueryProblem | null;
-  /** The failure of the whole fetch (FetchFailed). */
+  /** The failure of the whole fetch (FetchFailed): the first failed log group's. */
   failure: ApiFailure | null;
+  /** Every log group whose fetch failed (FetchFailed, U3:BR2.6). */
+  failedGroups: GroupFailure[];
   /** Some streams failed: the result is based on part of the logs (U1:BR2.5). */
   partial: boolean;
-  failedStreams: FailedStream[];
+  /** The streams that failed, with their log group (U3:BR2.6). */
+  failedStreams: GroupFailedStream[];
   listingFailure: ApiFailure | null;
   result: ResultSummary | null;
   elapsed: ElapsedView | null;
@@ -780,11 +817,12 @@ export function selectLogGroup(name: string, generation: number): Promise<void> 
 
 /**
  * Changes one field of the Log Analytics screen (U1:BR1.3, BR1.4); refused
- * while its query runs. The new state arrives through `session-changed`.
+ * while its query runs. The log groups go as a list of names (U3:BR4.1), the
+ * other fields as a text. The new state arrives through `session-changed`.
  */
 export function updateAnalyticsInput(
   field: AnalyticsField,
-  value: string,
+  value: string | readonly string[],
   generation: number,
 ): Promise<void> {
   return invoke<void>("update_analytics_input", { field, value, generation });

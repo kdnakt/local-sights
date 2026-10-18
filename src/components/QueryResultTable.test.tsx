@@ -232,4 +232,27 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
     await user.click(within(second).getByRole("button", { name: "Show details" }));
     await waitFor(() => expect(onError).toHaveBeenCalled());
   });
+
+  it("says the rows are the previous run's while the next run goes, in both languages (261017-insights-query U3:BR3.4)", async () => {
+    const { unmount } = render(
+      <QueryResultTable result={RESULT} timeZone="Utc" t={t} onError={vi.fn()} previous />,
+    );
+    expect(screen.getByTestId("query-result-previous")).toHaveTextContent(
+      "Results of the previous run",
+    );
+    expect((await screen.findAllByTestId("query-result-row")).length).toBeGreaterThan(0);
+    unmount();
+    render(
+      <QueryResultTable
+        result={RESULT}
+        timeZone="Utc"
+        t={createTranslator("ja")}
+        onError={vi.fn()}
+        previous
+      />,
+    );
+    expect(screen.getByTestId("query-result-previous")).toHaveTextContent("前回の実行の結果");
+    renderTable();
+    expect(screen.getAllByTestId("query-result-previous")).toHaveLength(1);
+  });
 });

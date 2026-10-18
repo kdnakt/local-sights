@@ -500,6 +500,13 @@ body {
   color: var(--ls-color-text);
 }
 
+/* 261017-insights-query U3:BR3.4: the previous run's result, said in words, not dimmed. */
+.query-result-previous {
+  padding: 4px 8px;
+  color: var(--ls-color-heading);
+  border-bottom: 1px solid var(--ls-color-border);
+}
+
 .query-result-header {
   display: flex;
   font-weight: var(--ls-font-weight-heading);

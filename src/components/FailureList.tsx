@@ -8,7 +8,11 @@ import type { Translate } from "../i18n/messages";
 import { ErrorMessage } from "./ErrorMessage";
 
 export interface FailureListProps {
-  failedStreams: readonly FailedStream[];
+  /**
+   * The failed streams; on the query screen each carries its log group
+   * (261017-insights-query U3:BR2.6) and is named "log group / stream".
+   */
+  failedStreams: readonly (FailedStream & { logGroupName?: string })[];
   /** The stream listing failure, shown first when present. */
   listingFailure: ApiFailure | null;
   t: Translate;
@@ -44,13 +48,15 @@ export function FailureList({ failedStreams, listingFailure, t, onClose }: Failu
     });
   }
   for (const failed of failedStreams) {
+    const group = failed.logGroupName;
     rows.push({
-      key: `stream:${failed.logStreamName}`,
-      name: failed.logStreamName,
+      key: `stream:${group ?? ""}:${failed.logStreamName}`,
+      name: group === undefined ? failed.logStreamName : `${group} / ${failed.logStreamName}`,
       failure: failed.failure,
       testId: "failure-list-item",
     });
   }
+  const withGroups = failedStreams.some((failed) => failed.logGroupName !== undefined);
 
   return (
     <Modal
@@ -77,7 +83,7 @@ export function FailureList({ failedStreams, listingFailure, t, onClose }: Failu
         columnDefinitions={[
           {
             id: "stream",
-            header: t("failures.column.stream"),
+            header: t(withGroups ? "failures.column.groupStream" : "failures.column.stream"),
             cell: (row) => <span data-testid={row.testId}>{row.name}</span>,
           },
           {

@@ -72,7 +72,8 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
 /** The Log Analytics part of a session view: nothing run yet, ready to run. */
 export function insightsView(overrides: Partial<InsightsView> = {}): InsightsView {
   return {
-    selectedLogGroupName: "/aws/lambda/MyFunction",
+    selectedLogGroupNames: ["/aws/lambda/MyFunction"],
+    maxLogGroups: 50,
     logGroupOptions: ["/aws/ecs/web", "/aws/lambda/MyFunction"],
     logGroupStatus: "Complete",
     startInput: { text: "2024/01/02 03:04:05", instant: 1_704_164_645_000, error: null },
@@ -86,6 +87,7 @@ export function insightsView(overrides: Partial<InsightsView> = {}): InsightsVie
     progress: null,
     problem: null,
     failure: null,
+    failedGroups: [],
     partial: false,
     failedStreams: [],
     listingFailure: null,

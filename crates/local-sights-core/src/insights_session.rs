@@ -24,6 +24,16 @@
 //! input and what AppSession says about the rest of the app, in the order
 //! of U1:BR1.5. The input has a revision, incremented by every change, so a
 //! run whose query was read while the input changed is refused (R-04).
+//!
+//! Since 261017-insights-query U3 up to [`MAX_LOG_GROUPS`] log groups are
+//! chosen, in the order chosen (U3:BR4.1, BR4.2). A run's progress counts
+//! the log groups and the streams of the current one, and says when the
+//! disk cache is read (U3:BR2.7, review R-04); its failed streams carry
+//! their log group (U3:BR2.6). The previous result stays shown while the
+//! next run fetches and evaluates, and goes when that run's fetch or
+//! evaluation fails (U3:BR3.4); its rows are copies, read here without the
+//! QueryStore (U3:BR3.2). The completion names go when a run starts and are
+//! gathered again from what it fetched (U3:BR5.2).
 
 use std::time::Instant;
 
@@ -31,20 +41,24 @@ use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::ProfileSelector;
-use crate::coordinator::{BatchProgress, FailedStream, FetchJob};
+use crate::coordinator::{BatchProgress, FetchJob};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
 use crate::failure::ApiFailure;
-use crate::fetch_status::JobStatus;
 use crate::log_groups::ListingStatus;
 use crate::query::evaluator::{QueryResult, row_cells, row_detail};
 use crate::query::fields::EventFields;
 use crate::query::plan::{QueryPlan, QueryProblem};
-use crate::query::store::{HeldRows, HoldingKey};
-use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
+use crate::query::runner::{GroupFailedStream, GroupFetchStatus, QueryRunSummary};
+use crate::query::store::HoldingKey;
+use crate::request::{ValidationError, message_keys, validate_session_input};
 use crate::session::{ElapsedView, SessionError};
 use crate::streams::planner::ListingProgress;
-use crate::time_range::format_display_in_zone;
+use crate::time_range::{TimeRange, format_display_in_zone};
+
+/// Most log groups one query runs on: the console's limit (ADR-006,
+/// 261017-insights-query U3:BR4.1).
+pub const MAX_LOG_GROUPS: usize = 50;
 
 /// Longest query text, in Unicode scalar values: the console's limit
 /// (StartQuery's queryString, functional-design Q4).
@@ -121,7 +135,8 @@ pub struct CompletionCandidate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AnalyticsField {
-    /// The log group; an empty value deselects it.
+    /// The log groups (U3:BR4.1): a list of names in the order chosen, or
+    /// one name; an empty text or list deselects every one.
     LogGroup,
     /// The start date and time.
     StartText,
@@ -129,6 +144,30 @@ pub enum AnalyticsField {
     EndText,
     /// The query text.
     QueryText,
+}
+
+/// The value of one field: a text, or the names of the log groups
+/// (261017-insights-query U3:BR4.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AnalyticsValue {
+    /// The text of a field; for [`AnalyticsField::LogGroup`] one name, or
+    /// nothing when empty.
+    Text(String),
+    /// The chosen log groups, in the order chosen.
+    Names(Vec<String>),
+}
+
+impl From<String> for AnalyticsValue {
+    fn from(text: String) -> Self {
+        AnalyticsValue::Text(text)
+    }
+}
+
+impl From<Vec<String>> for AnalyticsValue {
+    fn from(names: Vec<String>) -> Self {
+        AnalyticsValue::Names(names)
+    }
 }
 
 /// Why [Run query] cannot be pressed, in the order U1:BR1.5 checks them.
@@ -205,15 +244,16 @@ pub struct QuerySnapshot {
     pub text: String,
 }
 
-/// What a run that was accepted needs (functional-spec UC1 6-9).
+/// What a run that was accepted needs (functional-spec UC1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryStart {
     /// The new run.
     pub run_id: u64,
-    /// The range and the connection to fetch.
-    pub fetch: ValidatedFetch,
-    /// What the holdings are for.
-    pub key: HoldingKey,
+    /// The period, both ends included.
+    pub range: TimeRange,
+    /// The chosen log groups of the connection, in the order chosen
+    /// (U3:BR4.1).
+    pub keys: Vec<HoldingKey>,
 }
 
 /// How [Run query] was taken.
@@ -226,17 +266,27 @@ pub enum QueryBegin {
     Fetch(QueryStart),
 }
 
-/// Progress of the running query as the screen shows it (U1:BR2.4).
+/// Progress of the running query as the screen shows it (U1:BR2.4,
+/// U3:BR2.7).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsProgress {
-    /// Streams selected by the listing so far.
+    /// The disk cache is being read (U3:BR2.7).
+    pub reading_cache: bool,
+    /// The log group being fetched from AWS, from 1; `None` before the
+    /// first (U3:BR2.7).
+    pub group_number: Option<u32>,
+    /// The chosen log groups.
+    pub group_count: u32,
+    /// Log groups whose fetch failed so far (review R-04).
+    pub failed_group_count: u32,
+    /// Streams selected by the listing of the current fetch so far.
     pub selected_stream_count: u32,
-    /// Streams to fetch; `None` while the streams are being listed.
+    /// Streams to fetch in the current fetch; `None` while they are listed.
     pub planned_stream_count: Option<u32>,
-    /// Streams finished.
+    /// Streams of the current fetch finished.
     pub finished_stream_count: u32,
-    /// Events fetched so far.
+    /// Events fetched from AWS by the run so far.
     pub event_count: u64,
     /// Events evaluated so far (Evaluating).
     pub evaluated_count: u64,
@@ -266,12 +316,24 @@ pub struct ResultSummary {
     pub truncated_at: Option<u64>,
 }
 
+/// One log group whose fetch failed, with why (U3:BR2.6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupFailure {
+    /// The log group.
+    pub log_group_name: String,
+    /// Kind and safe detail only.
+    pub failure: ApiFailure,
+}
+
 /// The Log Analytics screen as the screen shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsView {
-    /// The selected log group (U1:BR1.3).
-    pub selected_log_group_name: Option<String>,
+    /// The chosen log groups, in the order chosen (U3:BR4.1).
+    pub selected_log_group_names: Vec<String>,
+    /// The most log groups that can be chosen (U3:BR4.1).
+    pub max_log_groups: u32,
     /// Every log group of the current connection's list, ascending, to
     /// choose from: Log Management's list before its own filter (U1:BR1.3).
     /// Filled by AppSession.
@@ -298,12 +360,16 @@ pub struct InsightsView {
     pub progress: Option<InsightsProgress>,
     /// The reading problem when QueryError (U1:BR3.9).
     pub problem: Option<QueryProblem>,
-    /// The failure of the whole fetch when FetchFailed (U1:BR2.6).
+    /// The failure of the whole fetch when FetchFailed (U1:BR2.6): the
+    /// first failed log group's.
     pub failure: Option<ApiFailure>,
+    /// Every log group whose fetch failed, when FetchFailed (U3:BR2.6).
+    pub failed_groups: Vec<GroupFailure>,
     /// Whether some streams failed: the result is partial (U1:BR2.5).
     pub partial: bool,
-    /// The streams that failed (name and safe reason only).
-    pub failed_streams: Vec<FailedStream>,
+    /// The streams that failed, with their log group (U3:BR2.6; names and
+    /// safe reasons only).
+    pub failed_streams: Vec<GroupFailedStream>,
     /// The listing failure, when the listing ended Partial.
     pub listing_failure: Option<ApiFailure>,
     /// The result, while one is shown.
@@ -381,8 +447,11 @@ struct InsightsRun {
     cancel_requested: bool,
     job_id: Option<u64>,
     progress: Option<InsightsProgress>,
+    /// Events fetched by the run's earlier range fetches (U3:BR2.7).
+    events_before: u64,
     partial: bool,
-    failed_streams: Vec<FailedStream>,
+    failed_streams: Vec<GroupFailedStream>,
+    failed_groups: Vec<GroupFailure>,
     listing_failure: Option<ApiFailure>,
     failure: Option<ApiFailure>,
     problem: Option<QueryProblem>,
@@ -395,7 +464,7 @@ struct InsightsRun {
 /// The Log Analytics screen's input and last run.
 #[derive(Debug, Clone)]
 pub struct InsightsSession {
-    selected_log_group: Option<String>,
+    selected_log_groups: Vec<String>,
     start_input: DateTimeInput,
     end_input: DateTimeInput,
     query_text: String,
@@ -420,6 +489,27 @@ fn count(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
+/// U3:BR4.1: `names` as a choice of log groups: each listed, each once in
+/// the order first chosen, at most [`MAX_LOG_GROUPS`].
+fn chosen_log_groups(
+    names: Vec<String>,
+    listed: &impl Fn(&str) -> bool,
+) -> Result<Vec<String>, SessionError> {
+    let mut chosen: Vec<String> = Vec::with_capacity(names.len().min(MAX_LOG_GROUPS));
+    for name in names {
+        if !listed(&name) {
+            return Err(SessionError::UnknownLogGroup);
+        }
+        if !chosen.contains(&name) {
+            if chosen.len() == MAX_LOG_GROUPS {
+                return Err(SessionError::Invalid);
+            }
+            chosen.push(name);
+        }
+    }
+    Ok(chosen)
+}
+
 /// The screen's summary of `result` (U1:BR6.4, U2:BR5.3, BR7.2).
 fn summary_of(result: &QueryResult) -> ResultSummary {
     ResultSummary {
@@ -441,7 +531,7 @@ impl InsightsSession {
     /// Nothing selected, empty times and the example query.
     pub fn new() -> Self {
         Self {
-            selected_log_group: None,
+            selected_log_groups: Vec::new(),
             start_input: DateTimeInput::default(),
             end_input: DateTimeInput::default(),
             query_text: DEFAULT_QUERY.to_string(),
@@ -474,9 +564,9 @@ impl InsightsSession {
         &self.query_text
     }
 
-    /// The selected log group.
-    pub fn selected_log_group(&self) -> Option<&str> {
-        self.selected_log_group.as_deref()
+    /// The chosen log groups, in the order chosen (U3:BR4.1).
+    pub fn selected_log_groups(&self) -> &[String] {
+        &self.selected_log_groups
     }
 
     /// Whether the run is fetching (U1:BR2.3: it owns the one fetch).
@@ -499,42 +589,54 @@ impl InsightsSession {
         self.run.result.as_ref()
     }
 
-    /// Whether a result with at least one row is shown (U1:BR7.1).
+    /// Whether a result with at least one row is shown (U1:BR7.1); since
+    /// U3 the previous result stays shown during a run and after a
+    /// [Cancel] (U3:BR3.4).
     pub fn has_result_rows(&self) -> bool {
-        self.run.phase == AnalyticsPhase::Done
-            && self.run.result.as_ref().is_some_and(|r| r.row_count() > 0)
+        self.run.result.as_ref().is_some_and(|r| r.row_count() > 0)
     }
 
     /// Changes one field (U1:BR1.3, BR1.4). Refused while running
     /// (U1:BR2.4). `listed` says whether a log group is in the current list.
     /// Returns whether the input changed.
+    ///
+    /// The log groups (U3:BR4.1) come as a list in the order chosen (or as
+    /// one name, or empty); every one must be listed, a name chosen twice
+    /// counts once, and more than [`MAX_LOG_GROUPS`] is refused (the 51st is
+    /// not taken).
     pub fn update(
         &mut self,
         field: AnalyticsField,
-        value: String,
+        value: impl Into<AnalyticsValue>,
         zone: Tz,
         listed: impl Fn(&str) -> bool,
     ) -> Result<bool, SessionError> {
         if self.is_running() {
             return Err(SessionError::Busy);
         }
-        let changed = match field {
-            AnalyticsField::LogGroup => {
-                let selected = (!value.is_empty()).then_some(value);
-                if let Some(name) = &selected {
-                    if !listed(name) {
-                        return Err(SessionError::UnknownLogGroup);
-                    }
-                }
-                let changed = selected != self.selected_log_group;
-                self.selected_log_group = selected;
+        let value = value.into();
+        let changed = match (field, value) {
+            (AnalyticsField::LogGroup, value) => {
+                let names = match value {
+                    AnalyticsValue::Text(name) if name.is_empty() => Vec::new(),
+                    AnalyticsValue::Text(name) => vec![name],
+                    AnalyticsValue::Names(names) => names,
+                };
+                let chosen = chosen_log_groups(names, &listed)?;
+                let changed = chosen != self.selected_log_groups;
+                self.selected_log_groups = chosen;
                 changed
             }
-            AnalyticsField::StartText => self.start_input.edit(value, zone),
-            AnalyticsField::EndText => self.end_input.edit(value, zone),
-            AnalyticsField::QueryText => {
-                let changed = value != self.query_text;
-                self.query_text = value;
+            (_, AnalyticsValue::Names(_)) => return Err(SessionError::Invalid),
+            (AnalyticsField::StartText, AnalyticsValue::Text(text)) => {
+                self.start_input.edit(text, zone)
+            }
+            (AnalyticsField::EndText, AnalyticsValue::Text(text)) => {
+                self.end_input.edit(text, zone)
+            }
+            (AnalyticsField::QueryText, AnalyticsValue::Text(text)) => {
+                let changed = text != self.query_text;
+                self.query_text = text;
                 changed
             }
         };
@@ -572,7 +674,8 @@ impl InsightsSession {
     pub fn blocker(&self, context: &RunContext) -> Option<RunBlocker> {
         if context.connection.is_none() {
             Some(RunBlocker::NotConnected)
-        } else if self.selected_log_group.is_none() {
+        } else if self.selected_log_groups.is_empty() {
+            // U3:BR4.2: from 1 to 50; more than 50 is never taken (BR4.1).
             Some(RunBlocker::LogGroupRequired)
         } else if !self.range_errors().is_empty() {
             Some(RunBlocker::RangeInvalid)
@@ -599,11 +702,13 @@ impl InsightsSession {
         }
     }
 
-    /// [Run query] with the query read from `revision` (UC1 2-7, R-04): in
+    /// [Run query] with the query read from `revision` (UC1 2, R-04): in
     /// one call, the reasons are checked again, the revision must still be
     /// the input's, a new run is numbered and either holds the reading
     /// problem (QueryError, the previous result stays, U1:BR3.9) or starts
-    /// fetching with the previous result gone (U1:BR2.9).
+    /// fetching. Since U3 the previous result stays while the run fetches
+    /// and evaluates (U3:BR3.4, replacing U1:BR2.9) and the completion names
+    /// go (U3:BR5.2).
     pub fn begin(
         &mut self,
         revision: u64,
@@ -617,13 +722,18 @@ impl InsightsSession {
         if revision != self.revision {
             return Err(SessionError::StaleInput);
         }
-        let (Some((profile, region)), Some(group)) =
-            (context.connection.clone(), self.selected_log_group.clone())
-        else {
+        let Some((profile, region)) = context.connection.clone() else {
             return Err(SessionError::Invalid);
         };
-        let validated = validate_session_input(&group, &self.start_input, &self.end_input)
-            .map_err(|_| SessionError::Invalid)?;
+        let mut range = None;
+        for group in &self.selected_log_groups {
+            let validated = validate_session_input(group, &self.start_input, &self.end_input)
+                .map_err(|_| SessionError::Invalid)?;
+            range = Some(validated.range);
+        }
+        let Some(range) = range else {
+            return Err(SessionError::Invalid);
+        };
         let run_id = self.run.run_id + 1;
         if let Err(problem) = parsed {
             // U1:BR3.9: the previous result stays; the alert of a previous
@@ -635,26 +745,32 @@ impl InsightsSession {
             self.run.cancel_requested = false;
             return Ok(QueryBegin::Problem);
         }
+        let group_count = u32::try_from(self.selected_log_groups.len()).unwrap_or(u32::MAX);
         self.run = InsightsRun {
             run_id,
             phase: AnalyticsPhase::Fetching,
-            progress: Some(InsightsProgress::default()),
+            progress: Some(InsightsProgress {
+                group_count,
+                ..InsightsProgress::default()
+            }),
+            result: self.run.result.take(),
             started_at: Some(now),
             ..InsightsRun::default()
         };
+        self.field_names.clear();
+        let keys = self
+            .selected_log_groups
+            .iter()
+            .map(|group| HoldingKey {
+                profile: profile.clone(),
+                region: region.clone(),
+                log_group_name: group.clone(),
+            })
+            .collect();
         Ok(QueryBegin::Fetch(QueryStart {
             run_id,
-            fetch: ValidatedFetch {
-                request: validated
-                    .request
-                    .with_connection(profile.clone(), region.clone()),
-                range: validated.range,
-            },
-            key: HoldingKey {
-                profile,
-                region,
-                log_group_name: group,
-            },
+            range,
+            keys,
         }))
     }
 
@@ -672,11 +788,57 @@ impl InsightsSession {
         run.progress.as_mut()
     }
 
-    /// The fetch of `run_id` started `job`.
+    /// The fetch of one range of `run_id` started `job`: its stream counts
+    /// start again, the log group counts stay (U3:BR2.7).
     pub fn on_job_started(&mut self, run_id: u64, job: &FetchJob) {
         if let Some(run) = self.fetching(run_id) {
             run.job_id = Some(job.job_id);
-            run.progress = Some(InsightsProgress::default());
+            let previous = run.progress.take().unwrap_or_default();
+            run.progress = Some(InsightsProgress {
+                reading_cache: false,
+                group_number: previous.group_number,
+                group_count: previous.group_count,
+                failed_group_count: previous.failed_group_count,
+                event_count: run.events_before,
+                ..InsightsProgress::default()
+            });
+        }
+    }
+
+    /// U3:BR2.7: the disk cache is read for `run_id`.
+    pub fn on_reading_cache(&mut self, run_id: u64) {
+        if let Some(progress) = self.fetching(run_id).and_then(|run| run.progress.as_mut()) {
+            progress.reading_cache = true;
+        }
+    }
+
+    /// U3:BR2.7: chosen log group `index` (from 0) of `count` starts its
+    /// fetch from AWS.
+    pub fn on_group_started(&mut self, run_id: u64, index: usize, count: usize) {
+        if let Some(run) = self.fetching(run_id) {
+            run.job_id = None;
+            let progress = run.progress.get_or_insert_with(InsightsProgress::default);
+            progress.reading_cache = false;
+            progress.group_number = Some(u32::try_from(index + 1).unwrap_or(u32::MAX));
+            progress.group_count = u32::try_from(count).unwrap_or(u32::MAX);
+            progress.selected_stream_count = 0;
+            progress.planned_stream_count = None;
+            progress.finished_stream_count = 0;
+        }
+    }
+
+    /// U3:BR2.7, R-04: one range of `run_id` was fetched with `job`; its
+    /// events count on, and a failed fetch counts its log group as failed.
+    pub fn on_range_fetched(&mut self, run_id: u64, job: &FetchJob) {
+        if let Some(run) = self.fetching(run_id) {
+            run.events_before += job.event_count;
+            run.cache_saving = false;
+            if let Some(progress) = run.progress.as_mut() {
+                progress.event_count = run.events_before;
+                if job.status == crate::fetch_status::JobStatus::Failed {
+                    progress.failed_group_count += 1;
+                }
+            }
         }
     }
 
@@ -695,10 +857,11 @@ impl InsightsSession {
         }
     }
 
-    /// One page was added to the query holdings.
+    /// One page was added to the current range's holder.
     pub fn on_batch(&mut self, run_id: u64, job_id: u64, batch: BatchProgress) {
+        let before = self.run.events_before;
         if let Some(progress) = self.progress_of(run_id, job_id) {
-            progress.event_count = batch.total;
+            progress.event_count = before + batch.total;
         }
     }
 
@@ -723,47 +886,71 @@ impl InsightsSession {
         }
     }
 
-    /// The fetch of `run_id` ended with `job` (UC1 10). Returns whether to
-    /// evaluate: Completed and CompletedWithFailures do, unless [Cancel] was
-    /// pressed (R-01); a failed fetch is FetchFailed (U1:BR2.6), a cancelled
-    /// one Cancelled (U1:BR2.7), an aborted one (the app closes) Idle.
-    pub fn finish_fetch(&mut self, run_id: u64, job: &FetchJob, now: Instant) -> bool {
-        if self.fetching(run_id).is_none() || job.status == JobStatus::Running {
+    /// The fetch of `run_id` ended with `summary` (UC1 8, U3:BR2.5).
+    /// Returns whether to evaluate:
+    ///
+    /// - the app closes: Idle, as if the run never started;
+    /// - a log group failed: FetchFailed, with every failed log group and
+    ///   the first one's failure; the previous result goes (U3:BR3.4);
+    /// - [Cancel] (or the fetch was stopped): Cancelled, the previous result
+    ///   stays;
+    /// - otherwise Evaluating, partial when some log group completed with
+    ///   failures (U1:BR2.5). Nothing fetched from AWS or the cache is no
+    ///   different (U3:BR2.3).
+    pub fn finish_fetch(&mut self, run_id: u64, summary: &QueryRunSummary, now: Instant) -> bool {
+        if self.fetching(run_id).is_none() {
             return false;
         }
-        let fetched = matches!(
-            job.status,
-            JobStatus::Completed | JobStatus::CompletedWithFailures
-        );
-        let phase = match job.status {
-            JobStatus::Aborted => AnalyticsPhase::Idle,
-            JobStatus::Failed => AnalyticsPhase::FetchFailed,
-            _ if !fetched || self.run.cancel_requested => AnalyticsPhase::Cancelled,
-            _ => AnalyticsPhase::Evaluating,
-        };
-        if phase == AnalyticsPhase::Idle {
+        if summary.closed {
             self.run = InsightsRun {
                 run_id: self.run.run_id,
                 ..InsightsRun::default()
             };
             return false;
         }
+        let failed = summary.failed();
+        let phase = if failed {
+            AnalyticsPhase::FetchFailed
+        } else if summary.stopped || self.run.cancel_requested {
+            AnalyticsPhase::Cancelled
+        } else {
+            AnalyticsPhase::Evaluating
+        };
         let run = &mut self.run;
         run.phase = phase;
         run.cache_saving = false;
-        run.failed_streams = job.failed_streams.clone();
-        run.listing_failure = job.listing_failure.clone();
+        run.failed_streams = summary.failed_streams();
+        run.listing_failure = summary
+            .groups
+            .iter()
+            .filter(|group| group.status == GroupFetchStatus::CompletedWithFailures)
+            .find_map(|group| group.failure.clone());
         if phase == AnalyticsPhase::Evaluating {
-            run.partial = job.status == JobStatus::CompletedWithFailures;
+            run.partial = summary.partial;
+            let events = run.events_before;
             run.progress = Some(InsightsProgress {
-                event_count: job.event_count,
-                total_count: job.event_count,
+                event_count: events,
                 ..run.progress.clone().unwrap_or_default()
             });
             return true;
         }
         if phase == AnalyticsPhase::FetchFailed {
-            run.failure = job.failure().cloned();
+            run.failed_groups = summary
+                .groups
+                .iter()
+                .filter(|group| group.status == GroupFetchStatus::Failed)
+                .map(|group| GroupFailure {
+                    log_group_name: group.log_group_name.clone(),
+                    failure: group.failure.clone().unwrap_or_else(|| {
+                        ApiFailure::new(
+                            crate::failure::FailureKind::Other,
+                            &crate::failure::SafeDetailFields::default(),
+                        )
+                    }),
+                })
+                .collect();
+            run.failure = run.failed_groups.first().map(|group| group.failure.clone());
+            run.result = None;
         }
         run.progress = None;
         run.cancel_requested = false;
@@ -804,8 +991,8 @@ impl InsightsSession {
     }
 
     /// The evaluation of `run_id` ended abnormally (U2:BR10.2): no result
-    /// is shown (the previous one went when the fetch started, U1:BR2.9;
-    /// review R-08), and the fetch is not said to have failed.
+    /// is shown, the previous one going too (U3:BR3.4), and the fetch is
+    /// not said to have failed.
     pub fn fail_evaluation(&mut self, run_id: u64, now: Instant) {
         if self.run.run_id != run_id || !self.is_evaluating() {
             return;
@@ -898,6 +1085,8 @@ impl InsightsSession {
         }
         self.run.phase = AnalyticsPhase::FetchFailed;
         self.run.failure = Some(failure);
+        self.run.failed_groups.clear();
+        self.run.result = None;
         self.run.progress = None;
         self.run.cache_saving = false;
         self.run.cancel_requested = false;
@@ -905,12 +1094,12 @@ impl InsightsSession {
         true
     }
 
-    /// U1:BR7.2: the connection changed. The log group selection, the
-    /// result, the error and the warning go and the phase is Idle; the
-    /// query text and the time range stay. Never called while running
-    /// (U1:BR7.3).
+    /// U1:BR7.2, U3:BR4.1: the connection changed. The log group choice
+    /// (all of it), the result, the error and the warning go and the phase
+    /// is Idle; the query text and the time range stay. Never called while
+    /// running (U1:BR7.3).
     pub fn on_connection_changed(&mut self) {
-        self.selected_log_group = None;
+        self.selected_log_groups.clear();
         self.run = InsightsRun {
             run_id: self.run.run_id,
             ..InsightsRun::default()
@@ -919,16 +1108,17 @@ impl InsightsSession {
         self.revision += 1;
     }
 
-    /// The rows of one viewport request, from the rows `held` read for
-    /// `positions_offset` (U1:BR6.3, BR6.4), with their cells for the
-    /// result's columns (U2:BR7.1). Each message is read as JSON once, now,
-    /// and nothing is kept (U2:BR7.4).
+    /// At most `limit` rows from `offset` of the shown result, when
+    /// `run_id` is its run (U1:BR6.3, U3:BR3.2: read from the result's own
+    /// copies, so the QueryStore is not needed; `holdings_epoch` is only
+    /// sent back), with their cells for the result's columns (U2:BR7.1).
+    /// Each message is read as JSON once, now, and nothing is kept
+    /// (U2:BR7.4).
     pub fn display_rows(
         &self,
         run_id: u64,
         holdings_epoch: u64,
-        offset: usize,
-        held: Option<HeldRows>,
+        (offset, limit): (usize, usize),
         zone: Tz,
     ) -> QueryRowWindow {
         let total_count = self.result().map_or(0, |result| {
@@ -936,24 +1126,21 @@ impl InsightsSession {
         });
         let columns = self.result().map_or(&[][..], QueryResult::columns);
         let format_time = |time| format_display_in_zone(time, zone);
-        let rows = held.map_or_else(Vec::new, |held| {
-            held.events
-                .into_iter()
-                .map(|event| {
-                    let values = row_cells(
-                        columns,
-                        &EventFields::new(&event, &held.log_group_name),
-                        &format_time,
-                    );
-                    QueryRow {
-                        display_time: format_time(event.timestamp),
-                        log_group_name: held.log_group_name.clone(),
-                        values,
-                        event,
-                    }
-                })
-                .collect()
-        });
+        let rows = self
+            .result()
+            .map_or(&[][..], |result| result.window(run_id, offset, limit))
+            .iter()
+            .map(|row| QueryRow {
+                display_time: format_time(row.event.timestamp),
+                values: row_cells(
+                    columns,
+                    &EventFields::new(&row.event, &row.log_group_name),
+                    &format_time,
+                ),
+                log_group_name: row.log_group_name.clone(),
+                event: row.event.clone(),
+            })
+            .collect();
         QueryRowWindow {
             run_id,
             holdings_epoch,
@@ -963,35 +1150,27 @@ impl InsightsSession {
         }
     }
 
-    /// The holdings position of result row `index` of the shown result, when
-    /// `run_id` and `holdings_epoch` are its own (U2:BR7.3, BR7.4).
-    pub fn row_position(&self, run_id: u64, holdings_epoch: u64, index: usize) -> Option<usize> {
-        self.result()?.row_at(run_id, holdings_epoch, index)
-    }
-
-    /// The fields of result row `index`, from the one event `held` read for
-    /// it (U2:BR7.3); no field when it was not read.
+    /// The fields of result row `index` of the shown result, when `run_id`
+    /// is its run (U2:BR7.3, U3:BR3.2); no field otherwise.
     pub fn display_row_detail(
         &self,
         run_id: u64,
         holdings_epoch: u64,
         index: usize,
-        held: Option<HeldRows>,
         zone: Tz,
     ) -> QueryRowDetail {
         let format_time = |time| format_display_in_zone(time, zone);
-        let fields = held
-            .and_then(|held| {
-                let event = held.events.into_iter().next()?;
-                Some(
-                    row_detail(
-                        &EventFields::new(&event, &held.log_group_name),
-                        &format_time,
-                    )
-                    .into_iter()
-                    .map(|(name, value)| DetailField { name, value })
-                    .collect(),
+        let fields = self
+            .result()
+            .and_then(|result| result.row_at(run_id, index))
+            .map(|row| {
+                row_detail(
+                    &EventFields::new(&row.event, &row.log_group_name),
+                    &format_time,
                 )
+                .into_iter()
+                .map(|(name, value)| DetailField { name, value })
+                .collect()
             })
             .unwrap_or_default();
         QueryRowDetail {
@@ -1007,7 +1186,8 @@ impl InsightsSession {
         let blocker = self.blocker(context);
         let run = &self.run;
         InsightsView {
-            selected_log_group_name: self.selected_log_group.clone(),
+            selected_log_group_names: self.selected_log_groups.clone(),
+            max_log_groups: u32::try_from(MAX_LOG_GROUPS).unwrap_or(u32::MAX),
             log_group_options: Vec::new(),
             log_group_status: None,
             start_input: self.start_input.clone(),
@@ -1023,6 +1203,7 @@ impl InsightsSession {
                 .then(|| run.problem.clone())
                 .flatten(),
             failure: run.failure.clone(),
+            failed_groups: run.failed_groups.clone(),
             partial: run.partial,
             failed_streams: run.failed_streams.clone(),
             listing_failure: run.listing_failure.clone(),
@@ -1044,8 +1225,10 @@ mod tests {
 
     use super::*;
     use crate::failure::{FailureKind, SafeDetailFields};
+    use crate::fetch_status::JobStatus;
+    use crate::query::evaluator::ResultRow;
     use crate::query::parser::parse_query;
-    use crate::time_range::TimeRange;
+    use crate::query::runner::GroupFetchOutcome;
 
     const GROUP: &str = "/aws/lambda/orders";
     const UTC: Tz = Tz::UTC;
@@ -1098,11 +1281,52 @@ mod tests {
         job
     }
 
-    /// Runs the session to Done with `rows` matching positions.
+    /// The end of a run's fetch of [`GROUP`] as the runner tells it, from
+    /// the status its one range fetch ended with; the events counted in
+    /// the run so far are the session's.
+    fn ended(status: JobStatus, _events: u64) -> QueryRunSummary {
+        let group = match status {
+            JobStatus::Completed | JobStatus::Running => GroupFetchStatus::Completed,
+            JobStatus::CompletedWithFailures => GroupFetchStatus::CompletedWithFailures,
+            JobStatus::Failed => GroupFetchStatus::Failed,
+            JobStatus::Cancelled | JobStatus::Aborted => GroupFetchStatus::Cancelled,
+        };
+        QueryRunSummary {
+            groups: vec![GroupFetchOutcome {
+                log_group_name: GROUP.to_string(),
+                status: group,
+                failed_streams: Vec::new(),
+                failure: None,
+            }],
+            partial: status == JobStatus::CompletedWithFailures,
+            from_aws: true,
+            stopped: matches!(status, JobStatus::Cancelled | JobStatus::Aborted),
+            closed: status == JobStatus::Aborted,
+        }
+    }
+
+    /// Result rows at `positions` (their times), copied from [`GROUP`].
+    fn copies(positions: Vec<usize>) -> Vec<ResultRow> {
+        positions
+            .into_iter()
+            .map(|position| ResultRow {
+                event: LogEvent {
+                    timestamp: i64::try_from(position).unwrap(),
+                    ingestion_time: None,
+                    message: format!("row {position}"),
+                    log_stream_name: "s".to_string(),
+                    sequence: 0,
+                },
+                log_group_name: GROUP.to_string(),
+            })
+            .collect()
+    }
+
+    /// Runs the session to Done with rows at `rows`.
     fn done(session: &mut InsightsSession, now: Instant, rows: Vec<usize>) -> u64 {
         let run_id = start(session, now).run_id;
-        assert!(session.finish_fetch(run_id, &job(JobStatus::Completed, 10), now));
-        session.finish_evaluation(QueryResult::new(run_id, 1, 10, rows), now);
+        assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, 10), now));
+        session.finish_evaluation(QueryResult::new(run_id, 1, 10, copies(rows)), now);
         assert_eq!(session.phase(), AnalyticsPhase::Done);
         run_id
     }
@@ -1204,8 +1428,13 @@ mod tests {
         let now = Instant::now();
         let first = start(&mut session, now);
         assert_eq!(first.run_id, 1);
-        assert_eq!(first.key.log_group_name, GROUP);
-        assert_eq!(first.fetch.request.region(), Some("ap-northeast-1"));
+        assert_eq!(first.keys.len(), 1);
+        assert_eq!(first.keys[0].log_group_name, GROUP);
+        assert_eq!(first.keys[0].region, "ap-northeast-1");
+        assert_eq!(
+            first.range.end_instant() - first.range.start_instant(),
+            60_999
+        );
         let revision = session.snapshot().revision;
         assert_eq!(
             session.begin(revision, Ok(&plan()), &connected(), now),
@@ -1230,7 +1459,8 @@ mod tests {
 
     #[test]
     fn a_reading_problem_keeps_the_text_and_the_previous_result_and_fetches_nothing() {
-        // U1:BR3.9, then U1:BR2.9 when a readable query runs.
+        // U1:BR3.9, then U3:BR3.4 (which replaces U1:BR2.9) when a
+        // readable query runs: the previous result stays while it fetches.
         let mut session = ready();
         let now = Instant::now();
         let first_run = done(&mut session, now, vec![0, 3]);
@@ -1256,7 +1486,11 @@ mod tests {
         );
         let view = session.view(&connected(), now);
         assert_eq!(view.phase, AnalyticsPhase::Fetching);
-        assert_eq!(view.result, None, "U1:BR2.9");
+        assert_eq!(
+            view.result.map(|r| (r.run_id, r.row_count)),
+            Some((first_run, 2)),
+            "U3:BR3.4"
+        );
         assert_eq!(view.problem, None);
     }
 
@@ -1290,12 +1524,12 @@ mod tests {
         for (status, evaluates, phase, partial) in cases {
             let mut session = ready();
             let run_id = start(&mut session, now).run_id;
-            let mut ended = job(status, 5);
+            let mut summary = ended(status, 5);
             if status == JobStatus::Failed {
-                ended.listing_failure = Some(failure.clone());
+                summary.groups[0].failure = Some(failure.clone());
             }
             assert_eq!(
-                session.finish_fetch(run_id, &ended, now),
+                session.finish_fetch(run_id, &summary, now),
                 evaluates,
                 "{status:?}"
             );
@@ -1304,6 +1538,14 @@ mod tests {
             assert_eq!(view.partial, partial, "{status:?}");
             if status == JobStatus::Failed {
                 assert_eq!(view.failure, Some(failure.clone()));
+                assert_eq!(
+                    view.failed_groups,
+                    vec![GroupFailure {
+                        log_group_name: GROUP.to_string(),
+                        failure: failure.clone()
+                    }],
+                    "U3:BR2.6"
+                );
             }
         }
         // R-01: [Cancel] after the last stream, the fetch still Completed.
@@ -1311,7 +1553,7 @@ mod tests {
         let run_id = start(&mut session, now).run_id;
         assert_eq!(session.request_cancel(false), Some(run_id));
         assert!(session.view(&connected(), now).cancelling);
-        assert!(!session.finish_fetch(run_id, &job(JobStatus::Completed, 5), now));
+        assert!(!session.finish_fetch(run_id, &ended(JobStatus::Completed, 5), now));
         assert_eq!(session.phase(), AnalyticsPhase::Cancelled);
         assert!(!session.view(&connected(), now).cancelling);
     }
@@ -1327,7 +1569,7 @@ mod tests {
         session.on_job_started(current, &started);
         started.planned_stream_count = 4;
         session.on_planned(old, &started);
-        assert!(!session.finish_fetch(old, &job(JobStatus::Completed, 1), now));
+        assert!(!session.finish_fetch(old, &ended(JobStatus::Completed, 1), now));
         assert_eq!(session.phase(), AnalyticsPhase::Fetching);
         session.on_planned(current, &started);
         session.on_batch(
@@ -1342,16 +1584,16 @@ mod tests {
         let progress = session.view(&connected(), now).progress.unwrap();
         assert_eq!(progress.planned_stream_count, Some(4));
         assert_eq!(progress.event_count, 3);
-        assert!(session.finish_fetch(current, &job(JobStatus::Completed, 3), now));
+        assert!(session.finish_fetch(current, &ended(JobStatus::Completed, 3), now));
         assert!(!session.on_evaluation_progress(old, 1, 3));
-        session.finish_evaluation(QueryResult::new(old, 1, 3, vec![0]), now);
+        session.finish_evaluation(QueryResult::new(old, 1, 3, copies(vec![0])), now);
         assert_eq!(
             session.phase(),
             AnalyticsPhase::Evaluating,
             "an old result is dropped"
         );
         assert!(session.on_evaluation_progress(current, 3, 3));
-        session.finish_evaluation(QueryResult::new(current, 2, 3, vec![]), now);
+        session.finish_evaluation(QueryResult::new(current, 2, 3, Vec::new()), now);
         let view = session.view(&connected(), now);
         assert_eq!(view.phase, AnalyticsPhase::Done);
         assert_eq!(
@@ -1374,7 +1616,7 @@ mod tests {
             ),
             Err(SessionError::UnknownLogGroup)
         );
-        assert_eq!(session.selected_log_group(), Some(GROUP));
+        assert_eq!(session.selected_log_groups(), [GROUP.to_string()]);
         let now = Instant::now();
         start(&mut session, now);
         for field in [
@@ -1395,7 +1637,7 @@ mod tests {
             Ok(true),
             "an empty value deselects"
         );
-        assert_eq!(idle.selected_log_group(), None);
+        assert!(idle.selected_log_groups().is_empty());
         assert_eq!(
             idle.update(
                 AnalyticsField::QueryText,
@@ -1421,7 +1663,7 @@ mod tests {
         session.on_saving(run_id, fetch.job_id);
         assert!(!session.cancel_available(false));
         assert_eq!(session.request_cancel(false), None);
-        assert!(session.finish_fetch(run_id, &job(JobStatus::Completed, 20_000), now));
+        assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, 20_000), now));
         assert!(
             session.cancel_available(false),
             "the evaluation can be cancelled"
@@ -1459,7 +1701,7 @@ mod tests {
         session.on_connection_changed();
         let view = session.view(&connected(), now);
         assert_eq!(view.phase, AnalyticsPhase::Idle);
-        assert_eq!(view.selected_log_group_name, None);
+        assert!(view.selected_log_group_names.is_empty());
         assert_eq!(view.result, None);
         assert_eq!(view.elapsed, None);
         assert_eq!(view.query_text, "filter @log = 'a'");
@@ -1476,7 +1718,7 @@ mod tests {
     /// A run that fetched `events` events and now evaluates.
     fn evaluating(session: &mut InsightsSession, now: Instant, events: u64) -> u64 {
         let run_id = start(session, now).run_id;
-        assert!(session.finish_fetch(run_id, &job(JobStatus::Completed, events), now));
+        assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, events), now));
         assert!(session.is_evaluating());
         run_id
     }
@@ -1489,7 +1731,7 @@ mod tests {
         let now = Instant::now();
         let run_id = evaluating(&mut session, now, 3);
         assert_eq!(session.request_cancel(false), Some(run_id));
-        session.finish_evaluation(QueryResult::new(run_id, 1, 3, vec![0, 1]), now);
+        session.finish_evaluation(QueryResult::new(run_id, 1, 3, copies(vec![0, 1])), now);
         let view = session.view(&connected(), now);
         assert_eq!(view.phase, AnalyticsPhase::Cancelled);
         assert_eq!(view.result, None);
@@ -1510,8 +1752,9 @@ mod tests {
 
     #[test]
     fn an_evaluation_failure_shows_no_result_and_no_fetch_failure() {
-        // U2:BR10.2, review R-08: the previous result went when the fetch
-        // started; a connection change goes back to Idle.
+        // U2:BR10.2, U3:BR3.4: the previous result, kept while the run
+        // fetched and evaluated, goes now; a connection change goes back to
+        // Idle.
         let mut session = ready();
         let now = Instant::now();
         done(&mut session, now, vec![0]);
@@ -1570,6 +1813,7 @@ mod tests {
                     truncated_at: Some(10_000),
                     evaluated_count: 12_000,
                 },
+                copies((0..10_000).collect()),
             ),
             now,
         );
@@ -1598,6 +1842,16 @@ mod tests {
         let run_id = evaluating(&mut session, now, 1);
         let level = FieldRef::Json(JsonPath::new(vec!["level".to_string()], "level"));
         let gone = FieldRef::Json(JsonPath::new(vec!["gone".to_string()], "gone"));
+        let copied = ResultRow {
+            event: LogEvent {
+                timestamp: 0,
+                ingestion_time: None,
+                message: r#"{"level":"error","n":1}"#.to_string(),
+                log_stream_name: "s".to_string(),
+                sequence: 0,
+            },
+            log_group_name: GROUP.to_string(),
+        };
         session.finish_evaluation(
             QueryResult::from_output(
                 run_id,
@@ -1609,20 +1863,11 @@ mod tests {
                     truncated_at: None,
                     evaluated_count: 1,
                 },
+                vec![copied],
             ),
             now,
         );
-        let held = || HeldRows {
-            log_group_name: GROUP.to_string(),
-            events: vec![LogEvent {
-                timestamp: 0,
-                ingestion_time: None,
-                message: r#"{"level":"error","n":1}"#.to_string(),
-                log_stream_name: "s".to_string(),
-                sequence: 0,
-            }],
-        };
-        let window = session.display_rows(run_id, 4, 0, Some(held()), UTC);
+        let window = session.display_rows(run_id, 4, (0, 50), UTC);
         assert_eq!(
             window.rows[0].values,
             vec![
@@ -1631,22 +1876,31 @@ mod tests {
                 None
             ]
         );
-        assert_eq!(session.row_position(run_id, 4, 0), Some(0));
-        assert_eq!(session.row_position(run_id, 5, 0), None, "another epoch");
-        let detail = session.display_row_detail(run_id, 4, 0, Some(held()), UTC);
+        assert_eq!(window.rows[0].log_group_name, GROUP);
+        assert_eq!((window.holdings_epoch, window.total_count), (4, 1));
+        assert!(
+            session
+                .display_rows(run_id + 1, 4, (0, 50), UTC)
+                .rows
+                .is_empty(),
+            "another run"
+        );
+        let detail = session.display_row_detail(run_id, 4, 0, UTC);
         let names: Vec<&str> = detail.fields.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(
             names,
             vec!["@timestamp", "@log", "@logStream", "@message", "level", "n"]
         );
         assert_eq!(detail.fields[1].value.as_deref(), Some(GROUP));
-        assert!(
-            session
-                .display_row_detail(run_id, 4, 0, None, UTC)
-                .fields
-                .is_empty(),
-            "nothing read, nothing listed"
-        );
+        for (run, index) in [(run_id + 1, 0), (run_id, 1)] {
+            assert!(
+                session
+                    .display_row_detail(run, 4, index, UTC)
+                    .fields
+                    .is_empty(),
+                "{run} {index}: nothing listed"
+            );
+        }
     }
 
     #[test]
@@ -1681,9 +1935,265 @@ mod tests {
             (last.text.as_str(), last.kind),
             ("http.status", CompletionKind::JsonField)
         );
-        session.finish_evaluation(QueryResult::new(run_id, 1, 2, vec![]), now);
+        session.finish_evaluation(QueryResult::new(run_id, 1, 2, Vec::new()), now);
         session.on_connection_changed();
         assert!(session.field_names().is_empty());
+    }
+
+    // ---- 261017-insights-query U3:BR3.2, BR3.4 -------------------------
+
+    #[test]
+    fn the_previous_result_is_read_while_the_next_run_fetches_and_evaluates() {
+        // BR3.4: replaced only when the new result comes; BR3.2: the rows
+        // are the old result's own copies.
+        let mut session = ready();
+        let now = Instant::now();
+        let old = done(&mut session, now, vec![5, 3]);
+        let times = |session: &InsightsSession, run: u64| -> Vec<i64> {
+            session
+                .display_rows(run, 1, (0, 10), UTC)
+                .rows
+                .iter()
+                .map(|row| row.event.timestamp)
+                .collect()
+        };
+        let next = start(&mut session, now).run_id;
+        assert_eq!(times(&session, old), vec![5, 3], "while fetching");
+        assert!(session.has_result_rows());
+        assert!(session.finish_fetch(next, &ended(JobStatus::Completed, 2), now));
+        assert_eq!(times(&session, old), vec![5, 3], "while evaluating");
+        assert_eq!(
+            session.view(&connected(), now).result.map(|r| r.run_id),
+            Some(old)
+        );
+        session.finish_evaluation(QueryResult::new(next, 2, 2, copies(vec![9])), now);
+        assert!(times(&session, old).is_empty(), "replaced");
+        assert_eq!(times(&session, next), vec![9]);
+    }
+
+    #[test]
+    fn a_failed_fetch_or_evaluation_drops_the_previous_result_and_a_cancel_keeps_it() {
+        // BR3.4 (interaction-spec): a result of other conditions could be
+        // mistaken for this run's.
+        let now = Instant::now();
+        for (failure, kept) in [("fetch", false), ("evaluation", false), ("cancel", true)] {
+            let mut session = ready();
+            let old = done(&mut session, now, vec![1]);
+            let next = start(&mut session, now).run_id;
+            match failure {
+                "fetch" => {
+                    let mut summary = ended(JobStatus::Failed, 0);
+                    summary.groups[0].failure = Some(ApiFailure::new(
+                        FailureKind::AccessDenied,
+                        &SafeDetailFields::default(),
+                    ));
+                    assert!(!session.finish_fetch(next, &summary, now));
+                }
+                "evaluation" => {
+                    assert!(session.finish_fetch(next, &ended(JobStatus::Completed, 1), now));
+                    session.fail_evaluation(next, now);
+                }
+                _ => {
+                    assert_eq!(session.request_cancel(false), Some(next));
+                    assert!(!session.finish_fetch(next, &ended(JobStatus::Cancelled, 0), now));
+                }
+            }
+            let result = session.view(&connected(), now).result.map(|r| r.run_id);
+            assert_eq!(result, kept.then_some(old), "{failure}");
+        }
+    }
+
+    // ---- 261017-insights-query U3:BR2.7, BR4.1, BR4.2, BR5.2 ------------
+
+    fn names(count: usize) -> Vec<String> {
+        (1..=count).map(|n| format!("/g/{n:02}")).collect()
+    }
+
+    fn anything_listed(_: &str) -> bool {
+        true
+    }
+
+    #[test]
+    fn up_to_fifty_log_groups_are_chosen_in_order_and_the_fifty_first_is_refused() {
+        // BR4.1.
+        let mut session = ready();
+        let fifty = names(MAX_LOG_GROUPS);
+        assert_eq!(
+            session.update(
+                AnalyticsField::LogGroup,
+                fifty.clone(),
+                UTC,
+                anything_listed
+            ),
+            Ok(true)
+        );
+        assert_eq!(session.selected_log_groups(), fifty.as_slice());
+        assert_eq!(
+            session.update(AnalyticsField::LogGroup, names(51), UTC, anything_listed),
+            Err(SessionError::Invalid),
+            "the 51st is not taken"
+        );
+        assert_eq!(session.selected_log_groups(), fifty.as_slice(), "unchanged");
+        let twice = vec!["/b".to_string(), "/a".to_string(), "/b".to_string()];
+        session
+            .update(AnalyticsField::LogGroup, twice, UTC, anything_listed)
+            .unwrap();
+        assert_eq!(
+            session.selected_log_groups(),
+            ["/b".to_string(), "/a".to_string()],
+            "once each, in the order first chosen"
+        );
+        assert_eq!(
+            session.update(
+                AnalyticsField::LogGroup,
+                vec![GROUP.to_string(), "/not/listed".to_string()],
+                UTC,
+                listed
+            ),
+            Err(SessionError::UnknownLogGroup)
+        );
+        assert_eq!(
+            session.update(
+                AnalyticsField::QueryText,
+                vec!["x".to_string()],
+                UTC,
+                listed
+            ),
+            Err(SessionError::Invalid),
+            "a list is only for the log groups"
+        );
+        let view = session.view(&connected(), Instant::now());
+        assert_eq!(view.max_log_groups, 50);
+        assert_eq!(view.selected_log_group_names, ["/b", "/a"]);
+    }
+
+    #[test]
+    fn run_query_needs_one_to_fifty_log_groups_and_runs_on_every_one() {
+        // BR4.2.
+        let mut session = ready();
+        session
+            .update(
+                AnalyticsField::LogGroup,
+                Vec::<String>::new(),
+                UTC,
+                anything_listed,
+            )
+            .unwrap();
+        assert_eq!(
+            session.blocker(&connected()),
+            Some(RunBlocker::LogGroupRequired)
+        );
+        session
+            .update(
+                AnalyticsField::LogGroup,
+                names(MAX_LOG_GROUPS),
+                UTC,
+                anything_listed,
+            )
+            .unwrap();
+        assert_eq!(session.blocker(&connected()), None);
+        let started = start(&mut session, Instant::now());
+        assert_eq!(started.keys.len(), 50);
+        assert_eq!(started.keys[0].log_group_name, "/g/01");
+        assert_eq!(started.keys[49].log_group_name, "/g/50");
+        let progress = session.view(&connected(), Instant::now()).progress.unwrap();
+        assert_eq!((progress.group_count, progress.group_number), (50, None));
+    }
+
+    #[test]
+    fn a_run_clears_the_completion_names_and_gathers_its_own() {
+        // BR5.2 (U2 code review R-02).
+        let mut session = ready();
+        let now = Instant::now();
+        let first = evaluating(&mut session, now, 2);
+        session.set_field_names(first, vec!["old.name".to_string()]);
+        session.finish_evaluation(QueryResult::new(first, 1, 2, Vec::new()), now);
+        assert_eq!(session.field_names(), ["old.name"]);
+        let next = start(&mut session, now).run_id;
+        assert!(session.field_names().is_empty(), "gone when the run starts");
+        let mut summary = ended(JobStatus::Failed, 0);
+        summary.groups[0].failure = Some(ApiFailure::new(
+            FailureKind::AccessDenied,
+            &SafeDetailFields::default(),
+        ));
+        session.finish_fetch(next, &summary, now);
+        assert!(
+            session.field_names().is_empty(),
+            "a failed fetch gathers none"
+        );
+    }
+
+    #[test]
+    fn the_progress_counts_log_groups_streams_events_and_failed_log_groups() {
+        // BR2.7, R-04.
+        let mut session = ready();
+        session
+            .update(AnalyticsField::LogGroup, names(3), UTC, anything_listed)
+            .unwrap();
+        let now = Instant::now();
+        let run_id = start(&mut session, now).run_id;
+        session.on_reading_cache(run_id);
+        assert!(
+            session
+                .view(&connected(), now)
+                .progress
+                .unwrap()
+                .reading_cache
+        );
+        session.on_group_started(run_id, 0, 3);
+        let first = job(JobStatus::Running, 0);
+        session.on_job_started(run_id, &first);
+        session.on_batch(
+            run_id,
+            first.job_id,
+            BatchProgress {
+                added: 4,
+                total: 4,
+                timeline_version: 1,
+            },
+        );
+        session.on_range_fetched(run_id, &job(JobStatus::Failed, 4));
+        session.on_group_started(run_id, 1, 3);
+        let second = job(JobStatus::Running, 0);
+        session.on_job_started(run_id, &second);
+        session.on_batch(
+            run_id,
+            second.job_id,
+            BatchProgress {
+                added: 2,
+                total: 2,
+                timeline_version: 1,
+            },
+        );
+        let progress = session.view(&connected(), now).progress.unwrap();
+        assert!(!progress.reading_cache);
+        assert_eq!(
+            (
+                progress.group_number,
+                progress.group_count,
+                progress.failed_group_count,
+                progress.event_count
+            ),
+            (Some(2), 3, 1, 6)
+        );
+        let json = serde_json::to_value(&progress).unwrap();
+        assert_eq!(json["groupNumber"], 2);
+        assert_eq!(json["failedGroupCount"], 1);
+    }
+
+    #[test]
+    fn a_connection_change_empties_the_whole_choice() {
+        // BR4.1.
+        let mut session = ready();
+        session
+            .update(AnalyticsField::LogGroup, names(4), UTC, anything_listed)
+            .unwrap();
+        session.on_connection_changed();
+        assert!(session.selected_log_groups().is_empty());
+        assert_eq!(
+            session.blocker(&connected()),
+            Some(RunBlocker::LogGroupRequired)
+        );
     }
 
     #[test]

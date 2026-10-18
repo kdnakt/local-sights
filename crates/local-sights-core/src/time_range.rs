@@ -206,6 +206,20 @@ impl TimeRange {
         })
     }
 
+    /// The range from `start_instant` to `end_instant`, both milliseconds
+    /// included, as they are: a missing part of a query's period can start
+    /// and end at any millisecond and be one millisecond long
+    /// (261017-insights-query U3:BR1.1, BR2.2).
+    pub fn from_instants(start_instant: i64, end_instant: i64) -> Result<Self, RangeOrderError> {
+        if start_instant > end_instant {
+            return Err(RangeOrderError);
+        }
+        Ok(Self {
+            start_instant,
+            end_instant,
+        })
+    }
+
     /// First millisecond of the range.
     pub fn start_instant(&self) -> i64 {
         self.start_instant
@@ -228,6 +242,17 @@ mod tests {
 
     // 2024/01/02 03:04:05 UTC
     const JAN_2_030405: i64 = 1_704_164_645_000;
+
+    #[test]
+    fn a_range_of_milliseconds_is_kept_as_given_down_to_one_millisecond() {
+        // 261017-insights-query U3:BR1.1.
+        let range = TimeRange::from_instants(1_001, 1_999).unwrap();
+        assert_eq!((range.start_instant(), range.end_instant()), (1_001, 1_999));
+        assert_eq!(range.api_end_time(), 2_000);
+        let one = TimeRange::from_instants(5, 5).unwrap();
+        assert_eq!(one.api_end_time(), 6);
+        assert_eq!(TimeRange::from_instants(6, 5), Err(RangeOrderError));
+    }
 
     #[test]
     fn parses_utc_text_at_millisecond_zero() {

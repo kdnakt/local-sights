@@ -278,6 +278,7 @@ export const messages = {
   "failures.title": { en: "Failures", ja: "失敗の一覧" },
   "failures.listing": { en: "Stream listing", ja: "ストリームの列挙" },
   "failures.column.stream": { en: "Stream", ja: "ストリーム" },
+  "failures.column.groupStream": { en: "Log group / stream", ja: "ロググループ / ストリーム" },
   "failures.column.reason": {
     en: "What happened / what to do",
     ja: "何が起きたか／次の行動",
@@ -471,8 +472,12 @@ export const messages = {
   "nav.close": { en: "Close navigation", ja: "ナビゲーションを閉じる" },
   "nav.open": { en: "Open navigation", ja: "ナビゲーションを開く" },
   "insights.title": { en: "Log Analytics", ja: "Log Analytics" },
-  "insights.logGroups.label": { en: "Log group", ja: "ロググループ" },
-  "insights.logGroups.placeholder": { en: "Select a log group", ja: "ロググループを選ぶ" },
+  "insights.logGroups.label": { en: "Log groups", ja: "ロググループ" },
+  "insights.logGroups.placeholder": { en: "Select log groups", ja: "ロググループを選ぶ" },
+  "insights.logGroups.limit": {
+    en: "You can choose up to {max} log groups.",
+    ja: "ロググループは {max} 個まで選べます。",
+  },
   "insights.logGroups.filter": { en: "Find log groups", ja: "ロググループを探す" },
   "insights.logGroups.loading": { en: "Loading log groups", ja: "ロググループを読み込み中" },
   "insights.logGroups.error": {
@@ -535,8 +540,8 @@ export const messages = {
     ja: "プロファイルとリージョンを選んでください。",
   },
   "insights.blocked.logGroupRequired": {
-    en: "Choose a log group.",
-    ja: "ロググループを選んでください。",
+    en: "Choose at least one log group.",
+    ja: "ロググループを 1 つ以上選んでください。",
   },
   "insights.blocked.rangeInvalid": { en: "Fix the time range.", ja: "期間を直してください。" },
   "insights.blocked.queryEmpty": { en: "Write a query.", ja: "クエリを書いてください。" },
@@ -586,13 +591,33 @@ export const messages = {
   "insights.results.collapse": { en: "Hide details", ja: "詳細を閉じる" },
   "insights.results.field": { en: "Field", ja: "項目" },
   "insights.results.value": { en: "Value", ja: "値" },
+  "insights.status.preparing": {
+    en: "Fetching logs: finding what is missing",
+    ja: "ログを取得中：足りない範囲を確かめています",
+  },
+  "insights.status.readingCache": {
+    en: "Fetching logs: reading the cache",
+    ja: "ログを取得中：キャッシュを読み込み中",
+  },
   "insights.status.listing": {
-    en: "Fetching logs: listing streams, {count} selected so far",
-    ja: "ログを取得中：ストリームを列挙中、これまでに {count} 本",
+    en: "Fetching logs (log group {number} / {groups}): listing streams, {count} selected so far",
+    ja: "ログを取得中（ロググループ {number} / {groups}）：ストリームを列挙中、これまでに {count} 本",
   },
   "insights.status.fetching": {
-    en: "Fetching logs: {done} / {total} streams, {events} events",
-    ja: "ログを取得中：ストリーム {done} / {total}、{events} 件",
+    en: "Fetching logs (log group {number} / {groups}): {done} / {total} streams, {events} events",
+    ja: "ログを取得中（ロググループ {number} / {groups}）：ストリーム {done} / {total}、{events} 件",
+  },
+  "insights.status.failedGroups": {
+    en: "{count} log groups could not be fetched.",
+    ja: "{count} 個のロググループを取得できませんでした。",
+  },
+  "insights.results.previous": {
+    en: "Results of the previous run",
+    ja: "前回の実行の結果",
+  },
+  "insights.fetchFailed.groups": {
+    en: "Log groups that could not be fetched:",
+    ja: "取得できなかったロググループ：",
   },
   "insights.status.running": {
     en: "Running query: {scanned} / {total} events",
@@ -768,6 +793,10 @@ export const messages = {
   "query.syntax.limitTooLarge": {
     en: "limit can be at most 100,000.",
     ja: "limit は 100,000 までです。",
+  },
+  "query.syntax.nestingTooDeep": {
+    en: "Parentheses are nested too deeply. Nest them 100 levels deep at most.",
+    ja: "括弧の入れ子が深すぎます。入れ子は 100 段までにしてください。",
   },
   "query.unsupported.arrayElement": {
     en: 'Array elements such as "{word}" cannot be used in this version. A key made of digits can be written in backquotes.',

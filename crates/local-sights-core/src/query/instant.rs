@@ -136,21 +136,17 @@ pub fn resolve_date_texts(plan: QueryPlan, zone: Tz) -> Result<QueryPlan, QueryP
 }
 
 fn resolve_condition(condition: Condition, zone: Tz) -> Result<Condition, QueryProblem> {
-    let both = |left: Box<Condition>, right: Box<Condition>| -> Result<_, QueryProblem> {
-        Ok((
-            Box::new(resolve_condition(*left, zone)?),
-            Box::new(resolve_condition(*right, zone)?),
-        ))
+    // 261017-insights-query U3:BR5.1: a list is walked, not recursed into
+    // pair by pair.
+    let all = |parts: Vec<Condition>| -> Result<Vec<Condition>, QueryProblem> {
+        parts
+            .into_iter()
+            .map(|part| resolve_condition(part, zone))
+            .collect()
     };
     let kind = match condition.kind {
-        ConditionKind::And(left, right) => {
-            let (left, right) = both(left, right)?;
-            ConditionKind::And(left, right)
-        }
-        ConditionKind::Or(left, right) => {
-            let (left, right) = both(left, right)?;
-            ConditionKind::Or(left, right)
-        }
+        ConditionKind::And(parts) => ConditionKind::And(all(parts)?),
+        ConditionKind::Or(parts) => ConditionKind::Or(all(parts)?),
         ConditionKind::Not(inner) => ConditionKind::Not(Box::new(resolve_condition(*inner, zone)?)),
         ConditionKind::Compare { field, op, value } => ConditionKind::Compare {
             field,
@@ -331,8 +327,11 @@ mod tests {
         let spans_before: Vec<Span> = plan.filters().map(|condition| condition.span).collect();
         let resolved = resolve_date_texts(plan, TOKYO).unwrap();
         let condition = resolved.filters().next().unwrap();
-        let ConditionKind::And(left, right) = &condition.kind else {
+        let ConditionKind::And(parts) = &condition.kind else {
             panic!("no and: {condition:?}");
+        };
+        let [left, right] = parts.as_slice() else {
+            panic!("not two parts: {parts:?}");
         };
         assert_eq!(
             left.kind,

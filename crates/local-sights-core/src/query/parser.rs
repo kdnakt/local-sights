@@ -120,9 +120,12 @@ pub mod keys {
     pub const UNSUPPORTED_ALIAS: &str = "query.unsupported.alias";
     /// `limit any` (U2:BR2.1).
     pub const UNSUPPORTED_LIMIT_ANY: &str = "query.unsupported.limitAny";
+    /// Parentheses nested deeper than
+    /// [`MAX_NESTING`](super::MAX_NESTING) (261017-insights-query U3:BR5.1).
+    pub const NESTING_TOO_DEEP: &str = "query.syntax.nestingTooDeep";
 
     /// Every key above, for the screen's catalog check.
-    pub const ALL: [&str; 41] = [
+    pub const ALL: [&str; 42] = [
         NO_COMMAND,
         EMPTY_COMMAND,
         UNKNOWN_COMMAND,
@@ -164,8 +167,13 @@ pub mod keys {
         UNSUPPORTED_ARRAY_ELEMENT,
         UNSUPPORTED_ALIAS,
         UNSUPPORTED_LIMIT_ANY,
+        NESTING_TOO_DEEP,
     ];
 }
+
+/// Deepest nesting of parentheses a condition may have, a `not (` counting
+/// as one (261017-insights-query U3:BR5.1, U2 code review R-01).
+pub const MAX_NESTING: usize = 100;
 
 /// The console's commands other than the four read ones, in lower case
 /// (U2:BR2.1).
@@ -665,6 +673,90 @@ struct Parser {
     last_end: usize,
 }
 
+/// What opened one level of a condition being read
+/// (261017-insights-query U3:BR5.1).
+#[derive(Debug, Clone, Copy)]
+enum Opening {
+    /// The whole condition of a `filter`.
+    Whole,
+    /// `(` at `open`, the start of the parenthesized condition.
+    Paren { open: Span, start: Start },
+    /// `not (`: the negation starts at the `not`; its `(` is at `open`.
+    Not { open: Span, start: Start },
+}
+
+/// The parts of one run of `and` or of `or` read so far, with where the
+/// first one started.
+#[derive(Debug, Default)]
+struct Run {
+    parts: Vec<Condition>,
+    start: Option<Start>,
+}
+
+impl Run {
+    fn push(&mut self, part: Condition, start: Start) {
+        self.start.get_or_insert(start);
+        self.parts.push(part);
+    }
+
+    /// The run as one condition: its one part, or a list made by `list`
+    /// from its first word to the last word taken. The run is empty after.
+    fn close(
+        &mut self,
+        parser: &Parser,
+        list: fn(Vec<Condition>) -> ConditionKind,
+    ) -> (Condition, Start) {
+        let start = self.start.take().unwrap_or(Start {
+            line: 1,
+            column: 1,
+            offset: 0,
+        });
+        let mut parts = std::mem::take(&mut self.parts);
+        let condition = match parts.pop() {
+            Some(only) if parts.is_empty() => only,
+            Some(last) => {
+                parts.push(last);
+                Condition::new(list(parts), parser.span_since(start))
+            }
+            None => Condition::new(list(Vec::new()), parser.span_since(start)),
+        };
+        (condition, start)
+    }
+}
+
+/// One open level: the run of `or` of runs of `and` read inside it.
+#[derive(Debug)]
+struct Level {
+    opening: Opening,
+    or: Run,
+    and: Run,
+}
+
+impl Level {
+    fn new(opening: Opening) -> Self {
+        Self {
+            opening,
+            or: Run::default(),
+            and: Run::default(),
+        }
+    }
+}
+
+/// Opens a level for the parenthesis of `opening`, unless it would be level
+/// [`MAX_NESTING`] + 1 (U3:BR5.1): the first level is the whole condition,
+/// so the levels open below it are the parentheses.
+fn open_level(levels: &mut Vec<Level>, opening: Opening) -> Result<(), QueryProblem> {
+    let open = match opening {
+        Opening::Paren { open, .. } | Opening::Not { open, .. } => open,
+        Opening::Whole => return Ok(()),
+    };
+    if levels.len() > MAX_NESTING {
+        return Err(QueryProblem::syntax(keys::NESTING_TOO_DEEP, open));
+    }
+    levels.push(Level::new(opening));
+    Ok(())
+}
+
 impl Parser {
     fn new(text: &str) -> Self {
         Self {
@@ -754,7 +846,7 @@ impl Parser {
                 if self.at_command_end()? {
                     return Err(QueryProblem::syntax(keys::MISSING_CONDITION, span));
                 }
-                CommandKind::Filter(self.or_condition()?.0)
+                CommandKind::Filter(self.condition()?)
             }
             "fields" => CommandKind::Fields(self.fields(&word, span)?),
             "sort" => CommandKind::Sort(self.sort_keys(&word, span)?),
@@ -897,78 +989,113 @@ impl Parser {
         }
     }
 
-    /// A whole condition: `or` of `and`s (U2:BR2.5), with where it began.
-    fn or_condition(&mut self) -> Result<(Condition, Start), QueryProblem> {
-        let (mut left, start) = self.and_condition()?;
-        while self.peek_keyword("or")? {
-            self.next()?;
-            let (right, _) = self.and_condition()?;
-            left = Condition::new(
-                ConditionKind::Or(Box::new(left), Box::new(right)),
-                self.span_since(start),
-            );
-        }
-        Ok((left, start))
-    }
-
-    fn and_condition(&mut self) -> Result<(Condition, Start), QueryProblem> {
-        let (mut left, start) = self.not_condition()?;
-        while self.peek_keyword("and")? {
-            self.next()?;
-            let (right, _) = self.not_condition()?;
-            left = Condition::new(
-                ConditionKind::And(Box::new(left), Box::new(right)),
-                self.span_since(start),
-            );
-        }
-        Ok((left, start))
-    }
-
-    /// `not (…)`, or a condition without `not`. At the start of a condition
-    /// `not` must be followed by `(` (U2:BR2.4, R-07).
-    fn not_condition(&mut self) -> Result<(Condition, Start), QueryProblem> {
-        if !self.peek_keyword("not")? {
-            return self.primary_condition();
-        }
-        let Some(not) = self.next()? else {
-            return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
-        };
-        if !self.peek_is(&TokenKind::LParen)? {
-            return Err(QueryProblem::syntax(keys::NOT_NEEDS_PAREN, not.span).with_word(not.raw));
-        }
-        let start = Start::of(&not);
-        let (inner, _) = self.primary_condition()?;
-        Ok((
-            Condition::new(ConditionKind::Not(Box::new(inner)), self.span_since(start)),
-            start,
-        ))
-    }
-
-    /// A parenthesized condition or one comparison of a field. A
-    /// parenthesized condition keeps its own place; its start is the `(`.
-    fn primary_condition(&mut self) -> Result<(Condition, Start), QueryProblem> {
-        let Some(token) = self.next()? else {
-            return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
-        };
-        let start = Start::of(&token);
-        match &token.kind {
-            TokenKind::LParen => {
-                let (inner, _) = self.or_condition()?;
-                match self.next()? {
-                    Some(close) if close.kind == TokenKind::RParen => Ok((inner, start)),
-                    Some(close) if close.kind != TokenKind::Pipe => Err(unexpected(close)),
-                    _ => Err(QueryProblem::syntax(keys::UNCLOSED_PAREN, token.span)),
+    /// A whole condition: `or` of `and`s of comparisons, `not (…)` and
+    /// parenthesized conditions (U2:BR2.4, BR2.5), read in one loop
+    /// (261017-insights-query U3:BR5.1, functional-design review R-02).
+    ///
+    /// Every open parenthesis is one [`Level`] of an explicit stack instead
+    /// of a call, so how deep the parentheses go never uses up the thread's
+    /// stack. A run of `and` or of `or` is one list, so its length adds no
+    /// depth. The parenthesis that would open level [`MAX_NESTING`] + 1 is a
+    /// writing mistake at its place, found before anything deeper is read.
+    /// The problems found and their order are those of the recursive reader
+    /// of U2.
+    fn condition(&mut self) -> Result<Condition, QueryProblem> {
+        let mut levels = vec![Level::new(Opening::Whole)];
+        loop {
+            let (mut part, mut start) = self.next_part(&mut levels)?;
+            // Joins the part to its level, then closes what ends after it.
+            loop {
+                let Some(level) = levels.last_mut() else {
+                    return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+                };
+                level.and.push(part, start);
+                if self.peek_keyword("and")? {
+                    self.next()?;
+                    break;
+                }
+                let (joined, joined_start) = level.and.close(self, ConditionKind::And);
+                level.or.push(joined, joined_start);
+                if self.peek_keyword("or")? {
+                    self.next()?;
+                    break;
+                }
+                let (whole, _) = level.or.close(self, ConditionKind::Or);
+                let opening = level.opening;
+                match opening {
+                    Opening::Whole => return Ok(whole),
+                    Opening::Paren { open, start: paren } => {
+                        self.close_paren(open)?;
+                        levels.pop();
+                        // A parenthesized condition keeps its own place; its
+                        // start is the `(`.
+                        (part, start) = (whole, paren);
+                    }
+                    Opening::Not { open, start: not } => {
+                        self.close_paren(open)?;
+                        levels.pop();
+                        let negation = ConditionKind::Not(Box::new(whole));
+                        (part, start) = (Condition::new(negation, self.span_since(not)), not);
+                    }
                 }
             }
-            TokenKind::Name(_) if token.kind.bare().is_some_and(is_keyword) => {
-                Err(unexpected(token))
+        }
+    }
+
+    /// Reads up to the next comparison of a field, opening a level for every
+    /// `(` and `not (` on the way. At the start of a condition `not` must be
+    /// followed by `(` (U2:BR2.4, R-07).
+    fn next_part(&mut self, levels: &mut Vec<Level>) -> Result<(Condition, Start), QueryProblem> {
+        loop {
+            if self.peek_keyword("not")? {
+                let Some(not) = self.next()? else {
+                    return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+                };
+                if !self.peek_is(&TokenKind::LParen)? {
+                    return Err(
+                        QueryProblem::syntax(keys::NOT_NEEDS_PAREN, not.span).with_word(not.raw)
+                    );
+                }
+                let Some(open) = self.next()? else {
+                    return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+                };
+                open_level(
+                    levels,
+                    Opening::Not {
+                        open: open.span,
+                        start: Start::of(&not),
+                    },
+                )?;
+                continue;
             }
-            TokenKind::Name(_) => {
-                let field = self.operand(token)?;
-                let kind = self.predicate(field)?;
-                Ok((Condition::new(kind, self.span_since(start)), start))
+            let Some(token) = self.next()? else {
+                return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+            };
+            let start = Start::of(&token);
+            match &token.kind {
+                TokenKind::LParen => {
+                    let open = token.span;
+                    open_level(levels, Opening::Paren { open, start })?;
+                }
+                TokenKind::Name(_) if token.kind.bare().is_some_and(is_keyword) => {
+                    return Err(unexpected(token));
+                }
+                TokenKind::Name(_) => {
+                    let field = self.operand(token)?;
+                    let kind = self.predicate(field)?;
+                    return Ok((Condition::new(kind, self.span_since(start)), start));
+                }
+                _ => return Err(unexpected(token)),
             }
-            _ => Err(unexpected(token)),
+        }
+    }
+
+    /// The `)` of the parenthesis opened at `open`.
+    fn close_paren(&mut self, open: Span) -> Result<(), QueryProblem> {
+        match self.next()? {
+            Some(close) if close.kind == TokenKind::RParen => Ok(()),
+            Some(close) if close.kind != TokenKind::Pipe => Err(unexpected(close)),
+            _ => Err(QueryProblem::syntax(keys::UNCLOSED_PAREN, open)),
         }
     }
 
@@ -1210,11 +1337,11 @@ mod tests {
 
     /// `condition` with [`NO_SPAN`] everywhere.
     fn bare(condition: &Condition) -> Condition {
-        let boxed = |inner: &Condition| Box::new(bare(inner));
+        let all = |parts: &[Condition]| parts.iter().map(bare).collect();
         let kind = match &condition.kind {
-            ConditionKind::And(left, right) => ConditionKind::And(boxed(left), boxed(right)),
-            ConditionKind::Or(left, right) => ConditionKind::Or(boxed(left), boxed(right)),
-            ConditionKind::Not(inner) => ConditionKind::Not(boxed(inner)),
+            ConditionKind::And(parts) => ConditionKind::And(all(parts)),
+            ConditionKind::Or(parts) => ConditionKind::Or(all(parts)),
+            ConditionKind::Not(inner) => ConditionKind::Not(Box::new(bare(inner))),
             other => other.clone(),
         };
         Condition::new(kind, NO_SPAN)
@@ -1298,11 +1425,11 @@ mod tests {
     }
 
     fn and(left: Condition, right: Condition) -> Condition {
-        condition(ConditionKind::And(Box::new(left), Box::new(right)))
+        condition(ConditionKind::And(vec![left, right]))
     }
 
     fn or(left: Condition, right: Condition) -> Condition {
-        condition(ConditionKind::Or(Box::new(left), Box::new(right)))
+        condition(ConditionKind::Or(vec![left, right]))
     }
 
     fn not(inner: Condition) -> Condition {
@@ -2057,13 +2184,19 @@ mod tests {
         let read = plan("filter @log = 'g' and\n  (not (@message like /a/) or b in [1, 2])");
         let condition = read.filters().next().unwrap();
         assert_eq!(condition.span, at(1, 8, 57));
-        let ConditionKind::And(left, right) = &condition.kind else {
+        let ConditionKind::And(parts) = &condition.kind else {
             panic!("no and: {condition:?}");
+        };
+        let [left, right] = parts.as_slice() else {
+            panic!("not two parts: {parts:?}");
         };
         assert_eq!(left.span, at(1, 8, 10));
         assert_eq!(right.span, at(2, 4, 38), "the or inside the parentheses");
-        let ConditionKind::Or(negation, list) = &right.kind else {
+        let ConditionKind::Or(parts) = &right.kind else {
             panic!("no or: {right:?}");
+        };
+        let [negation, list] = parts.as_slice() else {
+            panic!("not two parts: {parts:?}");
         };
         assert_eq!(negation.span, at(2, 4, 23));
         assert_eq!(list.span, at(2, 31, 11));
@@ -2088,5 +2221,175 @@ mod tests {
         }
         assert!(keys::ALL.contains(&keys::NOT_NEEDS_PAREN));
         assert!(keys::ALL.contains(&keys::UNSUPPORTED_ARRAY_ELEMENT));
+        assert!(keys::ALL.contains(&keys::NESTING_TOO_DEEP));
+    }
+
+    // ---- 261017-insights-query U3:BR5.1 (U2 code review R-01, U3 R-02) ---
+
+    /// Runs `work` on a thread with a stack of 1 MB, the size of Windows'
+    /// main thread, and fails when the thread does not end normally.
+    fn on_a_small_stack(work: impl FnOnce() + Send + 'static) {
+        let thread = std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(work)
+            .unwrap();
+        assert!(thread.join().is_ok(), "the work ended abnormally");
+    }
+
+    /// A `filter` of `terms` comparisons joined by `word`, as short as one
+    /// can be written, so that the most of them fit in the longest query.
+    fn chain(word: &str, terms: usize) -> String {
+        let parts: Vec<&str> = std::iter::repeat_n("a=1", terms).collect();
+        format!("filter {}", parts.join(&format!(" {word} ")))
+    }
+
+    /// The most `terms` of [`chain`] that fit in the longest query the
+    /// screen runs (10,000 characters).
+    fn longest_chain(word: &str) -> String {
+        let longest = crate::insights_session::MAX_QUERY_CHARS;
+        let terms = (longest - "filter ".len() + word.len() + 2) / ("a=1".len() + word.len() + 2);
+        let text = chain(word, terms);
+        assert!(text.chars().count() <= longest && chain(word, terms + 1).len() > longest);
+        text
+    }
+
+    /// Reads `text`, turns its date texts into milliseconds, evaluates it on
+    /// one event and drops the plan, as a run does.
+    fn read_evaluate_and_drop(text: &str) -> bool {
+        let plan = parse_query(text).unwrap();
+        let plan = crate::query::instant::resolve_date_texts(plan, chrono_tz::Tz::UTC).unwrap();
+        let event = crate::event::LogEvent {
+            timestamp: 1,
+            ingestion_time: None,
+            message: r#"{"a":1}"#.to_string(),
+            log_stream_name: "s".to_string(),
+            sequence: 0,
+        };
+        let item = crate::query::evaluator::EvalItem {
+            event: &event,
+            log_group_name: "/g",
+        };
+        let held = crate::query::evaluator::matches(&plan, &item);
+        drop(plan);
+        held
+    }
+
+    #[test]
+    fn the_longest_or_chain_is_read_evaluated_and_dropped_on_a_one_megabyte_stack() {
+        // R-02: about 1,400 terms of `a=1 or a=1 …` in 10,000 characters.
+        on_a_small_stack(|| {
+            let text = longest_chain("or");
+            assert!(read_evaluate_and_drop(&text));
+        });
+    }
+
+    #[test]
+    fn the_longest_and_chain_is_read_evaluated_and_dropped_on_a_one_megabyte_stack() {
+        on_a_small_stack(|| {
+            let text = longest_chain("and");
+            assert!(read_evaluate_and_drop(&text));
+        });
+    }
+
+    /// `filter` with `levels` parentheses, each opened by `open`, around
+    /// `a=1 or a=2`.
+    fn nested(open: &str, levels: usize) -> String {
+        format!(
+            "filter {}a=1 or a=2{}",
+            open.repeat(levels),
+            ")".repeat(levels)
+        )
+    }
+
+    #[test]
+    fn exactly_one_hundred_levels_of_parentheses_are_read_on_a_one_megabyte_stack() {
+        on_a_small_stack(|| {
+            assert!(read_evaluate_and_drop(&nested("(", MAX_NESTING)));
+            assert!(
+                read_evaluate_and_drop(&nested("not (", MAX_NESTING)),
+                "an even count of not"
+            );
+            let mixed = format!(
+                "filter {}a=1{}",
+                "(a=2 or (a=1 and ".repeat(50),
+                "))".repeat(50)
+            );
+            assert!(read_evaluate_and_drop(&mixed), "and and or taking turns");
+        });
+    }
+
+    #[test]
+    fn the_hundred_and_first_level_is_a_syntax_problem_at_its_parenthesis() {
+        for (open, column) in [("(", 8 + 100), ("not (", 8 + 100 * 5 + 4)] {
+            let text = nested(open, MAX_NESTING + 1);
+            let found = problem(&text);
+            assert_eq!(found.kind, ProblemKind::Syntax, "{open:?}");
+            assert_eq!(found.message_key, keys::NESTING_TOO_DEEP, "{open:?}");
+            assert_eq!(
+                found.span,
+                at(1, column, 1),
+                "the 101st opening parenthesis"
+            );
+        }
+        let far = problem(&nested("(", 5_000));
+        assert_eq!(
+            far.message_key,
+            keys::NESTING_TOO_DEEP,
+            "found before going deeper"
+        );
+    }
+
+    #[test]
+    fn nesting_counts_only_parentheses_open_at_once() {
+        // 150 parentheses one after another are never more than 1 deep.
+        let side_by_side = format!("filter {}", vec!["(a=1)"; 150].join(" and "));
+        assert!(parse_query(&side_by_side).is_ok());
+        let unclosed = problem(&format!("filter {}a=1", "(".repeat(MAX_NESTING)));
+        assert_eq!(
+            unclosed.message_key,
+            keys::UNCLOSED_PAREN,
+            "100 deep but unclosed is still unclosed"
+        );
+    }
+
+    #[test]
+    fn and_binds_tighter_than_or_in_long_chains_too() {
+        // U2:BR2.5 kept with the lists of R-02: `a or b and c or d` is
+        // `a or (b and c) or d`.
+        let holds = |text: &str, message: &str| {
+            let plan = parse_query(text).unwrap();
+            let event = crate::event::LogEvent {
+                timestamp: 1,
+                ingestion_time: None,
+                message: message.to_string(),
+                log_stream_name: "s".to_string(),
+                sequence: 0,
+            };
+            crate::query::evaluator::matches(
+                &plan,
+                &crate::query::evaluator::EvalItem {
+                    event: &event,
+                    log_group_name: "/g",
+                },
+            )
+        };
+        let query = "filter a = 1 or b = 1 and c = 1 or d = 1";
+        assert!(holds(query, r#"{"a":1}"#));
+        assert!(holds(query, r#"{"d":1}"#));
+        assert!(!holds(query, r#"{"b":1}"#), "b alone is not enough");
+        assert!(holds(query, r#"{"b":1,"c":1}"#));
+        let negated = "filter not (a = 1 or b = 1) and c = 1";
+        assert!(holds(negated, r#"{"c":1}"#));
+        assert!(!holds(negated, r#"{"a":1,"c":1}"#));
+        let a_is = |n: f64| compare(json(&["a"], "a"), CompareOp::Eq, Literal::Number(n));
+        assert_eq!(
+            only("filter a=1 or a=2 and a=3 or a=4"),
+            condition(ConditionKind::Or(vec![
+                a_is(1.0),
+                and(a_is(2.0), a_is(3.0)),
+                a_is(4.0)
+            ])),
+            "a run of or is one list of its parts"
+        );
     }
 }

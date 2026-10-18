@@ -84,13 +84,13 @@ use local_sights_core::event::LogEvent;
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::query::evaluator::{QueryResult, row_cells};
+use local_sights_core::query::evaluator::{QueryResult, ResultRow, row_cells};
 use local_sights_core::query::fields::EventFields;
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
 use local_sights_core::query::plan::{FieldRef, QueryPlan};
-use local_sights_core::query::runner::{QueryRun, QuerySink, run_query};
-use local_sights_core::query::store::{HeldRows, HoldingKey, QueryStore};
+use local_sights_core::query::runner::{QueryRun, QueryRunSummary, QuerySink, run_query};
+use local_sights_core::query::store::{HoldingKey, QueryStore};
 use local_sights_core::request::{
     FetchInput, ValidatedFetch, ValidationError, validate_fetch_input,
 };
@@ -199,13 +199,16 @@ async fn check_query(
         region: validated.request.region().unwrap_or_default().to_string(),
         log_group_name: validated.request.log_group_name().to_string(),
     };
+    // 261017-insights-query U3: one log group into a fresh QueryStore, so
+    // the whole range is missing and fetched in one range fetch, as before.
     let run = QueryRun {
         run_id: 1,
         plan: Arc::new(plan),
-        fetch: validated,
-        key,
+        range: validated.range,
+        keys: vec![key],
         cache: None,
-        fetch_started_at_ms: 0,
+        run_started_at_ms: now_epoch_ms(),
+        clock: now_epoch_ms,
     };
     let store = Arc::new(QueryStore::new());
     let mut sink = QueryCheckSink::default();
@@ -219,9 +222,8 @@ async fn check_query(
         eprintln!("error: the query was not evaluated");
         return ExitCode::from(EXIT_FETCH_FAILED);
     };
-    let positions = result.window(result.run_id, result.holdings_epoch, 0, FIRST_ROWS);
-    let first = store.rows_at(result.holdings_epoch, positions);
-    if let Err(error) = write_query_result(&result, first.as_ref()) {
+    let first = result.window(result.run_id, 0, FIRST_ROWS);
+    if let Err(error) = write_query_result(&result, first) {
         eprintln!("error: could not write to standard output: {error}");
         return ExitCode::from(EXIT_FETCH_FAILED);
     }
@@ -232,7 +234,7 @@ async fn check_query(
 /// shown and, when the result was cut, where), the columns, then the cells
 /// of the first rows, one row a line, separated by tabs. A cell without a
 /// value is empty; newlines in a value become spaces.
-fn write_query_result(result: &QueryResult, first: Option<&HeldRows>) -> io::Result<()> {
+fn write_query_result(result: &QueryResult, first: &[ResultRow]) -> io::Result<()> {
     let mut out = BufWriter::new(io::stdout().lock());
     write!(
         out,
@@ -247,18 +249,26 @@ fn write_query_result(result: &QueryResult, first: Option<&HeldRows>) -> io::Res
     writeln!(out)?;
     let names: Vec<&str> = result.columns().iter().map(FieldRef::name).collect();
     writeln!(out, "columns: {}", names.join("\t"))?;
-    if let Some(rows) = first {
-        for event in &rows.events {
-            let fields = EventFields::new(event, &rows.log_group_name);
-            let cells = row_cells(result.columns(), &fields, &format_utc_millis);
-            let line: Vec<String> = cells
-                .into_iter()
-                .map(|cell| one_line(&cell.unwrap_or_default()))
-                .collect();
-            writeln!(out, "{}", line.join("\t"))?;
-        }
+    for row in first {
+        let fields = EventFields::new(&row.event, &row.log_group_name);
+        let cells = row_cells(result.columns(), &fields, &format_utc_millis);
+        let line: Vec<String> = cells
+            .into_iter()
+            .map(|cell| one_line(&cell.unwrap_or_default()))
+            .collect();
+        writeln!(out, "{}", line.join("\t"))?;
     }
     out.flush()
+}
+
+/// The time now in epoch milliseconds (0 before 1970): the base of the
+/// five-minute boundary of the query's holdings (U3:BR1.2).
+fn now_epoch_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
+        })
 }
 
 /// The value on one line: every line break becomes a space.
@@ -443,9 +453,18 @@ impl FetchSink for QueryCheckSink {
 }
 
 impl QuerySink for QueryCheckSink {
-    fn on_fetch_ended(&mut self, _run_id: u64, job: &FetchJob) -> bool {
+    fn on_reading_cache(&mut self, _run_id: u64) {}
+
+    fn on_group_started(&mut self, _run_id: u64, _index: usize, _count: usize) {}
+
+    fn on_range_fetched(&mut self, _run_id: u64, _log_group_name: &str, job: &FetchJob) {
         self.ended = Some(job.clone());
-        eprintln!("evaluating {} events...", job.event_count);
+    }
+
+    fn on_fetch_ended(&mut self, _run_id: u64, _summary: &QueryRunSummary) -> bool {
+        if let Some(job) = &self.ended {
+            eprintln!("evaluating {} events...", job.event_count);
+        }
         true
     }
 

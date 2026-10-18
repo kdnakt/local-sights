@@ -321,7 +321,7 @@ export function App({ locale, platform }: AppProps) {
 
   // 261017-insights-query U1: the Log Analytics page's operations.
   const handleAnalyticsChange = useCallback(
-    (field: AnalyticsField, value: string) =>
+    (field: AnalyticsField, value: string | readonly string[]) =>
       run(() => updateAnalyticsInput(field, value, generation)),
     [run, generation],
   );

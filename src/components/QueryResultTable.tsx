@@ -28,6 +28,12 @@ export interface QueryResultTableProps {
   timeZone: TimeZoneChoice;
   t: Translate;
   onError: (error: unknown) => void;
+  /**
+   * The result is the previous run's, shown while the next one fetches and
+   * evaluates (261017-insights-query U3:BR3.4): said in words above the rows,
+   * which are not dimmed (interaction-spec).
+   */
+  previous?: boolean;
 }
 
 /** The class of a column's cells: the time and the message keep their widths. */
@@ -62,7 +68,13 @@ function cellText(row: QueryRow | null, index: number, name: string): string {
  * then the JSON fields by name (U2:BR7.3); ↑ and ↓ move the selection as on
  * Log Management. Rows can be opened several at once.
  */
-export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTableProps) {
+export function QueryResultTable({
+  result,
+  timeZone,
+  t,
+  onError,
+  previous = false,
+}: QueryResultTableProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(FALLBACK_VIEWPORT);
@@ -203,6 +215,11 @@ export function QueryResultTable({ result, timeZone, t, onError }: QueryResultTa
 
   return (
     <div className="query-result-table" data-testid="query-result-table">
+      {previous && (
+        <div className="query-result-previous" data-testid="query-result-previous">
+          {t("insights.results.previous")}
+        </div>
+      )}
       <div className="query-result-header" role="presentation" data-testid="query-result-header">
         <span className="query-result-toggle-cell" />
         {result.columns.map((name, index) => (

@@ -46,7 +46,8 @@ export interface LogAnalyticsPageProps {
   locale?: Locale;
   /** Whether the shortcut is Cmd (macOS) rather than Ctrl. */
   mac: boolean;
-  onChange: (field: AnalyticsField, value: string) => void;
+  /** A field changed: the log groups as a list (U3:BR4.1), the others as a text. */
+  onChange: (field: AnalyticsField, value: string | readonly string[]) => void;
   onRun: () => void;
   onCancel: () => void;
   onError: (error: unknown) => void;
@@ -106,6 +107,14 @@ function synced(insights: InsightsView, drafts: Record<Side, DateTimeParts>, que
  * core after every change of the run (U2:BR9.1), and [Examples] puts an
  * example in the field, asking first when the field holds another query
  * (U2:BR9.3); both are Should.
+ *
+ * Since 261017-insights-query U3 up to 50 log groups are chosen (U3:BR4.1).
+ * While a run fetches, the progress says which log group of how many is
+ * fetched, its streams and events, how many log groups failed, and when the
+ * cache is read (U3:BR2.7). The previous result stays shown, under the
+ * progress, until the new one replaces it (U3:BR3.4). A failed fetch names
+ * every log group that failed, and the failed streams are named "log group
+ * / stream" (U3:BR2.6).
  */
 export function LogAnalyticsPage({
   session,
@@ -270,11 +279,12 @@ export function LogAnalyticsPage({
             <FormField label={t("insights.logGroups.label")} data-testid="log-analytics-log-group">
               <LogGroupMultiselect
                 options={insights.logGroupOptions}
-                selected={insights.selectedLogGroupName}
+                selected={insights.selectedLogGroupNames}
+                max={insights.maxLogGroups}
                 status={insights.logGroupStatus}
                 disabled={locked}
                 t={t}
-                onChange={(name) => onChange("logGroup", name ?? "")}
+                onChange={(names) => onChange("logGroup", names)}
               />
             </FormField>
             <div className="condition-row-times" onKeyDown={handleFieldKeyDown}>
@@ -515,7 +525,9 @@ function ResultArea({ session, t, onError, onShowFailures }: ResultAreaProps) {
   const insights = session.insights;
   const result = insights.result;
   const failedCount = insights.failedStreams.length;
-  const showsRows = result !== null && insights.phase !== "Fetching";
+  // U3:BR3.4: the previous result stays shown while the next run fetches and
+  // evaluates; a failed fetch or evaluation has dropped it already.
+  const showsRows = result !== null;
   return (
     <SpaceBetween size="s">
       {insights.phase === "FetchFailed" && insights.failure !== null && (
@@ -589,40 +601,32 @@ function ResultBody({
   showsRows: boolean;
 }) {
   const insights = session.insights;
-  const progress = insights.progress;
-  if (insights.phase === "Fetching") {
-    const text =
-      progress === null || progress.plannedStreamCount === null
-        ? t("insights.status.listing", { count: progress?.selectedStreamCount ?? 0 })
-        : t("insights.status.fetching", {
-            done: progress.finishedStreamCount,
-            total: progress.plannedStreamCount,
-            events: progress.eventCount,
-          });
-    return (
-      <div role="status" data-testid="log-analytics-progress">
-        <StatusIndicator type="loading">{text}</StatusIndicator>
-      </div>
-    );
-  }
-  if (insights.phase === "Evaluating") {
-    return (
-      <div role="status" data-testid="log-analytics-progress">
-        <StatusIndicator type="loading">
-          {t("insights.status.running", {
-            scanned: progress?.evaluatedCount ?? 0,
-            total: progress?.totalCount ?? 0,
-          })}
-        </StatusIndicator>
-      </div>
-    );
-  }
+  const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
   const result = insights.result;
-  if (showsRows && result !== null) {
-    if (result.rowCount === 0) {
-      return <Box data-testid="log-analytics-no-match">{t("insights.results.none")}</Box>;
-    }
-    return <QueryResultTable result={result} timeZone={session.timeZone} t={t} onError={onError} />;
+  const rows =
+    showsRows && result !== null ? (
+      result.rowCount === 0 ? (
+        <Box data-testid="log-analytics-no-match">{t("insights.results.none")}</Box>
+      ) : (
+        <QueryResultTable
+          result={result}
+          timeZone={session.timeZone}
+          t={t}
+          onError={onError}
+          previous={running}
+        />
+      )
+    ) : null;
+  if (running) {
+    return (
+      <SpaceBetween size="s">
+        <RunProgress insights={insights} t={t} />
+        {rows}
+      </SpaceBetween>
+    );
+  }
+  if (rows !== null) {
+    return rows;
   }
   if (
     insights.phase === "Cancelled" ||
@@ -634,7 +638,55 @@ function ResultBody({
   return <Box data-testid="log-analytics-initial">{t("insights.results.initial")}</Box>;
 }
 
-/** U1:BR2.6: the fetch's error in the Log Management words, and that nothing was run. */
+/**
+ * The progress of a run (U1:BR2.4, U3:BR2.7): the cache being read, which log
+ * group of how many is fetched with its streams and events, how many log groups
+ * failed so far, then the evaluation's progress.
+ */
+function RunProgress({ insights, t }: { insights: InsightsView; t: Translate }) {
+  const progress = insights.progress;
+  let text: string;
+  if (insights.phase === "Evaluating") {
+    text = t("insights.status.running", {
+      scanned: progress?.evaluatedCount ?? 0,
+      total: progress?.totalCount ?? 0,
+    });
+  } else if (progress?.readingCache) {
+    text = t("insights.status.readingCache");
+  } else if (progress === null || progress.groupNumber === null) {
+    text = t("insights.status.preparing");
+  } else if (progress.plannedStreamCount === null) {
+    text = t("insights.status.listing", {
+      number: progress.groupNumber,
+      groups: progress.groupCount,
+      count: progress.selectedStreamCount,
+    });
+  } else {
+    text = t("insights.status.fetching", {
+      number: progress.groupNumber,
+      groups: progress.groupCount,
+      done: progress.finishedStreamCount,
+      total: progress.plannedStreamCount,
+      events: progress.eventCount,
+    });
+  }
+  const failedGroups = insights.phase === "Fetching" ? (progress?.failedGroupCount ?? 0) : 0;
+  return (
+    <div role="status" data-testid="log-analytics-progress">
+      <StatusIndicator type="loading">{text}</StatusIndicator>
+      {failedGroups > 0 && (
+        <Box variant="small" data-testid="log-analytics-failed-groups">
+          {t("insights.status.failedGroups", { count: failedGroups })}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+/**
+ * U1:BR2.6: the fetch's error in the Log Management words, and that nothing was
+ * run; since U3 with every log group that failed and why (U3:BR2.6).
+ */
 function FetchFailedAlert({ insights, t }: { insights: InsightsView; t: Translate }) {
   const failure = insights.failure;
   if (failure === null) {
@@ -650,6 +702,19 @@ function FetchFailedAlert({ insights, t }: { insights: InsightsView; t: Translat
       >
         <div>{lines.next}</div>
         {lines.detail !== null && <div>{lines.detail}</div>}
+        {insights.failedGroups.length > 0 && (
+          <div data-testid="log-analytics-failed-group-list">
+            <div>{t("insights.fetchFailed.groups")}</div>
+            <ul>
+              {insights.failedGroups.map((group) => (
+                <li key={group.logGroupName} data-testid="log-analytics-failed-group">
+                  {group.logGroupName}:{" "}
+                  {errorLines(group.failure.kind, "Fetch", group.failure.safeDetail, t).what}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div>{t("insights.notRun")}</div>
       </Alert>
     </div>

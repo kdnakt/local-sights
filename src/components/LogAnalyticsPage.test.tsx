@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InsightsView, SessionView } from "../api";
+import type { InsightsProgress, InsightsView, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 import {
   connectedView,
@@ -42,6 +42,23 @@ function renderPage(session: SessionView = view(), locale: "en" | "ja" = "en") {
       <LogAnalyticsPage session={next} t={translate} locale={locale} mac={false} {...handlers} />,
     );
   return { ...handlers, rerender };
+}
+
+/** A run's progress: nothing fetched yet, log group 1 of 1 (U3:BR2.7). */
+function progress(overrides: Partial<InsightsProgress> = {}): InsightsProgress {
+  return {
+    readingCache: false,
+    groupNumber: 1,
+    groupCount: 1,
+    failedGroupCount: 0,
+    selectedStreamCount: 0,
+    plannedStreamCount: null,
+    finishedStreamCount: 0,
+    eventCount: 0,
+    evaluatedCount: 0,
+    totalCount: 0,
+    ...overrides,
+  };
 }
 
 const runButton = () => screen.getByTestId("log-analytics-run-button");
@@ -116,14 +133,14 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
         canRun: false,
         runBlocker: "insights.blocked.queryRunning",
         cancelAvailable: true,
-        progress: {
+        progress: progress({
+          groupNumber: 1,
+          groupCount: 2,
           selectedStreamCount: 37,
           plannedStreamCount: 37,
           finishedStreamCount: 14,
           eventCount: 48_210,
-          evaluatedCount: 0,
-          totalCount: 0,
-        },
+        }),
       }),
     );
     expect(runButton()).toBeDisabled();
@@ -134,7 +151,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     fireEvent.change(editor(), { target: { value: "changed" } });
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
-      "Fetching logs: 14 / 37 streams, 48210 events",
+      "Fetching logs (log group 1 / 2): 14 / 37 streams, 48210 events",
     );
     await user.click(screen.getByTestId("log-analytics-cancel-button"));
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -146,14 +163,14 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
         phase: "Evaluating",
         canRun: false,
         cancelling: true,
-        progress: {
+        progress: progress({
           selectedStreamCount: 2,
           plannedStreamCount: 2,
           finishedStreamCount: 2,
           eventCount: 25_000,
           evaluatedCount: 10_000,
           totalCount: 25_000,
-        },
+        }),
       }),
     );
     expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
@@ -208,6 +225,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
         partial: true,
         failedStreams: [
           {
+            logGroupName: "/aws/lambda/orders",
             logStreamName: "stream-x",
             failure: { kind: "AccessDenied", safeDetail: "", retryable: false },
           },
@@ -219,7 +237,12 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
       "Results are based on part of the logs. 1 streams could not be fetched.",
     );
     await user.click(screen.getByTestId("log-analytics-show-failures-button"));
-    expect(screen.getByTestId("failure-list")).toHaveTextContent("stream-x");
+    // U3:BR2.6: "log group / stream".
+    const list = screen.getByTestId("failure-list");
+    expect(within(list).getByTestId("failure-list-item")).toHaveTextContent(
+      "/aws/lambda/orders / stream-x",
+    );
+    expect(list).toHaveTextContent("Log group / stream");
   });
 
   it("says a cancelled query was cancelled (U1:BR2.7)", () => {
@@ -401,6 +424,147 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
         "500",
         "",
       ]),
+    );
+  });
+
+  // ---- 261017-insights-query U3 ---------------------------------------
+
+  it("hands the core every chosen log group as a list (U3:BR4.1)", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderPage(view({ selectedLogGroupNames: ["/aws/lambda/MyFunction"] }));
+    expect(screen.getByTestId("log-analytics-log-group")).toHaveTextContent("Log groups");
+    await user.click(
+      within(screen.getByTestId("log-group-multiselect")).getAllByRole("button")[0]!,
+    );
+    await user.click(screen.getByRole("option", { name: "/aws/ecs/web" }));
+    expect(onChange).toHaveBeenCalledWith("logGroup", ["/aws/lambda/MyFunction", "/aws/ecs/web"]);
+  });
+
+  it("says no log group is chosen as at least one (U3:BR4.2)", () => {
+    renderPage(
+      view({
+        selectedLogGroupNames: [],
+        canRun: false,
+        runBlocker: "insights.blocked.logGroupRequired",
+      }),
+    );
+    expect(runButton()).toBeDisabled();
+    expect(screen.getByTestId("log-analytics-run-reason")).toHaveTextContent(
+      "Choose at least one log group.",
+    );
+  });
+
+  it("says when the cache is read and before a log group is fetched (U3:BR2.7)", () => {
+    const running = { phase: "Fetching" as const, canRun: false, cancelAvailable: true };
+    const { rerender } = renderPage(
+      view({ ...running, progress: progress({ groupNumber: null }) }),
+    );
+    expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
+      "Fetching logs: finding what is missing",
+    );
+    rerender(view({ ...running, progress: progress({ groupNumber: null, readingCache: true }) }));
+    expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
+      "Fetching logs: reading the cache",
+    );
+    rerender(
+      view({
+        ...running,
+        progress: progress({ groupNumber: 3, groupCount: 5, selectedStreamCount: 4 }),
+      }),
+    );
+    expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
+      "Fetching logs (log group 3 / 5): listing streams, 4 selected so far",
+    );
+  });
+
+  it("counts the log groups that failed while the fetch goes on (U3:R-04)", () => {
+    renderPage(
+      view({
+        phase: "Fetching",
+        canRun: false,
+        progress: progress({ groupNumber: 3, groupCount: 3, failedGroupCount: 2 }),
+      }),
+    );
+    expect(screen.getByTestId("log-analytics-failed-groups")).toHaveTextContent(
+      "2 log groups could not be fetched.",
+    );
+  });
+
+  it("keeps the previous result shown under the progress while the next run goes (U3:BR3.4)", async () => {
+    const { rerender } = renderPage(
+      view({
+        phase: "Fetching",
+        runId: 2,
+        canRun: false,
+        progress: progress(),
+        result: resultSummary({ runId: 1 }),
+      }),
+    );
+    expect(screen.getByTestId("log-analytics-progress")).toBeInTheDocument();
+    expect(screen.getByTestId("query-result-previous")).toHaveTextContent(
+      "Results of the previous run",
+    );
+    await waitFor(() =>
+      expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
+    );
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 2, 0, 2);
+    rerender(
+      view({
+        phase: "Evaluating",
+        runId: 2,
+        canRun: false,
+        progress: progress({ evaluatedCount: 1, totalCount: 9 }),
+        result: resultSummary({ runId: 1 }),
+      }),
+    );
+    expect(screen.getByTestId("query-result-previous")).toBeInTheDocument();
+    rerender(view({ phase: "Done", runId: 2, result: resultSummary({ runId: 2 }) }));
+    expect(screen.queryByTestId("query-result-previous")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("log-analytics-progress")).not.toBeInTheDocument();
+  });
+
+  it("names every log group a failed fetch could not fetch, with no result (U3:BR2.6, BR3.4)", () => {
+    const denied = { kind: "AccessDenied" as const, safeDetail: "", retryable: false };
+    const expired = { kind: "AuthRequired" as const, safeDetail: "", retryable: false };
+    renderPage(
+      view({
+        phase: "FetchFailed",
+        failure: denied,
+        failedGroups: [
+          { logGroupName: "/aws/lambda/orders", failure: denied },
+          { logGroupName: "/aws/lambda/payments", failure: expired },
+        ],
+        result: null,
+      }),
+    );
+    const error = screen.getByTestId("log-analytics-fetch-error");
+    expect(error).toHaveTextContent("Log groups that could not be fetched:");
+    const groups = within(error).getAllByTestId("log-analytics-failed-group");
+    expect(groups.map((group) => group.textContent)).toEqual([
+      expect.stringContaining("/aws/lambda/orders: Access was denied."),
+      expect.stringContaining("/aws/lambda/payments:"),
+    ]);
+    expect(error).toHaveTextContent("The query was not run.");
+    expect(screen.queryByTestId("query-result-table")).not.toBeInTheDocument();
+  });
+
+  it("says in Japanese which log group of how many is fetched (U3:BR2.7, NFR9)", () => {
+    renderPage(
+      view({
+        phase: "Fetching",
+        canRun: false,
+        progress: progress({
+          groupNumber: 2,
+          groupCount: 4,
+          plannedStreamCount: 8,
+          finishedStreamCount: 3,
+          eventCount: 120,
+        }),
+      }),
+      "ja",
+    );
+    expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
+      "ログを取得中（ロググループ 2 / 4）：ストリーム 3 / 8、120 件",
     );
   });
 });

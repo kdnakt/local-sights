@@ -278,12 +278,17 @@ impl Condition {
 }
 
 /// The kinds of the parts of a condition tree (entities.md Condition.kind).
+///
+/// A run of `and` or of `or` is one list of two or more parts, not pairs
+/// nested in each other, so a long `a or b or c …` is one level deep and is
+/// read, evaluated and dropped by walking the list (261017-insights-query
+/// U3:BR5.1, functional-design review R-02).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConditionKind {
-    /// Both hold.
-    And(Box<Condition>, Box<Condition>),
-    /// Either holds.
-    Or(Box<Condition>, Box<Condition>),
+    /// Every part holds.
+    And(Vec<Condition>),
+    /// Some part holds.
+    Or(Vec<Condition>),
     /// `not (…)`: does not hold (U2:BR2.4).
     Not(Box<Condition>),
     /// `field op value`.

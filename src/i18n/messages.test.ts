@@ -111,6 +111,8 @@ const QUERY_PROBLEM_KEYS = [
   "query.unsupported.arrayElement",
   "query.unsupported.alias",
   "query.unsupported.limitAny",
+  // 261017-insights-query U3:BR5.1.
+  "query.syntax.nestingTooDeep",
 ];
 
 describe("message catalog", () => {
@@ -128,8 +130,8 @@ describe("message catalog", () => {
   });
 
   it("has every reading problem of the query in both languages, with its word (261017-insights-query NFR9)", () => {
-    // The core's keys::ALL: 31 in U1, 41 since U2.
-    expect(QUERY_PROBLEM_KEYS).toHaveLength(41);
+    // The core's keys::ALL: 31 in U1, 41 in U2, 42 since U3.
+    expect(QUERY_PROBLEM_KEYS).toHaveLength(42);
     for (const key of QUERY_PROBLEM_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
@@ -157,6 +159,29 @@ describe("message catalog", () => {
     expect(translate("ja", "query.syntax.missingFields", { word: "sort" })).toBe(
       "sort の後ろに項目がありません。",
     );
+  });
+
+  it("has the U3 texts of many log groups in both languages (261017-insights-query U3:BR2.7, BR4.1, BR5.1)", () => {
+    expect(translate("en", "insights.logGroups.limit", { max: 50 })).toBe(
+      "You can choose up to 50 log groups.",
+    );
+    expect(translate("ja", "insights.logGroups.limit", { max: 50 })).toBe(
+      "ロググループは 50 個まで選べます。",
+    );
+    expect(
+      translate("en", "insights.status.fetching", {
+        number: 2,
+        groups: 3,
+        done: 1,
+        total: 4,
+        events: 10,
+      }),
+    ).toBe("Fetching logs (log group 2 / 3): 1 / 4 streams, 10 events");
+    expect(translate("ja", "insights.status.failedGroups", { count: 2 })).toBe(
+      "2 個のロググループを取得できませんでした。",
+    );
+    expect(translate("en", "query.syntax.nestingTooDeep")).toContain("100 levels");
+    expect(translate("ja", "failures.column.groupStream")).toBe("ロググループ / ストリーム");
   });
 
   it("has every SSO login text in both languages (261011-sso-login NFR5)", () => {

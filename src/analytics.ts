@@ -1,10 +1,10 @@
 /**
  * Pure helpers of the Log Analytics screen (261017-insights-query U1): the
  * two pages the navigation switches between (U1:BR1.1), the words of a
- * reading problem (U1:BR3.9), the place of a problem in the query text and
- * the one log group a new choice keeps (U1:BR1.3). Since U2 the range of a
- * problem in the editor's own positions (U2:BR6.1) and the first line of a
- * cell (U2:BR7.1).
+ * reading problem (U1:BR3.9) and the place of a problem in the query text.
+ * Since U2 the range of a problem in the editor's own positions (U2:BR6.1)
+ * and the first line of a cell (U2:BR7.1). Since U3 the choice of up to 50
+ * log groups (U3:BR4.1).
  */
 
 import type { CompletionCandidate, CompletionKind, QueryProblem, QuerySpan } from "./api";
@@ -271,12 +271,16 @@ export function firstLine(text: string): string {
 }
 
 /**
- * U1:BR1.3: the one log group the newest choice makes the selection, the
- * previous one being replaced; nothing chosen is `null`.
+ * 261017-insights-query U3:BR4.1: the chosen log groups, each once, in the
+ * order chosen, at most `max` (the 51st is not taken). Replaces U1's one
+ * group that a new choice replaced.
  */
-export function newestSelection(values: readonly string[], previous: string | null): string | null {
-  if (values.length === 0) {
-    return null;
+export function limitSelection(values: readonly string[], max: number): string[] {
+  const chosen: string[] = [];
+  for (const value of values) {
+    if (value !== "" && !chosen.includes(value) && chosen.length < max) {
+      chosen.push(value);
+    }
   }
-  return values.find((value) => value !== previous) ?? values[0] ?? null;
+  return chosen;
 }

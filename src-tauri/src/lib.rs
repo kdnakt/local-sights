@@ -134,6 +134,14 @@
 //! task is lost while evaluating, never as a failed GetLogEvents
 //! (U2:BR10.2).
 //!
+//! Since 261017-insights-query U3 `update_analytics_input` takes the log
+//! groups as a list of up to 50 names (U3:BR4.1), a run fetches only what
+//! the QueryStore and the disk cache do not hold, log group by log group
+//! (U3:BR2.1-BR2.5), and its progress counts the log groups (U3:BR2.7).
+//! `get_query_rows` and `get_query_row_detail` read the result's own copies
+//! of its rows, checked by the run number, so they no longer lock the
+//! QueryStore (U3:BR3.2).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
@@ -156,7 +164,8 @@ use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_repor
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
 use local_sights_core::insights_session::{
-    AnalyticsField, CompletionCandidate, QueryBegin, QueryRowDetail, QueryRowWindow, QueryStart,
+    AnalyticsField, AnalyticsValue, CompletionCandidate, QueryBegin, QueryRowDetail,
+    QueryRowWindow, QueryStart,
 };
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
@@ -166,7 +175,7 @@ use local_sights_core::query::evaluator::QueryResult;
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
 use local_sights_core::query::plan::{QueryPlan, QueryProblem};
-use local_sights_core::query::runner::{self, QueryRun, QuerySink};
+use local_sights_core::query::runner::{self, QueryRun, QueryRunSummary, QuerySink};
 use local_sights_core::query::store::QueryStore;
 use local_sights_core::request::ValidatedFetch;
 use local_sights_core::retry::{
@@ -868,13 +877,14 @@ fn cancel_running_fetch(
 }
 
 /// Changes one field of the Log Analytics screen (261017-insights-query
-/// U1:BR1.3, BR1.4); refused while its query runs (U1:BR2.4). A log group
-/// chosen for an older connection is dropped (U3:BR6.7). The new state
-/// arrives through `session-changed`.
+/// U1:BR1.3, BR1.4); refused while its query runs (U1:BR2.4). The log
+/// groups come as a list of up to 50 names (U3:BR4.1), a text for the other
+/// fields. Log groups chosen for an older connection are dropped
+/// (U3:BR6.7). The new state arrives through `session-changed`.
 #[tauri::command]
 fn update_analytics_input(
     field: AnalyticsField,
-    value: String,
+    value: AnalyticsValue,
     generation: u64,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -888,7 +898,7 @@ fn change_analytics_input(
     app: &AppHandle,
     state: &AppState,
     field: AnalyticsField,
-    value: String,
+    value: AnalyticsValue,
     generation: u64,
 ) -> Result<(), CommandError> {
     let view = {
@@ -978,10 +988,11 @@ fn spawn_query(
     let run = QueryRun {
         run_id,
         plan: Arc::new(plan),
-        fetch: start.fetch,
-        key: start.key,
+        range: start.range,
+        keys: start.keys,
         cache,
-        fetch_started_at_ms: now_epoch_ms(),
+        run_started_at_ms: now_epoch_ms(),
+        clock: now_epoch_ms,
     };
     let session = Arc::clone(&state.session);
     let store = Arc::clone(&state.query_store);
@@ -1080,8 +1091,9 @@ fn cancel_running_query(
     true
 }
 
-/// At most `limit` result rows from `offset` of the run and holdings epoch
-/// the screen shows (U1:BR6.4); no rows when either is not the shown one.
+/// At most `limit` result rows from `offset` of the run the screen shows
+/// (U1:BR6.4, 261017-insights-query U3:BR3.2); no rows for another run.
+/// `holdings_epoch` is only sent back with the rows.
 #[tauri::command]
 fn get_query_rows(
     run_id: u64,
@@ -1090,21 +1102,14 @@ fn get_query_rows(
     limit: u64,
     state: State<'_, AppState>,
 ) -> QueryRowWindow {
-    query_rows(
-        &state.session,
-        &state.query_store,
-        run_id,
-        holdings_epoch,
-        (offset, limit),
-    )
+    query_rows(&state.session, run_id, holdings_epoch, (offset, limit))
 }
 
-/// Reads the rows of [`get_query_rows`]: the positions from the session's
-/// result, then the events from the QueryStore (lock order: session, then
-/// the store), with their times written in the chosen zone.
+/// Reads the rows of [`get_query_rows`] from the shown result's own copies
+/// (U3:BR3.2: the QueryStore is not locked), with their times written in
+/// the chosen zone.
 fn query_rows(
     session: &Mutex<AppSession>,
-    store: &QueryStore,
     run_id: u64,
     holdings_epoch: u64,
     (offset, limit): (u64, u64),
@@ -1113,15 +1118,11 @@ fn query_rows(
     let limit = usize::try_from(limit)
         .unwrap_or(usize::MAX)
         .min(MAX_ROWS_PER_REQUEST);
-    let session = lock(session);
-    let positions = session.query_row_positions(run_id, holdings_epoch, offset, limit);
-    let held = store.rows_at(holdings_epoch, &positions);
-    session.display_query_rows(run_id, holdings_epoch, offset, held)
+    lock(session).display_query_rows(run_id, holdings_epoch, offset, limit)
 }
 
-/// The fields of result row `index` of the run and holdings epoch the screen
-/// shows (261017-insights-query U2:BR7.3); no field when either is not the
-/// shown one.
+/// The fields of result row `index` of the run the screen shows
+/// (261017-insights-query U2:BR7.3, U3:BR3.2); no field for another run.
 #[tauri::command]
 fn get_query_row_detail(
     run_id: u64,
@@ -1129,31 +1130,19 @@ fn get_query_row_detail(
     index: u64,
     state: State<'_, AppState>,
 ) -> QueryRowDetail {
-    query_row_detail(
-        &state.session,
-        &state.query_store,
-        run_id,
-        holdings_epoch,
-        index,
-    )
+    query_row_detail(&state.session, run_id, holdings_epoch, index)
 }
 
-/// Reads [`get_query_row_detail`]: the position from the session's result,
-/// then the one event from the QueryStore (lock order: session, then the
-/// store).
+/// Reads [`get_query_row_detail`] from the shown result's own copy of the
+/// row.
 fn query_row_detail(
     session: &Mutex<AppSession>,
-    store: &QueryStore,
     run_id: u64,
     holdings_epoch: u64,
     index: u64,
 ) -> QueryRowDetail {
     let index = usize::try_from(index).unwrap_or(usize::MAX);
-    let session = lock(session);
-    let held = session
-        .query_row_position(run_id, holdings_epoch, index)
-        .and_then(|position| store.rows_at(holdings_epoch, &[position]));
-    session.display_query_row_detail(run_id, holdings_epoch, index, held)
+    lock(session).display_query_row_detail(run_id, holdings_epoch, index)
 }
 
 /// The completion candidates of the query field (261017-insights-query
@@ -1893,13 +1882,25 @@ impl FetchSink for TauriQuerySink {
 }
 
 impl QuerySink for TauriQuerySink {
-    fn on_fetch_ended(&mut self, run_id: u64, job: &FetchJob) -> bool {
+    fn on_reading_cache(&mut self, run_id: u64) {
+        self.update(|session| session.on_query_reading_cache(run_id));
+    }
+
+    fn on_group_started(&mut self, run_id: u64, index: usize, count: usize) {
+        self.update(|session| session.on_query_group_started(run_id, index, count));
+    }
+
+    fn on_range_fetched(&mut self, run_id: u64, _log_group_name: &str, job: &FetchJob) {
         if job.status == JobStatus::Failed {
             // Safe detail only: built from allow-listed fields and redacted.
             let detail = job.failure().map_or("", |failure| failure.safe_detail());
             eprintln!("local-sights: query fetch {} failed: {detail}", job.job_id);
         }
-        self.update(|session| session.finish_query_fetch(run_id, job))
+        self.update(|session| session.on_query_range_fetched(run_id, job));
+    }
+
+    fn on_fetch_ended(&mut self, run_id: u64, summary: &QueryRunSummary) -> bool {
+        self.update(|session| session.finish_query_fetch(run_id, summary))
     }
 
     fn on_evaluation_progress(&mut self, run_id: u64, evaluated: usize, total: usize) -> bool {
@@ -2393,30 +2394,55 @@ mod tests {
         }
     }
 
+    /// The end of a query run's fetch of `/aws/lambda/orders` (U3:BR2.5).
+    fn completed_fetch() -> QueryRunSummary {
+        use local_sights_core::query::runner::{GroupFetchOutcome, GroupFetchStatus};
+        QueryRunSummary {
+            groups: vec![GroupFetchOutcome {
+                log_group_name: "/aws/lambda/orders".to_string(),
+                status: GroupFetchStatus::Completed,
+                failed_streams: Vec::new(),
+                failure: None,
+            }],
+            partial: false,
+            from_aws: true,
+            stopped: false,
+            closed: false,
+        }
+    }
+
+    /// Copies of `events` as result rows of `/aws/lambda/orders`.
+    fn copied(events: Vec<LogEvent>) -> Vec<ResultRow> {
+        events
+            .into_iter()
+            .map(|event| ResultRow {
+                event,
+                log_group_name: "/aws/lambda/orders".to_string(),
+            })
+            .collect()
+    }
+
     #[test]
-    fn query_rows_are_read_from_the_store_only_for_the_shown_result() {
-        // U1:BR6.3, BR6.4, functional-design review R-05.
+    fn query_rows_are_read_from_the_result_only_for_the_shown_run() {
+        // U1:BR6.3, U3:BR3.2: the copies, checked by the run number; the
+        // QueryStore is not needed.
         let session = query_ready_session();
         let abort = Mutex::new(None);
         let start = query_begun(&session, &abort, "filter @message like 'ERROR'")
             .start
             .unwrap();
-        let store = QueryStore::new();
-        store.begin_run(start.key.clone());
-        store.add(vec![
-            held(1_704_164_646_000, "a", 0),
-            held(1_704_164_647_000, "b", 0),
-        ]);
-        let epoch = store.epoch();
+        let epoch = 3;
         {
             let mut locked = lock(&session);
-            let mut job = FetchJob::start(start.fetch.range);
-            job.status = JobStatus::Completed;
-            job.event_count = 2;
-            assert!(locked.finish_query_fetch(start.run_id, &job));
-            locked.finish_query_evaluation(QueryResult::new(start.run_id, epoch, 2, vec![1]));
+            assert!(locked.finish_query_fetch(start.run_id, &completed_fetch()));
+            locked.finish_query_evaluation(QueryResult::new(
+                start.run_id,
+                epoch,
+                2,
+                copied(vec![held(1_704_164_647_000, "b", 0)]),
+            ));
         }
-        let window = query_rows(&session, &store, start.run_id, epoch, (0, 50));
+        let window = query_rows(&session, start.run_id, epoch, (0, 50));
         assert_eq!(window.total_count, 1);
         assert_eq!(window.rows.len(), 1);
         let row = &window.rows[0];
@@ -2427,49 +2453,39 @@ mod tests {
         assert_eq!(json["rows"][0]["logGroupName"], "/aws/lambda/orders");
         assert_eq!(json["rows"][0]["displayTime"], "2024/01/02 03:04:07.000");
         assert_eq!(json["rows"][0]["message"], "ERROR b 0");
+        assert_eq!(json["holdingsEpoch"], epoch, "sent back");
         assert!(
-            query_rows(&session, &store, start.run_id, epoch + 1, (0, 50))
-                .rows
-                .is_empty()
-        );
-        assert!(
-            query_rows(&session, &store, start.run_id + 1, epoch, (0, 50))
-                .rows
-                .is_empty()
-        );
-        store.discard_all();
-        assert!(
-            query_rows(&session, &store, start.run_id, epoch, (0, 50))
+            query_rows(&session, start.run_id + 1, epoch, (0, 50))
                 .rows
                 .is_empty(),
-            "discarded holdings give no rows"
+            "another run"
+        );
+        assert_eq!(
+            query_rows(&session, start.run_id, epoch + 1, (0, 50))
+                .rows
+                .len(),
+            1,
+            "the copies do not depend on the holdings epoch"
         );
     }
 
     // ---- 261017-insights-query U2 ---------------------------------------
 
-    use local_sights_core::query::evaluator::EvalOutput;
+    use local_sights_core::query::evaluator::{EvalOutput, ResultRow};
     use local_sights_core::query::plan::{FieldRef, JsonPath};
 
-    /// A query run of `session` that fetched `events` into `store` and is
-    /// evaluating; returns the run number and the holdings epoch.
+    /// A query run of `session` that fetched `events` and is evaluating;
+    /// returns the run number, its holdings epoch and the events.
     fn query_evaluating(
         session: &Mutex<AppSession>,
-        store: &QueryStore,
         events: Vec<LogEvent>,
-    ) -> (u64, u64) {
+    ) -> (u64, u64, Vec<LogEvent>) {
         let abort = Mutex::new(None);
         let start = query_begun(session, &abort, "filter @message like 'ERROR'")
             .start
             .unwrap();
-        store.begin_run(start.key.clone());
-        let count = events.len() as u64;
-        store.add(events);
-        let mut job = FetchJob::start(start.fetch.range);
-        job.status = JobStatus::Completed;
-        job.event_count = count;
-        assert!(lock(session).finish_query_fetch(start.run_id, &job));
-        (start.run_id, store.epoch())
+        assert!(lock(session).finish_query_fetch(start.run_id, &completed_fetch()));
+        (start.run_id, 1, events)
     }
 
     fn json_event(timestamp: i64, message: &str) -> LogEvent {
@@ -2483,13 +2499,13 @@ mod tests {
     }
 
     /// Ends the evaluation of `run_id` with the columns @timestamp and
-    /// `level` over the rows `rows`.
+    /// `level` over the rows at `rows` of `events`, copied (U3:BR3.2).
     fn finish_with_level_column(
         session: &Mutex<AppSession>,
-        run_id: u64,
-        epoch: u64,
+        (run_id, epoch, events): (u64, u64, Vec<LogEvent>),
         rows: Vec<usize>,
     ) {
+        let copies = copied(rows.iter().map(|row| events[*row].clone()).collect());
         lock(session).finish_query_evaluation(QueryResult::from_output(
             run_id,
             epoch,
@@ -2503,6 +2519,7 @@ mod tests {
                 truncated_at: None,
                 evaluated_count: 2,
             },
+            copies,
         ));
     }
 
@@ -2510,17 +2527,16 @@ mod tests {
     fn query_rows_carry_one_cell_per_result_column() {
         // U2:BR7.1, BR7.4: the cells are read with the rows.
         let session = query_ready_session();
-        let store = QueryStore::new();
-        let (run_id, epoch) = query_evaluating(
+        let evaluating = query_evaluating(
             &session,
-            &store,
             vec![
                 json_event(1_704_164_646_000, r#"{"level":"error"}"#),
                 json_event(1_704_164_647_000, "plain"),
             ],
         );
-        finish_with_level_column(&session, run_id, epoch, vec![1, 0]);
-        let window = query_rows(&session, &store, run_id, epoch, (0, 50));
+        let (run_id, epoch) = (evaluating.0, evaluating.1);
+        finish_with_level_column(&session, evaluating, vec![1, 0]);
+        let window = query_rows(&session, run_id, epoch, (0, 50));
         let json = serde_json::to_value(&window).unwrap();
         assert_eq!(json["rows"][0]["values"][0], "2024/01/02 03:04:07.000");
         assert!(
@@ -2540,17 +2556,16 @@ mod tests {
     fn an_opened_row_lists_its_fields_only_for_the_shown_result() {
         // U2:BR7.3.
         let session = query_ready_session();
-        let store = QueryStore::new();
-        let (run_id, epoch) = query_evaluating(
+        let evaluating = query_evaluating(
             &session,
-            &store,
             vec![json_event(
                 1_704_164_646_000,
                 r#"{"level":"error","http":{"status":500}}"#,
             )],
         );
-        finish_with_level_column(&session, run_id, epoch, vec![0]);
-        let detail = query_row_detail(&session, &store, run_id, epoch, 0);
+        let (run_id, epoch) = (evaluating.0, evaluating.1);
+        finish_with_level_column(&session, evaluating, vec![0]);
+        let detail = query_row_detail(&session, run_id, epoch, 0);
         let json = serde_json::to_value(&detail).unwrap();
         let names: Vec<&str> = json["fields"]
             .as_array()
@@ -2571,16 +2586,12 @@ mod tests {
         );
         assert_eq!(json["fields"][4]["value"], "500");
         assert_eq!(json["runId"], run_id);
-        for (run, held_epoch, index) in [
-            (run_id + 1, epoch, 0),
-            (run_id, epoch + 1, 0),
-            (run_id, epoch, 1),
-        ] {
+        for (run, index) in [(run_id + 1, 0), (run_id, 1)] {
             assert!(
-                query_row_detail(&session, &store, run, held_epoch, index)
+                query_row_detail(&session, run, epoch, index)
                     .fields
                     .is_empty(),
-                "{run} {held_epoch} {index}"
+                "{run} {index}"
             );
         }
     }
@@ -2591,8 +2602,7 @@ mod tests {
         // GetLogEvents, but an evaluating run is not said to have failed to
         // fetch.
         let session = query_ready_session();
-        let store = QueryStore::new();
-        let (run_id, _) = query_evaluating(&session, &store, vec![json_event(1, "ERROR")]);
+        let (run_id, _, _) = query_evaluating(&session, vec![json_event(1, "ERROR")]);
         let failure = ApiFailure::new(
             FailureKind::Other,
             &SafeDetailFields {
@@ -2612,10 +2622,9 @@ mod tests {
     fn completion_candidates_add_the_field_names_of_the_last_fetch() {
         // U2:BR1.7, BR9.1.
         let session = query_ready_session();
-        let store = QueryStore::new();
         let before = lock(&session).query_completion_candidates();
         assert!(before.iter().any(|candidate| candidate.text == "filter"));
-        let (run_id, _) = query_evaluating(&session, &store, vec![json_event(1, "ERROR")]);
+        let (run_id, _, _) = query_evaluating(&session, vec![json_event(1, "ERROR")]);
         lock(&session).set_query_field_names(run_id, vec!["http.status".to_string()]);
         let after = serde_json::to_value(lock(&session).query_completion_candidates()).unwrap();
         let last = after.as_array().unwrap().last().unwrap();
@@ -2630,11 +2639,63 @@ mod tests {
         let log_view = Mutex::new(LogView::new());
         log_view.add(vec![held(1, "lm", 0)]);
         let store = QueryStore::new();
-        store.add(vec![held(2, "q", 0)]);
+        let key = local_sights_core::query::store::HoldingKey {
+            profile: ProfileSelector::Named("dev".to_string()),
+            region: "ap-northeast-1".to_string(),
+            log_group_name: "/aws/lambda/orders".to_string(),
+        };
+        store.begin_run(vec![key.clone()]);
+        let range = local_sights_core::cache::plan::CoveredRange {
+            start_ms: 0,
+            end_ms: 10,
+        };
+        store.settle_range(&key, range, vec![held(2, "q", 0)], true, 1_000_000_000);
         let epoch = store.epoch();
         clear_held_logs(&mut lock(&session), &log_view, &store);
         assert!(store.is_empty());
+        assert!(store.covered_ranges(&key).is_empty(), "U3:BR1.6");
         assert_eq!(store.epoch(), epoch + 1);
         assert_eq!(lock(&log_view).rows(0, 10).all_count, 0);
+    }
+
+    // ---- 261017-insights-query U3:BR4.1 ---------------------------------
+
+    #[test]
+    fn the_log_groups_arrive_as_a_list_and_the_other_fields_as_texts() {
+        // The shapes `update_analytics_input` takes from the screen.
+        let names: AnalyticsValue =
+            serde_json::from_str(r#"["/aws/lambda/orders","/aws/lambda/MyFunction"]"#).unwrap();
+        assert_eq!(
+            names,
+            AnalyticsValue::Names(vec![
+                "/aws/lambda/orders".to_string(),
+                "/aws/lambda/MyFunction".to_string()
+            ])
+        );
+        let text: AnalyticsValue = serde_json::from_str(r#""filter @log = 'x'""#).unwrap();
+        assert_eq!(text, AnalyticsValue::Text("filter @log = 'x'".to_string()));
+        // The test session lists `/aws/lambda/orders` only.
+        let session = query_ready_session();
+        {
+            let mut locked = lock(&session);
+            let generation = locked.connection_generation();
+            assert_eq!(
+                locked.update_analytics_input(AnalyticsField::LogGroup, names, generation),
+                Err(SessionError::UnknownLogGroup),
+                "a name not listed is refused"
+            );
+            let listed: AnalyticsValue = serde_json::from_str(r#"["/aws/lambda/orders"]"#).unwrap();
+            locked
+                .update_analytics_input(AnalyticsField::LogGroup, listed, generation)
+                .unwrap();
+        }
+        let json = serde_json::to_value(lock(&session).view().insights).unwrap();
+        assert_eq!(
+            json["selectedLogGroupNames"],
+            serde_json::json!(["/aws/lambda/orders"])
+        );
+        assert_eq!(json["maxLogGroups"], 50);
+        assert_eq!(json["progress"], serde_json::Value::Null);
+        assert_eq!(json["failedGroups"], serde_json::json!([]));
     }
 }

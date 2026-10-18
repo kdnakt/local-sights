@@ -103,12 +103,8 @@ pub fn matches(plan: &QueryPlan, item: &EvalItem<'_>) -> bool {
 /// stopping as soon as the answer is known (U1:BR5.2).
 pub fn condition_holds(condition: &Condition, fields: &EventFields<'_>) -> bool {
     match &condition.kind {
-        ConditionKind::And(left, right) => {
-            condition_holds(left, fields) && condition_holds(right, fields)
-        }
-        ConditionKind::Or(left, right) => {
-            condition_holds(left, fields) || condition_holds(right, fields)
-        }
+        ConditionKind::And(parts) => parts.iter().all(|part| condition_holds(part, fields)),
+        ConditionKind::Or(parts) => parts.iter().any(|part| condition_holds(part, fields)),
         ConditionKind::Not(inner) => !condition_holds(inner, fields),
         ConditionKind::Compare { field, op, value } => compare(fields.value(field), *op, value),
         // U2:BR1.5: like on a missing field is false, so `not like` holds.
@@ -683,18 +679,33 @@ fn json_sort_values<I: EvalItems + ?Sized>(
         .collect()
 }
 
-/// The result of one finished evaluation (entities.md QueryResult). The
-/// rows are positions in the query holdings of `holdings_epoch` (U1 review
-/// R-05), in the result's order (U2:BR3.1, BR4.4).
+/// One result row, copied out of the holdings when the evaluation ended
+/// (entities.md ResultRow, 261017-insights-query U3:BR3.2): the event and
+/// its log group, the value of `@log`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultRow {
+    /// The event as held.
+    pub event: LogEvent,
+    /// Its log group.
+    pub log_group_name: String,
+}
+
+/// The result of one finished evaluation (entities.md QueryResult). Since
+/// 261017-insights-query U3 the rows are copies of the events in the
+/// result's order (U2:BR3.1, BR4.4), at most 100,000 of them since the
+/// result is cut by `limit` or at 10,000 (U3:BR3.2), so the result can be
+/// read whatever the holdings become: a later run that fetches more or
+/// discards its staging events does not change it (U3:BR3.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryResult {
     /// The run that made it.
     pub run_id: u64,
-    /// The holdings epoch the positions point into.
+    /// The holdings epoch the run evaluated; the screen keeps it with the
+    /// run number, but the rows no longer depend on it (U3:BR3.2).
     pub holdings_epoch: u64,
     /// Events evaluated.
     pub evaluated_count: usize,
-    rows: Vec<usize>,
+    rows: Vec<ResultRow>,
     columns: Vec<FieldRef>,
     matched_count: usize,
     truncated_at: Option<usize>,
@@ -703,7 +714,12 @@ pub struct QueryResult {
 impl QueryResult {
     /// The result of run `run_id` over the holdings of `holdings_epoch`
     /// with the two default columns, nothing cut.
-    pub fn new(run_id: u64, holdings_epoch: u64, evaluated_count: usize, rows: Vec<usize>) -> Self {
+    pub fn new(
+        run_id: u64,
+        holdings_epoch: u64,
+        evaluated_count: usize,
+        rows: Vec<ResultRow>,
+    ) -> Self {
         Self {
             run_id,
             holdings_epoch,
@@ -715,13 +731,19 @@ impl QueryResult {
         }
     }
 
-    /// The result `output` of run `run_id` over `holdings_epoch`.
-    pub fn from_output(run_id: u64, holdings_epoch: u64, output: EvalOutput) -> Self {
+    /// The result `output` of run `run_id` over `holdings_epoch`, with
+    /// `rows`, the copies of the events at `output.rows`, in that order.
+    pub fn from_output(
+        run_id: u64,
+        holdings_epoch: u64,
+        output: EvalOutput,
+        rows: Vec<ResultRow>,
+    ) -> Self {
         Self {
             run_id,
             holdings_epoch,
             evaluated_count: output.evaluated_count,
-            rows: output.rows,
+            rows,
             columns: output.columns,
             matched_count: output.matched_count,
             truncated_at: output.truncated_at,
@@ -748,17 +770,12 @@ impl QueryResult {
         self.truncated_at
     }
 
-    /// The positions of at most `limit` rows from `offset`, when the screen
-    /// asks for this result's run and epoch; nothing otherwise, and the
-    /// screen waits for the newer state (U1:BR6.2, BR6.4).
-    pub fn window(
-        &self,
-        run_id: u64,
-        holdings_epoch: u64,
-        offset: usize,
-        limit: usize,
-    ) -> &[usize] {
-        if run_id != self.run_id || holdings_epoch != self.holdings_epoch {
+    /// At most `limit` rows from `offset`, when the screen asks for this
+    /// result's run; nothing otherwise, and the screen waits for the newer
+    /// state (U1:BR6.2; U3:BR3.2 checks the run number where U1:BR6.4
+    /// checked the holdings epoch).
+    pub fn window(&self, run_id: u64, offset: usize, limit: usize) -> &[ResultRow] {
+        if run_id != self.run_id {
             return &[];
         }
         let start = offset.min(self.rows.len());
@@ -766,12 +783,9 @@ impl QueryResult {
         &self.rows[start..end]
     }
 
-    /// The position of result row `index` of this run and epoch, or `None`
-    /// (U2:BR7.3, BR7.4).
-    pub fn row_at(&self, run_id: u64, holdings_epoch: u64, index: usize) -> Option<usize> {
-        self.window(run_id, holdings_epoch, index, 1)
-            .first()
-            .copied()
+    /// Result row `index` of this run, or `None` (U2:BR7.3, BR7.4).
+    pub fn row_at(&self, run_id: u64, index: usize) -> Option<&ResultRow> {
+        self.window(run_id, index, 1).first()
     }
 }
 
@@ -1456,56 +1470,68 @@ mod tests {
         );
     }
 
-    // ---- U1:BR6.3, BR6.4: reading the rows of a result -----------------
+    // ---- U1:BR6.3, U3:BR3.2: reading the rows of a result --------------
+
+    /// Result rows at the given times, on stream `s` of [`GROUP`].
+    fn copied(times: &[i64]) -> Vec<ResultRow> {
+        times
+            .iter()
+            .map(|time| ResultRow {
+                event: event(*time, "s", 0, "m"),
+                log_group_name: GROUP.to_string(),
+            })
+            .collect()
+    }
+
+    fn times(rows: &[ResultRow]) -> Vec<i64> {
+        rows.iter().map(|row| row.event.timestamp).collect()
+    }
 
     fn result() -> QueryResult {
-        QueryResult::new(3, 7, 10, vec![1, 4, 5, 8, 9])
+        QueryResult::new(3, 7, 10, copied(&[1, 4, 5, 8, 9]))
     }
 
     #[test]
-    fn the_rows_of_the_asked_run_and_epoch_are_given_by_offset_and_limit() {
+    fn the_rows_of_the_asked_run_are_given_by_offset_and_limit() {
         let result = result();
-        assert_eq!(result.window(3, 7, 1, 3), &[4, 5, 8]);
-        assert_eq!(result.window(3, 7, 0, 5), &[1, 4, 5, 8, 9]);
+        assert_eq!(times(result.window(3, 1, 3)), vec![4, 5, 8]);
+        assert_eq!(times(result.window(3, 0, 5)), vec![1, 4, 5, 8, 9]);
         assert_eq!(result.row_count(), 5);
         assert_eq!(result.evaluated_count, 10);
-        assert_eq!(result.row_at(3, 7, 1), Some(4));
-        assert_eq!(result.row_at(3, 7, 5), None);
+        assert_eq!(result.row_at(3, 1).map(|row| row.event.timestamp), Some(4));
+        assert_eq!(
+            result.row_at(3, 1).map(|row| row.log_group_name.as_str()),
+            Some(GROUP)
+        );
+        assert_eq!(result.row_at(3, 5), None);
     }
 
     #[test]
     fn another_run_gets_no_rows() {
-        assert!(result().window(2, 7, 0, 5).is_empty());
-        assert!(result().window(4, 7, 0, 5).is_empty());
-        assert_eq!(result().row_at(4, 7, 0), None);
-    }
-
-    #[test]
-    fn another_holdings_epoch_gets_no_rows() {
-        // A connection change or a newer run discarded the holdings.
-        assert!(result().window(3, 8, 0, 5).is_empty());
-        assert!(result().window(3, 6, 0, 5).is_empty());
-        assert_eq!(result().row_at(3, 8, 0), None);
+        // U3:BR3.2: the run number is checked, the copies need no epoch.
+        assert!(result().window(2, 0, 5).is_empty());
+        assert!(result().window(4, 0, 5).is_empty());
+        assert_eq!(result().row_at(4, 0), None);
     }
 
     #[test]
     fn a_window_beyond_the_rows_is_cut_at_the_end() {
         let result = result();
-        assert_eq!(result.window(3, 7, 3, 100), &[8, 9]);
-        assert!(result.window(3, 7, 5, 10).is_empty());
-        assert!(result.window(3, 7, usize::MAX, usize::MAX).is_empty());
-        assert!(result.window(3, 7, 0, 0).is_empty());
+        assert_eq!(times(result.window(3, 3, 100)), vec![8, 9]);
+        assert!(result.window(3, 5, 10).is_empty());
+        assert!(result.window(3, usize::MAX, usize::MAX).is_empty());
+        assert!(result.window(3, 0, 0).is_empty());
     }
 
     #[test]
     fn a_result_without_matches_has_no_rows() {
         let empty = QueryResult::new(1, 1, 50, Vec::new());
         assert_eq!(empty.row_count(), 0);
-        assert!(empty.window(1, 1, 0, 100).is_empty());
+        assert!(empty.window(1, 0, 100).is_empty());
     }
 
     #[test]
-    fn a_result_keeps_the_columns_and_the_cut_of_its_output() {
+    fn a_result_keeps_the_columns_the_cut_and_the_copies_of_its_output() {
         let result = QueryResult::from_output(
             2,
             5,
@@ -1516,17 +1542,19 @@ mod tests {
                 truncated_at: Some(2),
                 evaluated_count: 20,
             },
+            copied(&[30, 10]),
         );
         assert_eq!(result.columns(), &[FieldRef::Log]);
         assert_eq!(
             (
                 result.matched_count(),
                 result.truncated_at(),
-                result.evaluated_count
+                result.evaluated_count,
+                result.holdings_epoch
             ),
-            (9, Some(2), 20)
+            (9, Some(2), 20, 5)
         );
-        assert_eq!(result.window(2, 5, 0, 9), &[3, 1]);
+        assert_eq!(times(result.window(2, 0, 9)), vec![30, 10]);
     }
 }
 

@@ -332,6 +332,93 @@ pub fn merge_ranges(ranges: &[CoveredRange], added: CoveredRange) -> Vec<Covered
     merged
 }
 
+/// 261017-insights-query U3:BR1.1: the parts of `[start_ms, end_ms]` (both
+/// ends included) that no range of `covered` holds, earliest first. A part
+/// begins one millisecond after a covered range ends and ends one
+/// millisecond before the next one begins, so no part shares a millisecond
+/// with `covered`. Empty when everything is covered or the period is empty.
+pub fn missing_ranges(start_ms: i64, end_ms: i64, covered: &[CoveredRange]) -> Vec<CoveredRange> {
+    let mut missing = Vec::new();
+    if start_ms > end_ms {
+        return missing;
+    }
+    // `next` is the first millisecond not yet known to be covered.
+    let mut next = start_ms;
+    for range in joined(covered) {
+        if range.end_ms < next {
+            continue;
+        }
+        if range.start_ms > end_ms {
+            break;
+        }
+        if range.start_ms > next {
+            missing.push(CoveredRange {
+                start_ms: next,
+                end_ms: range.start_ms - 1,
+            });
+        }
+        if range.end_ms >= end_ms {
+            return missing;
+        }
+        next = range.end_ms + 1;
+    }
+    missing.push(CoveredRange {
+        start_ms: next,
+        end_ms,
+    });
+    missing
+}
+
+/// 261017-insights-query U3:BR2.1: the parts that `wanted` and `available`
+/// (each a list of ranges, both ends included) have in common, earliest
+/// first, adjacent parts joined.
+pub fn overlap_ranges(wanted: &[CoveredRange], available: &[CoveredRange]) -> Vec<CoveredRange> {
+    let wanted = joined(wanted);
+    let available = joined(available);
+    let mut overlaps: Vec<CoveredRange> = Vec::new();
+    let (mut left, mut right) = (0, 0);
+    while let (Some(a), Some(b)) = (wanted.get(left), available.get(right)) {
+        let start_ms = a.start_ms.max(b.start_ms);
+        let end_ms = a.end_ms.min(b.end_ms);
+        if start_ms <= end_ms {
+            match overlaps.last_mut() {
+                Some(last) if start_ms <= last.end_ms.saturating_add(1) => {
+                    last.end_ms = last.end_ms.max(end_ms);
+                }
+                _ => overlaps.push(CoveredRange { start_ms, end_ms }),
+            }
+        }
+        // The range that ends first has nothing more in common.
+        if a.end_ms <= b.end_ms {
+            left += 1;
+        } else {
+            right += 1;
+        }
+    }
+    overlaps
+}
+
+/// `ranges` earliest first with every overlapping or adjacent pair joined;
+/// reversed ranges are dropped.
+fn joined(ranges: &[CoveredRange]) -> Vec<CoveredRange> {
+    let mut sorted: Vec<CoveredRange> = ranges
+        .iter()
+        .copied()
+        .filter(|range| range.start_ms <= range.end_ms)
+        .collect();
+    sorted.sort_by_key(|range| (range.start_ms, range.end_ms));
+    let mut merged: Vec<CoveredRange> = Vec::with_capacity(sorted.len());
+    for range in sorted {
+        match merged.last_mut() {
+            Some(last) if range.start_ms <= last.end_ms.saturating_add(1) => {
+                last.end_ms = last.end_ms.max(range.end_ms);
+            }
+            _ => merged.push(range),
+        }
+    }
+    merged
+}
+
 /// BR3.3: keeps the `existing` events outside `range`, drops those inside
 /// it and adds the `new_events` inside it, in `(timestamp, logStreamName,
 /// sequence)` order. `existing` must already be in that order.
@@ -1130,5 +1217,159 @@ mod tests {
         assert!(range(10, 20).contains_instant(10) && range(10, 20).contains_instant(20));
         assert!(!range(10, 20).contains_instant(21));
         assert!(range(10, 20).contains_range(10, 20) && !range(10, 20).contains_range(9, 20));
+    }
+
+    // ---- 261017-insights-query U3:BR1.1, BR2.1, R-07 -------------------
+
+    /// 2024/01/02 at `hh:mm:ss.mmm` UTC, in epoch milliseconds.
+    fn at(hour: i64, minute: i64, second: i64, milli: i64) -> i64 {
+        1_704_153_600_000 + ((hour * 60 + minute) * 60 + second) * 1_000 + milli
+    }
+
+    #[test]
+    fn nothing_covered_misses_the_whole_period_and_everything_covered_misses_nothing() {
+        assert_eq!(missing_ranges(100, 199, &[]), vec![range(100, 199)]);
+        assert_eq!(missing_ranges(100, 199, &[range(50, 300)]), Vec::new());
+        assert_eq!(missing_ranges(100, 199, &[range(100, 199)]), Vec::new());
+        assert_eq!(missing_ranges(200, 199, &[]), Vec::new(), "an empty period");
+    }
+
+    #[test]
+    fn the_front_the_back_or_the_middle_can_be_missing() {
+        assert_eq!(
+            missing_ranges(100, 199, &[range(150, 250)]),
+            vec![range(100, 149)],
+            "the front"
+        );
+        assert_eq!(
+            missing_ranges(100, 199, &[range(0, 120)]),
+            vec![range(121, 199)],
+            "the back"
+        );
+        assert_eq!(
+            missing_ranges(100, 199, &[range(0, 110), range(130, 140), range(190, 400)]),
+            vec![range(111, 129), range(141, 189)],
+            "between covered ranges"
+        );
+        assert_eq!(
+            missing_ranges(100, 199, &[range(120, 130)]),
+            vec![range(100, 119), range(131, 199)],
+            "on both sides"
+        );
+    }
+
+    #[test]
+    fn a_missing_part_never_shares_a_millisecond_with_a_covered_range() {
+        // The same millisecond at a border, and a part of one millisecond.
+        assert_eq!(
+            missing_ranges(100, 199, &[range(100, 100), range(102, 199)]),
+            vec![range(101, 101)]
+        );
+        assert_eq!(
+            missing_ranges(100, 199, &[range(0, 99), range(200, 300)]),
+            vec![range(100, 199)],
+            "touching ranges outside the period leave it whole"
+        );
+        assert_eq!(
+            missing_ranges(100, 199, &[range(0, 149), range(150, 199)]),
+            Vec::new(),
+            "adjacent covered ranges leave no gap"
+        );
+        let unsorted = [range(150, 160), range(100, 110)];
+        assert_eq!(
+            missing_ranges(100, 199, &unsorted),
+            vec![range(111, 149), range(161, 199)],
+            "the covered ranges may come in any order"
+        );
+    }
+
+    #[test]
+    fn the_end_second_counts_up_to_its_999th_millisecond() {
+        // FR1.4: a period ending at 11:00:00 runs to 11:00:00.999.
+        let end = at(11, 0, 0, 999);
+        assert_eq!(
+            missing_ranges(
+                at(10, 0, 0, 0),
+                end,
+                &[range(at(10, 0, 0, 0), at(11, 0, 0, 0))]
+            ),
+            vec![range(at(11, 0, 0, 1), end)]
+        );
+    }
+
+    #[test]
+    fn fr2_acceptance_criteria_ten_to_eleven_fetched() {
+        // FR2's acceptance criteria 1 and 2: 10:00-11:00 is fetched.
+        let fetched = [range(at(10, 0, 0, 0), at(11, 0, 0, 999))];
+        assert_eq!(
+            missing_ranges(at(10, 0, 0, 0), at(12, 0, 0, 999), &fetched),
+            vec![range(at(11, 0, 1, 0), at(12, 0, 0, 999))],
+            "10:00-12:00 misses only what follows 11:00"
+        );
+        assert_eq!(
+            missing_ranges(at(10, 15, 0, 0), at(10, 45, 0, 999), &fetched),
+            Vec::new(),
+            "10:15-10:45 is fetched already"
+        );
+    }
+
+    #[test]
+    fn r07_the_numbers_of_use_case_3() {
+        // Review R-07: fetched 10:00:00.000-11:00:59.999, run 10:00:00 to
+        // 12:00:00 (ending at 12:00:00.999).
+        let fetched = [range(at(10, 0, 0, 0), at(11, 0, 59, 999))];
+        assert_eq!(
+            missing_ranges(at(10, 0, 0, 0), at(12, 0, 0, 999), &fetched),
+            vec![range(at(11, 1, 0, 0), at(12, 0, 0, 999))]
+        );
+    }
+
+    #[test]
+    fn overlaps_are_the_parts_both_lists_hold() {
+        // BR2.1: what of the missing ranges the cache's covered ranges hold.
+        assert_eq!(overlap_ranges(&[range(100, 199)], &[]), Vec::new());
+        assert_eq!(overlap_ranges(&[], &[range(100, 199)]), Vec::new());
+        assert_eq!(
+            overlap_ranges(&[range(100, 199)], &[range(300, 400)]),
+            Vec::new(),
+            "no overlap"
+        );
+        assert_eq!(
+            overlap_ranges(&[range(100, 199)], &[range(150, 400)]),
+            vec![range(150, 199)],
+            "a part"
+        );
+        assert_eq!(
+            overlap_ranges(
+                &[range(100, 199), range(300, 399)],
+                &[range(0, 120), range(150, 320), range(390, 390)]
+            ),
+            vec![
+                range(100, 120),
+                range(150, 199),
+                range(300, 320),
+                range(390, 390)
+            ],
+            "several ranges on both sides, one millisecond included"
+        );
+    }
+
+    #[test]
+    fn overlaps_join_adjacent_parts_and_keep_the_same_millisecond() {
+        assert_eq!(
+            overlap_ranges(&[range(100, 199)], &[range(100, 149), range(150, 199)]),
+            vec![range(100, 199)],
+            "two adjacent covered ranges give one part"
+        );
+        assert_eq!(
+            overlap_ranges(&[range(100, 199)], &[range(199, 300)]),
+            vec![range(199, 199)],
+            "the border millisecond belongs to both"
+        );
+        assert_eq!(
+            overlap_ranges(&[range(100, 199)], &[range(200, 300)]),
+            Vec::new(),
+            "touching is not overlapping"
+        );
     }
 }

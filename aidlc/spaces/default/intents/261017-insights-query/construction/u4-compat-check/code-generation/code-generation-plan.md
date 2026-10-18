@@ -32,24 +32,24 @@
 
 ### 準備
 
-- [ ] **Step 1. 構成とテストの道具**：`crates/local-sights-core/examples/compat_check.rs` と、その下のモジュール `examples/compat/`（`export.rs` 書き出しの読み込み、`format.rs` 値の書き方の合わせ、`compare.rs` 比べ方、`report.rs` 報告）を作る。`Cargo.toml` に例を登録する（新しいクレートは足さない。JSON は今の `serde_json`）。`cargo test -p local-sights-core --example compat_check` が 0 件で通ることを確かめる。
+- [x] **Step 1. 構成とテストの道具**：`crates/local-sights-core/examples/compat_check.rs` と、その下のモジュール `examples/compat/`（`export.rs` 書き出しの読み込み、`format.rs` 値の書き方の合わせ、`compare.rs` 比べ方、`report.rs` 報告）を作る。`Cargo.toml` に例を登録する（新しいクレートは足さない。JSON は今の `serde_json`）。`cargo test -p local-sights-core --example compat_check` が 0 件で通ることを確かめる。
 
 ### 純粋なロジック（テストを先に書いてから実装する）
 
-- [ ] **Step 2. クエリの組の読み込み**：`compat_queries.txt` の 1 行（`id<TAB>order|set<TAB>目的<TAB>クエリ`、`#` は注記）を読む。id は英数字と - だけで重ならない。クエリの組（functional-spec の 3 章の 20 本、p09 の目的は R-04 のとおり直す）を書く。先にテスト（5 件ほど）：読める、注記と空行を飛ばす、id の重なりはエラー、id の文字の誤りはエラー、クエリの文が空はエラー。
-- [ ] **Step 3. 書き出しのフォルダと期間の確かめ**：書き出しのフォルダがリポジトリの外か（R-05）、`settings.json` の形、END が流した時刻の 30 分以上前か（BR1.3）を判断する関数を書く。先にテスト（5 件ほど）：リポジトリの中はエラー、リポジトリの外は通る、大文字・小文字だけ違う場所（Windows のときだけ同じとみなす）、settings.json の欠けた項目、END が近すぎる。
-- [ ] **Step 4. 比べ方**：`format.rs` に BR2.2 の書き方の合わせ（@timestamp は UTC の `YYYY-MM-DD HH:MM:SS.sss`、JSON の数・真偽値・文字列、値なし）、`compare.rs` に BR2.1 の列と値の多重集合の比べ、BR2.3 の並びの比べ（sort の値が同じ行どうしの順番は違いにしない）、R-01 の境目の同順位の扱い、R-06 の列のない行、BR2.4 の断り方、BR2.5 の Skipped を書く。先にテスト（12 件ほど）：同じ集まり、片方にだけある行（最初の 5 つまで）、列の名前の違い、並びの違いの番号、同順位の並びは違いにしない、境目の同順位を除いて件数だけ比べる、列のない行どうしは同じ、両方が断った・片方だけ断った、sort のない上限は Skipped、@timestamp の書き方、JSON の数と真偽値の書き方。
-- [ ] **Step 5. 判定と終了コード**：クエリごとの verdict（Same・Different・BothRejected・OnlyAppRejected・OnlyInsightsRejected・Skipped・NotCompared）と、全体の終了コード（0 互換、1 違いあり、2 比べられなかった。NotCompared が 1 つでもあるか比べた本数が 0 なら 2、R-02）を決める関数と、報告の 1 行の形（BR3.2、境目にイベントありの印、R-03）を書く。先にテスト（6 件ほど）：すべて Same は 0、Different があれば 1、NotCompared があれば 2、比べた本数 0 は 2、Skipped だけでは失敗にしない、報告の行に認証情報もメッセージの全文も出ない（先頭 40 文字まで）。
+- [x] **Step 2. クエリの組の読み込み**：`compat_queries.txt` の 1 行（`id<TAB>order|set<TAB>目的<TAB>クエリ`、`#` は注記）を読む。id は英数字と - だけで重ならない。クエリの組（functional-spec の 3 章の 20 本、p09 の目的は R-04 のとおり直す）を書く。先にテスト（5 件ほど）：読める、注記と空行を飛ばす、id の重なりはエラー、id の文字の誤りはエラー、クエリの文が空はエラー。
+- [x] **Step 3. 書き出しのフォルダと期間の確かめ**：書き出しのフォルダがリポジトリの外か（R-05）、`settings.json` の形、END が流した時刻の 30 分以上前か（BR1.3）を判断する関数を書く。先にテスト（5 件ほど）：リポジトリの中はエラー、リポジトリの外は通る、大文字・小文字だけ違う場所（Windows のときだけ同じとみなす）、settings.json の欠けた項目、END が近すぎる。
+- [x] **Step 4. 比べ方**：`format.rs` に BR2.2 の書き方の合わせ（@timestamp は UTC の `YYYY-MM-DD HH:MM:SS.sss`、JSON の数・真偽値・文字列、値なし）、`compare.rs` に BR2.1 の列と値の多重集合の比べ、BR2.3 の並びの比べ（sort の値が同じ行どうしの順番は違いにしない）、R-01 の境目の同順位の扱い、R-06 の列のない行、BR2.4 の断り方、BR2.5 の Skipped を書く。先にテスト（12 件ほど）：同じ集まり、片方にだけある行（最初の 5 つまで）、列の名前の違い、並びの違いの番号、同順位の並びは違いにしない、境目の同順位を除いて件数だけ比べる、列のない行どうしは同じ、両方が断った・片方だけ断った、sort のない上限は Skipped、@timestamp の書き方、JSON の数と真偽値の書き方。
+- [x] **Step 5. 判定と終了コード**：クエリごとの verdict（Same・Different・BothRejected・OnlyAppRejected・OnlyInsightsRejected・Skipped・NotCompared）と、全体の終了コード（0 互換、1 違いあり、2 比べられなかった。NotCompared が 1 つでもあるか比べた本数が 0 なら 2、R-02）を決める関数と、報告の 1 行の形（BR3.2、境目にイベントありの印、R-03）を書く。先にテスト（6 件ほど）：すべて Same は 0、Different があれば 1、NotCompared があれば 2、比べた本数 0 は 2、Skipped だけでは失敗にしない、報告の行に認証情報もメッセージの全文も出ない（先頭 40 文字まで）。
 
 ### 境界の層（実装してからテストを書いて実行する）
 
-- [ ] **Step 6. 確認用プログラムの配線**：`compat_check.rs` で、`--export-dir`（と `--queries`）を受け取り、settings.json を読み、フォルダと期間を確かめ、今のアプリの取得の流れ（QueryStore と取得の流れ、fetch_check と同じ作り）で期間を 1 回取得し（Completed でなければ 2 で止まる）、クエリごとにアプリの中核で評価して比べ、報告を出して終了コードで終わる。期間は START の 0 ms から END の 999 ms（R-03）。そのあとテスト（3 件ほど、偽のゲートウェイと一時フォルダで）：書き出しとアプリの結果が同じなら 0、違えば 1、取得が失敗なら 2。
-- [ ] **Step 7. 書き出しのスクリプト**：`scripts/compat/insights-export.sh` を書く（PROFILE・REGION・GROUP・START・END・OUT・QUERIES。U2 の console-check.sh と同じ流し方）。OUT がリポジトリの外かの確かめ（R-05）、END の確かめ（BR1.3）、settings.json、クエリごとの `<id>.json`（status・results、Error のときは断った文からリクエスト ID を除いたもの）、最後の数の要約。説明に、境目の秒にイベントの少ない時刻を選ぶことと、Logs Insights は読んだ量で課金されることを書く。そのあとテスト（3 件ほど）：`bash -n`、PATH の先頭に置いた偽の `aws`（決まった JSON を返す小さなスクリプト）で流して `<id>.json` と settings.json ができる、リポジトリの中の OUT は止まる。Windows のランナーでは bash のテストを飛ばす（スクリプトは macOS の手元で流すため）。
-- [ ] **Step 8. 除外と説明**：`.gitignore` に、書き出しのフォルダの名前の例（`insights-export/`）を念のため足す（BR1.2 で中には作れないが、誤って置いたときに入らないように）。README の開発者向けの節に、2 つの使い方を短く書く。
+- [x] **Step 6. 確認用プログラムの配線**：`compat_check.rs` で、`--export-dir`（と `--queries`）を受け取り、settings.json を読み、フォルダと期間を確かめ、今のアプリの取得の流れ（QueryStore と取得の流れ、fetch_check と同じ作り）で期間を 1 回取得し（Completed でなければ 2 で止まる）、クエリごとにアプリの中核で評価して比べ、報告を出して終了コードで終わる。期間は START の 0 ms から END の 999 ms（R-03）。そのあとテスト（3 件ほど、偽のゲートウェイと一時フォルダで）：書き出しとアプリの結果が同じなら 0、違えば 1、取得が失敗なら 2。
+- [x] **Step 7. 書き出しのスクリプト**：`scripts/compat/insights-export.sh` を書く（PROFILE・REGION・GROUP・START・END・OUT・QUERIES。U2 の console-check.sh と同じ流し方）。OUT がリポジトリの外かの確かめ（R-05）、END の確かめ（BR1.3）、settings.json、クエリごとの `<id>.json`（status・results、Error のときは断った文からリクエスト ID を除いたもの）、最後の数の要約。説明に、境目の秒にイベントの少ない時刻を選ぶことと、Logs Insights は読んだ量で課金されることを書く。そのあとテスト（3 件ほど）：`bash -n`、PATH の先頭に置いた偽の `aws`（決まった JSON を返す小さなスクリプト）で流して `<id>.json` と settings.json ができる、リポジトリの中の OUT は止まる。Windows のランナーでは bash のテストを飛ばす（スクリプトは macOS の手元で流すため）。
+- [x] **Step 8. 除外と説明**：`.gitignore` に、書き出しのフォルダの名前の例（`insights-export/`）を念のため足す（BR1.2 で中には作れないが、誤って置いたときに入らないように）。README の開発者向けの節に、2 つの使い方を短く書く。
 
 ### 仕上げ
 
-- [ ] **Step 9. 全体の確かめと記録**：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`（例のテストを含む）、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通す。`code-summary.md`（クエリの組、確かめられないまま残る組：JSON の数、R-04。手元で流す手順と、結果を記録すること、BR3.3）、`traceability.json`（BR1.1〜BR3.3 と要件の ID）、`source-manifest.json` を書く。
+- [x] **Step 9. 全体の確かめと記録**：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`（例のテストを含む）、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通す。`code-summary.md`（クエリの組、確かめられないまま残る組：JSON の数、R-04。手元で流す手順と、結果を記録すること、BR3.3）、`traceability.json`（BR1.1〜BR3.3 と要件の ID）、`source-manifest.json` を書く。
 
 ## 要件・決まりと手順の対応
 

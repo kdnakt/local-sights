@@ -462,6 +462,38 @@ failed stream (or an incomplete stream listing) with its failure kind and
 safe detail. Exit code 0 means success, 1 that something failed, 2 invalid
 arguments. The check has no **Cancel**: it always reads to the end.
 
+### Compare Log Analytics with the console's Logs Insights
+
+`compat_check` compares the app's query results with the console's Logs
+Insights on the same log group and period, for the query set in
+`crates/local-sights-core/examples/compat_queries.txt` (written for a
+CloudTrail log group; write another set for other logs). It is by hand only,
+on your own machine with your own credentials. First export the Logs Insights
+results with the AWS CLI (it runs `start-query` and `get-query-results` only;
+Logs Insights is charged by the data it reads, so keep the period short), into
+a folder **outside** the repository, since the files hold log contents. The
+period must have ended at least 30 minutes ago; pick start and end seconds
+with few events.
+
+```bash
+PROFILE=dev REGION=us-east-1 GROUP=CloudTrail START=1767435900 END=1767439500 \
+  OUT=~/insights-export ./scripts/compat/insights-export.sh
+cargo run -p local-sights-core --example compat_check -- --export-dir ~/insights-export
+```
+
+The check reads the profile, region, log group and period from
+`settings.json` in that folder, fetches the period once as the Log Analytics
+screen does (`DescribeLogStreams` and `GetLogEvents` only) and compares every
+query: the collection of rows, `@ptr` aside, and for queries with `sort` the
+order of the sort values. It prints one line a query (`Same`, `Different`,
+`BothRejected`, `OnlyAppRejected`, `OnlyInsightsRejected`, `Skipped` for an
+unsorted result cut at its row limit, `NotCompared` for a missing or
+unfinished export), the first five rows on one side only (the time and the
+first 40 characters of each value), then the counts. Exit code 0 means every
+compared query was the same, 1 a difference, 2 that it could not compare.
+Give both the same `QUERIES=` / `--queries` file when you use another set.
+Record the summary, not the log contents, in the unit's `code-summary.md`.
+
 ## App icon
 
 The icon is drawn in `src-tauri/icons/source/icon.svg` (a rounded dark blue
@@ -506,6 +538,7 @@ npm run typecheck && npm run lint && npm run format:check
 npm audit
 npm run check:version           # same version in Cargo.toml, Cargo.lock, package.json, tauri.conf.json
 cargo test -p local-sights-core --example fetch_check  # fetch_check argument parsing (--region is required)
+cargo test -p local-sights-core --example compat_check # compat_check's comparison with sample data, a fake gateway and a fake aws CLI
 ```
 
 The OS-specific code (`cfg(unix)` / `cfg(windows)` in `src-tauri/src/sso_cli/`,

@@ -1,0 +1,20 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-compat-check",
+  "version": 1,
+  "writes": [
+    { "path": ".gitignore" },
+    { "path": "README.md" },
+    { "path": "crates/local-sights-core/Cargo.toml" },
+    { "path": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "path": "crates/local-sights-core/examples/compat/export.rs" },
+    { "path": "crates/local-sights-core/examples/compat/format.rs" },
+    { "path": "crates/local-sights-core/examples/compat/mod.rs" },
+    { "path": "crates/local-sights-core/examples/compat/queries.rs" },
+    { "path": "crates/local-sights-core/examples/compat/report.rs" },
+    { "path": "crates/local-sights-core/examples/compat/settings.rs" },
+    { "path": "crates/local-sights-core/examples/compat_check.rs" },
+    { "path": "crates/local-sights-core/examples/compat_queries.txt" },
+    { "path": "scripts/compat/insights-export.sh" }
+  ]
+}

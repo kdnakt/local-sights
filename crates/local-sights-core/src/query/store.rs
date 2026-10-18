@@ -1108,7 +1108,11 @@ mod memory {
     /// Evaluates `text` over the view of `epoch` step by step, as the runner
     /// does, and copies its rows; returns the copies, the evaluation time
     /// and the longest step.
-    fn evaluate(store: &QueryStore, epoch: u64, text: &str) -> (Vec<ResultRow>, Duration, Duration) {
+    fn evaluate(
+        store: &QueryStore,
+        epoch: u64,
+        text: &str,
+    ) -> (Vec<ResultRow>, Duration, Duration) {
         let plan = parse_query(text).unwrap();
         let total = store.view_len(epoch).unwrap();
         let mut evaluation = Evaluation::new(&plan, total);
@@ -1134,8 +1138,14 @@ mod memory {
         for page in events(EVENTS, 0).chunks(10_000) {
             log_view.add(page.to_vec());
         }
-        assert_eq!(log_view.lock().unwrap().rows(0, 1).all_count as usize, EVENTS);
-        println!("peak with Log Management's 1,000,000 events: {}", peak_text());
+        assert_eq!(
+            log_view.lock().unwrap().rows(0, 1).all_count as usize,
+            EVENTS
+        );
+        println!(
+            "peak with Log Management's 1,000,000 events: {}",
+            peak_text()
+        );
 
         let store = QueryStore::new();
         let keys: Vec<HoldingKey> = (0..GROUPS).map(key).collect();
@@ -1147,14 +1157,31 @@ mod memory {
         };
         let started = Instant::now();
         for (index, group) in keys.iter().enumerate() {
-            store.settle_range(group, range, events(per_group, index * per_group), true, i64::MAX);
+            store.settle_range(
+                group,
+                range,
+                events(per_group, index * per_group),
+                true,
+                i64::MAX,
+            );
         }
-        println!("settling 50 log groups of 20,000 events: {:?}", started.elapsed());
+        println!(
+            "settling 50 log groups of 20,000 events: {:?}",
+            started.elapsed()
+        );
         let started = Instant::now();
-        let length = store.build_view(epoch, range.start_ms, range.end_ms).unwrap();
+        let length = store
+            .build_view(epoch, range.start_ms, range.end_ms)
+            .unwrap();
         assert_eq!(length, EVENTS);
-        println!("building the view of 1,000,000 events: {:?}", started.elapsed());
-        println!("peak with the query screen's 1,000,000 events too: {}", peak_text());
+        println!(
+            "building the view of 1,000,000 events: {:?}",
+            started.elapsed()
+        );
+        println!(
+            "peak with the query screen's 1,000,000 events too: {}",
+            peak_text()
+        );
 
         let (previous, elapsed, _) = evaluate(&store, epoch, "sort latency desc | limit 100000");
         assert_eq!(previous.len(), 100_000);

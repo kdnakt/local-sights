@@ -123,3 +123,17 @@
 - **Root-cause stage**：code-generation（u4-compat-check）
 - **Planned fix**：U4 のレビューの R-01〜R-05 を直す。R-01：`MalformedQueryException` のときだけ `Error` とし、それ以外の失敗は `Unknown`（NotCompared、終了コード 2 の側）として書く。偽の `aws` で認証切れ相当の失敗のテストを足す。R-02：実行の初めに OUT の中の前回の `*.json` を消す（または settings.json と食い違う書き出しを NotCompared にする）。R-03：start-query に `--limit 10000` を渡す。R-04：CLI の標準エラーをクエリの ID と分ける。R-05：U4 の code-summary の書式の記述を直す。
 - **Estimated impact**：手間 小（スクリプト 1 つ、Rust のテスト 3 件ほど、記録の直し。計画の承認とレビューをもう一度行う）。費用 0。危うさ 低い（アプリ本体と中核ライブラリは変えない）。開発者が「U4 の指摘を直す」を選んだ（2026-10-18）。
+
+## 10. Loop-back 1 のあとの流し直し（2026-10-18、コミット `2e92b19` 以降）
+
+U4 の Code Generation で R-01〜R-05 を直し（コミット `b6c04de`）、U4 のコードのレビュー（2 回目の試み、READY）と作業単位の確かめ（`cargo test --workspace && npx vitest run`、成功）を経て Build and Test に戻った。変わったのは確認用プログラム（例）とスクリプトだけ。
+
+| コマンド | 結果 |
+|---|---|
+| `cargo test -p local-sights-core --examples` | compat_check 48 件（42 → 48）、fetch_check 7 件、すべて通過 |
+| `cargo test -p local-sights-core` | 単体 622・結合 78 ほか、すべて通過 |
+| `cargo fmt --all --check` | 通過 |
+| `cargo clippy --workspace --all-targets` | 警告・エラーなし |
+| `bash -n scripts/compat/insights-export.sh` | 通過 |
+
+ほかの目標（速さ、カバレッジ、画面のテスト、依存関係）は、変わっていないコードについてのもので、上の 1〜8 の結果のまま。残りは T-SM1（コンソールとの互換、開発者の手元）と T-WS-WIN（Windows 11、最後にまとめて）。

@@ -137,3 +137,17 @@ U4 の Code Generation で R-01〜R-05 を直し（コミット `b6c04de`）、U
 | `bash -n scripts/compat/insights-export.sh` | 通過 |
 
 ほかの目標（速さ、カバレッジ、画面のテスト、依存関係）は、変わっていないコードについてのもので、上の 1〜8 の結果のまま。残りは T-SM1（コンソールとの互換、開発者の手元）と T-WS-WIN（Windows 11、最後にまとめて）。
+
+## 11. コンソールとの互換の確かめ（T-SM1、開発者の Mac、2026-10-18）
+
+条件：CloudTrail のロググループ、期間 1 時間（START=1767435900、END=1767439500）、イベント 992 件、ストリーム 4 本。スクリプトは開発者が jq 1.6 に合わせて直した版（`5ff5140`）。書き出しは 20 本すべて Complete。
+
+結果：Same 13、Different 6、OnlyAppRejected 1、NotCompared 0（終了コード 1、違いあり）。ログの中身は記録しない。
+
+| クエリ | 結果 | 原因の見立て |
+|---|---|---|
+| q01-doc-latest（limit 20）、q02-doc-like（limit 20）、q09-sort-natural（limit 200）、q10-sort-missing（limit 50） | Different（Logs Insights だけが 992・68・992・992 行） | スクリプトの誤り。Loop-back 1 の R-03 の直しで start-query に必ず `--limit 10000` を渡すようにしたため、クエリの中の `limit` より API の上限が優先され、Logs Insights がすべての行を返した。アプリの結果は正しい（20・20・200・50 行） |
+| p03-text-order（`eventName > "M"`） | Different（Logs Insights 0、アプリ 136） | アプリの仮の決まり（U2：数字でない文字列どうしは Unicode の順で比べる）が違った。コンソールでは、数字でない文字列の大小の比べは合わない |
+| p04-bool（`readOnly = "true"`） | Different（件数は 830 で同じ。値の書き方が違う） | コンソールは JSON の真偽値を `1` と出し、アプリは `true` と出す |
+| p05-bool-literal（`readOnly = true`） | OnlyAppRejected | コンソールは引用符のない `true` を項目の名前として読むとみられ、0 行を返した。アプリは項目どうしの比べとして対応外にした |
+| q03〜q08、q11、p01、p02、p06〜p09 | Same | — |

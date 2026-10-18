@@ -44,6 +44,7 @@
     "FR5.3",
     "FR5.4",
     "FR5.5",
+    "FR5.6",
     "FR6.1",
     "FR6.2",
     "FR6.3",
@@ -61,15 +62,51 @@
     "FR9.3"
   ],
   "coverage": [
-    { "id": "FR1", "status": "OK", "target": "U1" },
-    { "id": "FR2", "status": "OK", "target": "U3" },
-    { "id": "FR3", "status": "OK", "target": "U2" },
-    { "id": "FR4", "status": "OK", "target": "U2" },
-    { "id": "FR5", "status": "OK", "target": "U1" },
-    { "id": "FR6", "status": "OK", "target": "U2" },
-    { "id": "FR7", "status": "OK", "target": "U2" },
-    { "id": "FR8", "status": "OK", "target": "U2" },
-    { "id": "FR9", "status": "OK", "target": "U2" },
+    {
+      "id": "FR1",
+      "status": "OK",
+      "target": "U1"
+    },
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "U3"
+    },
+    {
+      "id": "FR3",
+      "status": "OK",
+      "target": "U2"
+    },
+    {
+      "id": "FR4",
+      "status": "OK",
+      "target": "U2"
+    },
+    {
+      "id": "FR5",
+      "status": "OK",
+      "target": "U1"
+    },
+    {
+      "id": "FR6",
+      "status": "OK",
+      "target": "U2"
+    },
+    {
+      "id": "FR7",
+      "status": "OK",
+      "target": "U2"
+    },
+    {
+      "id": "FR8",
+      "status": "OK",
+      "target": "U2"
+    },
+    {
+      "id": "FR9",
+      "status": "OK",
+      "target": "U2"
+    },
     {
       "id": "FR1.1",
       "status": "OK",
@@ -193,7 +230,7 @@
     {
       "id": "FR4.1",
       "status": "OK",
-      "target": "U2"
+      "target": "U1"
     },
     {
       "id": "FR4.2",
@@ -237,6 +274,11 @@
     },
     {
       "id": "FR5.5",
+      "status": "OK",
+      "target": "U1"
+    },
+    {
+      "id": "FR5.6",
       "status": "OK",
       "target": "U1"
     },

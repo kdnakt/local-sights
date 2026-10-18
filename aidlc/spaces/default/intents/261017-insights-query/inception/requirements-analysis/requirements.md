@@ -7,6 +7,7 @@
 - `ideation/approval-handoff/initiative-brief.md`（互換の確かめ方。decision-log の D15〜D21）
 - コード知識ベース `aidlc/spaces/default/codekb/local-sights/` の business-overview・architecture・code-structure（今のコードの姿）
 - 本ステージの質問票 `requirements-analysis-questions.md`（Q1〜Q7、Q3a、Q3b、Q6a）。Q3b は Q3a（取得済みのログの共有）の見直しで、2026-10-17 に U1 の機能設計から戻って「共有しない」に変えた
+- FR5.5 の例外と FR5.6 は、U1 の機能設計の質問票 `construction/u1-filter-skeleton/functional-design/functional-design-questions.md`（Q2・Q2a・Q5・Q6）の答えから書き足した
 
 出典の書き方：`B1` など（scope-document の範囲）、`D17` など（decision-log）、`RA Qn`（本ステージの回答）、`意図 Qn`・`範囲 Qn`（前の段の回答）、`[desc]`（最初の依頼文）、`codekb`（コード知識ベース）。
 
@@ -93,13 +94,16 @@
 - **FR5.2** 組み合わせ `and`・`or`・`not` と括弧を使え、優先順位はコンソールと同じにする（RA Q2、OQ2）。
 - **FR5.3** 文字列の一致 `like`（文字列と正規表現 `/.../`）、`=~`（正規表現）、`not like` を使える（RA Q2）。大文字・小文字の扱いと正規表現の書き方の範囲はコンソールと同じにする（OQ2）。
 - **FR5.4** `in [値, ...]` と `not in [値, ...]` を使える（RA Q2）。
-- **FR5.5** `ispresent`・`isempty` などの関数、文字列の関数、数値の関数は、最初の版では対応しない（RA Q2）。書いたときは FR6 のエラーにする。
+- **FR5.5** `ispresent`・`isempty` などの関数、文字列の関数、数値の関数は、最初の版では対応しない（RA Q2）。書いたときは FR6 のエラーにする。ただし `toMillis(@timestamp)` の 1 つだけは対応する（U1 の機能設計 Q2）。
+- **FR5.6** `@timestamp` は、ミリ秒の数値（`toMillis(@timestamp)` と、`@timestamp` をそのまま書く形の両方）と比べられる。コンソールにない拡張として、日時の文字列とも比べられる。受け付ける書き方は `YYYY-MM-DD HH:MM:SS[.sss]`（画面で選んでいるタイムゾーンで読む）と `YYYY-MM-DDTHH:MM:SS[.sss]Z`（UTC）の 2 つで、ミリ秒を省いたときはその秒の 0 ミリ秒とする。それ以外の文字列と比べたときは、書き間違いとして取得の前にエラーにし、場所と受け付ける書き方を示す（U1 の機能設計 Q2・Q2a・Q5・Q6。コンソールでは日時の文字列との比較はエラーにならず 0 件になるため、この拡張を使ったクエリは互換の確かめ（SM1）の組に入れない）。
 
 受け入れ基準：
 - Given `ERROR` を含むイベントと、`ERROR` と `timeout` を両方含むイベントがある When `filter @message like /ERROR/ and @message not like /timeout/` を実行する Then 前者だけが結果に出る
 - Given JSON のメッセージ `{"level":"error","http":{"status":500}}` を持つイベントがある When `filter level = "error" and http.status >= 500` を実行する Then そのイベントが結果に出る
 - Given JSON ではないメッセージのイベントが混じっている When JSON の項目を使った `filter` を実行する Then エラーにならず、JSON の項目を持つイベントだけが条件で判定される
 - Given `filter status in [500, 503]` When 実行する Then `status` が 500 か 503 のイベントだけが結果に出る
+- Given 選んでいるタイムゾーンが Asia/Tokyo When `filter @timestamp >= "2025-08-25 01:43:26"` を実行する Then `@timestamp >= 1756053806000`（2025-08-24 16:43:26 UTC）と同じ結果になる
+- Given `filter @timestamp > "yesterday"` When 実行ボタンを押す Then AWS は呼ばれず、受け付ける日時の書き方と、その場所がエラーで示される
 
 ### FR6. 対応外の書き方と、書き間違いのエラー（B7、範囲 Q8）
 
@@ -198,7 +202,7 @@
 
 | 範囲（scope-document） | 要件 |
 |------------------------|------|
-| B1 条件の組み合わせ（`filter`） | FR3.2、FR5.1〜FR5.4 |
+| B1 条件の組み合わせ（`filter`） | FR3.2、FR5.1〜FR5.4、FR5.6 |
 | B2 `fields` | FR3.3、FR7.1 |
 | B3 決まった項目と JSON の項目 | FR4.1〜FR4.5 |
 | B4 `sort`・`limit` | FR3.4〜FR3.7 |

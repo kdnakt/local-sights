@@ -9,8 +9,8 @@
 | FR1 | U1 | u1-filter-skeleton | クエリの画面のまとまり。FR1.3 の複数は U3 |
 | FR2 | U3 | u3-shared-store | 取得済みの範囲と取り足しのまとまり |
 | FR3 | U2 | u2-query-language | 命令のまとまり。FR3.1・FR3.2 は U1 |
-| FR4 | U2 | u2-query-language | 項目のまとまり |
-| FR5 | U1 | u1-filter-skeleton | `filter` の演算子のまとまり |
+| FR4 | U2 | u2-query-language | 項目のまとまり。FR4.1 は U1 |
+| FR5 | U1 | u1-filter-skeleton | `filter` の演算子のまとまり（FR5.6 を含む） |
 | FR6 | U2 | u2-query-language | エラーのまとまり。FR6.3 は U1 |
 | FR7 | U2 | u2-query-language | 結果の表示のまとまり。FR7.2・FR7.6 は U1 |
 | FR8 | U2 | u2-query-language | README の一覧 |
@@ -26,9 +26,9 @@
 | FR2.1 | U3 | u3-shared-store | 共有しない決まりそのものは U1 から守る（QueryStore の最小版、Q2a）。取得済みの範囲を覚えるのは U3 |
 | FR2.2 | U3 | u3-shared-store | — |
 | FR2.3 | U3 | u3-shared-store | — |
-| FR2.4 | U3 | u3-shared-store | — |
-| FR2.5 | U3 | u3-shared-store | — |
-| FR2.6 | U3 | u3-shared-store | — |
+| FR2.4 | U3 | u3-shared-store | 取得中の表示と [Cancel] は U1 で今の FetchCoordinator の振る舞いのまま作る。U3 は取り足しに広げる（units レビュー R-02） |
+| FR2.5 | U3 | u3-shared-store | 一部失敗の結果と失敗したストリームの表示は U1 で作る。失敗した部分を取得済みに加えない決まりは U3（units レビュー R-02） |
+| FR2.6 | U3 | u3-shared-store | 中止の表示と評価しない決まりは U1 で作る。止める前の分を取得済みに残す決まりは U3（units レビュー R-02） |
 | FR2.7 | U3 | u3-shared-store | — |
 | FR2.8 | U3 | u3-shared-store | — |
 | FR3.1 | U1 | u1-filter-skeleton | — |
@@ -39,7 +39,7 @@
 | FR3.6 | U2 | u2-query-language | — |
 | FR3.7 | U2 | u2-query-language | — |
 | FR3.8 | U2 | u2-query-language | — |
-| FR4.1 | U2 | u2-query-language | `@log` は評価の入口が渡すロググループ名を読む（U1 で入口を決め、名前は QueryStore のキーから添える。LogEvent の型は変えない） |
+| FR4.1 | U1 | u1-filter-skeleton | 決まった項目の取り出し（EventFieldReader の一部）を U1 で作る（units レビュー R-01）。`@log` は評価の入口が渡すロググループ名を読む（名前は QueryStore のキーから添える。LogEvent の型は変えない） |
 | FR4.2 | U2 | u2-query-language | — |
 | FR4.3 | U2 | u2-query-language | — |
 | FR4.4 | U2 | u2-query-language | — |
@@ -48,7 +48,8 @@
 | FR5.2 | U1 | u1-filter-skeleton | — |
 | FR5.3 | U1 | u1-filter-skeleton | — |
 | FR5.4 | U1 | u1-filter-skeleton | — |
-| FR5.5 | U1 | u1-filter-skeleton | — |
+| FR5.5 | U1 | u1-filter-skeleton | `toMillis(@timestamp)` の例外を含む |
+| FR5.6 | U1 | u1-filter-skeleton | U1 の機能設計 Q2・Q2a・Q5・Q6 で書き足した |
 | FR6.1 | U2 | u2-query-language | U1 は対応外の命令を「対応していない」と返すだけ。場所と印は U2 |
 | FR6.2 | U2 | u2-query-language | 同上 |
 | FR6.3 | U1 | u1-filter-skeleton | — |
@@ -79,13 +80,13 @@
 
 ## 作業単位の中の作る順
 
-- **U1**：QueryParser（filter）と QueryEvaluator（filter）をテスト先行で作る → QueryStore の最小版と FetchCoordinator の入口 → QueryRunner と InsightsSession → Tauri のコマンド → 画面（ナビゲーション、Log Analytics の画面）→ 手元の確認。
-- **U2**：EventFieldReader → QueryParser の拡張（fields・sort・limit・エラーの場所）→ QueryEvaluator の拡張 → 結果の表と行の項目と値 → エラーの印 → README → 書く手助け（Should）。
+- **U1**：QueryParser（filter）、EventFieldReader（決まった項目）、QueryEvaluator（filter）をテスト先行で作る → QueryStore の最小版と FetchCoordinator の入口 → QueryRunner と InsightsSession → Tauri のコマンド → 画面（ナビゲーション、Log Analytics の画面）→ 手元の確認。
+- **U2**：EventFieldReader の JSON の項目 → QueryParser の拡張（fields・sort・limit・エラーの場所）→ QueryEvaluator の拡張 → 結果の表と行の項目と値 → エラーの印 → README → 書く手助け（Should）。
 - **U3**：CachePlan の足りない範囲の計算（テスト先行）→ QueryStore の範囲の記録と順番の払い出し（テスト先行）→ FetchCoordinator の取り足しの入口 → LogCache の一部の照会 → QueryRunner の取り足し・一部失敗・中止 → 画面の複数選択 → 接続を変えるときの確認 → ログ管理の画面の振る舞いと速さのテストが今と同じであることの確認。
 - **U4**：比べるクエリの組を決める → 書き出しの読み込みと比較（テスト）→ 手元で実行。
 
 ## 対応の確かめ
 
-- 要件 49 件（FR1.1〜FR9.3）は、すべていずれかの作業単位に割り当てた。
+- 要件 50 件（FR1.1〜FR9.3、FR5.6 を含む）は、すべていずれかの作業単位に割り当てた。
 - どの作業単位にも行がある（U4 は FR ではなく SM1・NFR3・NFR4 にかかる。FR の行は持たないが、上の「複数の作業単位にかかるもの」に行がある）。
 - `traceability.json` は機能要件（FR）だけを追う決まりとする。NFR・SM と U4 の割り当ては、上の「複数の作業単位にかかるもの」の表で持つ。

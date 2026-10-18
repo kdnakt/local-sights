@@ -808,3 +808,34 @@
 **Unit**: u2-query-language
 
 ---
+
+## Session Start
+**Timestamp**: 2026-10-18T15:10:46Z
+**Event**: SESSION_STARTED
+**Source**: startup
+**Session**: 5570d880-28bb-4e75-9a07-37fbe2207676
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-18T15:10:56Z
+**Event**: HUMAN_TURN
+**Session**: 5570d880-28bb-4e75-9a07-37fbe2207676
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-18T15:12:38Z
+**Event**: DECISION_RECORDED
+**Stage**: build-and-test
+**Decision**: 互換の確かめ（T-SM1）を手元で流し、insights-export.sh と compat_check の出力を貼ってほしい（Windows の薄い一本 T-WS-WIN の結果も）
+**Options**: 出力を貼る,あとで流す
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-18T15:14:01Z
+**Event**: HUMAN_TURN
+**Session**: 5570d880-28bb-4e75-9a07-37fbe2207676
+
+---

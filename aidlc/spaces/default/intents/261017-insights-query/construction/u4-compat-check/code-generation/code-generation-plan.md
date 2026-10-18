@@ -5,6 +5,7 @@
 - Builds: コンソールの Logs Insights の結果を CLI で書き出すスクリプトと、同じロググループ・期間でアプリの結果を作って比べる確認用プログラム（開発者の手元だけで動かし、配らない）
 - Touches: `scripts/compat/insights-export.sh`（新規）、`crates/local-sights-core/examples/compat_check.rs` と `examples/compat/`（新規）、`crates/local-sights-core/examples/compat_queries.txt`（新規）、`crates/local-sights-core/Cargo.toml`（例の登録だけ）、`.gitignore`（書き出しのファイルの名前を念のため除く）、`README.md`（使い方の短い節）
 - Tests: Rust 約 30 件（比べ方の部品を見本のデータでテスト先行。AWS には接続しない）、スクリプトは `bash -n` と、偽の `aws` で流すテスト、既存のテストはすべて通したまま
+- Loop-back 1（Build and Test から戻った直し、2026-10-18）: コードのレビューの R-01〜R-05 を Step 10〜14 で直す。触るのは `scripts/compat/insights-export.sh`、`examples/compat/export.rs`・`compare.rs` まわりと `compat_check.rs` のテスト、U4 の記録だけ。アプリ本体と中核ライブラリは変えない
 
 ## 上流と前提
 
@@ -51,6 +52,16 @@
 
 - [x] **Step 9. 全体の確かめと記録**：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`（例のテストを含む）、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通す。`code-summary.md`（クエリの組、確かめられないまま残る組：JSON の数、R-04。手元で流す手順と、結果を記録すること、BR3.3）、`traceability.json`（BR1.1〜BR3.3 と要件の ID）、`source-manifest.json` を書く。
 
+### Loop-back 1：コードのレビュー（1 回目）の指摘の直し
+
+Build and Test（`construction/build-and-test/test-results.md` の Loop-Back Log の Loop-back 1）から戻った直し。開発者が「U4 の指摘を直す」を選んだ。指摘の中身は `code-generation/reviews/review-01.md` の R-01〜R-06。R-06（スクリプトのテストは Linux の CI だけ、macOS の bash 3.2 は手元の初回）は、手元の互換の確かめで確かめるため、ここでは直さない。
+
+- [ ] **Step 10. start-query の失敗の分け方（R-01、Major）**：スクリプトは、CLI のエラーが `MalformedQueryException`（クエリの書き方の誤り）を含むときだけ `status: "Error"`（BR2.4 の断り）として書く。それ以外の失敗（認証切れ、アクセスの拒否、スロットリング、ロググループがない、ネットワークの断など）は `status: "Unknown"` と断った文（リクエスト ID は除く）を書き、要約の「Complete でない」に数える（確認用プログラムでは NotCompared、終了コード 2 の側）。先にテスト：偽の `aws` に、認証切れに当たる失敗（`ExpiredTokenException`）と `AccessDeniedException` を返すクエリを足し、`Error` にならず `Unknown` になること、要約と終了コードが「Complete でないものがある」になること。確認用プログラムの側で、`Unknown` の書き出しが NotCompared になることも確かめる。
+- [ ] **Step 11. 古い書き出しの取り違え（R-02）**：スクリプトは、各 `<id>.json` に settings.json と同じ `exportedAtSeconds` を書く。確認用プログラムは、`<id>.json` の `exportedAtSeconds` が settings.json と違うか、ないときは、そのクエリを NotCompared にする（ファイルは消さない）。先にテスト：古い `exportedAtSeconds` の書き出しは NotCompared、一致すれば今までどおり比べる。
+- [ ] **Step 12. 件数の上限と標準エラー（R-03・R-04）**：start-query に `--limit 10000` を渡し（確認用プログラムの上限 10,000 と合わせる）、説明に前提を 1 行書く。CLI の標準エラーは一時ファイルに分け、クエリの ID には標準出力だけを使う（警告が出てもクエリの ID が壊れない）。テスト：偽の `aws` の呼び出しの記録に `--limit 10000` があること、start-query が成功しつつ標準エラーに警告を出しても `Complete` の書き出しになること。
+- [ ] **Step 13. 記録の直し（R-05）**：`code-summary.md` の「`cargo fmt --check` が store.rs で通らない」の記述を、U4 で rustfmt をかけて直したことに改め、`source-manifest.json` に `crates/local-sights-core/src/query/store.rs`（書式だけ）を足す。Step 10〜12 の直しを code-summary.md に書き足す。
+- [ ] **Step 14. 全体の確かめ**：`bash -n scripts/compat/insights-export.sh`、`cargo test -p local-sights-core --example compat_check`、`cargo fmt --all --check`、`cargo clippy --workspace --all-targets`、`cargo test -p local-sights-core`、`npx prettier --check .` を通す。`traceability.json` を直しに合わせて更新し、`aidlc engine sensor-traceability --output-path aidlc/spaces/default/intents/261017-insights-query/construction/u4-compat-check/code-generation/traceability.json` を通す。
+
 ## 要件・決まりと手順の対応
 
 | 要件・決まり | 手順 |
@@ -58,7 +69,8 @@
 | SM1・NFR3（BR2.1〜BR2.6、BR3.1・BR3.2） | Step 2、Step 4、Step 5、Step 6 |
 | SM2（BR2.4） | Step 4、Step 5 |
 | NFR4・NFR5（BR1.1〜BR1.4） | Step 3、Step 6、Step 7、Step 8 |
-| BR3.3（記録） | Step 9 |
+| BR3.3（記録） | Step 9、Step 13 |
+| SM1（BR2.4・BR2.6 の誤判定を防ぐ、Loop-back 1） | Step 10、Step 11、Step 12 |
 
 ## Testing Contract
 

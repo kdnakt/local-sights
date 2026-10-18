@@ -59,7 +59,7 @@ values() {
   case "$out" in
     ERROR:*) echo "[$label] $out" ;;
     *) echo "[$label] $(printf '%s' "$out" | jq -r --arg f "$field" \
-        '[.results[] | (map(select(.field == $f))[0].value // "(なし)") | .[0:12]] | join(" | ")')" ;;
+        '[.results[] | (map(select(.field == $f))[0].value // "(なし)") | if $f == "@timestamp" then . else .[0:12] end] | join(" | ")')" ;;
   esac
 }
 
@@ -80,6 +80,11 @@ values "1a sort の既定の向き" "@timestamp" "fields @timestamp | sort @time
 values "1b sort asc" "@timestamp" "fields @timestamp | sort @timestamp asc | limit 3"
 values "1c sort desc" "@timestamp" "fields @timestamp | sort @timestamp desc | limit 3"
 values "1d sort なし" "@timestamp" "fields @timestamp | limit 3"
+
+# ONLY=sort のときは並び順だけを確かめて終わる（@timestamp はミリ秒まで出す）。
+if [ "${ONLY:-}" = "sort" ]; then
+  exit 0
+fi
 
 echo "--- fields を書かないときの列"
 columns "2a 命令なし" "limit 1"

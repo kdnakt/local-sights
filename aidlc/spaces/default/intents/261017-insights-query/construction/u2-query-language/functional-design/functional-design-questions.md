@@ -21,3 +21,9 @@ C. Not yet defined
 X. Other (please specify)
 
 [Answer]: A. U1 の Q2 と同じく、確かめ用のスクリプトをあなたの手元で CLI から流して確かめ、結果に合わせて決める
+
+## Q1a. `console-check.sh` の出力を貼ってください（Q1 の確かめ）
+
+背景：Q1 の A に合わせて、同じディレクトリに `console-check.sh` を置いた。あなたの手元で、JSON のメッセージを含むロググループと、一部のイベントにだけある JSON の項目の名前（FIELD）を指定して流す。出力（件数・時刻・列の名前・エラーの文。FIELD の値は先頭 12 文字まで）に合わせて、U2 の決まりを書く。
+
+[Answer]:

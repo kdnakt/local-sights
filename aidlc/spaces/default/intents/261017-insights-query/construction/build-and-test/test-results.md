@@ -105,3 +105,9 @@
 | Tauri app (macos-latest) | success |
 | Tauri app (windows-latest) | success |
 | GitGuardian Security Checks | success |
+
+## 9. 手元の確かめ（開発者の Mac）
+
+- 2026-10-18：Node.js が古く `npm run tauri dev` が Vite（rolldown）の起動で落ちた（`node:util` に `styleText` がない）。Node.js 22.12 以上が要る（CI は 22）。この作業の変更が原因ではない。
+- 2026-10-18：Node.js を上げたあと、macOS で簡単な `filter @message` のクエリが動いた。T-WS-MAC の一部。複数のロググループ・取り足し・キャッシュ・接続の切り替え・ログの画面・本物の Ace は、まだ確かめていない。
+- 2026-10-18：開発者の気づき：コンソールの Logs Insights は検索中に取得できた結果を少しずつ表示するが、このアプリは取得と評価がすべて終わってから結果を出す。要件（FR7）と設計にない振る舞いの違いで、誤りではない。開発者の答えは「次の版に回す」。IB-11 には入れず、次の版の改善の候補とする。

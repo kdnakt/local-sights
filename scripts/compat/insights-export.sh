@@ -23,16 +23,25 @@
 #   OUT      a folder OUTSIDE the repository (created when missing). It gets
 #            settings.json and one <id>.json for every query; they hold log
 #            contents, so never put them in the repository (BR1.2, NFR4).
+#            Every file of one run carries the same exportedAtSeconds, and
+#            compat_check does not compare an <id>.json whose value differs
+#            from settings.json, so files left by an earlier run in the same
+#            folder are never taken for this run's (code review R-02).
 #   QUERIES  optional; the query set (default
 #            crates/local-sights-core/examples/compat_queries.txt). Give
 #            compat_check the same file with --queries.
 #   WAIT_SECONDS  optional; how long to wait for one query (default 600).
 #
+# Every query is started with --limit 10000: compat_check assumes that cap
+# for a query without its own `limit`, the same as the app (code review R-03).
+#
 # Output: one line a query with its status, then the counts. No credentials and
 # no log contents are printed. Exit codes: 0 every query ended Complete or was
-# refused by start-query (Error, compared by compat_check), 1 some query ended
-# otherwise (Failed, Cancelled, Timeout, Unknown, still Running), 2 wrong
-# settings (nothing is run).
+# refused by start-query as a malformed query (Error, compared by
+# compat_check), 1 some query ended otherwise (start-query failed for another
+# reason such as expired credentials, or Failed, Cancelled, Timeout, Unknown,
+# still Running; compat_check does not compare those), 2 wrong settings
+# (nothing is run).
 set -u
 export LC_ALL=C
 
@@ -98,6 +107,12 @@ case "$out_seen/" in
 esac
 mkdir -p "$OUT_REAL" || fail "OUT cannot be created"
 
+# start-query's standard error, kept apart from its standard output (the
+# query ID) and read only when it fails (code review R-01, R-04).
+ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/insights-export.XXXXXX") ||
+  fail "a temporary file cannot be made"
+trap 'rm -f "$ERR_FILE"' EXIT
+
 PROFILE_ARGS=()
 if [ -n "$PROFILE" ]; then
   PROFILE_ARGS=(--profile "$PROFILE")
@@ -148,12 +163,31 @@ while IFS= read -r line || [ -n "$line" ]; do
 
   ran=$((ran + 1))
   file="$OUT_REAL/$id.json"
+  # 261017-insights-query U4 code review R-01: only a query Logs Insights
+  # cannot compile is its refusal (Error, compared by BR2.4). Any other
+  # failure of start-query (expired or missing credentials, access denied,
+  # throttling, no such log group, the network) means the query was not run:
+  # it is written as Unknown and counted as other, so compat_check does not
+  # compare it.
+  # Code review R-03: --limit 10000, the row cap compat_check takes for a
+  # query without `limit` (U2:BR5.1), instead of StartQuery's own default.
+  # Code review R-04: standard error goes to ERR_FILE, so a warning of the
+  # CLI never becomes part of the query ID.
   if ! query_id=$(aws_logs start-query --log-group-name "$GROUP" --start-time "$START" \
-    --end-time "$END" --query-string "$query" --query queryId --output text 2>&1); then
-    message=$(printf '%s\n' "$query_id" | refusal_message)
-    jq -n --arg message "$message" '{status: "Error", message: $message}' >"$file"
-    refused=$((refused + 1))
-    echo "[$id] Error"
+    --end-time "$END" --limit 10000 --query-string "$query" --query queryId --output text \
+    2>"$ERR_FILE"); then
+    message=$(refusal_message <"$ERR_FILE")
+    if grep -q 'MalformedQueryException' "$ERR_FILE"; then
+      jq -n --arg message "$message" --argjson at "$NOW" \
+        '{status: "Error", message: $message, exportedAtSeconds: $at}' >"$file"
+      refused=$((refused + 1))
+      echo "[$id] Error"
+    else
+      jq -n --arg message "$message" --argjson at "$NOW" \
+        '{status: "Unknown", message: $message, results: [], exportedAtSeconds: $at}' >"$file"
+      other=$((other + 1))
+      echo "[$id] Unknown (start-query failed)"
+    fi
     continue
   fi
   waited=0
@@ -173,9 +207,10 @@ while IFS= read -r line || [ -n "$line" ]; do
     waited=$((waited + 1))
   done
   if [ -n "$result" ]; then
-    printf '%s' "$result" | jq '{status: (.status // "Unknown"), results: (.results // [])}' >"$file"
+    printf '%s' "$result" | jq --argjson at "$NOW" \
+      '{status: (.status // "Unknown"), results: (.results // []), exportedAtSeconds: $at}' >"$file"
   else
-    jq -n '{status: "Unknown", results: []}' >"$file"
+    jq -n --argjson at "$NOW" '{status: "Unknown", results: [], exportedAtSeconds: $at}' >"$file"
   fi
   if [ "$status" = Complete ]; then
     complete=$((complete + 1))

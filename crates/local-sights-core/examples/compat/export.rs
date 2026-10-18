@@ -7,7 +7,16 @@
 //! `{"status": "Error", "message": …}` when `start-query` refused the query
 //! (its request ID removed). Any other status (Failed, Cancelled, Timeout,
 //! Unknown, or a query still running when the script gave up) means the
-//! query did not run to its end: it is not compared (review R-02).
+//! query did not run to its end: it is not compared (review R-02). The
+//! script writes `Error` only for a malformed query; any other failure of
+//! `start-query` (expired credentials, a denied access, …) is written as
+//! `Unknown` with its message, so it is never taken for a refusal (code
+//! review R-01).
+//!
+//! Every file also carries `exportedAtSeconds`, the same value the run of
+//! the script wrote to `settings.json`; a file with another value (or none)
+//! is left from an earlier run in the same folder and is not compared (code
+//! review R-02).
 
 use std::fmt;
 
@@ -26,6 +35,14 @@ pub enum InsightsSide {
     Rejected(String),
     /// The query completed with these rows, in their order.
     Rows(Vec<Row>),
+    /// Code review R-02: the file is not from the run of `settings.json`
+    /// (not compared): its `exportedAtSeconds` and that of `settings.json`.
+    OtherRun {
+        /// The file's `exportedAtSeconds`, if it has one.
+        export: Option<i64>,
+        /// The `exportedAtSeconds` of `settings.json`, if it has one.
+        settings: Option<i64>,
+    },
 }
 
 /// Why an export file cannot be read.
@@ -54,12 +71,38 @@ struct ExportFile {
     results: Option<Vec<Vec<Cell>>>,
     #[serde(default)]
     message: Option<String>,
+    #[serde(default, rename = "exportedAtSeconds")]
+    exported_at_seconds: Option<i64>,
 }
 
-/// Reads one `<id>.json`.
+/// Reads one `<id>.json`, whatever run of the script wrote it (the tests
+/// look at the script's files with it; `compat_check` uses
+/// [`parse_export_of_run`]).
+#[cfg(test)]
 pub fn parse_export(json: &str) -> Result<InsightsSide, ExportError> {
-    let file: ExportFile =
-        serde_json::from_str(json).map_err(|error| ExportError(error.to_string()))?;
+    side_of(read_file(json)?)
+}
+
+/// Code review R-02: reads one `<id>.json` of the run whose
+/// `exportedAtSeconds` is `run` (from `settings.json`). A file of another
+/// run, or one without the value, is [`InsightsSide::OtherRun`]; so is
+/// every file when `run` is `None`.
+pub fn parse_export_of_run(json: &str, run: Option<i64>) -> Result<InsightsSide, ExportError> {
+    let file = read_file(json)?;
+    if run.is_none() || file.exported_at_seconds != run {
+        return Ok(InsightsSide::OtherRun {
+            export: file.exported_at_seconds,
+            settings: run,
+        });
+    }
+    side_of(file)
+}
+
+fn read_file(json: &str) -> Result<ExportFile, ExportError> {
+    serde_json::from_str(json).map_err(|error| ExportError(error.to_string()))
+}
+
+fn side_of(file: ExportFile) -> Result<InsightsSide, ExportError> {
     match file.status.as_str() {
         "Complete" => {
             let results = file
@@ -131,6 +174,67 @@ mod tests {
                 InsightsSide::NotRun(status.to_string())
             );
         }
+    }
+
+    /// Code review R-01: the script writes a start-query failure other than
+    /// a malformed query as Unknown with its message; that query did not
+    /// run and is not compared, whatever the message says.
+    #[test]
+    fn a_start_query_failure_written_as_unknown_did_not_run() {
+        let json = r#"{"status":"Unknown","message":"An error occurred (ExpiredTokenException) when calling the StartQuery operation","results":[]}"#;
+        assert_eq!(
+            parse_export(json).unwrap(),
+            InsightsSide::NotRun("Unknown".to_string())
+        );
+    }
+
+    /// Code review R-02: an export is taken only when it carries the
+    /// `exportedAtSeconds` of settings.json, so a file left in the folder by
+    /// an earlier run is never compared as this run's result.
+    #[test]
+    fn an_export_from_another_run_is_not_taken_for_this_run() {
+        let complete = |stamp: &str| {
+            format!(
+                r#"{{"status":"Complete","results":[[{{"field":"eventName","value":"Decrypt"}}]]{stamp}}}"#
+            )
+        };
+        let this_run = complete(r#","exportedAtSeconds":1767450000"#);
+        assert_eq!(
+            parse_export_of_run(&this_run, Some(1_767_450_000)).unwrap(),
+            InsightsSide::Rows(vec![vec![("eventName".to_string(), "Decrypt".to_string())]])
+        );
+        assert_eq!(
+            parse_export_of_run(&this_run, Some(1_767_460_000)).unwrap(),
+            InsightsSide::OtherRun {
+                export: Some(1_767_450_000),
+                settings: Some(1_767_460_000)
+            }
+        );
+        assert_eq!(
+            parse_export_of_run(&complete(""), Some(1_767_450_000)).unwrap(),
+            InsightsSide::OtherRun {
+                export: None,
+                settings: Some(1_767_450_000)
+            },
+            "an export without the stamp is not taken"
+        );
+        assert_eq!(
+            parse_export_of_run(&this_run, None).unwrap(),
+            InsightsSide::OtherRun {
+                export: Some(1_767_450_000),
+                settings: None
+            },
+            "settings.json without the stamp matches no export"
+        );
+        let old_refusal = r#"{"status":"Error","message":"m","exportedAtSeconds":1}"#;
+        assert_eq!(
+            parse_export_of_run(old_refusal, Some(2)).unwrap(),
+            InsightsSide::OtherRun {
+                export: Some(1),
+                settings: Some(2)
+            }
+        );
+        assert!(parse_export_of_run("{", Some(1)).is_err());
     }
 
     #[test]

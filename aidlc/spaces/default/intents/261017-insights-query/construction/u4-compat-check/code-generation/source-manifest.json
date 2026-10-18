@@ -15,6 +15,7 @@
     { "path": "crates/local-sights-core/examples/compat/settings.rs" },
     { "path": "crates/local-sights-core/examples/compat_check.rs" },
     { "path": "crates/local-sights-core/examples/compat_queries.txt" },
+    { "path": "crates/local-sights-core/src/query/store.rs" },
     { "path": "scripts/compat/insights-export.sh" }
   ]
 }

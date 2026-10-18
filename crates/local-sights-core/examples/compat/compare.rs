@@ -178,6 +178,17 @@ pub fn compare_query(
         (_, InsightsSide::NotRun(status)) => not_compared(&format!(
             "the Logs Insights query ended {status}, not Complete"
         )),
+        // 261017-insights-query U4 code review R-02: a file left from an
+        // earlier run of the script.
+        (_, InsightsSide::OtherRun { export, settings }) => {
+            let stamp =
+                |value: &Option<i64>| value.map_or_else(|| "none".to_string(), |v| v.to_string());
+            not_compared(&format!(
+                "the export is from another run (exportedAtSeconds {}; settings.json {})",
+                stamp(export),
+                stamp(settings)
+            ))
+        }
         (AppSide::Rejected(app_message), InsightsSide::Rejected(insights_message)) => {
             QueryComparison {
                 app_message: Some(app_message.clone()),
@@ -660,5 +671,43 @@ mod tests {
         );
         assert_eq!(failed.verdict, Verdict::NotCompared);
         assert!(failed.note.as_deref().unwrap_or("").contains("Timeout"));
+    }
+
+    /// Code review R-02: an export of another run is not compared, and the
+    /// note names both stamps.
+    #[test]
+    fn an_export_from_another_run_is_not_compared() {
+        let app_side = app(&["eventName"], vec![event("A")]);
+        let stale = compare_query(
+            &set_spec(),
+            &app_side,
+            &InsightsSide::OtherRun {
+                export: Some(100),
+                settings: Some(200),
+            },
+        );
+        assert_eq!(stale.verdict, Verdict::NotCompared);
+        let note = stale.note.unwrap_or_default();
+        assert!(
+            note.contains("exportedAtSeconds 100") && note.contains("settings.json 200"),
+            "{note}"
+        );
+        let unstamped = compare_query(
+            &set_spec(),
+            &app_side,
+            &InsightsSide::OtherRun {
+                export: None,
+                settings: Some(200),
+            },
+        );
+        assert_eq!(unstamped.verdict, Verdict::NotCompared);
+        assert!(
+            unstamped
+                .note
+                .as_deref()
+                .unwrap_or("")
+                .contains("exportedAtSeconds none"),
+            "{unstamped:?}"
+        );
     }
 }

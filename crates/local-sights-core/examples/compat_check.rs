@@ -66,7 +66,7 @@ use local_sights_core::streams::planner::ListingProgress;
 use local_sights_core::time_range::TimeRange;
 
 use compat::compare::{AppRows, AppSide, CompareSpec, compare_query};
-use compat::export::{InsightsSide, parse_export};
+use compat::export::{InsightsSide, parse_export_of_run};
 use compat::format::app_row;
 use compat::queries::{CompareMode, CompatQuery, parse_query_set};
 use compat::report::{EXIT_NOT_COMPARED, exit_code, query_lines, summary_line};
@@ -227,7 +227,11 @@ async fn run_check<G: CloudWatchLogsGateway>(
             eprintln!("error: the evaluation of {} stopped", query.id);
             return EXIT_NOT_COMPARED;
         };
-        let insights = read_export(&prepared.export_dir, &query.id);
+        let insights = read_export(
+            &prepared.export_dir,
+            &query.id,
+            settings.exported_at_seconds,
+        );
         let spec = app.spec(query.mode);
         let comparison = compare_query(&spec, &app.side, &insights);
         verdicts.push(comparison.verdict);
@@ -525,13 +529,14 @@ fn in_boundary_second(row: &ResultRow, range: TimeRange) -> bool {
 }
 
 /// The export of query `id` (R-02): missing when there is no file, not run
-/// when it cannot be read.
-fn read_export(export_dir: &Path, id: &str) -> InsightsSide {
+/// when it cannot be read, of another run when its `exportedAtSeconds` is
+/// not `run`, the value of settings.json (code review R-02).
+fn read_export(export_dir: &Path, id: &str, run: Option<i64>) -> InsightsSide {
     // The id is letters, digits and '-' only (query set), so this stays in
     // the folder.
     let path = export_dir.join(format!("{id}.json"));
     match std::fs::read_to_string(&path) {
-        Ok(text) => parse_export(&text)
+        Ok(text) => parse_export_of_run(&text, run)
             .unwrap_or_else(|error| InsightsSide::NotRun(format!("unreadable ({error})"))),
         Err(error) if error.kind() == io::ErrorKind::NotFound => InsightsSide::Missing,
         Err(error) => InsightsSide::NotRun(format!("unreadable ({error})")),
@@ -621,6 +626,9 @@ mod tests {
     /// 2024/01/02 00:00:00 UTC in epoch seconds.
     const START: i64 = 1_704_153_600;
     const END: i64 = START + 3_599;
+    /// The run of the script the exports of the tests come from (code
+    /// review R-02).
+    const EXPORTED_AT: i64 = END + 7_200;
     const STREAM: &str = "123456789012_CloudTrail_us-east-1_0";
 
     /// One stream of CloudTrail-like events, one page; can refuse the
@@ -708,6 +716,7 @@ mod tests {
             log_group: "CloudTrail".to_string(),
             start_seconds: START,
             end_seconds: END,
+            exported_at_seconds: Some(EXPORTED_AT),
         }
     }
 
@@ -715,17 +724,24 @@ mod tests {
         std::fs::write(folder.join(name), text).unwrap();
     }
 
+    /// Writes an export of the run [`EXPORTED_AT`], as the script does:
+    /// `json` is the export without its stamp.
+    fn write_export(folder: &Path, name: &str, json: &str) {
+        let stamped = json.replacen('{', &format!(r#"{{"exportedAtSeconds":{EXPORTED_AT},"#), 1);
+        write(folder, name, &stamped);
+    }
+
     /// The exports Logs Insights would give for [`QUERIES`] on the fake's
     /// events; `latest_second` is the eventName of q2's second row.
     fn write_exports(folder: &Path, latest_second: &str) {
-        write(
+        write_export(
             folder,
             "q1-like.json",
             r#"{"status":"Complete","results":[
                 [{"field":"eventName","value":"GetBucketAcl"},{"field":"@ptr","value":"a"}],
                 [{"field":"eventName","value":"GetObject"},{"field":"@ptr","value":"b"}]]}"#,
         );
-        write(
+        write_export(
             folder,
             "q2-latest.json",
             &format!(
@@ -800,13 +816,38 @@ mod tests {
         assert!(out.contains("q1-like  NotCompared"), "{out}");
     }
 
+    /// Code review R-02: an export left in the folder by an earlier run of
+    /// the script (another `exportedAtSeconds` than settings.json) is not
+    /// compared, so the run cannot compare; the file is left as it is.
+    #[tokio::test]
+    async fn an_export_left_from_an_earlier_run_is_not_compared() {
+        let folder = tempfile::tempdir().unwrap();
+        write_exports(folder.path(), "Decrypt");
+        let earlier = format!(
+            r#"{{"exportedAtSeconds":{},"status":"Complete","results":[
+                [{{"field":"eventName","value":"GetBucketAcl"}}],
+                [{{"field":"eventName","value":"GetObject"}}]]}}"#,
+            EXPORTED_AT - 3_600
+        );
+        write(folder.path(), "q1-like.json", &earlier);
+        let (code, out) = run(&FakeLogs::cloudtrail(), folder.path()).await;
+        assert_eq!(code, 2, "{out}");
+        assert!(out.contains("q1-like  NotCompared"), "{out}");
+        assert!(out.contains("another run"), "{out}");
+        assert!(out.contains("q2-latest  Same"), "{out}");
+        assert!(
+            folder.path().join("q1-like.json").exists(),
+            "the file is not removed"
+        );
+    }
+
     #[tokio::test]
     async fn a_tie_at_the_cut_and_events_in_a_boundary_second_are_marked() {
         let folder = tempfile::tempdir().unwrap();
         // With the extra kms event, sort eventSource asc | limit 3 keeps both
         // kms events and one of the two s3 events, and the other s3 event is
         // the first one cut (R-01). This export misses a kms row.
-        write(
+        write_export(
             folder.path(),
             "q3-tie.json",
             r#"{"status":"Complete","results":[
@@ -837,7 +878,7 @@ mod tests {
             "one kms row on the Logs Insights side, two in the app: {out}"
         );
         // limit 3 keeps both kms events and one s3 event; the tie is s3.
-        write(
+        write_export(
             folder.path(),
             "q3-tie.json",
             r#"{"status":"Complete","results":[
@@ -864,7 +905,7 @@ mod tests {
         };
         let settings_json = format!(
             r#"{{"profile":"dev","region":"us-east-1","logGroup":"CloudTrail",
-                "startSeconds":{START},"endSeconds":{END}}}"#
+                "startSeconds":{START},"endSeconds":{END},"exportedAtSeconds":{EXPORTED_AT}}}"#
         );
         let outside = tempfile::tempdir().unwrap();
         write(outside.path(), SETTINGS_FILE, &settings_json);
@@ -895,8 +936,11 @@ mod tests {
         );
 
         /// Writes down every call; refuses a query with `stats` as the
-        /// console does, with a request ID; answers every other query with
-        /// one Complete row.
+        /// console does, with a request ID; fails start-query as expired
+        /// credentials (`expired`) or a denied access (`denied`) would
+        /// (code review R-01); prints a warning on standard error and still
+        /// succeeds for `warn` (code review R-04); answers every other query
+        /// with one Complete row.
         const FAKE_AWS: &str = r#"#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_AWS_LOG"
 case "$2" in
@@ -905,6 +949,14 @@ case "$2" in
       *stats*)
         echo "An error occurred (MalformedQueryException) when calling the StartQuery operation: Query cannot be compiled (RequestId: 0a1b2c3d-1111-2222-3333-444455556666)" >&2
         exit 254 ;;
+      *expired*)
+        echo "An error occurred (ExpiredTokenException) when calling the StartQuery operation: The security token included in the request is expired" >&2
+        exit 254 ;;
+      *denied*)
+        echo "An error occurred (AccessDeniedException) when calling the StartQuery operation: User: arn:aws:sts::123456789012:assumed-role/dev/me is not authorized to perform: logs:StartQuery (RequestId: 9f8e7d6c-1111-2222-3333-444455556666)" >&2
+        exit 254 ;;
+      *warn*)
+        echo "warning: this version of the AWS CLI is old; please update" >&2 ;;
     esac
     echo "query-1" ;;
   get-query-results)
@@ -921,18 +973,21 @@ esac
 
         impl Fake {
             fn new() -> Self {
+                Self::with_queries(
+                    "# a note\nq1-ok\tset\tok\tfields eventName\n\
+                     q2-refused\tset\trefused\tstats count(*)\n",
+                )
+            }
+
+            fn with_queries(queries: &str) -> Self {
                 let folder = tempfile::tempdir().unwrap();
                 let bin = folder.path().join("bin");
                 std::fs::create_dir(&bin).unwrap();
+                std::fs::create_dir(folder.path().join("tmp")).unwrap();
                 let aws = bin.join("aws");
                 std::fs::write(&aws, FAKE_AWS).unwrap();
                 std::fs::set_permissions(&aws, std::fs::Permissions::from_mode(0o755)).unwrap();
-                write(
-                    folder.path(),
-                    "queries.txt",
-                    "# a note\nq1-ok\tset\tok\tfields eventName\n\
-                     q2-refused\tset\trefused\tstats count(*)\n",
-                );
+                write(folder.path(), "queries.txt", queries);
                 Self { folder }
             }
 
@@ -946,6 +1001,7 @@ esac
                     .arg(SCRIPT)
                     .env("PATH", path)
                     .env("FAKE_AWS_LOG", self.folder.path().join("calls.log"))
+                    .env("TMPDIR", self.folder.path().join("tmp"))
                     .env("PROFILE", "dev")
                     .env("REGION", "us-east-1")
                     .env("GROUP", "CloudTrail")
@@ -984,14 +1040,26 @@ esac
                 "{stdout}"
             );
             let settings_text = std::fs::read_to_string(out.join(SETTINGS_FILE)).unwrap();
-            assert_eq!(parse_settings(&settings_text).unwrap(), settings());
+            let written = parse_settings(&settings_text).unwrap();
+            let run = written.exported_at_seconds;
+            assert!(run.is_some(), "{settings_text}");
+            assert_eq!(
+                written,
+                RunSettings {
+                    exported_at_seconds: run,
+                    ..settings()
+                }
+            );
+            // Code review R-02: every file of the run carries the stamp of
+            // settings.json, so compat_check takes them for this run.
             let ok = std::fs::read_to_string(out.join("q1-ok.json")).unwrap();
             assert_eq!(
-                parse_export(&ok).unwrap(),
+                parse_export_of_run(&ok, run).unwrap(),
                 InsightsSide::Rows(vec![vec![("eventName".to_string(), "Decrypt".to_string())]])
             );
             let refused = std::fs::read_to_string(out.join("q2-refused.json")).unwrap();
-            let InsightsSide::Rejected(message) = parse_export(&refused).unwrap() else {
+            let InsightsSide::Rejected(message) = parse_export_of_run(&refused, run).unwrap()
+            else {
                 panic!("{refused}");
             };
             assert!(message.contains("MalformedQueryException"), "{message}");
@@ -1037,6 +1105,127 @@ esac
             assert!(
                 fake.calls().is_empty(),
                 "nothing is run with wrong settings"
+            );
+        }
+
+        /// Code review R-03, R-04: every query is started with `--limit
+        /// 10000`, and a warning start-query prints on standard error while
+        /// it succeeds does not spoil the query ID.
+        #[test]
+        fn the_script_asks_for_10000_rows_and_a_warning_does_not_spoil_the_query_id() {
+            let fake = Fake::with_queries(
+                "q1-warn\tset\twarn\tfields warn\nq2-quiet\tset\tquiet\tfields eventName\n",
+            );
+            let out = fake.folder.path().join("export");
+            let output = fake.run(&out, END);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success(),
+                "{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                stdout.contains("queries: 2  Complete: 2  Error: 0  other: 0"),
+                "{stdout}"
+            );
+            let calls = fake.calls();
+            let starts: Vec<&str> = calls
+                .lines()
+                .filter(|call| call.starts_with("logs start-query "))
+                .collect();
+            assert_eq!(starts.len(), 2, "{calls}");
+            assert!(
+                starts.iter().all(|call| call.contains("--limit 10000")),
+                "{calls}"
+            );
+            // The query ID is standard output only.
+            assert!(
+                calls
+                    .lines()
+                    .filter(|call| call.starts_with("logs get-query-results "))
+                    .all(|call| call.contains("--query-id query-1 ")),
+                "{calls}"
+            );
+            let settings_text = std::fs::read_to_string(out.join(SETTINGS_FILE)).unwrap();
+            let run = parse_settings(&settings_text).unwrap().exported_at_seconds;
+            let warned = std::fs::read_to_string(out.join("q1-warn.json")).unwrap();
+            assert_eq!(
+                parse_export_of_run(&warned, run).unwrap(),
+                InsightsSide::Rows(vec![vec![("eventName".to_string(), "Decrypt".to_string())]]),
+                "{warned}"
+            );
+            // The file that held standard error is removed at the end.
+            let left: Vec<_> = std::fs::read_dir(fake.folder.path().join("tmp"))
+                .unwrap()
+                .collect();
+            assert!(left.is_empty(), "{left:?}");
+        }
+
+        /// Code review R-01: start-query failing for expired credentials or
+        /// a denied access is not Logs Insights refusing the query. It is
+        /// written as Unknown, counted as not Complete, and compat_check
+        /// does not compare it; only a malformed query is an Error.
+        #[tokio::test]
+        async fn a_start_query_failure_other_than_a_malformed_query_is_not_a_refusal() {
+            let queries = "q1-expired\tset\texpired\tfields expired\n\
+                           q2-denied\tset\tdenied\tfields denied\n\
+                           q3-refused\tset\trefused\tstats count(*)\n";
+            let fake = Fake::with_queries(queries);
+            let out = fake.folder.path().join("export");
+            let output = fake.run(&out, END);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert_eq!(output.status.code(), Some(1), "{stdout}");
+            assert!(
+                stdout.contains("queries: 3  Complete: 0  Error: 1  other: 2"),
+                "{stdout}"
+            );
+            assert!(
+                stdout.contains("[q1-expired] Unknown (start-query failed)"),
+                "{stdout}"
+            );
+            let settings_text = std::fs::read_to_string(out.join(SETTINGS_FILE)).unwrap();
+            let run = parse_settings(&settings_text).unwrap().exported_at_seconds;
+            for (id, kind, request_id) in [
+                ("q1-expired", "ExpiredTokenException", None),
+                ("q2-denied", "AccessDeniedException", Some("9f8e7d6c")),
+            ] {
+                let text = std::fs::read_to_string(out.join(format!("{id}.json"))).unwrap();
+                assert_eq!(
+                    parse_export_of_run(&text, run).unwrap(),
+                    InsightsSide::NotRun("Unknown".to_string()),
+                    "{text}"
+                );
+                let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+                let message = json["message"].as_str().unwrap_or_default();
+                assert!(message.contains(kind), "{text}");
+                if let Some(request_id) = request_id {
+                    assert!(!message.contains(request_id), "{text}");
+                }
+            }
+            let refused = std::fs::read_to_string(out.join("q3-refused.json")).unwrap();
+            assert!(
+                matches!(
+                    parse_export_of_run(&refused, run).unwrap(),
+                    InsightsSide::Rejected(_)
+                ),
+                "{refused}"
+            );
+            // compat_check on that export: the two not run are NotCompared,
+            // so the run could not compare (exit 2, review R-02).
+            let prepared = Prepared {
+                settings: parse_settings(&settings_text).unwrap(),
+                queries: parse_query_set(queries).unwrap(),
+                export_dir: out.clone(),
+            };
+            let mut report = Vec::new();
+            let code = run_check(&FakeLogs::cloudtrail(), &prepared, &mut report).await;
+            let report = String::from_utf8(report).unwrap();
+            assert_eq!(code, 2, "{report}");
+            assert!(report.contains("q1-expired  NotCompared"), "{report}");
+            assert!(report.contains("q2-denied  NotCompared"), "{report}");
+            assert!(
+                report.contains("ended Unknown") && !report.contains("another run"),
+                "not compared because the query did not run: {report}"
             );
         }
     }

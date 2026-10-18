@@ -34,6 +34,11 @@ pub struct RunSettings {
     pub start_seconds: i64,
     /// End of the period, epoch seconds, given to `start-query` as it is.
     pub end_seconds: i64,
+    /// When the script ran, epoch seconds; every `<id>.json` of that run
+    /// carries the same value (code review R-02). `None` when missing: then
+    /// no export is taken for this run.
+    #[serde(default)]
+    pub exported_at_seconds: Option<i64>,
 }
 
 /// Why the settings or the export folder cannot be used.
@@ -180,6 +185,7 @@ mod tests {
                 log_group: "CloudTrail".to_string(),
                 start_seconds: 1_767_435_900,
                 end_seconds: 1_767_439_500,
+                exported_at_seconds: Some(1_767_450_000),
             }
         );
         let without = parse_settings(
@@ -187,6 +193,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(without.profile, None);
+        // Code review R-02: without the stamp no export matches it.
+        assert_eq!(without.exported_at_seconds, None);
     }
 
     #[test]

@@ -38,7 +38,7 @@
 | T-BASE-SPEED | team.md Testing Posture、C5 | 今の速さのテストが通る | 5 件とも通った | test-results.md の 4 | build-and-test | Met |
 | T-NFR8-CORE | NFR8、Testing Contract | ライブラリの行カバレッジ 80% 以上 | 96.52% | test-results.md の 3 | build-and-test | Met |
 | T-NFR8-UI | NFR8、Testing Contract | 画面の行カバレッジ 80% 以上 | 89.88% | test-results.md の 3 | build-and-test | Met |
-| T-NFR8-OS | NFR8・NFR6、team.md | Rust のテストが Linux・macOS・Windows で通る | Linux だけ通った。macOS・Windows の CI は未実施 | test-results.md の 2 | CI（PR） | Unverified |
+| T-NFR8-OS | NFR8・NFR6、team.md | Rust のテストが Linux・macOS・Windows で通る | 3 つの OS で CI が成功 | test-results.md の 8（PR kdnakt/local-sights#34） | build-and-test | Met |
 | T-C5 | C5 | 既存のテストがすべて通る | 通った（Linux） | test-results.md の 2 | build-and-test | Met |
 | T-STYLE | team.md Code Style | fmt・clippy・eslint・prettier・tsc が通る | 通った | test-results.md の 1 | build-and-test | Met |
 | T-DEPS | team.md Code Style | npm audit と cargo-deny が通る | 通った | test-results.md の 1 | build-and-test | Met |
@@ -53,7 +53,7 @@
 
 - **ビルドの準備**：できている。
 - **テストの準備**：このコンテナで流せるものはすべて通った。
-- **配る準備**：まだ。上の `Unverified` 5 つ（macOS・Windows の CI、コンソールとの互換、2 つの OS での薄い一本、本物の Ace）が残っている。どれもこのコンテナでは流せない。IB-11 が終わるまで `v0.2.0` のタグは付けない（team.md Deployment）。
+- **配る準備**：まだ。上の `Unverified` 4 つ（コンソールとの互換、2 つの OS での薄い一本、本物の Ace）が残っている。どれもこのコンテナでは流せない。macOS・Windows の CI は PR kdnakt/local-sights#34 で通った。IB-11 が終わるまで `v0.2.0` のタグは付けない（team.md Deployment）。
 
 ## 5. 分かっている限界と残り
 
@@ -62,7 +62,7 @@
   2. 薄い一本（macOS と Windows 11）：複数のロググループで実行して結果が出る、同じ期間の 2 回目は AWS から取得しない、期間を広げると足りない部分だけを取得する、キャッシュから読む、接続を変えると捨てる、ログの画面が前と同じ。
   3. 本物の Ace の目視。
   4. macOS のメモリ（`/usr/bin/time -l`）。
-- **macOS・Windows の CI**：このブランチの CI はまだ動いていない。PR を作ると流れる。
+- **macOS・Windows の CI**：PR kdnakt/local-sights#34 で 7 つのジョブがすべて通った。
 - **U4 のコードのレビューで残った指摘**（READY、助言）：
   - Major R-01：スクリプトが start-query の失敗をすべて「Logs Insights がクエリを断った」として書く。認証切れやアクセスの拒否でも比べに使われ、互換と誤って判定しうる。
   - Minor R-02：書き出しのフォルダを使い回すと、前回のファイルが残って比べられうる。
@@ -77,4 +77,4 @@
 
 ## 6. 結果
 
-失敗：落ちたコマンドと `Not Met` の目標はないが、`Unverified` が 5 つある。開発者の判断は `test-results.md` の 7 に記録する。
+失敗：落ちたコマンドと `Not Met` の目標はないが、`Unverified` が 4 つある。開発者の判断は `test-results.md` の 7 に記録する。

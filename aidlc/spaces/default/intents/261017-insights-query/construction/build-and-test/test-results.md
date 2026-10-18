@@ -71,7 +71,7 @@
 | T-BASE-SPEED | team.md Testing Posture「既存の速さのテスト」、C5 | ログの画面の 10 万件 10 秒・100 万件 100 秒ほか、今の速さのテストが通る | 5 件とも通った（2.3 ms・30.2 ms ほか） | 上の 4 | build-and-test | Met |
 | T-NFR8-CORE | requirements.md NFR8、各計画の Testing Contract | ライブラリの行カバレッジ 80% 以上 | 96.52% | 上の 3 | build-and-test | Met |
 | T-NFR8-UI | requirements.md NFR8、各計画の Testing Contract | 画面の行カバレッジ 80% 以上 | 89.88% | 上の 3 | build-and-test | Met |
-| T-NFR8-OS | requirements.md NFR8・NFR6、team.md Testing Posture | Rust のテストが Linux・macOS・Windows の各ランナーで通る | Linux：すべて通った。macOS・Windows：このブランチの CI はまだ動いていない（PR がない） | 上の 2。GitHub Actions のこのブランチの実行は 0 件 | CI（PR）。この計画に後の段はない | Unverified |
+| T-NFR8-OS | requirements.md NFR8・NFR6、team.md Testing Posture | Rust のテストが Linux・macOS・Windows の各ランナーで通る | 3 つの OS の `Tauri app` ジョブがすべて成功（ライブラリとアプリのテスト、workspace の clippy、アプリのビルド） | PR kdnakt/local-sights#34 の CI（コミット `4114fb2`）、上の 8 | build-and-test | Met |
 | T-C5 | requirements.md C5 | 既存のテストがすべて通る（ログの画面の振る舞いを変えない） | すべて通った（Linux） | 上の 2 | build-and-test | Met |
 | T-STYLE | team.md Code Style | fmt・clippy（deny）・eslint・prettier・tsc が通る | すべて通った | 上の 1 | build-and-test | Met |
 | T-DEPS | team.md Code Style | `npm audit --audit-level=high` と `cargo deny check` が通る | どちらも通った | 上の 1 | build-and-test | Met |
@@ -85,9 +85,21 @@
 ## 6. 失敗の扱い
 
 - 落ちたコマンドと `Not Met` の目標はない。
-- `Unverified` が 5 つある（T-NFR8-OS、T-SM1、T-WS-MAC、T-WS-WIN、T-ACE）。どれもコードの誤りではなく、このコンテナでは流せない確かめ（macOS・Windows の CI、本人の AWS 認証情報、本物の GUI）。コードを直して変わるものではないため、Code Generation に戻る直しはない。
+- `Unverified` が 4 つある（T-SM1、T-WS-MAC、T-WS-WIN、T-ACE）。どれもコードの誤りではなく、このコンテナでは流せない確かめ（本人の AWS 認証情報、本物の GUI）。T-NFR8-OS は PR の CI で Met になった（下の 8）。コードを直して変わるものではないため、Code Generation に戻る直しはない。
 - この計画（refactor）には Build and Test の後の段がないため、これらを引き受ける段もない。開発者の判断を仰ぐ（下の 7）。
 
 ## 7. 開発者の判断
 
 2026-10-18：開発者の答えは「PR作ってCI結果みよう」。PR を作り、macOS・Windows の CI の結果で T-NFR8-OS を確かめる。結果が出たらこの表を更新する。手元の確かめ（T-SM1、T-WS-MAC、T-WS-WIN、T-ACE）は、まだ残っている。
+
+## 8. PR の CI（kdnakt/local-sights#34、コミット `4114fb2`）
+
+| ジョブ | 結果 |
+|---|---|
+| Rust library (fmt, clippy, test) | success |
+| Front end (tsc, eslint, prettier, vitest, build) | success |
+| cargo-deny | success |
+| Tauri app (ubuntu-latest) | success |
+| Tauri app (macos-latest) | success |
+| Tauri app (windows-latest) | success |
+| GitGuardian Security Checks | success |

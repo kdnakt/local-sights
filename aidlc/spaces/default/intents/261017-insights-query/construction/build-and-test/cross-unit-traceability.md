@@ -79,6 +79,6 @@ FR 50 個と SM 2 個はすべて、少なくとも 1 つの作業単位で `OK`
 
 | ID | 要件 | Build and Test での確かめ | 残り |
 |---|---|---|---|
-| NFR6 | macOS と Windows で同じように動く。クエリの層は OS に依存しない純粋な処理 | クエリの層（`query/`）に `cfg` で分けたコードはない。Linux でテストが通った | macOS・Windows の CI と手元の確認が未実施（`test-results.md` の T-NFR8-OS、T-WS-MAC、T-WS-WIN） |
-| NFR8 | 行カバレッジ 80% 以上、Rust のテストは 3 つの OS で通る | ライブラリ 96.52%、画面 89.88%（Linux） | macOS・Windows の CI が未実施（T-NFR8-OS） |
+| NFR6 | macOS と Windows で同じように動く。クエリの層は OS に依存しない純粋な処理 | クエリの層（`query/`）に `cfg` で分けたコードはない。Linux でテストが通った | macOS・Windows の CI は通った（T-NFR8-OS：Met）。手元の確認が未実施（T-WS-MAC、T-WS-WIN） |
+| NFR8 | 行カバレッジ 80% 以上、Rust のテストは 3 つの OS で通る | ライブラリ 96.52%、画面 89.88%（Linux） | なし。PR の CI で 3 つの OS のテストが通った（T-NFR8-OS：Met） |
 | NFR12 | 外部に何も送らない | 足した行に外部への送信がないことを差分で確かめた（T-NFR12：Met） | なし。作業単位の traceability には載っていない |

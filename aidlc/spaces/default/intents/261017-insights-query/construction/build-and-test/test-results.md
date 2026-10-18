@@ -114,3 +114,12 @@
 - 2026-10-18：開発者の報告：Mac の確かめはひととおり問題なし。複数のロググループで実行し、補完と色分けも問題なかった。T-WS-MAC と T-ACE を Met にした。
 - 2026-10-18：開発者の気づき：接続のリージョンを選ぶ欄に、リージョンの名前（東京、バージニア北部など）が出ず、検索もできない。この作業で変えた部分ではない（接続の選び方は前からの画面）。開発者の答えで、今後の改善の候補として積む。
 - 2026-10-18：開発者の答え：Windows 11 の確かめ（T-WS-WIN）は最後にまとめて行う。
+
+## Loop-Back Log
+
+### Loop-back 1 — 2026-10-18T12:45:00Z
+
+- **Diagnosis**：コンソールとの互換の確かめ（T-SM1）を信頼して流すには、U4 の `scripts/compat/insights-export.sh` の欠陥を先に直す必要がある。start-query の失敗を理由を区別せずにすべて `status: Error`（Logs Insights がクエリを断った）として書くため、認証切れ・アクセスの拒否・スロットリングでも BR2.4 の断り方の比べに使われ、BothRejected（互換）や OnlyInsightsRejected（違い）と誤って判定しうる（U4 のコードのレビュー R-01、Major）。
+- **Root-cause stage**：code-generation（u4-compat-check）
+- **Planned fix**：U4 のレビューの R-01〜R-05 を直す。R-01：`MalformedQueryException` のときだけ `Error` とし、それ以外の失敗は `Unknown`（NotCompared、終了コード 2 の側）として書く。偽の `aws` で認証切れ相当の失敗のテストを足す。R-02：実行の初めに OUT の中の前回の `*.json` を消す（または settings.json と食い違う書き出しを NotCompared にする）。R-03：start-query に `--limit 10000` を渡す。R-04：CLI の標準エラーをクエリの ID と分ける。R-05：U4 の code-summary の書式の記述を直す。
+- **Estimated impact**：手間 小（スクリプト 1 つ、Rust のテスト 3 件ほど、記録の直し。計画の承認とレビューをもう一度行う）。費用 0。危うさ 低い（アプリ本体と中核ライブラリは変えない）。開発者が「U4 の指摘を直す」を選んだ（2026-10-18）。

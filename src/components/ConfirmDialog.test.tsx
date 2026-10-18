@@ -12,8 +12,9 @@ const pressEscape = () =>
 describe("ConfirmDialog (U2:BR2.5, mockups screen 6)", () => {
   it("asks with the catalog text in a modal and focuses Cancel", () => {
     render(<ConfirmDialog t={t} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    // 261017-insights-query U1:BR7.1: the text names both screens.
     expect(screen.getByRole("dialog", { name: "Change the connection?" })).toHaveTextContent(
-      "The logs shown will be cleared. Change the connection?",
+      "The logs shown in Log Management and the query results in Log Analytics will be cleared. Change the connection?",
     );
     expect(screen.getByTestId("confirm-dialog-cancel-button")).toHaveFocus();
   });
@@ -41,7 +42,7 @@ describe("ConfirmDialog (U2:BR2.5, mockups screen 6)", () => {
   it("is shown in Japanese for the ja locale", () => {
     render(<ConfirmDialog t={createTranslator("ja")} onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole("dialog")).toHaveTextContent(
-      "表示中のログが消えます。変えてよいですか？",
+      "ログ管理の画面に表示中のログと、Log Analytics のクエリの結果が消えます。変えてよいですか？",
     );
     expect(screen.getByTestId("confirm-dialog-change-button")).toHaveTextContent("変える");
   });

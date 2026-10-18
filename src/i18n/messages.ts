@@ -39,6 +39,12 @@
  * (`status.cancelled`) and the two cancel notices (`cancel.notice.*`, `{n}`
  * is the number of streams not read to their end), word for word as the
  * refined mockups' wording list (BR5.13, NFR9.3).
+ * Since 261017-insights-query U1 the navigation (`nav.*`), the Log Analytics
+ * screen (`insights.*`, the refined mockups' wording list where U1 has the
+ * same thing), the core's reasons why [Run query] cannot be pressed
+ * (`insights.blocked.*`), the reading problems of a query (`query.syntax.*`,
+ * `query.unsupported.*`, `{word}` is the query's own word only, FR6.4), and
+ * the core's `session.queryRunning` and `session.staleInput`.
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -176,9 +182,10 @@ export const messages = {
   "logGroups.prompt.profile": { en: "Choose a profile.", ja: "プロファイルを選んでください。" },
   "logGroups.prompt.region": { en: "Choose a region.", ja: "リージョンを選んでください。" },
   "confirm.title": { en: "Change the connection?", ja: "接続を変えますか？" },
+  // 261017-insights-query U1:BR7.1: both screens' logs and results go.
   "confirm.message": {
-    en: "The logs shown will be cleared. Change the connection?",
-    ja: "表示中のログが消えます。変えてよいですか？",
+    en: "The logs shown in Log Management and the query results in Log Analytics will be cleared. Change the connection?",
+    ja: "ログ管理の画面に表示中のログと、Log Analytics のクエリの結果が消えます。変えてよいですか？",
   },
   "confirm.change": { en: "Change", ja: "変える" },
   "confirm.cancel": { en: "Cancel", ja: "キャンセル" },
@@ -440,6 +447,241 @@ export const messages = {
   "session.ssoLoginUnavailable": {
     en: "Signing in with SSO is not available for the selected profile.",
     ja: "選んでいるプロファイルでは SSO にログインできません。",
+  },
+  "session.queryRunning": {
+    en: "A query is running in Log Analytics.",
+    ja: "Log Analytics でクエリを実行中です。",
+  },
+  "session.staleInput": {
+    en: "The query changed while it was being read. Run it again.",
+    ja: "読み取っている間にクエリが変わりました。もう一度実行してください。",
+  },
+  "nav.label": { en: "Screens", ja: "画面" },
+  "nav.title": { en: "CloudWatch Logs", ja: "CloudWatch Logs" },
+  "nav.logManagement": { en: "Log Management", ja: "ログ管理" },
+  "nav.logAnalytics": { en: "Log Analytics", ja: "Log Analytics" },
+  "nav.close": { en: "Close navigation", ja: "ナビゲーションを閉じる" },
+  "nav.open": { en: "Open navigation", ja: "ナビゲーションを開く" },
+  "insights.title": { en: "Log Analytics", ja: "Log Analytics" },
+  "insights.logGroups.label": { en: "Log group", ja: "ロググループ" },
+  "insights.logGroups.placeholder": { en: "Select a log group", ja: "ロググループを選ぶ" },
+  "insights.logGroups.filter": { en: "Find log groups", ja: "ロググループを探す" },
+  "insights.logGroups.loading": { en: "Loading log groups", ja: "ロググループを読み込み中" },
+  "insights.logGroups.error": {
+    en: "Couldn't load log groups",
+    ja: "ロググループを読み込めませんでした",
+  },
+  "insights.logGroups.retry": { en: "Retry", ja: "再試行" },
+  "insights.logGroups.empty": { en: "No log groups", ja: "ロググループがありません" },
+  "insights.logGroups.noMatch": {
+    en: "No matching log groups",
+    ja: "一致するロググループがありません",
+  },
+  "insights.logGroups.remove": { en: "Remove {name}", ja: "{name} を外す" },
+  "insights.query.label": { en: "Query", ja: "クエリ" },
+  "insights.query.loading": { en: "Loading the editor", ja: "エディタを読み込み中" },
+  "insights.query.loadFailed": {
+    en: "The editor could not be loaded.",
+    ja: "エディタを読み込めませんでした。",
+  },
+  "insights.run": { en: "Run query", ja: "クエリを実行" },
+  "insights.cancel": { en: "Cancel", ja: "中止" },
+  "insights.cancelling": { en: "Cancelling…", ja: "中止中…" },
+  "insights.shortcut.mac": { en: "Cmd+Enter", ja: "Cmd+Enter" },
+  "insights.shortcut.other": { en: "Ctrl+Enter", ja: "Ctrl+Enter" },
+  "insights.blocked.notConnected": {
+    en: "Choose a profile and a region.",
+    ja: "プロファイルとリージョンを選んでください。",
+  },
+  "insights.blocked.logGroupRequired": {
+    en: "Choose a log group.",
+    ja: "ロググループを選んでください。",
+  },
+  "insights.blocked.rangeInvalid": { en: "Fix the time range.", ja: "期間を直してください。" },
+  "insights.blocked.queryEmpty": { en: "Write a query.", ja: "クエリを書いてください。" },
+  "insights.blocked.queryTooLong": {
+    en: "The query must be 10,000 characters or fewer.",
+    ja: "クエリは 10,000 文字以内にしてください。",
+  },
+  "insights.blocked.queryRunning": { en: "The query is running.", ja: "クエリを実行中です。" },
+  "insights.blocked.logManagementFetching": {
+    en: "Log Management is fetching logs.",
+    ja: "Log Management で取得中です。",
+  },
+  "insights.blocked.otherOperation": {
+    en: "Finish the open dialog or the sign-in first.",
+    ja: "開いているダイアログかログインを先に終えてください。",
+  },
+  "insights.results.title": { en: "Results", ja: "結果" },
+  "insights.results.matched": { en: "{count} matched", ja: "{count} 件が一致" },
+  "insights.results.initial": {
+    en: "No results yet. Choose log groups and a time range, write a query, then choose Run query.",
+    ja: "まだ結果はありません。ロググループと期間を選び、クエリを書いて「クエリを実行」を押してください。",
+  },
+  "insights.results.none": {
+    en: "No matching events. No events in the selected log groups and time range matched the query.",
+    ja: "一致するイベントはありません。選んだロググループと期間に、クエリに一致するイベントはありませんでした。",
+  },
+  "insights.results.column.timestamp": { en: "@timestamp ({zone})", ja: "@timestamp（{zone}）" },
+  "insights.results.column.message": { en: "@message", ja: "@message" },
+  "insights.results.expand": { en: "Show details", ja: "詳細を開く" },
+  "insights.results.collapse": { en: "Hide details", ja: "詳細を閉じる" },
+  "insights.results.field": { en: "Field", ja: "項目" },
+  "insights.results.value": { en: "Value", ja: "値" },
+  "insights.status.listing": {
+    en: "Fetching logs: listing streams, {count} selected so far",
+    ja: "ログを取得中：ストリームを列挙中、これまでに {count} 本",
+  },
+  "insights.status.fetching": {
+    en: "Fetching logs: {done} / {total} streams, {events} events",
+    ja: "ログを取得中：ストリーム {done} / {total}、{events} 件",
+  },
+  "insights.status.running": {
+    en: "Running query: {scanned} / {total} events",
+    ja: "クエリを実行中：{scanned} / {total} 件",
+  },
+  "insights.partial": {
+    en: "Results are based on part of the logs. {count} streams could not be fetched.",
+    ja: "結果は一部のログだけから作られています。{count} 本のストリームを取得できませんでした。",
+  },
+  "insights.partial.listing": {
+    en: "Results are based on part of the logs. The stream listing is incomplete.",
+    ja: "結果は一部のログだけから作られています。ストリームの列挙は途中までです。",
+  },
+  "insights.partial.show": { en: "Show failed streams", ja: "失敗したストリームを見る" },
+  "insights.cancelled": { en: "Query cancelled.", ja: "クエリを中止しました。" },
+  "insights.notRun": { en: "The query was not run.", ja: "クエリは実行していません。" },
+  "insights.error.at": {
+    en: "Line {line}, column {column}: ",
+    ja: "{line} 行 {column} 列：",
+  },
+  "insights.error.supportedList": {
+    en: "Supported commands: filter.",
+    ja: "使える命令：filter",
+  },
+  "query.syntax.noCommand": {
+    en: "The query has no command. Start it with filter.",
+    ja: "クエリに命令がありません。filter で始めてください。",
+  },
+  "query.syntax.emptyCommand": {
+    en: 'There is no command before or after "|".',
+    ja: "「|」の前か後ろに命令がありません。",
+  },
+  "query.syntax.unknownCommand": {
+    en: '"{word}" is not a command.',
+    ja: "「{word}」は命令ではありません。",
+  },
+  "query.syntax.missingCondition": {
+    en: "filter needs a condition.",
+    ja: "filter の後ろに条件がありません。",
+  },
+  "query.syntax.unclosedParen": {
+    en: "The parenthesis is not closed.",
+    ja: "括弧が閉じていません。",
+  },
+  "query.syntax.unmatchedParen": {
+    en: "This parenthesis closes nothing.",
+    ja: "この閉じ括弧に対応する開き括弧がありません。",
+  },
+  "query.syntax.unclosedString": {
+    en: "The quotation is not closed.",
+    ja: "引用符が閉じていません。",
+  },
+  "query.syntax.unclosedRegex": {
+    en: "The regular expression is not closed with /.",
+    ja: "正規表現が / で閉じていません。",
+  },
+  "query.syntax.unclosedList": {
+    en: "The list is not closed with ].",
+    ja: "値の並びが ] で閉じていません。",
+  },
+  "query.syntax.unclosedName": {
+    en: "The name in backquotes is not closed.",
+    ja: "` で囲んだ名前が閉じていません。",
+  },
+  "query.syntax.emptyList": {
+    en: "The list needs at least one value.",
+    ja: "値の並びに値が 1 つもありません。",
+  },
+  "query.syntax.unexpectedToken": {
+    en: '"{word}" cannot be written here.',
+    ja: "ここに「{word}」は書けません。",
+  },
+  "query.syntax.unexpectedEnd": {
+    en: "The query ends in the middle of a condition.",
+    ja: "条件の途中でクエリが終わっています。",
+  },
+  "query.syntax.expectedOperator": {
+    en: "An operator such as =, like or in is needed here.",
+    ja: "ここには =、like、in などの演算子が要ります。",
+  },
+  "query.syntax.expectedValue": {
+    en: "A value is needed here.",
+    ja: "ここには値が要ります。",
+  },
+  "query.syntax.expectedList": {
+    en: 'in needs a list such as ["a", "b"].',
+    ja: 'in の後ろには ["a", "b"] のような値の並びが要ります。',
+  },
+  "query.syntax.unexpectedCharacter": {
+    en: '"{word}" cannot be used in a query.',
+    ja: "「{word}」はクエリに使えません。",
+  },
+  "query.syntax.invalidNumber": {
+    en: "This cannot be read as a number.",
+    ja: "数値として読めません。",
+  },
+  "query.syntax.invalidRegex": {
+    en: "This regular expression cannot be used.",
+    ja: "この正規表現は使えません。",
+  },
+  "query.syntax.regexNotAllowed": {
+    en: "A regular expression can only follow like or =~.",
+    ja: "正規表現は like と =~ の後ろにだけ書けます。",
+  },
+  "query.syntax.matchNeedsRegex": {
+    en: "=~ needs a regular expression such as /error/.",
+    ja: "=~ の後ろには /error/ のような正規表現が要ります。",
+  },
+  "query.syntax.likeNeedsText": {
+    en: "like needs a string or a regular expression.",
+    ja: "like の後ろには文字列か正規表現が要ります。",
+  },
+  "query.syntax.invalidDateTime": {
+    en: 'Compare @timestamp with milliseconds, "YYYY-MM-DD HH:MM:SS[.sss]" (the selected time zone) or "YYYY-MM-DDTHH:MM:SS[.sss]Z" (UTC).',
+    ja: "@timestamp は、ミリ秒の数値か、「YYYY-MM-DD HH:MM:SS[.sss]」（選んでいるタイムゾーン）か「YYYY-MM-DDTHH:MM:SS[.sss]Z」（UTC）と比べてください。",
+  },
+  "query.syntax.nonexistentDateTime": {
+    en: "This time does not exist in the selected time zone (daylight saving time).",
+    ja: "選んでいるタイムゾーンでは、夏時間の切り替えのためこの時刻はありません。",
+  },
+  "query.unsupported.command": {
+    en: '"{word}" is not supported in this version.',
+    ja: "「{word}」にはこの版では対応していません。",
+  },
+  "query.unsupported.field": {
+    en: 'The field "{word}" cannot be used in this version. Use @timestamp, @message, @logStream or @log.',
+    ja: "項目「{word}」はこの版では使えません。@timestamp、@message、@logStream、@log を使ってください。",
+  },
+  "query.unsupported.function": {
+    en: 'The function "{word}" is not supported in this version. Only toMillis(@timestamp) can be used.',
+    ja: "関数「{word}」にはこの版では対応していません。使えるのは toMillis(@timestamp) だけです。",
+  },
+  "query.unsupported.toMillisArgument": {
+    en: "toMillis can only take @timestamp.",
+    ja: "toMillis に渡せるのは @timestamp だけです。",
+  },
+  "query.unsupported.timestampOperator": {
+    en: '"{word}" cannot be used with @timestamp. Compare it with =, <, > or in.',
+    ja: "@timestamp には「{word}」を使えません。=、<、>、in で比べてください。",
+  },
+  "query.unsupported.operator": {
+    en: 'The operator "{word}" is not supported in this version.',
+    ja: "演算子「{word}」にはこの版では対応していません。",
+  },
+  "query.unsupported.fieldComparison": {
+    en: 'Comparing with "{word}" is not supported in this version. Compare with a string or a number.',
+    ja: "「{word}」との比較にはこの版では対応していません。文字列か数値と比べてください。",
   },
 } as const satisfies Record<string, Record<Locale, string>>;
 

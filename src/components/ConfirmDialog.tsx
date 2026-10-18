@@ -13,8 +13,9 @@ export interface ConfirmDialogProps {
 
 /**
  * Asks before a connection change discards the shown logs (U2:BR2.5,
- * mockups screen 6): a Cloudscape modal whose footer has [Cancel] and the
- * primary [Change] at the right end. Focus starts on [Cancel], the modal
+ * mockups screen 6), and since 261017-insights-query U1 the query results
+ * too; the text names both screens (U1:BR7.1). A Cloudscape modal whose
+ * footer has [Cancel] and the primary [Change] at the right end. Focus starts on [Cancel], the modal
  * keeps Tab inside it (U2:BR2.6: nothing else is usable meanwhile), and
  * Escape or the close button cancels (U2:BR5.2).
  */

@@ -1,4 +1,12 @@
-import type { DisplayRow, RowWindow, SessionView, SsoLoginView } from "../api";
+import type {
+  DisplayRow,
+  InsightsView,
+  QueryRow,
+  QueryRowWindow,
+  RowWindow,
+  SessionView,
+  SsoLoginView,
+} from "../api";
 import { createTranslator } from "../i18n/messages";
 
 /** English translator used by component tests. */
@@ -54,7 +62,62 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     cancelling: false,
     fetchCancelAvailable: false,
     cancelNotice: null,
+    fetchOwner: "None",
+    insights: insightsView(),
     ...overrides,
+  };
+}
+
+/** The Log Analytics part of a session view: nothing run yet, ready to run. */
+export function insightsView(overrides: Partial<InsightsView> = {}): InsightsView {
+  return {
+    selectedLogGroupName: "/aws/lambda/MyFunction",
+    logGroupOptions: ["/aws/ecs/web", "/aws/lambda/MyFunction"],
+    logGroupStatus: "Complete",
+    startInput: { text: "2024/01/02 03:04:05", instant: 1_704_164_645_000, error: null },
+    endInput: { text: "2024/01/02 03:05:05", instant: 1_704_164_705_000, error: null },
+    queryText: "filter @message like /ERROR/",
+    rangeErrors: [],
+    runBlocker: null,
+    canRun: true,
+    runId: 0,
+    phase: "Idle",
+    progress: null,
+    problem: null,
+    failure: null,
+    partial: false,
+    failedStreams: [],
+    listingFailure: null,
+    result: null,
+    elapsed: null,
+    cancelling: false,
+    cancelAvailable: false,
+    ...overrides,
+  };
+}
+
+/** A result row as `get_query_rows` gives it. */
+export function queryRow(sequence: number, message = `ERROR ${sequence}`): QueryRow {
+  return {
+    ...logEvent(sequence, message),
+    logGroupName: "/aws/lambda/MyFunction",
+  };
+}
+
+/** A `get_query_rows` answer cut from `rows`. */
+export function queryRowWindow(
+  rows: readonly QueryRow[],
+  offset: number,
+  limit: number,
+  runId = 1,
+  holdingsEpoch = 2,
+): QueryRowWindow {
+  return {
+    runId,
+    holdingsEpoch,
+    offset,
+    rows: rows.slice(offset, offset + limit),
+    totalCount: rows.length,
   };
 }
 

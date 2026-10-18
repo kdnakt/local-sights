@@ -54,6 +54,52 @@ const CORE_KEYS = [
   "catalog.unreadable.config",
   "catalog.unreadable.credentials",
   "rows.tooManyKeys",
+  // 261017-insights-query U1 (session.rs, insights_session.rs).
+  "session.queryRunning",
+  "session.staleInput",
+  "insights.blocked.notConnected",
+  "insights.blocked.logGroupRequired",
+  "insights.blocked.rangeInvalid",
+  "insights.blocked.queryEmpty",
+  "insights.blocked.queryTooLong",
+  "insights.blocked.queryRunning",
+  "insights.blocked.logManagementFetching",
+  "insights.blocked.otherOperation",
+];
+
+/** The reading problems of the core's QueryParser (`query::parser::keys::ALL`). */
+const QUERY_PROBLEM_KEYS = [
+  "query.syntax.noCommand",
+  "query.syntax.emptyCommand",
+  "query.syntax.unknownCommand",
+  "query.syntax.missingCondition",
+  "query.syntax.unclosedParen",
+  "query.syntax.unmatchedParen",
+  "query.syntax.unclosedString",
+  "query.syntax.unclosedRegex",
+  "query.syntax.unclosedList",
+  "query.syntax.unclosedName",
+  "query.syntax.emptyList",
+  "query.syntax.unexpectedToken",
+  "query.syntax.unexpectedEnd",
+  "query.syntax.expectedOperator",
+  "query.syntax.expectedValue",
+  "query.syntax.expectedList",
+  "query.syntax.unexpectedCharacter",
+  "query.syntax.invalidNumber",
+  "query.syntax.invalidRegex",
+  "query.syntax.regexNotAllowed",
+  "query.syntax.matchNeedsRegex",
+  "query.syntax.likeNeedsText",
+  "query.syntax.invalidDateTime",
+  "query.syntax.nonexistentDateTime",
+  "query.unsupported.command",
+  "query.unsupported.field",
+  "query.unsupported.function",
+  "query.unsupported.toMillisArgument",
+  "query.unsupported.timestampOperator",
+  "query.unsupported.operator",
+  "query.unsupported.fieldComparison",
 ];
 
 describe("message catalog", () => {
@@ -68,6 +114,20 @@ describe("message catalog", () => {
     for (const key of CORE_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
+  });
+
+  it("has every reading problem of the query in both languages, with its word (261017-insights-query NFR9)", () => {
+    expect(QUERY_PROBLEM_KEYS).toHaveLength(31);
+    for (const key of QUERY_PROBLEM_KEYS) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(translate("en", "query.unsupported.command", { word: "stats" })).toBe(
+      '"stats" is not supported in this version.',
+    );
+    expect(translate("ja", "query.unsupported.command", { word: "stats" })).toBe(
+      "「stats」にはこの版では対応していません。",
+    );
+    expect(translate("ja", "insights.error.at", { line: 2, column: 3 })).toBe("2 行 3 列：");
   });
 
   it("has every SSO login text in both languages (261011-sso-login NFR5)", () => {

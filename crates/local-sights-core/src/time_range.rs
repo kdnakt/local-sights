@@ -74,7 +74,15 @@ pub fn parse_utc_seconds(text: &str) -> Result<i64, DateTimeFormatError> {
 /// which is a different reason from a malformed text.
 pub fn parse_in_zone(text: &str, zone: Tz) -> Result<i64, DateTimeParseError> {
     let naive = parse_wall_clock(text).map_err(|_| DateTimeParseError::Format)?;
-    match zone.from_local_datetime(&naive) {
+    instant_in_zone(&naive, zone)
+}
+
+/// The epoch milliseconds of the wall-clock time `naive` in `zone`: a time
+/// shown twice takes the earlier instant, a skipped time is
+/// [`DateTimeParseError::NonexistentLocalTime`] (U4:BR1.2). Shared with the
+/// date texts of a query (261017-insights-query U1:BR5.9, review R-03).
+pub(crate) fn instant_in_zone(naive: &NaiveDateTime, zone: Tz) -> Result<i64, DateTimeParseError> {
+    match zone.from_local_datetime(naive) {
         LocalResult::Single(instant) => Ok(instant.timestamp_millis()),
         LocalResult::Ambiguous(earlier, later) => {
             Ok(earlier.timestamp_millis().min(later.timestamp_millis()))

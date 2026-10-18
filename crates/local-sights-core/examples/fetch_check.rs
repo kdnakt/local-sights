@@ -35,6 +35,23 @@
 //! listing failure) with its kind and safe detail.
 //! Exit codes: 0 success, 1 something failed, 2 invalid arguments.
 //!
+//! A query (261017-insights-query U1, team.md Walking Skeleton 2): with
+//! `--query TEXT` the range is fetched through the query screen's own flow
+//! instead, into a QueryStore by the QueryRunner (the same FetchCoordinator,
+//! U1:BR2.2), and the query is read and evaluated on it as the app does.
+//! Date texts compared with `@timestamp` are read as UTC, like `--start` and
+//! `--end`. Standard output is then `matched N of M events` and the first
+//! [`FIRST_ROWS`] matching events in the format above; standard error has
+//! the fetch summary and counts as without a query. A query that cannot be
+//! read is an argument error (exit 2) naming its line, column and message
+//! key; nothing is fetched then (U1:BR3.9).
+//!
+//! ```text
+//! cargo run -p local-sights-core --example fetch_check -- --profile NAME \
+//!   --region us-east-1 --log-group NAME --start "2025/08/24 16:13:26" \
+//!   --end "2025/08/24 17:13:26" --query 'filter @timestamp > 1756053806000'
+//! ```
+//!
 //! Comparing with the version on `main` by hand (U1:NFR2.1, review R-03):
 //! use the same profile, log group and time range for both, and run each
 //! three times under `time`, comparing the median real time and the event
@@ -55,13 +72,20 @@
 
 use std::io::{self, BufWriter, Write};
 use std::process::ExitCode;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
+use chrono_tz::Tz;
 use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch};
 use local_sights_core::event::LogEvent;
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
+use local_sights_core::query::evaluator::QueryResult;
+use local_sights_core::query::instant::resolve_date_texts;
+use local_sights_core::query::parser::parse_query;
+use local_sights_core::query::plan::QueryPlan;
+use local_sights_core::query::runner::{QueryRun, QuerySink, run_query};
+use local_sights_core::query::store::{HoldingKey, QueryStore};
 use local_sights_core::request::{
     FetchInput, ValidatedFetch, ValidationError, validate_fetch_input,
 };
@@ -72,16 +96,21 @@ use local_sights_core::time_range::format_utc_millis;
 use local_sights_core::timeline::EventTimeline;
 
 const USAGE: &str = "usage: fetch_check [--profile NAME] --region CODE --log-group NAME \
---start \"yyyy/mm/dd hh:mm:ss\" --end \"yyyy/mm/dd hh:mm:ss\"   (times in UTC)";
+--start \"yyyy/mm/dd hh:mm:ss\" --end \"yyyy/mm/dd hh:mm:ss\" [--query TEXT]   (times in UTC)";
 
 const EXIT_FETCH_FAILED: u8 = 1;
 const EXIT_USAGE: u8 = 2;
 
-/// The parsed arguments: the raw fetch input and the region code.
+/// Matching events printed with `--query`.
+const FIRST_ROWS: usize = 10;
+
+/// The parsed arguments: the raw fetch input, the region code and the
+/// query, when one was given.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CheckArgs {
     input: FetchInput,
     region: String,
+    query: Option<String>,
 }
 
 #[tokio::main]
@@ -107,11 +136,19 @@ async fn main() -> ExitCode {
     };
 
     let gateway = AwsCloudWatchLogsGateway::new();
-    let timeline = Mutex::new(EventTimeline::new());
     let policy = RetryPolicy::default();
     let jitter = RandomJitter;
     let stop = StopSignal::never();
     let retrier = Retrier::new(&policy, &jitter, &stop);
+    if let Some(text) = &args.query {
+        // 261017-insights-query U1:BR3.9: read before anything is fetched.
+        let plan = match read_query(text) {
+            Ok(plan) => plan,
+            Err(reason) => return usage_error(&[reason]),
+        };
+        return check_query(&gateway, validated, plan, &retrier).await;
+    }
+    let timeline = Mutex::new(EventTimeline::new());
     let mut sink = ProgressSink;
     let job = run_fetch(&gateway, &validated, &timeline, &retrier, &mut sink).await;
 
@@ -121,6 +158,77 @@ async fn main() -> ExitCode {
         return ExitCode::from(EXIT_FETCH_FAILED);
     }
     report(&job)
+}
+
+/// Reads the query and turns its date texts into milliseconds in UTC, or
+/// says where it cannot be read (only the query's place and message key).
+fn read_query(text: &str) -> Result<QueryPlan, String> {
+    parse_query(text)
+        .and_then(|plan| resolve_date_texts(plan, Tz::UTC))
+        .map_err(|problem| {
+            format!(
+                "--query cannot be read at line {}, column {}: {:?} {}{}",
+                problem.span.line,
+                problem.span.column,
+                problem.kind,
+                problem.message_key,
+                problem
+                    .word
+                    .map(|word| format!(" ({word})"))
+                    .unwrap_or_default()
+            )
+        })
+}
+
+/// 261017-insights-query U1: fetches the range into a QueryStore with the
+/// QueryRunner, evaluates the query and prints the count and the first
+/// matching events.
+async fn check_query(
+    gateway: &AwsCloudWatchLogsGateway,
+    validated: ValidatedFetch,
+    plan: QueryPlan,
+    retrier: &Retrier<'_>,
+) -> ExitCode {
+    let key = HoldingKey {
+        profile: validated.request.profile().clone(),
+        region: validated.request.region().unwrap_or_default().to_string(),
+        log_group_name: validated.request.log_group_name().to_string(),
+    };
+    let run = QueryRun {
+        run_id: 1,
+        plan: Arc::new(plan),
+        fetch: validated,
+        key,
+        cache: None,
+        fetch_started_at_ms: 0,
+    };
+    let store = Arc::new(QueryStore::new());
+    let mut sink = QueryCheckSink::default();
+    run_query(gateway, &run, &store, retrier, &mut sink).await;
+    let Some(job) = sink.ended else {
+        eprintln!("error: the fetch ended without a result");
+        return ExitCode::from(EXIT_FETCH_FAILED);
+    };
+    let code = report(&job);
+    let Some(result) = sink.result else {
+        eprintln!("error: the query was not evaluated");
+        return ExitCode::from(EXIT_FETCH_FAILED);
+    };
+    let positions = result.window(result.run_id, result.holdings_epoch, 0, FIRST_ROWS);
+    let first = store
+        .rows_at(result.holdings_epoch, positions)
+        .map(|rows| rows.events)
+        .unwrap_or_default();
+    println!(
+        "matched {} of {} events",
+        result.row_count(),
+        result.evaluated_count
+    );
+    if let Err(error) = write_events(&first) {
+        eprintln!("error: could not write to standard output: {error}");
+        return ExitCode::from(EXIT_FETCH_FAILED);
+    }
+    code
 }
 
 /// Prints the counts and the failures to standard error and chooses the
@@ -183,7 +291,15 @@ fn usage_error(reasons: &[String]) -> ExitCode {
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<CheckArgs, String> {
     let mut input = FetchInput::default();
     let mut region = String::new();
+    let mut query: Option<String> = None;
     while let Some(flag) = args.next() {
+        if flag == "--query" {
+            let text = args
+                .next()
+                .ok_or_else(|| format!("missing value for {flag}"))?;
+            query = Some(text);
+            continue;
+        }
         let slot = match flag.as_str() {
             "--profile" => &mut input.profile_name,
             "--region" => &mut region,
@@ -207,7 +323,11 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<CheckArgs, Strin
     if !looks_like_a_region {
         return Err("--region must be a region code such as ap-northeast-1".to_string());
     }
-    Ok(CheckArgs { input, region })
+    Ok(CheckArgs {
+        input,
+        region,
+        query,
+    })
 }
 
 /// English description of a validation reason for the terminal.
@@ -263,6 +383,49 @@ impl FetchSink for ProgressSink {
     fn on_stream_finished(&mut self, _job: &FetchJob, _outcome: &StreamFetchOutcome) {}
 
     fn on_finished(&mut self, _job: &FetchJob, _timeline_version: u64) {}
+}
+
+/// The progress of a `--query` check, and what it ended with.
+#[derive(Default)]
+struct QueryCheckSink {
+    ended: Option<FetchJob>,
+    result: Option<QueryResult>,
+}
+
+impl FetchSink for QueryCheckSink {
+    fn on_started(&mut self, job: &FetchJob, timeline_version: u64) {
+        ProgressSink.on_started(job, timeline_version);
+    }
+
+    fn on_listing_progress(&mut self, _job_id: u64, _progress: ListingProgress) {}
+
+    fn on_planned(&mut self, job: &FetchJob) {
+        ProgressSink.on_planned(job);
+    }
+
+    fn on_batch(&mut self, _job_id: u64, _progress: BatchProgress) {}
+
+    fn on_stream_finished(&mut self, _job: &FetchJob, _outcome: &StreamFetchOutcome) {}
+
+    fn on_finished(&mut self, _job: &FetchJob, _timeline_version: u64) {}
+}
+
+impl QuerySink for QueryCheckSink {
+    fn on_fetch_ended(&mut self, _run_id: u64, job: &FetchJob) -> bool {
+        self.ended = Some(job.clone());
+        eprintln!("evaluating {} events...", job.event_count);
+        true
+    }
+
+    fn on_evaluation_progress(&mut self, _run_id: u64, _evaluated: usize, _total: usize) -> bool {
+        true
+    }
+
+    fn on_evaluated(&mut self, result: QueryResult) {
+        self.result = Some(result);
+    }
+
+    fn on_evaluation_stopped(&mut self, _run_id: u64) {}
 }
 
 /// Argument parsing only; nothing here connects to AWS (`cargo test -p
@@ -327,5 +490,43 @@ mod tests {
             parse_args(args(&missing)).unwrap_err(),
             "missing value for --region"
         );
+    }
+
+    // ---- 261017-insights-query U1: --query -----------------------------
+
+    #[test]
+    fn a_query_is_taken_as_written_and_is_optional() {
+        let plain: Vec<&str> = BASE
+            .iter()
+            .copied()
+            .chain(["--region", "us-east-1"])
+            .collect();
+        assert_eq!(parse_args(args(&plain)).unwrap().query, None);
+        let with_query: Vec<&str> = plain
+            .iter()
+            .copied()
+            .chain(["--query", "filter @timestamp > 1756053806000"])
+            .collect();
+        assert_eq!(
+            parse_args(args(&with_query)).unwrap().query.as_deref(),
+            Some("filter @timestamp > 1756053806000")
+        );
+        let missing: Vec<&str> = plain.iter().copied().chain(["--query"]).collect();
+        assert_eq!(
+            parse_args(args(&missing)).unwrap_err(),
+            "missing value for --query"
+        );
+    }
+
+    #[test]
+    fn a_query_that_cannot_be_read_names_its_place_and_reads_dates_as_utc() {
+        let error = read_query("filter @message like /a/\n| stats count(*)").unwrap_err();
+        assert!(error.contains("line 2, column 3"), "{error}");
+        assert!(
+            error.contains("query.unsupported.command (stats)"),
+            "{error}"
+        );
+        assert!(read_query("filter @timestamp > '2025-08-24 16:43:26'").is_ok());
+        assert!(read_query("filter @timestamp > 'yesterday'").is_err());
     }
 }

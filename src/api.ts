@@ -26,6 +26,12 @@
  * session view says whether it is under way (`cancelling`), whether it can be
  * pressed (`fetchCancelAvailable`) and what the last cancelled fetch left
  * unread (`cancelNotice`, a count only, NFR8.13); a job can end `Cancelled`.
+ * Since 261017-insights-query U1 the session view also carries the Log
+ * Analytics screen (`insights`) and which screen's fetch runs (`fetchOwner`,
+ * U1:BR2.3); `updateAnalyticsInput`, `runQuery`, `cancelQuery` and
+ * `getQueryRows` drive it. The query is read and run by the core; a reading
+ * problem comes back as the QueryError phase with its place, never as a
+ * refusal (U1:BR3.9).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -214,6 +220,99 @@ export interface LogGroupListView {
   failure: ApiFailure | null;
 }
 
+/** Which screen the running fetch belongs to (261017-insights-query U1:BR2.3). */
+export type FetchOwner = "None" | "LogManagement" | "LogAnalytics";
+
+/** Phase of the last query run (261017-insights-query functional-spec 4). */
+export type AnalyticsPhase =
+  "Idle" | "Fetching" | "Evaluating" | "Done" | "QueryError" | "FetchFailed" | "Cancelled";
+
+/** A field of the Log Analytics screen; an empty log group deselects it. */
+export type AnalyticsField = "logGroup" | "startText" | "endText" | "queryText";
+
+/** A place in the query text: line and column from 1, in characters. */
+export interface QuerySpan {
+  line: number;
+  column: number;
+  length: number;
+}
+
+/** Why a query cannot be run, found before anything is fetched (U1:BR3.9). */
+export interface QueryProblem {
+  kind: "Syntax" | "Unsupported";
+  /** Message key of the text (`query.syntax.*` / `query.unsupported.*`). */
+  messageKey: string;
+  /** The word of the query it is about; only text taken from the query. */
+  word: string | null;
+  span: QuerySpan;
+}
+
+/** Progress of the running query (U1:BR2.4). */
+export interface InsightsProgress {
+  selectedStreamCount: number;
+  /** `null` while the streams are being listed. */
+  plannedStreamCount: number | null;
+  finishedStreamCount: number;
+  eventCount: number;
+  evaluatedCount: number;
+  totalCount: number;
+}
+
+/** The shown result; its rows are read with `runId` and `holdingsEpoch` (U1:BR6.4). */
+export interface ResultSummary {
+  runId: number;
+  holdingsEpoch: number;
+  rowCount: number;
+  evaluatedCount: number;
+}
+
+/** The Log Analytics screen as the core shows it (261017-insights-query U1). */
+export interface InsightsView {
+  selectedLogGroupName: string | null;
+  /** Every log group of the current list, ascending: Log Management's before its filter. */
+  logGroupOptions: string[];
+  /** How that list stands; `null` without a complete connection. */
+  logGroupStatus: ListingStatus | null;
+  startInput: DateTimeInput;
+  endInput: DateTimeInput;
+  queryText: string;
+  /** The time range's reasons (`validation.*` keys). */
+  rangeErrors: string[];
+  /** The first reason why [Run query] cannot be pressed (U1:BR1.5). */
+  runBlocker: string | null;
+  canRun: boolean;
+  runId: number;
+  phase: AnalyticsPhase;
+  progress: InsightsProgress | null;
+  problem: QueryProblem | null;
+  /** The failure of the whole fetch (FetchFailed). */
+  failure: ApiFailure | null;
+  /** Some streams failed: the result is based on part of the logs (U1:BR2.5). */
+  partial: boolean;
+  failedStreams: FailedStream[];
+  listingFailure: ApiFailure | null;
+  result: ResultSummary | null;
+  elapsed: ElapsedView | null;
+  cancelling: boolean;
+  cancelAvailable: boolean;
+}
+
+/** One result row (U1:BR6.3): the event, its time in the chosen zone and `@log`. */
+export interface QueryRow extends LogEvent {
+  displayTime: string;
+  logGroupName: string;
+}
+
+/** The result rows of one viewport request (U1:BR6.4). */
+export interface QueryRowWindow {
+  runId: number;
+  holdingsEpoch: number;
+  offset: number;
+  /** Empty when the run or the epoch is not the shown result's. */
+  rows: QueryRow[];
+  totalCount: number;
+}
+
 export interface SessionView {
   sessionId: string;
   phase: Phase;
@@ -283,6 +382,10 @@ export interface SessionView {
   fetchCancelAvailable: boolean;
   /** The notice of the last fetch when it was cancelled (U5:BR5.8). */
   cancelNotice: CancelNoticeView | null;
+  /** Which screen's fetch runs (261017-insights-query U1:BR2.3). */
+  fetchOwner: FetchOwner;
+  /** The Log Analytics screen (261017-insights-query U1). */
+  insights: InsightsView;
 }
 
 /** Whether an SSO login is under way (Starting or Waiting). */
@@ -627,6 +730,41 @@ export function updateLogGroupFilter(text: string): Promise<void> {
 /** Selects one log group. */
 export function selectLogGroup(name: string, generation: number): Promise<void> {
   return invoke<void>("select_log_group", { name, generation });
+}
+
+/**
+ * Changes one field of the Log Analytics screen (U1:BR1.3, BR1.4); refused
+ * while its query runs. The new state arrives through `session-changed`.
+ */
+export function updateAnalyticsInput(
+  field: AnalyticsField,
+  value: string,
+  generation: number,
+): Promise<void> {
+  return invoke<void>("update_analytics_input", { field, value, generation });
+}
+
+/**
+ * [Run query] (U1 UC1): the core reads the query, then fetches and evaluates.
+ * Resolves with nothing; a reading problem arrives as the QueryError phase.
+ */
+export function runQuery(): Promise<void> {
+  return invoke<void>("run_query");
+}
+
+/** [Cancel] of the Log Analytics screen (UC4); nothing happens when it cannot be pressed. */
+export function cancelQuery(): Promise<void> {
+  return invoke<void>("cancel_query");
+}
+
+/** At most `limit` result rows from `offset` of the shown result (U1:BR6.4). */
+export function getQueryRows(
+  runId: number,
+  holdingsEpoch: number,
+  offset: number,
+  limit: number,
+): Promise<QueryRowWindow> {
+  return invoke<QueryRowWindow>("get_query_rows", { runId, holdingsEpoch, offset, limit });
 }
 
 /** The selector that identifies a profile row. */

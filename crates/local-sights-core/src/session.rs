@@ -63,11 +63,25 @@
 //! [`CancelNoticeView`] of the streams not read to their end; the notice goes
 //! with the next fetch, a connection change or another log group (BR5.8,
 //! BR5.9).
+//! Since 261017-insights-query U1 it also holds the Log Analytics screen
+//! ([`InsightsSession`]): its own input and last query run, apart from the
+//! Log Management screen's (U1:BR1.2). Only one fetch runs at a time across
+//! both screens (ADR-005, U1:BR2.3): [`AppSession::fetch_owner`] says which
+//! screen's it is, and every check that used to look only at the Log
+//! Management phase (opening the settings, the disk work, the SSO login,
+//! changing the connection or an input, closing) now asks whether either
+//! screen fetches (functional-design review R-02). The connection cannot be
+//! changed while a query evaluates either (U1:BR7.3); changing it asks for
+//! confirmation when either screen shows something (U1:BR7.1) and empties
+//! the query screen's selection and result, keeping its query text and
+//! range (U1:BR7.2). A query run starts in one call that checks the reasons
+//! again and moves to Fetching (R-04).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::plan::{CacheNotice, cache_notices};
@@ -83,12 +97,19 @@ use crate::event::LogEvent;
 use crate::failure::{ApiFailure, FailureKind};
 use crate::fetch_status::JobStatus;
 use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
+use crate::insights_session::{
+    AnalyticsField, InsightsSession, InsightsView, QueryBegin, QueryRowWindow, QuerySnapshot,
+    RunContext,
+};
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
     EmptyState, ListingStatus, LogGroup, LogGroupListing, apply_failure_if_current,
     apply_page_if_current, empty_state, filter_groups,
 };
 use crate::paging::PageDecision;
+use crate::query::evaluator::QueryResult;
+use crate::query::plan::{QueryPlan, QueryProblem};
+use crate::query::store::HeldRows;
 use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
 use crate::sso_login::{
     LoginHints, SsoLoginOutcome, SsoLoginTarget, cli_args, resolve_login_target,
@@ -110,6 +131,19 @@ pub enum Phase {
     Done,
     /// The last fetch failed.
     Failed,
+}
+
+/// Which screen the running fetch belongs to (261017-insights-query
+/// entities.md FetchOwner, ADR-005). It is derived from the two phases, so
+/// it can never disagree with them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum FetchOwner {
+    /// No fetch runs.
+    None,
+    /// The Log Management screen fetches.
+    LogManagement,
+    /// The Log Analytics screen fetches for a query.
+    LogAnalytics,
 }
 
 /// Input field the user types (the profile and log group are selected
@@ -166,6 +200,11 @@ pub enum SessionError {
     /// profile leads to no SSO profile (261011-sso-login BR1.5).
     #[error("no SSO login is available")]
     SsoLoginUnavailable,
+    /// The Log Analytics input changed while its query was read, so the
+    /// run does not start (261017-insights-query functional-design review
+    /// R-04).
+    #[error("the query input changed while it was read")]
+    StaleInput,
 }
 
 impl SessionError {
@@ -185,9 +224,14 @@ impl SessionError {
             SessionError::SettingsClosed => "session.settingsClosed",
             SessionError::SsoLoginInProgress => "session.ssoLoginInProgress",
             SessionError::SsoLoginUnavailable => "session.ssoLoginUnavailable",
+            SessionError::StaleInput => "session.staleInput",
         }
     }
 }
+
+/// The reason [Fetch] cannot be pressed while the Log Analytics screen
+/// fetches for a query (261017-insights-query U1:BR2.3).
+pub const QUERY_RUNNING_KEY: &str = "session.queryRunning";
 
 /// Screen-only selection reasons (U2:BR2.7 (1)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -711,6 +755,10 @@ pub struct SessionView {
     pub fetch_cancel_available: bool,
     /// The notice of the last fetch when it was cancelled (U5:BR5.8).
     pub cancel_notice: Option<CancelNoticeView>,
+    /// Which screen's fetch runs (261017-insights-query U1:BR2.3).
+    pub fetch_owner: FetchOwner,
+    /// The Log Analytics screen (261017-insights-query U1).
+    pub insights: InsightsView,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -820,6 +868,8 @@ pub struct AppSession {
     cancelling: bool,
     /// The notice of the last fetch when it ended Cancelled (U5:BR5.8).
     cancel_notice: Option<CancelNoticeView>,
+    /// The Log Analytics screen (261017-insights-query U1).
+    insights: InsightsSession,
 }
 
 /// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
@@ -914,6 +964,7 @@ impl AppSession {
             elapsed: None,
             cancelling: false,
             cancel_notice: None,
+            insights: InsightsSession::new(),
         };
         session.select_startup_profile();
         session.revalidate();
@@ -964,6 +1015,10 @@ impl AppSession {
         };
         self.start_input = DateTimeInput::parse(start, zone);
         self.end_input = DateTimeInput::parse(end, zone);
+        // 261017-insights-query U1:BR1.4: the query screen starts with the
+        // same range, held apart from this one.
+        self.insights = std::mem::take(&mut self.insights)
+            .with_range(self.start_input.clone(), self.end_input.clone());
         self.revalidate();
         self
     }
@@ -1055,15 +1110,33 @@ impl AppSession {
             && !self.sso_login_running()
     }
 
-    /// Fetching, writing the cache or doing a settings operation's files.
+    /// Fetching on either screen, writing the cache or doing a settings
+    /// operation's files (261017-insights-query R-02).
     fn is_busy_with_disk(&self) -> bool {
-        self.phase == Phase::Fetching || self.cache_writes.is_writing() || self.settings_busy
+        self.any_fetch_running() || self.cache_writes.is_writing() || self.settings_busy
+    }
+
+    /// Which screen's fetch runs (261017-insights-query U1:BR2.3).
+    pub fn fetch_owner(&self) -> FetchOwner {
+        if self.phase == Phase::Fetching {
+            FetchOwner::LogManagement
+        } else if self.insights.is_fetching() {
+            FetchOwner::LogAnalytics
+        } else {
+            FetchOwner::None
+        }
+    }
+
+    /// Whether either screen fetches (261017-insights-query R-02): every
+    /// check that looked at the Log Management fetch alone asks this.
+    fn any_fetch_running(&self) -> bool {
+        self.fetch_owner() != FetchOwner::None
     }
 
     /// Opens the settings dialog (U6:BR5.1); opening it again keeps it open.
     pub fn open_settings(&mut self) -> Result<(), SessionError> {
         self.ensure_not_logging_in()?;
-        if self.phase == Phase::Fetching || self.cache_writes.is_writing() {
+        if self.any_fetch_running() || self.cache_writes.is_writing() {
             return Err(SessionError::Busy);
         }
         if self.connection.pending().is_some() {
@@ -1260,17 +1333,25 @@ impl AppSession {
     }
 
     /// Whether Fetch can be pressed: everything selected and valid, no
-    /// fetch running and no change awaiting confirmation.
+    /// fetch running on either screen (261017-insights-query U1:BR2.3) and
+    /// no change awaiting confirmation. A query that only evaluates does not
+    /// stop it, since evaluating calls no AWS API (UC7).
     pub fn can_fetch(&self) -> bool {
-        self.can_change_connection()
-            && self.selection_errors().is_empty()
-            && self.validation.is_ok()
+        self.controls_open() && self.selection_errors().is_empty() && self.validation.is_ok()
     }
 
     /// Whether profile, region and log group may be changed (U2:BR2.6);
-    /// not while an SSO login runs (261011-sso-login BR3.4).
+    /// not while an SSO login runs (261011-sso-login BR3.4), and not while
+    /// either screen fetches or a query evaluates (261017-insights-query
+    /// U1:BR7.3).
     pub fn can_change_connection(&self) -> bool {
-        self.phase != Phase::Fetching
+        self.controls_open() && !self.insights.is_evaluating()
+    }
+
+    /// No fetch on either screen, no change awaiting confirmation, the
+    /// settings dialog closed and no SSO login running.
+    fn controls_open(&self) -> bool {
+        !self.any_fetch_running()
             && self.connection.pending().is_none()
             && self.settings_dialog == SettingsDialog::Closed
             && !self.sso_login_running()
@@ -1316,6 +1397,7 @@ impl AppSession {
     ) -> Result<ConnectionEffect, SessionError> {
         self.ensure_not_logging_in()?;
         self.ensure_can_change()?;
+        self.ensure_not_evaluating()?;
         let default_region = self
             .catalog
             .find(&profile)
@@ -1333,6 +1415,7 @@ impl AppSession {
     pub fn select_region(&mut self, region: String) -> Result<ConnectionEffect, SessionError> {
         self.ensure_not_logging_in()?;
         self.ensure_can_change()?;
+        self.ensure_not_evaluating()?;
         if !self.catalog.has_region(&region) {
             return Err(SessionError::UnknownRegion);
         }
@@ -1447,7 +1530,8 @@ impl AppSession {
     /// fetching, while a change awaits confirmation, or when invalid.
     pub fn begin_fetch(&mut self, generation: u64) -> Result<ValidatedFetch, SessionError> {
         self.ensure_current_generation(generation)?;
-        if self.phase == Phase::Fetching {
+        // 261017-insights-query U1:BR2.3: one fetch across both screens.
+        if self.any_fetch_running() {
             return Err(SessionError::Busy);
         }
         self.ensure_not_logging_in()?;
@@ -1720,7 +1804,9 @@ impl AppSession {
         if self.close_confirmation == CloseConfirmation::Pending {
             return CloseDecision::Prevent { changed: false };
         }
-        if self.phase == Phase::Fetching || self.cache_writes.is_writing() {
+        // 261017-insights-query U1:BR2.8: a query fetch asks too; a query
+        // that only evaluates does not.
+        if self.any_fetch_running() || self.cache_writes.is_writing() {
             self.close_confirmation = CloseConfirmation::Pending;
             return CloseDecision::Prevent { changed: true };
         }
@@ -1745,7 +1831,7 @@ impl AppSession {
         }
         self.close_confirmed = true;
         Some(CloseConfirmed {
-            abort_fetch: self.phase == Phase::Fetching,
+            abort_fetch: self.any_fetch_running(),
         })
     }
 
@@ -1824,6 +1910,9 @@ impl AppSession {
         let zone = self.time_zones.zone(choice);
         self.start_input.switch_zone(zone);
         self.end_input.switch_zone(zone);
+        // 261017-insights-query U1:BR1.2: the zone is the app's one, for both
+        // screens.
+        self.insights.switch_zone(zone);
         self.revalidate();
     }
 
@@ -1868,6 +1957,10 @@ impl AppSession {
                 .filter(|e| !(log_group_unselected && *e == ValidationError::LogGroupRequired))
                 .collect::<Vec<_>>(),
         ));
+        // 261017-insights-query U1:BR2.3: [Fetch] says why it waits.
+        if self.insights.is_fetching() {
+            validation_errors.push(QUERY_RUNNING_KEY.to_string());
+        }
         SessionView {
             session_id: self.session_id.clone(),
             phase: self.phase,
@@ -1921,7 +2014,24 @@ impl AppSession {
             cancelling: self.cancelling,
             fetch_cancel_available: self.fetch_cancel_available(),
             cancel_notice: self.cancel_notice,
+            fetch_owner: self.fetch_owner(),
+            insights: self.insights_view(),
         }
+    }
+
+    /// The query screen's view with the log groups to choose from: the
+    /// current listing, all of it (261017-insights-query U1:BR1.3).
+    fn insights_view(&self) -> InsightsView {
+        let mut view = self.insights.view(&self.run_context(), self.clock.now());
+        if let Some(listing) = &self.listing {
+            // No filter text: every group, ascending (U2:BR3.3).
+            view.log_group_options = filter_groups(listing.groups(), "")
+                .into_iter()
+                .map(|group| group.log_group_name.clone())
+                .collect();
+            view.log_group_status = Some(listing.status());
+        }
+        view
     }
 
     fn list_view(&self, listing: &LogGroupListing) -> LogGroupListView {
@@ -1946,8 +2056,10 @@ impl AppSession {
         }
     }
 
+    /// Refused while either screen fetches (261017-insights-query R-02) or
+    /// a dialog awaits an answer.
     fn ensure_can_change(&self) -> Result<(), SessionError> {
-        if self.phase == Phase::Fetching {
+        if self.any_fetch_running() {
             Err(SessionError::Busy)
         } else if self.connection.pending().is_some()
             || self.settings_dialog == SettingsDialog::Open
@@ -1958,9 +2070,21 @@ impl AppSession {
         }
     }
 
-    /// Logs are shown when the current or last fetch received events.
+    /// 261017-insights-query U1:BR7.3: no connection change while a query
+    /// evaluates.
+    fn ensure_not_evaluating(&self) -> Result<(), SessionError> {
+        if self.insights.is_evaluating() {
+            Err(SessionError::Busy)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Something is shown that a connection change discards: the current
+    /// or last fetch received events, or the query screen shows result rows
+    /// (261017-insights-query U1:BR7.1, functional-design Q8).
     fn has_logs(&self) -> bool {
-        self.event_count > 0
+        self.event_count > 0 || self.insights.has_result_rows()
     }
 
     fn handle_outcome(&mut self, outcome: ChangeOutcome) -> ConnectionEffect {
@@ -1995,6 +2119,10 @@ impl AppSession {
         if matches!(self.phase, Phase::Done | Phase::Failed) {
             self.phase = Phase::Idle;
         }
+        // 261017-insights-query U1:BR7.2: the query screen's selection and
+        // result go, its query text and range stay; the caller discards the
+        // QueryStore with the LogView (`logs_cleared`).
+        self.insights.on_connection_changed();
         self.revalidate();
         ConnectionEffect {
             listing: self.start_listing(command),
@@ -2211,9 +2339,10 @@ impl AppSession {
         listing_failed || fetch_failed
     }
 
-    /// BR2.5: a fetch, a log group listing or a settings operation runs.
+    /// BR2.5: a fetch (on either screen, 261017-insights-query R-02), a log
+    /// group listing or a settings operation runs.
     fn is_busy_for_sso_login(&self) -> bool {
-        self.phase == Phase::Fetching
+        self.any_fetch_running()
             || self.settings_busy
             || self
                 .listing
@@ -2264,6 +2393,188 @@ impl AppSession {
                 .map(|name| format!("--profile {name}"))
                 .unwrap_or_default(),
         }
+    }
+}
+
+/// The Log Analytics screen (261017-insights-query U1). The app reads the
+/// query outside the session lock, then starts the run with
+/// [`AppSession::begin_query`] and forwards the run's notices here with its
+/// run number; notices of another run change nothing (U1:BR6.2).
+impl AppSession {
+    /// The rest of the app as the query screen's checks see it (U1:BR1.5).
+    fn run_context(&self) -> RunContext {
+        let selection = self.connection.selection();
+        RunContext {
+            connection: selection.profile.clone().zip(selection.region.clone()),
+            log_management_fetching: self.phase == Phase::Fetching,
+            other_operation: self.awaits_an_answer()
+                || self.sso_login_running()
+                || self.settings_busy,
+            close_pending: self.close_confirmation == CloseConfirmation::Pending,
+        }
+    }
+
+    /// The Log Analytics screen's state.
+    pub fn insights(&self) -> &InsightsSession {
+        &self.insights
+    }
+
+    /// Changes one field of the query screen (U1:BR1.3, BR1.4). A log
+    /// group must be in the current list and is dropped when made for an
+    /// older connection (U3:BR6.7). Refused while the query runs (U1:BR2.4)
+    /// and while a dialog awaits an answer (U2:BR2.6, U6:BR5.1).
+    pub fn update_analytics_input(
+        &mut self,
+        field: AnalyticsField,
+        value: String,
+        generation: u64,
+    ) -> Result<(), SessionError> {
+        if field == AnalyticsField::LogGroup {
+            self.ensure_current_generation(generation)?;
+        }
+        if self.connection.pending().is_some() || self.settings_dialog == SettingsDialog::Open {
+            return Err(SessionError::ConfirmationPending);
+        }
+        let zone = self.time_zones.zone(self.time_zone);
+        let listing = self.listing.as_ref();
+        self.insights.update(field, value, zone, |name| {
+            listing.is_some_and(|listing| listing.contains(name))
+        })?;
+        Ok(())
+    }
+
+    /// The query text with its revision and the zone to read its date
+    /// texts in, for reading the query outside the lock (R-04).
+    pub fn query_snapshot(&self) -> (QuerySnapshot, Tz) {
+        (
+            self.insights.snapshot(),
+            self.time_zones.zone(self.time_zone),
+        )
+    }
+
+    /// [Run query] with the query read from `revision` (UC1 2-7, R-04): in
+    /// this one call the reasons are checked in the order of U1:BR1.5, the
+    /// fetch is taken for the query screen (U1:BR2.3) and the previous
+    /// result goes (U1:BR2.9). A reading problem is the QueryError phase,
+    /// not a refusal (functional-spec 3).
+    pub fn begin_query(
+        &mut self,
+        revision: u64,
+        parsed: Result<&QueryPlan, QueryProblem>,
+    ) -> Result<QueryBegin, SessionError> {
+        let context = self.run_context();
+        let now = self.clock.now();
+        self.insights.begin(revision, parsed, &context, now)
+    }
+
+    /// The query fetch of `run_id` started `job`.
+    pub fn on_query_job_started(&mut self, run_id: u64, job: &FetchJob) {
+        self.insights.on_job_started(run_id, job);
+    }
+
+    /// One listing page of the query fetch was read.
+    pub fn on_query_listing_progress(
+        &mut self,
+        run_id: u64,
+        job_id: u64,
+        progress: ListingProgress,
+    ) {
+        self.insights.on_listing_progress(run_id, job_id, progress);
+    }
+
+    /// The listing of the query fetch ended.
+    pub fn on_query_planned(&mut self, run_id: u64, job: &FetchJob) {
+        self.insights.on_planned(run_id, job);
+    }
+
+    /// One page was added to the query holdings.
+    pub fn on_query_batch(&mut self, run_id: u64, job_id: u64, batch: BatchProgress) {
+        self.insights.on_batch(run_id, job_id, batch);
+    }
+
+    /// One stream of the query fetch finished.
+    pub fn on_query_stream_finished(&mut self, run_id: u64, job: &FetchJob) {
+        self.insights.on_stream_finished(run_id, job);
+    }
+
+    /// The query fetch writes the disk cache (no [Cancel] meanwhile, R-02).
+    pub fn on_query_saving(&mut self, run_id: u64, job_id: u64) {
+        self.insights.on_saving(run_id, job_id);
+    }
+
+    /// The query fetch of `run_id` ended; returns whether to evaluate
+    /// (UC1 10, R-01).
+    pub fn finish_query_fetch(&mut self, run_id: u64, job: &FetchJob) -> bool {
+        let now = self.clock.now();
+        self.insights.finish_fetch(run_id, job, now)
+    }
+
+    /// Progress of the evaluation; returns whether to go on (U1:BR5.8).
+    pub fn on_query_evaluation_progress(
+        &mut self,
+        run_id: u64,
+        evaluated: usize,
+        total: usize,
+    ) -> bool {
+        self.insights
+            .on_evaluation_progress(run_id, evaluated, total)
+    }
+
+    /// The evaluation finished (UC1 12).
+    pub fn finish_query_evaluation(&mut self, result: QueryResult) {
+        let now = self.clock.now();
+        self.insights.finish_evaluation(result, now);
+    }
+
+    /// The evaluation stopped (U1:BR2.7, BR5.8).
+    pub fn stop_query_evaluation(&mut self, run_id: u64) {
+        let now = self.clock.now();
+        self.insights.stop_evaluation(run_id, now);
+    }
+
+    /// [Cancel] of the query screen (UC4, R-01, R-02): the run number whose
+    /// stop handle the caller tells to stop, or `None` when it cannot be
+    /// pressed.
+    pub fn request_query_cancel(&mut self) -> Option<u64> {
+        let close_pending = self.close_confirmation == CloseConfirmation::Pending;
+        self.insights.request_cancel(close_pending)
+    }
+
+    /// Ends a run whose task stopped without reporting; see
+    /// [`AppSession::abort_fetch_with_failure`].
+    pub fn abort_query_with_failure(&mut self, run_id: u64, failure: ApiFailure) -> bool {
+        let now = self.clock.now();
+        self.insights.abort_with_failure(run_id, failure, now)
+    }
+
+    /// The holdings positions of the result rows asked for (U1:BR6.4):
+    /// empty unless `run_id` and `holdings_epoch` are the shown result's.
+    pub fn query_row_positions(
+        &self,
+        run_id: u64,
+        holdings_epoch: u64,
+        offset: usize,
+        limit: usize,
+    ) -> Vec<usize> {
+        self.insights.result().map_or_else(Vec::new, |result| {
+            result
+                .window(run_id, holdings_epoch, offset, limit)
+                .to_vec()
+        })
+    }
+
+    /// The rows read from the QueryStore, with their times written in the
+    /// chosen zone (U1:BR6.3).
+    pub fn display_query_rows(
+        &self,
+        run_id: u64,
+        holdings_epoch: u64,
+        offset: usize,
+        held: Option<HeldRows>,
+    ) -> QueryRowWindow {
+        let zone = self.time_zones.zone(self.time_zone);
+        self.insights
+            .display_rows(run_id, holdings_epoch, offset, held, zone)
     }
 }
 
@@ -5423,6 +5734,288 @@ mod tests {
         assert_eq!(
             json["cancelNotice"],
             serde_json::json!({ "unfinishedStreams": null })
+        );
+    }
+
+    // ---- 261017-insights-query U1: the Log Analytics screen -------------
+
+    use crate::insights_session::{AnalyticsPhase, QueryStart};
+    use crate::query::parser::parse_query;
+
+    /// `dev` connected, Log Management ready to fetch, and the query screen
+    /// ready to run on `/aws/lambda/orders` with its default query.
+    fn insights_ready_session() -> AppSession {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        let generation = session.connection_generation();
+        for (field, value) in [
+            (AnalyticsField::LogGroup, "/aws/lambda/orders"),
+            (AnalyticsField::StartText, "2024/01/02 03:04:05"),
+            (AnalyticsField::EndText, "2024/01/02 03:05:05"),
+        ] {
+            session
+                .update_analytics_input(field, value.to_string(), generation)
+                .unwrap();
+        }
+        session
+    }
+
+    fn query_begin(session: &mut AppSession) -> Result<QueryBegin, SessionError> {
+        let plan = parse_query("filter @message like 'ERROR'").unwrap();
+        let (snapshot, _zone) = session.query_snapshot();
+        session.begin_query(snapshot.revision, Ok(&plan))
+    }
+
+    fn query_started(session: &mut AppSession) -> QueryStart {
+        match query_begin(session) {
+            Ok(QueryBegin::Fetch(start)) => start,
+            other => panic!("the query did not start: {other:?}"),
+        }
+    }
+
+    fn query_job(status: JobStatus) -> FetchJob {
+        let mut job =
+            FetchJob::start(crate::time_range::TimeRange::from_seconds(0, 1_000).unwrap());
+        job.status = status;
+        job.event_count = 4;
+        job
+    }
+
+    /// Runs one query to Done with `rows` matching positions.
+    fn query_done(session: &mut AppSession, rows: Vec<usize>) -> u64 {
+        let run_id = query_started(session).run_id;
+        assert!(session.finish_query_fetch(run_id, &query_job(JobStatus::Completed)));
+        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, rows));
+        run_id
+    }
+
+    #[test]
+    fn query_fetch_blocks_the_log_management_fetch_settings_sso_and_connection() {
+        // U1:BR2.3, R-02: every check that looked at Log Management's fetch
+        // alone now sees the query's too.
+        let mut session = insights_ready_session();
+        assert!(session.can_fetch());
+        query_started(&mut session);
+        assert_eq!(session.fetch_owner(), FetchOwner::LogAnalytics);
+        let view = session.view();
+        assert!(!view.can_fetch);
+        assert!(
+            view.validation_errors
+                .contains(&QUERY_RUNNING_KEY.to_string())
+        );
+        assert!(!view.can_change_connection && !view.can_reload);
+        assert!(!view.can_open_settings);
+        assert_eq!(view.fetch_owner, FetchOwner::LogAnalytics);
+        let generation = session.connection_generation();
+        assert_eq!(session.begin_fetch(generation), Err(SessionError::Busy));
+        assert_eq!(session.open_settings(), Err(SessionError::Busy));
+        assert_eq!(session.select_profile(dev()), Err(SessionError::Busy));
+        assert_eq!(
+            session.select_region("us-east-1".to_string()),
+            Err(SessionError::Busy)
+        );
+        assert_eq!(
+            session.select_log_group("/aws/lambda/MyFunction".to_string(), generation),
+            Err(SessionError::Busy)
+        );
+        assert_eq!(
+            session.update_input(InputField::StartText, "2024/01/01 00:00:00".to_string()),
+            Err(SessionError::Busy)
+        );
+        assert_eq!(
+            session.reload_log_groups(generation),
+            Err(SessionError::Busy)
+        );
+        assert!(session.is_busy_for_sso_login());
+        assert_eq!(session.phase(), Phase::Idle, "Log Management's own phase");
+    }
+
+    #[test]
+    fn query_run_is_blocked_by_a_log_management_fetch_with_its_reason() {
+        // U1:BR1.5 (7), BR2.3.
+        let mut session = insights_ready_session();
+        assert!(session.view().insights.can_run);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        assert_eq!(session.fetch_owner(), FetchOwner::LogManagement);
+        let view = session.view().insights;
+        assert!(!view.can_run);
+        assert_eq!(
+            view.run_blocker.as_deref(),
+            Some("insights.blocked.logManagementFetching")
+        );
+        assert_eq!(query_begin(&mut session), Err(SessionError::Busy));
+        assert_eq!(session.insights().phase(), AnalyticsPhase::Idle);
+    }
+
+    #[test]
+    fn query_that_only_evaluates_lets_log_management_fetch_but_not_change_the_connection() {
+        // UC7, U1:BR7.3.
+        let mut session = insights_ready_session();
+        let run_id = query_started(&mut session).run_id;
+        assert!(session.finish_query_fetch(run_id, &query_job(JobStatus::Completed)));
+        assert_eq!(session.insights().phase(), AnalyticsPhase::Evaluating);
+        assert_eq!(session.fetch_owner(), FetchOwner::None);
+        let view = session.view();
+        assert!(view.can_fetch, "evaluating calls no AWS API");
+        assert!(!view.can_change_connection);
+        assert_eq!(session.select_profile(dev()), Err(SessionError::Busy));
+        assert_eq!(
+            session.select_region("us-east-1".to_string()),
+            Err(SessionError::Busy)
+        );
+        assert!(session.begin_fetch(session.connection_generation()).is_ok());
+    }
+
+    #[test]
+    fn query_result_rows_alone_ask_before_a_connection_change_and_keep_the_query() {
+        // U1:BR7.1 (functional-design Q8), BR7.2.
+        let mut session = insights_ready_session();
+        query_done(&mut session, vec![0, 2]);
+        assert_eq!(
+            session.view().event_count,
+            0,
+            "Log Management shows nothing"
+        );
+        let effect = session
+            .select_profile(ProfileSelector::Named("prod".to_string()))
+            .unwrap();
+        assert!(effect.awaiting_confirmation);
+        let effect = session.confirm_connection_change().unwrap();
+        assert!(effect.logs_cleared, "the app discards the QueryStore too");
+        let view = session.view().insights;
+        assert_eq!(view.phase, AnalyticsPhase::Idle);
+        assert_eq!(view.selected_log_group_name, None);
+        assert_eq!(view.result, None);
+        assert_eq!(view.query_text, "filter @message like /ERROR/");
+        assert_eq!(view.start_input.text(), "2024/01/02 03:04:05");
+
+        // A result without rows asks nothing.
+        let mut session = insights_ready_session();
+        query_done(&mut session, Vec::new());
+        let effect = session
+            .select_profile(ProfileSelector::Named("prod".to_string()))
+            .unwrap();
+        assert!(!effect.awaiting_confirmation);
+        assert!(effect.logs_cleared);
+    }
+
+    #[test]
+    fn query_fetch_asks_before_closing_and_aborts_but_evaluating_does_not_ask() {
+        // U1:BR2.8.
+        let mut session = insights_ready_session();
+        let run_id = query_started(&mut session).run_id;
+        assert_eq!(
+            session.request_close(),
+            CloseDecision::Prevent { changed: true }
+        );
+        assert_eq!(
+            session.confirm_close(),
+            Some(CloseConfirmed { abort_fetch: true })
+        );
+
+        let mut session = insights_ready_session();
+        let run_id_2 = query_started(&mut session).run_id;
+        assert_eq!(run_id, run_id_2);
+        assert!(session.finish_query_fetch(run_id_2, &query_job(JobStatus::Completed)));
+        assert_eq!(session.request_close(), CloseDecision::Allow);
+    }
+
+    #[test]
+    fn query_cancel_is_hidden_while_its_fetch_writes_the_cache() {
+        // R-02: as Log Management's [Cancel] (U5:BR5.2).
+        let mut session = insights_ready_session();
+        let run_id = query_started(&mut session).run_id;
+        let job = query_job(JobStatus::Running);
+        session.on_query_job_started(run_id, &job);
+        assert!(session.view().insights.cancel_available);
+        session.on_query_saving(run_id, job.job_id);
+        assert!(!session.view().insights.cancel_available);
+        assert_eq!(session.request_query_cancel(), None);
+        let mut ended = job;
+        ended.status = JobStatus::Completed;
+        assert!(session.finish_query_fetch(run_id, &ended));
+        assert_eq!(session.request_query_cancel(), Some(run_id));
+        assert!(!session.on_query_evaluation_progress(run_id, 1, 4));
+        session.stop_query_evaluation(run_id);
+        assert_eq!(session.insights().phase(), AnalyticsPhase::Cancelled);
+    }
+
+    #[test]
+    fn query_runs_started_back_to_back_run_once() {
+        // R-04: the check and the move to Fetching are one call.
+        let mut session = insights_ready_session();
+        query_started(&mut session);
+        assert_eq!(query_begin(&mut session), Err(SessionError::Busy));
+        assert_eq!(
+            session.update_analytics_input(
+                AnalyticsField::QueryText,
+                "filter @log = 'x'".to_string(),
+                session.connection_generation()
+            ),
+            Err(SessionError::Busy),
+            "the input is locked while running"
+        );
+    }
+
+    #[test]
+    fn query_rows_are_read_only_for_the_shown_result_and_old_notices_are_dropped() {
+        // U1:BR6.2, BR6.4.
+        let mut session = insights_ready_session();
+        let run_id = query_done(&mut session, vec![1, 3]);
+        assert_eq!(session.query_row_positions(run_id, 2, 0, 10), vec![1, 3]);
+        assert!(session.query_row_positions(run_id, 3, 0, 10).is_empty());
+        assert!(session.query_row_positions(run_id + 1, 2, 0, 10).is_empty());
+        let next = query_started(&mut session).run_id;
+        assert!(!session.finish_query_fetch(run_id, &query_job(JobStatus::Completed)));
+        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, vec![0]));
+        assert_eq!(session.insights().phase(), AnalyticsPhase::Fetching);
+        assert!(
+            session.query_row_positions(run_id, 2, 0, 10).is_empty(),
+            "U1:BR2.9"
+        );
+        let json = serde_json::to_value(session.view()).unwrap();
+        assert_eq!(json["fetchOwner"], "LogAnalytics");
+        assert_eq!(json["insights"]["phase"], "Fetching");
+        assert_eq!(json["insights"]["runId"], next);
+        assert_eq!(json["insights"]["cancelAvailable"], true);
+        // U1:BR1.3: the whole list, also when Log Management filters it.
+        session
+            .update_log_group_filter("MyFunc".to_string())
+            .unwrap();
+        let view = session.view();
+        assert_eq!(
+            view.insights.log_group_options,
+            vec!["/aws/lambda/MyFunction", "/aws/lambda/orders"]
+        );
+        assert_eq!(
+            view.log_groups.map(|list| list.visible_groups),
+            Some(vec!["/aws/lambda/MyFunction".to_string()])
+        );
+        assert_eq!(
+            view.insights.log_group_status,
+            Some(ListingStatus::Complete)
+        );
+    }
+
+    #[test]
+    fn insights_fetch_that_ends_frees_the_fetch_and_a_lost_task_fails_the_run() {
+        // U1:BR2.3 "back to None"; a task that ended without a report.
+        let mut session = insights_ready_session();
+        let run_id = query_started(&mut session).run_id;
+        let failure = ApiFailure::new(FailureKind::Other, &SafeDetailFields::default());
+        assert!(!session.abort_query_with_failure(run_id + 1, failure.clone()));
+        assert!(session.abort_query_with_failure(run_id, failure.clone()));
+        let view = session.view();
+        assert_eq!(view.insights.phase, AnalyticsPhase::FetchFailed);
+        assert_eq!(view.insights.failure, Some(failure));
+        assert_eq!(view.fetch_owner, FetchOwner::None);
+        assert!(view.can_fetch && view.can_change_connection && view.can_open_settings);
+        assert!(
+            !view
+                .validation_errors
+                .contains(&QUERY_RUNNING_KEY.to_string())
         );
     }
 }

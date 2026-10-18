@@ -111,6 +111,21 @@
 //! reaches it (NFR6.17); the lock order is session, then the handle. Closing
 //! still stops the fetch for Close, which wins over a cancel (BR5.6).
 //!
+//! Since 261017-insights-query U1 the Log Analytics screen runs queries on
+//! logs it fetches into its own `QueryStore` (U1:BR1.7, BR2.1). The commands
+//! are `update_analytics_input`, `run_query`, `cancel_query` and
+//! `get_query_rows`; every change arrives through `session-changed`, whose
+//! view carries the query screen. `run_query` reads the query outside the
+//! session lock, then starts the run in one session call that checks the
+//! reasons again, takes the fetch and registers the run's stop handle
+//! (functional-design review R-04, as `start_fetch`, NFR6.17); the run
+//! (fetch, then evaluation chunk by chunk on blocking threads) is a task
+//! of its own. `cancel_query` tells that handle to stop for Cancel (UC4,
+//! R-01). Closing stops it for Close like the Log Management fetch
+//! (U1:BR2.8); a connection change discards the QueryStore with the LogView
+//! (U1:BR7.2). Lock order: session, then the QueryStore; the run never holds
+//! both. The query fetch calls the same three read APIs only (U1:BR2.2).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
@@ -120,7 +135,7 @@ mod sso_cli;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use local_sights_core::cache::LogCache;
 use local_sights_core::catalog::ProfileSelector;
@@ -132,17 +147,24 @@ use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_report_progress};
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
+use local_sights_core::insights_session::{AnalyticsField, QueryBegin, QueryRowWindow, QueryStart};
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
 use local_sights_core::log_view::{LogView, RowKey, RowPositions};
 use local_sights_core::paging::PageDecision;
+use local_sights_core::query::evaluator::QueryResult;
+use local_sights_core::query::instant::resolve_date_texts;
+use local_sights_core::query::parser::parse_query;
+use local_sights_core::query::plan::{QueryPlan, QueryProblem};
+use local_sights_core::query::runner::{self, QueryRun, QuerySink};
+use local_sights_core::query::store::QueryStore;
 use local_sights_core::request::ValidatedFetch;
 use local_sights_core::retry::{
     RandomJitter, Retrier, RetryPolicy, StopHandle, StopReason, StopSignal, stop_pair,
 };
 use local_sights_core::session::{
-    AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, InputField,
-    Phase, SessionError, SessionView, SettingsWork, SsoLoginStart,
+    AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, FetchOwner,
+    InputField, SessionError, SessionView, SettingsWork, SsoLoginStart,
 };
 use local_sights_core::sso_login::{SsoLoginOutcome, is_allowed_login_url};
 use local_sights_core::streams::planner::ListingProgress;
@@ -182,6 +204,13 @@ const QUIT_MENU_ID: &str = "local-sights-quit";
 /// CLI (261011-sso-login BR3.3).
 type RunningSsoLogin = Option<(u64, Arc<LoginControl>)>;
 
+/// The stop handle of a running fetch or query run, with its number.
+type RunningStop = Arc<Mutex<Option<(u64, StopHandle)>>>;
+
+/// Least time between two progress views of a query run (U1:BR2.4): a page
+/// or an evaluation chunk can come far more often than the screen needs.
+const QUERY_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+
 /// Shared state of the app.
 #[derive(Debug)]
 struct AppState {
@@ -191,7 +220,12 @@ struct AppState {
     gateway: Arc<AwsCloudWatchLogsGateway>,
     /// Stop handle of the running fetch with its fetch number from the
     /// session (BR5.5), so a finished fetch only forgets its own handle.
-    abort: Arc<Mutex<Option<(u64, StopHandle)>>>,
+    abort: RunningStop,
+    /// The Log Analytics screen's holdings (261017-insights-query U1:BR2.1).
+    query_store: Arc<QueryStore>,
+    /// Stop handle of the running query run with its run number (UC4).
+    /// Locked after the session.
+    query_abort: RunningStop,
     /// Set by [Close] (U7:BR3.2): the exit and window close that follow are
     /// not stopped again. Read without the session lock.
     exit_allowed: AtomicBool,
@@ -230,17 +264,22 @@ impl AppState {
             log_view: Arc::default(),
             gateway: Arc::default(),
             abort: Arc::default(),
+            query_store: Arc::default(),
+            query_abort: Arc::default(),
             exit_allowed: AtomicBool::new(false),
             sso_login: Arc::default(),
         }
     }
 
-    /// Asks the running fetch, if any, to stop ([Close] or the window being
-    /// destroyed, BR5.5, U7:BR3.2). Both are a Close: the fetched logs are
-    /// discarded (261012-parallel-fetch U1:BR1.16, contract C7).
+    /// Asks the running fetch and query run, if any, to stop ([Close] or the
+    /// window being destroyed, BR5.5, U7:BR3.2, 261017-insights-query
+    /// U1:BR2.8). Both are a Close: the fetched logs are discarded
+    /// (261012-parallel-fetch U1:BR1.16, contract C7).
     fn abort_fetch(&self) {
-        if let Some((_, handle)) = lock(&self.abort).as_ref() {
-            handle.stop(StopReason::Close);
+        for running in [&self.abort, &self.query_abort] {
+            if let Some((_, handle)) = lock(running).as_ref() {
+                handle.stop(StopReason::Close);
+            }
         }
     }
 
@@ -559,7 +598,9 @@ fn watch_cache_writes(app: &AppHandle) {
                 };
                 let view = {
                     let session = lock(&state.session);
-                    if session.phase() == Phase::Fetching {
+                    // 261017-insights-query R-02: a query fetch pushes its
+                    // own view when it ends, as a Log Management fetch does.
+                    if session.fetch_owner() != FetchOwner::None {
                         return;
                     }
                     session.view()
@@ -816,6 +857,256 @@ fn cancel_running_fetch(
     true
 }
 
+/// Changes one field of the Log Analytics screen (261017-insights-query
+/// U1:BR1.3, BR1.4); refused while its query runs (U1:BR2.4). A log group
+/// chosen for an older connection is dropped (U3:BR6.7). The new state
+/// arrives through `session-changed`.
+#[tauri::command]
+fn update_analytics_input(
+    field: AnalyticsField,
+    value: String,
+    generation: u64,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    drop_if_stale(change_analytics_input(
+        &app, &state, field, value, generation,
+    ))
+}
+
+fn change_analytics_input(
+    app: &AppHandle,
+    state: &AppState,
+    field: AnalyticsField,
+    value: String,
+    generation: u64,
+) -> Result<(), CommandError> {
+    let view = {
+        let mut session = lock(&state.session);
+        session.update_analytics_input(field, value, generation)?;
+        session.view()
+    };
+    emit_or_log(app, SESSION_CHANGED, view);
+    Ok(())
+}
+
+/// [Run query] (261017-insights-query UC1). The query is read and its date
+/// texts are turned into milliseconds outside the session lock; the session
+/// then checks the reasons again and either holds the reading problem
+/// (QueryError, nothing is fetched, U1:BR3.9) or starts the run, all in one
+/// call (R-04). Refused, with the reason's key, when [Run query] cannot be
+/// pressed (U1:BR1.5). The command returns nothing: the state arrives through
+/// `session-changed`.
+#[tauri::command]
+fn run_query(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    let (snapshot, zone) = lock(&state.session).query_snapshot();
+    let parsed = parse_query(&snapshot.text).and_then(|plan| resolve_date_texts(plan, zone));
+    let begun = begin_registered_query(
+        &state.session,
+        &state.query_abort,
+        snapshot.revision,
+        parsed.as_ref().map_err(Clone::clone),
+    )?;
+    emit_or_log(&app, SESSION_CHANGED, begun.view);
+    if let (Some(start), Some(signal), Ok(plan)) = (begun.start, begun.signal, parsed) {
+        spawn_query(&app, &state, start, begun.cache, plan, signal);
+    }
+    Ok(())
+}
+
+/// A [Run query] the session took: the run to start, when the query could
+/// be read, with the stop signal of its registered handle.
+struct BegunQuery {
+    start: Option<QueryStart>,
+    cache: Option<LogCache>,
+    view: SessionView,
+    signal: Option<StopSignal>,
+}
+
+/// Starts the run in the session and registers its stop handle under the
+/// run number while the session lock is still held, so a [Cancel] right
+/// after the start always reaches it (as [`begin_registered_fetch`]).
+fn begin_registered_query(
+    session: &Mutex<AppSession>,
+    abort: &Mutex<Option<(u64, StopHandle)>>,
+    revision: u64,
+    parsed: Result<&QueryPlan, QueryProblem>,
+) -> Result<BegunQuery, SessionError> {
+    let mut session = lock(session);
+    let QueryBegin::Fetch(start) = session.begin_query(revision, parsed)? else {
+        return Ok(BegunQuery {
+            start: None,
+            cache: None,
+            view: session.view(),
+            signal: None,
+        });
+    };
+    // U6:BR1.5 as for any fetch: `None` when the cache is disabled.
+    let cache = session.fetch_cache();
+    let (handle, signal) = stop_pair();
+    *lock(abort) = Some((start.run_id, handle));
+    Ok(BegunQuery {
+        start: Some(start),
+        cache,
+        view: session.view(),
+        signal: Some(signal),
+    })
+}
+
+/// Runs one query in the background: the fetch into the QueryStore, then
+/// the evaluation (UC1 8-12). When the task ends, its stop handle is
+/// forgotten and a run left Fetching or Evaluating is failed.
+fn spawn_query(
+    app: &AppHandle,
+    state: &AppState,
+    start: QueryStart,
+    cache: Option<LogCache>,
+    plan: QueryPlan,
+    signal: StopSignal,
+) {
+    let run_id = start.run_id;
+    let run = QueryRun {
+        run_id,
+        plan: Arc::new(plan),
+        fetch: start.fetch,
+        key: start.key,
+        cache,
+        fetch_started_at_ms: now_epoch_ms(),
+    };
+    let session = Arc::clone(&state.session);
+    let store = Arc::clone(&state.query_store);
+    let gateway = Arc::clone(&state.gateway);
+    let mut sink = TauriQuerySink {
+        app: app.clone(),
+        session: Arc::clone(&session),
+        run_id,
+        last_progress: None,
+    };
+    let task = tauri::async_runtime::spawn(async move {
+        let policy = RetryPolicy::default();
+        let jitter = RandomJitter;
+        let retrier = Retrier::new(&policy, &jitter, &signal);
+        runner::run_query(gateway.as_ref(), &run, &store, &retrier, &mut sink).await;
+    });
+    let app = app.clone();
+    let abort = Arc::clone(&state.query_abort);
+    tauri::async_runtime::spawn(async move {
+        let ended_normally = task.await.is_ok();
+        {
+            let mut running = lock(&abort);
+            if running
+                .as_ref()
+                .is_some_and(|(number, _)| *number == run_id)
+            {
+                running.take();
+            }
+        }
+        recover_if_query_still_running(&app, &session, run_id, ended_normally);
+    });
+}
+
+/// As [`recover_if_still_fetching`] for a query run: a run whose task ended
+/// without its end being reported is failed (kind Other) and the screen is
+/// told. Only run `run_id` is touched.
+fn recover_if_query_still_running(
+    app: &AppHandle,
+    session: &Mutex<AppSession>,
+    run_id: u64,
+    ended_normally: bool,
+) {
+    let failure = ApiFailure::new(
+        FailureKind::Other,
+        &SafeDetailFields {
+            api_name: Some(GET_LOG_EVENTS.to_string()),
+            ..SafeDetailFields::default()
+        },
+    );
+    let view = {
+        let mut session = lock(session);
+        if !session.abort_query_with_failure(run_id, failure) {
+            return;
+        }
+        session.view()
+    };
+    let how = if ended_normally {
+        "without a result"
+    } else {
+        "abnormally"
+    };
+    eprintln!("local-sights: the query task ended {how}; the query was marked as failed");
+    emit_or_log(app, SESSION_CHANGED, view);
+}
+
+/// [Cancel] of the Log Analytics screen (UC4). Always succeeds: when it
+/// cannot be pressed nothing changes and nothing is sent.
+#[tauri::command]
+fn cancel_query(app: AppHandle, state: State<'_, AppState>) {
+    cancel_running_query(&state.session, &state.query_abort, |view| {
+        emit_or_log(&app, SESSION_CHANGED, view);
+    });
+}
+
+/// Accepts [Cancel] in the session (which marks the run, R-01), tells the
+/// registered handle of that run to stop for Cancel and hands the new view
+/// to `send` under the session lock (as [`cancel_running_fetch`]). Returns
+/// whether it was accepted.
+fn cancel_running_query(
+    session: &Mutex<AppSession>,
+    abort: &Mutex<Option<(u64, StopHandle)>>,
+    send: impl FnOnce(SessionView),
+) -> bool {
+    let mut session = lock(session);
+    let Some(run_id) = session.request_query_cancel() else {
+        return false;
+    };
+    if let Some((number, handle)) = lock(abort).as_ref() {
+        if *number == run_id {
+            handle.stop(StopReason::Cancel);
+        }
+    }
+    send(session.view());
+    true
+}
+
+/// At most `limit` result rows from `offset` of the run and holdings epoch
+/// the screen shows (U1:BR6.4); no rows when either is not the shown one.
+#[tauri::command]
+fn get_query_rows(
+    run_id: u64,
+    holdings_epoch: u64,
+    offset: u64,
+    limit: u64,
+    state: State<'_, AppState>,
+) -> QueryRowWindow {
+    query_rows(
+        &state.session,
+        &state.query_store,
+        run_id,
+        holdings_epoch,
+        (offset, limit),
+    )
+}
+
+/// Reads the rows of [`get_query_rows`]: the positions from the session's
+/// result, then the events from the QueryStore (lock order: session, then
+/// the store), with their times written in the chosen zone.
+fn query_rows(
+    session: &Mutex<AppSession>,
+    store: &QueryStore,
+    run_id: u64,
+    holdings_epoch: u64,
+    (offset, limit): (u64, u64),
+) -> QueryRowWindow {
+    let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+    let limit = usize::try_from(limit)
+        .unwrap_or(usize::MAX)
+        .min(MAX_ROWS_PER_REQUEST);
+    let session = lock(session);
+    let positions = session.query_row_positions(run_id, holdings_epoch, offset, limit);
+    let held = store.rows_at(holdings_epoch, &positions);
+    session.display_query_rows(run_id, holdings_epoch, offset, held)
+}
+
 /// The current time in epoch milliseconds for the default time range at
 /// startup (gate fix 16a), or `None` when the clock is before 1970 or does
 /// not fit; the inputs then stay empty rather than show a made-up day.
@@ -977,11 +1268,7 @@ fn change_connection(
         let mut session = lock(&state.session);
         let effect = operation(&mut session)?;
         if effect.logs_cleared {
-            let mut log_view = lock(&state.log_view);
-            let version = log_view.clear();
-            session.set_timeline_version(version);
-            session.set_filter_state(log_view.filter_state());
-            session.set_discard_generation(log_view.discard_generation());
+            clear_held_logs(&mut session, &state.log_view, &state.query_store);
         }
         (effect, session.view())
     };
@@ -990,6 +1277,19 @@ fn change_connection(
         start_listing(app, state, request);
     }
     Ok(())
+}
+
+/// U2:BR2.4, 261017-insights-query U1:BR7.2: a connection change discards
+/// the logs of both screens. Called with the session locked; locks the
+/// LogView, then the QueryStore (a run never holds the session meanwhile, and
+/// none can run, U1:BR7.3).
+fn clear_held_logs(session: &mut AppSession, log_view: &Mutex<LogView>, query_store: &QueryStore) {
+    let mut log_view = lock(log_view);
+    let version = log_view.clear();
+    session.set_timeline_version(version);
+    session.set_filter_state(log_view.filter_state());
+    session.set_discard_generation(log_view.discard_generation());
+    query_store.discard_all();
 }
 
 /// Lists log groups in the background; each page updates the session and
@@ -1445,6 +1745,121 @@ impl FetchSink for TauriSink {
     }
 }
 
+/// Forwards one query run's progress to AppSession with its run number and
+/// pushes `session-changed` (261017-insights-query U1:BR2.4): at the start,
+/// the plan, each finished stream, the cache write and every end at once;
+/// listing pages, added pages and evaluated chunks at most every
+/// [`QUERY_PROGRESS_INTERVAL`]. The coordinator and the runner fill the
+/// QueryStore themselves; nothing here touches the Log Management screen's
+/// LogView (U1:BR1.7).
+struct TauriQuerySink {
+    app: AppHandle,
+    session: Arc<Mutex<AppSession>>,
+    run_id: u64,
+    last_progress: Option<Instant>,
+}
+
+impl TauriQuerySink {
+    /// Applies `change` and pushes the view; returns what `change` returned.
+    fn update<T>(&mut self, change: impl FnOnce(&mut AppSession) -> T) -> T {
+        let (answer, view) = {
+            let mut session = lock(&self.session);
+            let answer = change(&mut session);
+            (answer, session.view())
+        };
+        self.last_progress = Some(Instant::now());
+        emit_or_log(&self.app, SESSION_CHANGED, view);
+        answer
+    }
+
+    /// Applies `change`; pushes the view only when the last one is older
+    /// than [`QUERY_PROGRESS_INTERVAL`].
+    fn update_progress<T>(&mut self, change: impl FnOnce(&mut AppSession) -> T) -> T {
+        let due = self
+            .last_progress
+            .is_none_or(|at| at.elapsed() >= QUERY_PROGRESS_INTERVAL);
+        let (answer, view) = {
+            let mut session = lock(&self.session);
+            let answer = change(&mut session);
+            (answer, due.then(|| session.view()))
+        };
+        if let Some(view) = view {
+            self.last_progress = Some(Instant::now());
+            emit_or_log(&self.app, SESSION_CHANGED, view);
+        }
+        answer
+    }
+}
+
+impl FetchSink for TauriQuerySink {
+    fn on_started(&mut self, job: &FetchJob, _timeline_version: u64) {
+        let run_id = self.run_id;
+        self.update(|session| session.on_query_job_started(run_id, job));
+    }
+
+    fn on_listing_progress(&mut self, job_id: u64, progress: ListingProgress) {
+        let run_id = self.run_id;
+        self.update_progress(|session| session.on_query_listing_progress(run_id, job_id, progress));
+    }
+
+    fn on_planned(&mut self, job: &FetchJob) {
+        let run_id = self.run_id;
+        self.update(|session| session.on_query_planned(run_id, job));
+    }
+
+    fn on_batch(&mut self, job_id: u64, progress: BatchProgress) {
+        let run_id = self.run_id;
+        self.update_progress(|session| session.on_query_batch(run_id, job_id, progress));
+    }
+
+    fn on_stream_finished(&mut self, job: &FetchJob, outcome: &StreamFetchOutcome) {
+        if let Some(failure) = &outcome.failure {
+            // Safe detail only: built from allow-listed fields and redacted.
+            eprintln!(
+                "local-sights: query fetch {} stream failed: {}",
+                job.job_id,
+                failure.safe_detail()
+            );
+        }
+        let run_id = self.run_id;
+        self.update(|session| session.on_query_stream_finished(run_id, job));
+    }
+
+    fn on_saving(&mut self, job_id: u64) {
+        let run_id = self.run_id;
+        self.update(|session| session.on_query_saving(run_id, job_id));
+    }
+
+    /// Never reached: the runner holds the fetch's end back and reports it
+    /// with [`QuerySink::on_fetch_ended`].
+    fn on_finished(&mut self, _job: &FetchJob, _timeline_version: u64) {}
+}
+
+impl QuerySink for TauriQuerySink {
+    fn on_fetch_ended(&mut self, run_id: u64, job: &FetchJob) -> bool {
+        if job.status == JobStatus::Failed {
+            // Safe detail only: built from allow-listed fields and redacted.
+            let detail = job.failure().map_or("", |failure| failure.safe_detail());
+            eprintln!("local-sights: query fetch {} failed: {detail}", job.job_id);
+        }
+        self.update(|session| session.finish_query_fetch(run_id, job))
+    }
+
+    fn on_evaluation_progress(&mut self, run_id: u64, evaluated: usize, total: usize) -> bool {
+        self.update_progress(|session| {
+            session.on_query_evaluation_progress(run_id, evaluated, total)
+        })
+    }
+
+    fn on_evaluated(&mut self, result: QueryResult) {
+        self.update(|session| session.finish_query_evaluation(result));
+    }
+
+    fn on_evaluation_stopped(&mut self, run_id: u64) {
+        self.update(|session| session.stop_query_evaluation(run_id));
+    }
+}
+
 /// Starts the desktop app.
 ///
 /// The app is built first and then run with a callback, so that ending the
@@ -1524,7 +1939,11 @@ pub fn run() -> Result<(), tauri::Error> {
             cancel_sso_login,
             dismiss_sso_login,
             open_sso_url,
-            cancel_fetch
+            cancel_fetch,
+            update_analytics_input,
+            run_query,
+            cancel_query,
+            get_query_rows
         ])
         .build(tauri::generate_context!())?;
     app.run(|app, event| match event {
@@ -1757,8 +2176,217 @@ mod tests {
             "../capabilities/default.json"
         )));
         assert!(manifest.contains(&"cancel_fetch".to_string()));
-        assert_eq!(manifest.len(), 26);
+        // 26 until 261017-insights-query U1 added the four query commands.
+        assert_eq!(manifest.len(), 30);
         assert_eq!(handler, manifest);
         assert_eq!(allowed, manifest);
+    }
+
+    // ---- 261017-insights-query U1: the Log Analytics commands -----------
+
+    use local_sights_core::coordinator::TimelineStore;
+    use local_sights_core::event::LogEvent;
+    use local_sights_core::insights_session::AnalyticsPhase;
+    use local_sights_core::session::Phase;
+
+    #[test]
+    fn generate_handler_build_rs_and_the_capability_list_the_query_commands() {
+        // Infrastructure-design review R-01: each new command in all three.
+        let manifest = manifest_commands(include_str!("../build.rs"));
+        let handler = handler_commands(include_str!("lib.rs"));
+        let allowed = allowed_commands(include_str!("../capabilities/default.json"));
+        for command in [
+            "update_analytics_input",
+            "run_query",
+            "cancel_query",
+            "get_query_rows",
+        ] {
+            let command = command.to_string();
+            assert!(manifest.contains(&command), "{command} in build.rs");
+            assert!(handler.contains(&command), "{command} in generate_handler");
+            assert!(allowed.contains(&command), "{command} in the capability");
+        }
+    }
+
+    /// [`ready_session`] with the query screen ready to run on
+    /// `/aws/lambda/orders`.
+    fn query_ready_session() -> Mutex<AppSession> {
+        let session = ready_session();
+        {
+            let mut locked = lock(&session);
+            let generation = locked.connection_generation();
+            for (field, value) in [
+                (AnalyticsField::LogGroup, "/aws/lambda/orders"),
+                (AnalyticsField::StartText, "2024/01/02 03:04:05"),
+                (AnalyticsField::EndText, "2024/01/02 03:05:05"),
+            ] {
+                locked
+                    .update_analytics_input(field, value.to_string(), generation)
+                    .unwrap();
+            }
+        }
+        session
+    }
+
+    fn query_begun(
+        session: &Mutex<AppSession>,
+        abort: &Mutex<Option<(u64, StopHandle)>>,
+        text: &str,
+    ) -> BegunQuery {
+        let (snapshot, zone) = lock(session).query_snapshot();
+        assert_eq!(
+            snapshot.text,
+            local_sights_core::insights_session::DEFAULT_QUERY
+        );
+        let parsed = parse_query(text).and_then(|plan| resolve_date_texts(plan, zone));
+        begin_registered_query(
+            session,
+            abort,
+            snapshot.revision,
+            parsed.as_ref().map_err(Clone::clone),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn query_start_registers_the_handle_so_an_immediate_cancel_reaches_it() {
+        // NFR6.17 for the query run; UC4, R-01.
+        let session = query_ready_session();
+        let abort = Mutex::new(None);
+        let begun = query_begun(&session, &abort, "filter @message like /ERROR/");
+        let start = begun.start.expect("the run starts");
+        assert_eq!(begun.view.insights.phase, AnalyticsPhase::Fetching);
+        assert_eq!(begun.view.fetch_owner, FetchOwner::LogAnalytics);
+        assert!(begun.view.insights.cancel_available);
+        assert_eq!(
+            lock(&abort).as_ref().map(|(number, _)| *number),
+            Some(start.run_id)
+        );
+        let mut sent = Vec::new();
+        assert!(cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert_eq!(
+            begun.signal.as_ref().and_then(StopSignal::reason),
+            Some(StopReason::Cancel)
+        );
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].insights.cancelling);
+        assert!(!sent[0].insights.cancel_available);
+        assert!(!cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert_eq!(sent.len(), 1, "a second press sends nothing");
+    }
+
+    #[test]
+    fn query_with_a_reading_problem_starts_nothing_and_registers_no_handle() {
+        // U1:BR3.9: QueryError, no fetch, no handle; the text stays.
+        let session = query_ready_session();
+        let abort = Mutex::new(None);
+        let begun = query_begun(
+            &session,
+            &abort,
+            "filter @message like /ERROR/ | stats count(*)",
+        );
+        assert!(begun.start.is_none() && begun.signal.is_none());
+        assert!(lock(&abort).is_none());
+        let insights = &begun.view.insights;
+        assert_eq!(insights.phase, AnalyticsPhase::QueryError);
+        assert_eq!(
+            insights.problem.as_ref().map(|problem| problem.message_key),
+            Some("query.unsupported.command")
+        );
+        assert_eq!(begun.view.fetch_owner, FetchOwner::None);
+        let refused = {
+            let mut locked = lock(&session);
+            let generation = locked.connection_generation();
+            locked.begin_fetch(generation).map(|_| ())
+        };
+        assert_eq!(refused, Ok(()), "Log Management may fetch: nothing runs");
+    }
+
+    #[test]
+    fn query_cancel_without_a_run_does_nothing_and_sends_nothing() {
+        let session = query_ready_session();
+        let abort = Mutex::new(None);
+        let mut sent = Vec::new();
+        assert!(!cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert!(sent.is_empty());
+        assert_eq!(lock(&session).phase(), Phase::Idle);
+    }
+
+    fn held(timestamp: i64, stream: &str, sequence: u64) -> LogEvent {
+        LogEvent {
+            timestamp,
+            ingestion_time: None,
+            message: format!("ERROR {stream} {sequence}"),
+            log_stream_name: stream.to_string(),
+            sequence,
+        }
+    }
+
+    #[test]
+    fn query_rows_are_read_from_the_store_only_for_the_shown_result() {
+        // U1:BR6.3, BR6.4, functional-design review R-05.
+        let session = query_ready_session();
+        let abort = Mutex::new(None);
+        let start = query_begun(&session, &abort, "filter @message like 'ERROR'")
+            .start
+            .unwrap();
+        let store = QueryStore::new();
+        store.begin_run(start.key.clone());
+        store.add(vec![
+            held(1_704_164_646_000, "a", 0),
+            held(1_704_164_647_000, "b", 0),
+        ]);
+        let epoch = store.epoch();
+        {
+            let mut locked = lock(&session);
+            let mut job = FetchJob::start(start.fetch.range);
+            job.status = JobStatus::Completed;
+            job.event_count = 2;
+            assert!(locked.finish_query_fetch(start.run_id, &job));
+            locked.finish_query_evaluation(QueryResult::new(start.run_id, epoch, 2, vec![1]));
+        }
+        let window = query_rows(&session, &store, start.run_id, epoch, (0, 50));
+        assert_eq!(window.total_count, 1);
+        assert_eq!(window.rows.len(), 1);
+        let row = &window.rows[0];
+        assert_eq!(row.event.log_stream_name, "b");
+        assert_eq!(row.log_group_name, "/aws/lambda/orders");
+        assert_eq!(row.display_time, "2024/01/02 03:04:07.000", "UTC zone");
+        let json = serde_json::to_value(&window).unwrap();
+        assert_eq!(json["rows"][0]["logGroupName"], "/aws/lambda/orders");
+        assert_eq!(json["rows"][0]["displayTime"], "2024/01/02 03:04:07.000");
+        assert_eq!(json["rows"][0]["message"], "ERROR b 0");
+        assert!(
+            query_rows(&session, &store, start.run_id, epoch + 1, (0, 50))
+                .rows
+                .is_empty()
+        );
+        assert!(
+            query_rows(&session, &store, start.run_id + 1, epoch, (0, 50))
+                .rows
+                .is_empty()
+        );
+        store.discard_all();
+        assert!(
+            query_rows(&session, &store, start.run_id, epoch, (0, 50))
+                .rows
+                .is_empty(),
+            "discarded holdings give no rows"
+        );
+    }
+
+    #[test]
+    fn query_holdings_go_with_the_log_management_logs_on_a_connection_change() {
+        // U1:BR7.2: one discard for both screens.
+        let session = query_ready_session();
+        let log_view = Mutex::new(LogView::new());
+        log_view.add(vec![held(1, "lm", 0)]);
+        let store = QueryStore::new();
+        store.add(vec![held(2, "q", 0)]);
+        let epoch = store.epoch();
+        clear_held_logs(&mut lock(&session), &log_view, &store);
+        assert!(store.is_empty());
+        assert_eq!(store.epoch(), epoch + 1);
+        assert_eq!(lock(&log_view).rows(0, 10).all_count, 0);
     }
 }

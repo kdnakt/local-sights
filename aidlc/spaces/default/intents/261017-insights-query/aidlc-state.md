@@ -53,6 +53,11 @@
 
 
 
+
+
+
+- **Construction Verification Command**: cargo test --workspace && npx vitest run
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -114,7 +119,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-18T01:46:56Z
+- **Last Updated**: 2026-10-18T03:29:42Z
 
 ## Session Resume Point
 - **Last Completed Stage**: units-generation

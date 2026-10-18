@@ -78,14 +78,14 @@
 | T-NFR5 | requirements.md NFR5、project.md Forbidden | 呼ぶ AWS API は読み取りの 3 つだけ | 新しい API はない。偽のゲートウェイのテストと、スクリプトのテスト（`logs start-query`・`logs get-query-results` だけ）が通った | 上の 2、security-test-instructions.md | build-and-test | Met |
 | T-NFR12 | requirements.md NFR12、project.md Forbidden | 外部に何も送らない | 足した行に外部への送信はない（一致したのは関数の名前 `finish_fetch`・`report_fetch` だけ） | security-test-instructions.md の差分の確かめ | build-and-test | Met |
 | T-SM1 | requirements.md SM1・NFR3、U4 BR3.3 | 互換を確かめる 20 本のクエリで、コンソールとアプリの結果が同じ（終了コード 0） | まだ流していない（本人の AWS 認証情報が要る） | U4 code-summary の手順（`insights-export.sh` → `compat_check`） | 開発者の手元。この計画に後の段はない | Unverified |
-| T-WS-MAC | team.md Walking Skeleton の 2・3、U1〜U3 code-summary | macOS で、実際の AWS で取得してクエリの結果が出る。取り足し・キャッシュ・接続の切り替え・ログの画面の振る舞いが前と同じ | まだ確かめていない | U3 code-summary「手元で確かめること」 | 開発者の手元 | Unverified |
+| T-WS-MAC | team.md Walking Skeleton の 2・3、U1〜U3 code-summary | macOS で、実際の AWS で取得してクエリの結果が出る。取り足し・キャッシュ・接続の切り替え・ログの画面の振る舞いが前と同じ | 開発者の Mac でひととおり確かめて問題なし（複数のロググループを含む） | 下の 9（開発者の報告、2026-10-18） | 開発者の手元 | Met |
 | T-WS-WIN | team.md Walking Skeleton の 2・3 | Windows 11（CI で作ったインストーラで入れたアプリ）で同じことができる | まだ確かめていない | 同上 | 開発者の手元 | Unverified |
-| T-ACE | U2 code-generation の review R-04、FR9.2 | 本物の Ace で、色分け・補完の候補・エラーの下線と行の横の印が出る | まだ確かめていない（テストは Ace を偽物に差し替え） | U3 code-summary「手元で確かめること」 | 開発者の手元 | Unverified |
+| T-ACE | U2 code-generation の review R-04、FR9.2 | 本物の Ace で、色分け・補完の候補・エラーの下線と行の横の印が出る | 開発者の Mac で、補完と色分けに問題なし。ひととおりの確認で問題なし | 下の 9（開発者の報告、2026-10-18） | 開発者の手元 | Met |
 
 ## 6. 失敗の扱い
 
 - 落ちたコマンドと `Not Met` の目標はない。
-- `Unverified` が 4 つある（T-SM1、T-WS-MAC、T-WS-WIN、T-ACE）。どれもコードの誤りではなく、このコンテナでは流せない確かめ（本人の AWS 認証情報、本物の GUI）。T-NFR8-OS は PR の CI で Met になった（下の 8）。コードを直して変わるものではないため、Code Generation に戻る直しはない。
+- `Unverified` が残っている（T-SM1、T-WS-WIN。T-WS-MAC と T-ACE は下の 9 で Met）。当初は 4 つ（T-SM1、T-WS-MAC、T-WS-WIN、T-ACE）。どれもコードの誤りではなく、このコンテナでは流せない確かめ（本人の AWS 認証情報、本物の GUI）。T-NFR8-OS は PR の CI で Met になった（下の 8）。コードを直して変わるものではないため、Code Generation に戻る直しはない。
 - この計画（refactor）には Build and Test の後の段がないため、これらを引き受ける段もない。開発者の判断を仰ぐ（下の 7）。
 
 ## 7. 開発者の判断
@@ -111,3 +111,5 @@
 - 2026-10-18：Node.js が古く `npm run tauri dev` が Vite（rolldown）の起動で落ちた（`node:util` に `styleText` がない）。Node.js 22.12 以上が要る（CI は 22）。この作業の変更が原因ではない。
 - 2026-10-18：Node.js を上げたあと、macOS で簡単な `filter @message` のクエリが動いた。T-WS-MAC の一部。複数のロググループ・取り足し・キャッシュ・接続の切り替え・ログの画面・本物の Ace は、まだ確かめていない。
 - 2026-10-18：開発者の気づき：コンソールの Logs Insights は検索中に取得できた結果を少しずつ表示するが、このアプリは取得と評価がすべて終わってから結果を出す。要件（FR7）と設計にない振る舞いの違いで、誤りではない。開発者の答えは「次の版に回す」。IB-11 には入れず、次の版の改善の候補とする。
+- 2026-10-18：開発者の報告：Mac の確かめはひととおり問題なし。複数のロググループで実行し、補完と色分けも問題なかった。T-WS-MAC と T-ACE を Met にした。
+- 2026-10-18：開発者の気づき：接続のリージョンを選ぶ欄に、リージョンの名前（東京、バージニア北部など）が出ず、検索もできない。この作業で変えた部分ではない（接続の選び方は前からの画面）。開発者の答えで、今後の改善の候補として積む。

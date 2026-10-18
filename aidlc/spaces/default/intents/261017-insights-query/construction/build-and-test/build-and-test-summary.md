@@ -45,9 +45,9 @@
 | T-NFR5 | NFR5 | 読み取りの 3 つの API だけ | 新しい API なし。テストが通った | security-test-instructions.md | build-and-test | Met |
 | T-NFR12 | NFR12 | 外部に何も送らない | 足した行に送信なし | security-test-instructions.md | build-and-test | Met |
 | T-SM1 | SM1・NFR3、U4 BR3.3 | 20 本のクエリでコンソールとアプリの結果が同じ | 未実施 | U4 code-summary の手順 | 開発者の手元 | Unverified |
-| T-WS-MAC | team.md Walking Skeleton | macOS で実際の AWS で取得して結果が出る | 未実施 | U3 code-summary | 開発者の手元 | Unverified |
+| T-WS-MAC | team.md Walking Skeleton | macOS で実際の AWS で取得して結果が出る | 開発者の Mac でひととおり問題なし | test-results.md の 9 | 開発者の手元 | Met |
 | T-WS-WIN | team.md Walking Skeleton | Windows 11 で同じ | 未実施 | U3 code-summary | 開発者の手元 | Unverified |
-| T-ACE | U2 review R-04、FR9.2 | 本物の Ace で色分け・補完・エラーの印が出る | 未実施 | U3 code-summary | 開発者の手元 | Unverified |
+| T-ACE | U2 review R-04、FR9.2 | 本物の Ace で色分け・補完・エラーの印が出る | 開発者の Mac で問題なし | test-results.md の 9 | 開発者の手元 | Met |
 
 ## 4. 準備の具合
 
@@ -74,6 +74,7 @@
 - **U3 の残り**（Minor）：`read_overlaps` がキャッシュのファイルを丸ごと読む、接続を変えるまで保持が増え続ける、`holdings_epoch` を使っていない。
 - **仮の決まり**（U2）：型の比べ方と AND・OR・NOT などの大文字は、コンソールでまだ確かめていない。互換の確かめ（p01〜p09）で比べる。
 - **次の版の改善の候補（開発者の気づき、2026-10-18）**：コンソールは検索中に結果を少しずつ表示するが、このアプリは終わってから出す。開発者の答えで次の版に回した（`sort`・`limit` があると途中の結果は並びが変わる点も考える）。
+- **今後の改善の候補（開発者の気づき、2026-10-18）**：リージョンを選ぶ欄に名前（東京、バージニア北部など）が出ず、検索もできない。前からある接続の画面のこと。
 - **JSON の数**：CloudTrail には JSON の数の項目がほとんどなく、JSON の数の比べは確かめられないまま残る（U4 R-04）。
 
 ## 6. 結果

@@ -25,6 +25,8 @@
 
 <!-- Project-specific specialisation. -->
 
+- クエリの速さの合否の数値は、利用者の答え（作る段階で決める）に従って要件では決めなかった（NFR1） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:179cee86658388289375b911f1f578f4a35afddd4c4e72233a29597869858202 -->
+
 ## Guard Policy
 
 <!-- Project-specific. Mode: strict, relaxed, or off. Strict here holds for every intent and cannot be changed from chat. A section under the retired Change Control heading, written by an earlier release, is still read. -->
@@ -103,3 +105,19 @@ None. (affirmed 2026-10-15)
 - ALWAYS CI のジョブ名を変えるときは、ブランチの保護ルールの必須チェックの名前と合わせる（PR #20 で名前を変えてマージできなくなった） (learned 2026-10-13) <!-- cid:261012-parallel-fetch:code-generation:42c27d7572a097e518f636f0c205a6d03693f4cadb5891375e6cbc90393ba6bc -->
 - [windows-support] 「macOS 版と同じ」は、今の macOS 版にある機能（取得・表示・絞り込み・キャッシュ・SSO ログイン・中断・経過時間）が Windows でも同じように使えることと解釈する。見た目の細部（メニューの位置など）を OS の慣習に合わせてよいかは要件分析で決める (learned 2026-10-15) <!-- cid:261015-windows-support:intent-capture:2d4ac3be590ff524518810e85ec1b2b02f049634b5aa0e820718d443281a7a20 -->
 - [windows-support] マージ済みの取得の高速化（PR #22）と Windows 版は合わせて v0.2.0 で配る。v0.1.2 のタグは付けない（practices-discovery Q5） (learned 2026-10-15) <!-- cid:261015-windows-support:practices-discovery:31eb34738d8b5966169f1d9da26d9672a091fa2b3a2499f2c228d69aab4bd7c6 -->
+- 古いコード知識ベース（parallel-fetch のとき）は Windows 対応などの後で古くなっていたため、利用者の選んだ全面の読み直しで 9 つの文書を作り直した (learned 2026-10-17) <!-- cid:261017-insights-query:reverse-engineering:95ef0198bfb0b69690975c0518b9c4289b6963d7ecbebbe6f7166cb3a92702d3 -->
+- コンソールの振る舞いの細部（fields の既定の列、sort の既定、型の違う値の比較など）は要件では「コンソールと同じ」とだけ書き、中身は Functional Design で AWS の資料から確かめることにした（OQ2） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:419e40ce8b21876881d41a32d352e3205205674310736a5e953f31449c091f43 -->
+- ラフな画面設計がないため、要件と今の画面（261010 の mockups と今のコード）から画面を起こした (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:9d52652f7d7c5c57f9588557755c208f2b2a55df45fad83eeb814bfd906c596b -->
+- 期間とロググループの選択は 2 つの画面で別々に持つことにした（取得済みのログだけを共有） (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:5259c99276b5f4b17776439fde4549fa47560438df4505f2d8f8b93840c706de -->
+- クエリ欄は利用者の選択どおり最初から CodeEditor（Ace）にした (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:97d255501f19db213a8ee12e5f5ddfbabbe215c969d2f43ce6e1e4e593037c8b -->
+- 部品の一覧には新しく作る部品と変える部品だけを載せ、変えない部品（FilterEngine など）は codekb の一覧のままとした (learned 2026-10-17) <!-- cid:261017-insights-query:domain-design:766a7c4ba7c4b78c2ea5688d6dd037d37ab2cd84a7149ab997d2cd3a867c118d -->
+- 範囲の定義の B5「クエリの中で期間とロググループを指定」を、クエリの画面に置く専用の欄で指定することと読み替えた（A1） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:5a1635440369bc5d17d1f42ac879d0cb20314de0ecca16013394185acfe406da -->
+- [insights-query] 2 つの画面は取得済みのログを共有しないと見直した（RA Q3b、Q3a の見直し）。普段は片方の画面で済むため、同じログを 2 回取得しメモリも 2 つ分持つことを受け入れた (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:6c9acb731de9834c403d122751199640fe0d2b5faf6e6b98caad88bca0b29c89 -->
+- [insights-query] 要件の見直し（RA Q3b：取得済みのログを共有しない）に合わせ、画面設計は「2 つの画面の間の約束」・画面 4 の注記・補完の候補元だけを直し、画面の構成は変えなかった (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:6435c6759b97dded6f5b9d65bcf1dca0dc145fc258b6a7815bbb0fa649b2f067 -->
+- [insights-query] 訂正：期間とロググループの選択も取得済みのログも、2 つの画面で別々に持つ（RA Q3b。前の「取得済みのログだけを共有」を改める） (learned 2026-10-17) <!-- cid:261017-insights-query:refined-mockups:2d6e1d0f9f42b74d02de1a8022e398f5c8da21c9807fe291b1323a4aae95a979 -->
+- [insights-query] 要件の見直し（RA Q3b）で共有の保持（LogStore）をやめ、クエリの画面専用の QueryStore を作り、取得は今の FetchCoordinator に「捨てずに足す」入口を足して使うことにした（Q6） (learned 2026-10-18) <!-- cid:261017-insights-query:domain-design:e16daac4ec568dcfafc6baf66f92384ceb0eb1ef7ad7c7a672b6c5a8b4260165 -->
+- [insights-query] U1 は QueryStore の最小版（1 つのロググループ、実行のたびにクエリの画面の保持だけを捨てて取り直す）で取得し、範囲の記録と取り足し・キャッシュの一部の利用・複数のロググループを U3 に残した（Q2a） (learned 2026-10-18) <!-- cid:261017-insights-query:units-generation:5ccb8545ad330b77dd3886f3a7d521e3165addc0e6a43250707d68e2f97a768b -->
+- この計画は refactor を元にしており骨組みのチェックポイントはないが、team.md の Walking Skeleton にならって U1 を画面から AWS まで通る薄い一本にした (learned 2026-10-18) <!-- cid:261017-insights-query:units-generation:e7fb210fa0da9791f386e4181fbc90035528dea7408cccdf87c4b48d019cc748 -->
+- 確認用プログラムは利用者の答え（言語がそろったあとに独立）に合わせて 4 つ目の作業単位 U4 にした (learned 2026-10-18) <!-- cid:261017-insights-query:units-generation:114fb65608c86aa19603267d50e9699c0460f6f4384332a4897db0d6b6ef03f3 -->
+- [insights-query] @log の値はロググループ名だけとした。コンソールの「アカウント ID:ロググループ名」にするには読み取りの 3 つ以外の API が要り呼べないため、@log の値を比べるクエリは互換の確かめの組に入れない（U1 の機能設計） (learned 2026-10-18) <!-- cid:261017-insights-query:functional-design:f2b384a42bfdf5a2cda0f9e8ba1fda562ee5a27ab66f8d59f10c11860f9a71ab -->
+- [insights-query] 言葉の大文字・小文字、優先順位（not > and > or）、文字列の項目と数値の比較、sort がないときの並び順は AWS の資料にないため U1 では仮の決まりにし、U2 の機能設計（OQ2）と U4 でコンソールに合わせる (learned 2026-10-18) <!-- cid:261017-insights-query:functional-design:d26950ece5247c9b8677a9781f73e90fbd64e5e3864dcbf1d022667179b4ea5c -->

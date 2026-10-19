@@ -1,4 +1,13 @@
-import type { DisplayRow, RowWindow, SessionView, SsoLoginView } from "../api";
+import type {
+  DisplayRow,
+  InsightsView,
+  QueryRow,
+  QueryRowWindow,
+  ResultSummary,
+  RowWindow,
+  SessionView,
+  SsoLoginView,
+} from "../api";
 import { createTranslator } from "../i18n/messages";
 
 /** English translator used by component tests. */
@@ -54,7 +63,91 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     cancelling: false,
     fetchCancelAvailable: false,
     cancelNotice: null,
+    fetchOwner: "None",
+    insights: insightsView(),
     ...overrides,
+  };
+}
+
+/** The Log Analytics part of a session view: nothing run yet, ready to run. */
+export function insightsView(overrides: Partial<InsightsView> = {}): InsightsView {
+  return {
+    selectedLogGroupNames: ["/aws/lambda/MyFunction"],
+    maxLogGroups: 50,
+    logGroupOptions: ["/aws/ecs/web", "/aws/lambda/MyFunction"],
+    logGroupStatus: "Complete",
+    startInput: { text: "2024/01/02 03:04:05", instant: 1_704_164_645_000, error: null },
+    endInput: { text: "2024/01/02 03:05:05", instant: 1_704_164_705_000, error: null },
+    queryText: "filter @message like /ERROR/",
+    rangeErrors: [],
+    runBlocker: null,
+    canRun: true,
+    runId: 0,
+    phase: "Idle",
+    progress: null,
+    problem: null,
+    failure: null,
+    failedGroups: [],
+    partial: false,
+    failedStreams: [],
+    listingFailure: null,
+    result: null,
+    elapsed: null,
+    cancelling: false,
+    cancelAvailable: false,
+    ...overrides,
+  };
+}
+
+/**
+ * A shown result with `rowCount` rows and the two default columns, nothing
+ * cut (261017-insights-query U2:BR3.3).
+ */
+export function resultSummary(overrides: Partial<ResultSummary> = {}): ResultSummary {
+  const rowCount = overrides.rowCount ?? 2;
+  return {
+    runId: 1,
+    holdingsEpoch: 2,
+    rowCount,
+    evaluatedCount: 40,
+    columns: ["@timestamp", "@message"],
+    matchedCount: rowCount,
+    truncatedAt: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A result row as `get_query_rows` gives it, with the cells of the two
+ * default columns unless `values` are given.
+ */
+export function queryRow(
+  sequence: number,
+  message = `ERROR ${sequence}`,
+  values?: (string | null)[],
+): QueryRow {
+  const event = logEvent(sequence, message);
+  return {
+    ...event,
+    logGroupName: "/aws/lambda/MyFunction",
+    values: values ?? [event.displayTime, message],
+  };
+}
+
+/** A `get_query_rows` answer cut from `rows`. */
+export function queryRowWindow(
+  rows: readonly QueryRow[],
+  offset: number,
+  limit: number,
+  runId = 1,
+  holdingsEpoch = 2,
+): QueryRowWindow {
+  return {
+    runId,
+    holdingsEpoch,
+    offset,
+    rows: rows.slice(offset, offset + limit),
+    totalCount: rows.length,
   };
 }
 

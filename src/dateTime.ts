@@ -51,6 +51,8 @@ const FIELD_OF_KEY: Record<string, ReasonField> = {
   "validation.rangeOrder": "endDate",
   "selection.profileRequired": "logGroup",
   "selection.regionRequired": "logGroup",
+  // 261017-insights-query U1:BR2.3: why [Fetch] waits for the query's fetch.
+  "session.queryRunning": "logGroup",
 };
 
 /** What fills a missing time segment: the first instant for the start, the last for the end. */

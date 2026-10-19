@@ -44,3 +44,12 @@ tokio = { workspace = true, features = ["test-util"] }
 
 # examples/fetch_check.rs is a manual, developer-only check against real AWS
 # (BR7.1). `cargo test` only compiles examples; it never runs them (BR7.2).
+
+# 261017-insights-query U4: compares the app's query results with Logs
+# Insights results exported by scripts/compat/insights-export.sh. Manual and
+# developer-only like fetch_check; its parts live in examples/compat/ and are
+# tested with sample data by `cargo test -p local-sights-core --example
+# compat_check` (no AWS). It calls only DescribeLogStreams and GetLogEvents.
+[[example]]
+name = "compat_check"
+path = "examples/compat_check.rs"

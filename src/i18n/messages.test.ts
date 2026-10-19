@@ -54,6 +54,65 @@ const CORE_KEYS = [
   "catalog.unreadable.config",
   "catalog.unreadable.credentials",
   "rows.tooManyKeys",
+  // 261017-insights-query U1 (session.rs, insights_session.rs).
+  "session.queryRunning",
+  "session.staleInput",
+  "insights.blocked.notConnected",
+  "insights.blocked.logGroupRequired",
+  "insights.blocked.rangeInvalid",
+  "insights.blocked.queryEmpty",
+  "insights.blocked.queryTooLong",
+  "insights.blocked.queryRunning",
+  "insights.blocked.logManagementFetching",
+  "insights.blocked.otherOperation",
+];
+
+/** The reading problems of the core's QueryParser (`query::parser::keys::ALL`). */
+const QUERY_PROBLEM_KEYS = [
+  "query.syntax.noCommand",
+  "query.syntax.emptyCommand",
+  "query.syntax.unknownCommand",
+  "query.syntax.missingCondition",
+  "query.syntax.unclosedParen",
+  "query.syntax.unmatchedParen",
+  "query.syntax.unclosedString",
+  "query.syntax.unclosedRegex",
+  "query.syntax.unclosedList",
+  "query.syntax.unclosedName",
+  "query.syntax.emptyList",
+  "query.syntax.unexpectedToken",
+  "query.syntax.unexpectedEnd",
+  "query.syntax.expectedOperator",
+  "query.syntax.expectedValue",
+  "query.syntax.expectedList",
+  "query.syntax.unexpectedCharacter",
+  "query.syntax.invalidNumber",
+  "query.syntax.invalidRegex",
+  "query.syntax.regexNotAllowed",
+  "query.syntax.matchNeedsRegex",
+  "query.syntax.likeNeedsText",
+  "query.syntax.invalidDateTime",
+  "query.syntax.nonexistentDateTime",
+  "query.unsupported.command",
+  "query.unsupported.field",
+  "query.unsupported.function",
+  "query.unsupported.toMillisArgument",
+  "query.unsupported.timestampOperator",
+  "query.unsupported.operator",
+  "query.unsupported.fieldComparison",
+  // 261017-insights-query U2.
+  "query.syntax.notNeedsParen",
+  "query.syntax.missingFields",
+  "query.syntax.expectedField",
+  "query.syntax.invalidSortDirection",
+  "query.syntax.missingLimit",
+  "query.syntax.invalidLimit",
+  "query.syntax.limitTooLarge",
+  "query.unsupported.arrayElement",
+  "query.unsupported.alias",
+  "query.unsupported.limitAny",
+  // 261017-insights-query U3:BR5.1.
+  "query.syntax.nestingTooDeep",
 ];
 
 describe("message catalog", () => {
@@ -68,6 +127,61 @@ describe("message catalog", () => {
     for (const key of CORE_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
+  });
+
+  it("has every reading problem of the query in both languages, with its word (261017-insights-query NFR9)", () => {
+    // The core's keys::ALL: 31 in U1, 41 in U2, 42 since U3.
+    expect(QUERY_PROBLEM_KEYS).toHaveLength(42);
+    for (const key of QUERY_PROBLEM_KEYS) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(translate("en", "query.unsupported.command", { word: "stats" })).toBe(
+      '"stats" is not supported in this version.',
+    );
+    expect(translate("ja", "query.unsupported.command", { word: "stats" })).toBe(
+      "「stats」にはこの版では対応していません。",
+    );
+    expect(translate("ja", "insights.error.at", { line: 2, column: 3 })).toBe("2 行 3 列：");
+  });
+
+  it("has the U2 result texts in the refined mockups' words (261017-insights-query U2:BR5.3, BR10.2)", () => {
+    expect(translate("en", "insights.results.count", { shown: 20, matched: 1284 })).toBe(
+      "20 of 1284 matched",
+    );
+    expect(translate("ja", "insights.results.count", { shown: 20, matched: 1284 })).toBe(
+      "1284 件中 20 件",
+    );
+    expect(translate("en", "insights.results.truncated", { shown: 20 })).toBe("Showing 20");
+    expect(translate("en", "insights.error.supportedList")).toBe(
+      "Supported commands: fields, filter, sort, limit.",
+    );
+    expect(translate("en", "insights.evaluationFailed")).not.toMatch(/GetLogEvents/);
+    expect(translate("ja", "query.syntax.missingFields", { word: "sort" })).toBe(
+      "sort の後ろに項目がありません。",
+    );
+  });
+
+  it("has the U3 texts of many log groups in both languages (261017-insights-query U3:BR2.7, BR4.1, BR5.1)", () => {
+    expect(translate("en", "insights.logGroups.limit", { max: 50 })).toBe(
+      "You can choose up to 50 log groups.",
+    );
+    expect(translate("ja", "insights.logGroups.limit", { max: 50 })).toBe(
+      "ロググループは 50 個まで選べます。",
+    );
+    expect(
+      translate("en", "insights.status.fetching", {
+        number: 2,
+        groups: 3,
+        done: 1,
+        total: 4,
+        events: 10,
+      }),
+    ).toBe("Fetching logs (log group 2 / 3): 1 / 4 streams, 10 events");
+    expect(translate("ja", "insights.status.failedGroups", { count: 2 })).toBe(
+      "2 個のロググループを取得できませんでした。",
+    );
+    expect(translate("en", "query.syntax.nestingTooDeep")).toContain("100 levels");
+    expect(translate("ja", "failures.column.groupStream")).toBe("ロググループ / ストリーム");
   });
 
   it("has every SSO login text in both languages (261011-sso-login NFR5)", () => {

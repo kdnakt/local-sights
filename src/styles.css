@@ -407,3 +407,194 @@ body {
   gap: var(--ls-space-xs) var(--ls-space-s);
   min-height: 1.5em;
 }
+
+/*
+ * 261017-insights-query U1:BR1.1 (refined-mockups screens 1, 1b): the
+ * navigation at the left edge, about 10rem, beside the page it shows. A
+ * closed navigation leaves a slim strip with its open button. The page not
+ * shown stays in the document, hidden, so switching discards nothing.
+ */
+.app-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-navigation {
+  flex: 0 0 10rem;
+  box-sizing: border-box;
+  padding: var(--ls-space-xs) 0;
+  border-right: 1px solid var(--ls-color-border);
+  background: var(--ls-color-background);
+  overflow-y: auto;
+}
+
+.app-navigation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--ls-space-xs) var(--ls-space-xs) var(--ls-space-s);
+}
+
+.app-navigation-collapsed {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 36px;
+  padding-top: var(--ls-space-xs);
+  border-right: 1px solid var(--ls-color-border);
+  background: var(--ls-color-background);
+  text-align: center;
+}
+
+.app-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-page[hidden] {
+  display: none;
+}
+
+.app-page-analytics {
+  box-sizing: border-box;
+  padding: var(--ls-space-m);
+  overflow-y: auto;
+}
+
+/* Read by screen readers only: the name of the page just shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The query field: as wide as the container (interaction-spec QueryEditor). */
+.query-editor {
+  width: 100%;
+}
+
+/*
+ * 261017-insights-query U2:BR6.1: the words of a reading problem, underlined
+ * by an Ace text marker; the mark beside the line number and the words under
+ * the field say the same without the color.
+ */
+.query-editor .query-problem-mark {
+  position: absolute;
+  border-bottom: 2px solid var(--ls-color-error);
+}
+
+/*
+ * U1:BR6.3, BR6.4: the result rows, drawn like the Log Management list:
+ * 22 px lines, the two fixed columns, only the rows in view.
+ */
+.query-result-table {
+  border: 1px solid var(--ls-color-border);
+  border-radius: var(--ls-radius);
+  background: var(--ls-color-background);
+  color: var(--ls-color-text);
+}
+
+/* 261017-insights-query U3:BR3.4: the previous run's result, said in words, not dimmed. */
+.query-result-previous {
+  padding: 4px 8px;
+  color: var(--ls-color-heading);
+  border-bottom: 1px solid var(--ls-color-border);
+}
+
+.query-result-header {
+  display: flex;
+  font-weight: var(--ls-font-weight-heading);
+  color: var(--ls-color-heading);
+  background: var(--ls-color-background-header);
+  border-bottom: 1px solid var(--ls-color-border);
+}
+
+.query-result-list {
+  height: 440px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.query-result-list:focus-visible {
+  outline: 2px solid var(--ls-color-focus);
+  outline-offset: -2px;
+}
+
+.query-result-line {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  border-bottom: 1px solid var(--ls-color-border-secondary);
+}
+
+.query-result-row.is-selected > .query-result-line {
+  background: var(--ls-color-background-selected);
+  box-shadow: inset 2px 0 0 var(--ls-color-border-selected);
+}
+
+.query-result-toggle-cell {
+  flex: 0 0 28px;
+  text-align: center;
+}
+
+.query-result-toggle {
+  border: 0;
+  background: none;
+  color: var(--ls-color-text);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.query-result-time {
+  flex: 0 0 13rem;
+  padding: 0 var(--ls-space-xs);
+  white-space: nowrap;
+}
+
+.query-result-message {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--ls-space-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* U2:BR7.1: any other column of `fields`, sharing the width left. */
+.query-result-cell {
+  flex: 1 1 6rem;
+  min-width: 0;
+  padding: 0 var(--ls-space-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.query-result-details {
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 6px 6px 6px 34px;
+  box-shadow: inset 0 1px 0 var(--ls-color-border);
+}
+
+.query-result-fields th {
+  padding-right: var(--ls-space-s);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.query-result-value {
+  font-family: var(--ls-font-family-monospace);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

@@ -26,6 +26,17 @@
  * session view says whether it is under way (`cancelling`), whether it can be
  * pressed (`fetchCancelAvailable`) and what the last cancelled fetch left
  * unread (`cancelNotice`, a count only, NFR8.13); a job can end `Cancelled`.
+ * Since 261017-insights-query U1 the session view also carries the Log
+ * Analytics screen (`insights`) and which screen's fetch runs (`fetchOwner`,
+ * U1:BR2.3); `updateAnalyticsInput`, `runQuery`, `cancelQuery` and
+ * `getQueryRows` drive it. The query is read and run by the core; a reading
+ * problem comes back as the QueryError phase with its place, never as a
+ * refusal (U1:BR3.9).
+ * Since 261017-insights-query U2 a result carries its columns, the matched
+ * count and the cut (U2:BR3.2-BR3.4, BR5.3), each row its cells for those
+ * columns (U2:BR7.1), `getQueryRowDetail` gives the fields of one opened row
+ * (U2:BR7.3), `getCompletionCandidates` the words the query field completes
+ * (U2:BR9.1), and a run can end `EvaluationFailed` (U2:BR10.2).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
@@ -203,6 +214,20 @@ export interface FailedStream {
   failure: ApiFailure;
 }
 
+/**
+ * A stream of the query screen that could not be fetched, with its log group
+ * (261017-insights-query U3:BR2.6): two log groups may have streams of one name.
+ */
+export interface GroupFailedStream extends FailedStream {
+  logGroupName: string;
+}
+
+/** A log group of the query screen whose fetch failed, with why (U3:BR2.6). */
+export interface GroupFailure {
+  logGroupName: string;
+  failure: ApiFailure;
+}
+
 export type StreamListingStatus = "Complete" | "StoppedEarly" | "Partial";
 
 export interface LogGroupListView {
@@ -212,6 +237,163 @@ export interface LogGroupListView {
   totalCount: number;
   emptyState: EmptyState | null;
   failure: ApiFailure | null;
+}
+
+/** Which screen the running fetch belongs to (261017-insights-query U1:BR2.3). */
+export type FetchOwner = "None" | "LogManagement" | "LogAnalytics";
+
+/** Phase of the last query run (261017-insights-query functional-spec 4). */
+export type AnalyticsPhase =
+  | "Idle"
+  | "Fetching"
+  | "Evaluating"
+  | "Done"
+  | "QueryError"
+  | "FetchFailed"
+  | "Cancelled"
+  | "EvaluationFailed";
+
+/**
+ * A field of the Log Analytics screen. `logGroup` takes the chosen log groups as
+ * a list (up to 50, U3:BR4.1; an empty list deselects every one), the others a text.
+ */
+export type AnalyticsField = "logGroup" | "startText" | "endText" | "queryText";
+
+/** A place in the query text: line and column from 1, in characters. */
+export interface QuerySpan {
+  line: number;
+  column: number;
+  length: number;
+}
+
+/** Why a query cannot be run, found before anything is fetched (U1:BR3.9). */
+export interface QueryProblem {
+  kind: "Syntax" | "Unsupported";
+  /** Message key of the text (`query.syntax.*` / `query.unsupported.*`). */
+  messageKey: string;
+  /** The word of the query it is about; only text taken from the query. */
+  word: string | null;
+  span: QuerySpan;
+}
+
+/** Progress of the running query (U1:BR2.4, U3:BR2.7). */
+export interface InsightsProgress {
+  /** The disk cache is being read. */
+  readingCache: boolean;
+  /** The log group being fetched from AWS, from 1; `null` before the first. */
+  groupNumber: number | null;
+  /** The chosen log groups. */
+  groupCount: number;
+  /** Log groups whose fetch failed so far. */
+  failedGroupCount: number;
+  /** Streams of the current log group's fetch. */
+  selectedStreamCount: number;
+  /** `null` while the streams are being listed. */
+  plannedStreamCount: number | null;
+  finishedStreamCount: number;
+  /** Events fetched from AWS by the run so far. */
+  eventCount: number;
+  evaluatedCount: number;
+  totalCount: number;
+}
+
+/**
+ * The shown result; its rows are read with `runId` (U3:BR3.2: the core keeps copies of
+ * them, so they stay readable while the next run fetches, U3:BR3.4). `holdingsEpoch`
+ * is sent with the requests and comes back unchanged.
+ */
+export interface ResultSummary {
+  runId: number;
+  holdingsEpoch: number;
+  /** Result rows shown (U2:BR7.2). */
+  rowCount: number;
+  evaluatedCount: number;
+  /** The column headings: the fields' names as written (U2:BR3.2-BR3.4). */
+  columns: string[];
+  /** Rows that matched before the cut (U2:BR5.3). */
+  matchedCount: number;
+  /** The rows shown when a `limit` or the default 10,000 cut dropped some (U2:BR5.3). */
+  truncatedAt: number | null;
+}
+
+/** The Log Analytics screen as the core shows it (261017-insights-query U1). */
+export interface InsightsView {
+  /** The chosen log groups, in the order chosen (U3:BR4.1). */
+  selectedLogGroupNames: string[];
+  /** The most log groups that can be chosen (50). */
+  maxLogGroups: number;
+  /** Every log group of the current list, ascending: Log Management's before its filter. */
+  logGroupOptions: string[];
+  /** How that list stands; `null` without a complete connection. */
+  logGroupStatus: ListingStatus | null;
+  startInput: DateTimeInput;
+  endInput: DateTimeInput;
+  queryText: string;
+  /** The time range's reasons (`validation.*` keys). */
+  rangeErrors: string[];
+  /** The first reason why [Run query] cannot be pressed (U1:BR1.5). */
+  runBlocker: string | null;
+  canRun: boolean;
+  runId: number;
+  phase: AnalyticsPhase;
+  progress: InsightsProgress | null;
+  problem: QueryProblem | null;
+  /** The failure of the whole fetch (FetchFailed): the first failed log group's. */
+  failure: ApiFailure | null;
+  /** Every log group whose fetch failed (FetchFailed, U3:BR2.6). */
+  failedGroups: GroupFailure[];
+  /** Some streams failed: the result is based on part of the logs (U1:BR2.5). */
+  partial: boolean;
+  /** The streams that failed, with their log group (U3:BR2.6). */
+  failedStreams: GroupFailedStream[];
+  listingFailure: ApiFailure | null;
+  result: ResultSummary | null;
+  elapsed: ElapsedView | null;
+  cancelling: boolean;
+  cancelAvailable: boolean;
+}
+
+/** One result row (U1:BR6.3): the event, its time in the chosen zone and `@log`. */
+export interface QueryRow extends LogEvent {
+  displayTime: string;
+  logGroupName: string;
+  /** One cell per result column; `null` without a value (U2:BR7.1). */
+  values: (string | null)[];
+}
+
+/** One field of an opened row (U2:BR7.3). */
+export interface QueryDetailField {
+  /** A JSON field as the core writes it: backquoted when it holds a `.` and the like. */
+  name: string;
+  value: string | null;
+}
+
+/** The fields of one opened result row (U2:BR7.3). */
+export interface QueryRowDetail {
+  runId: number;
+  holdingsEpoch: number;
+  index: number;
+  /** `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; empty when stale. */
+  fields: QueryDetailField[];
+}
+
+/** What a completion candidate is (U2:BR9.1). */
+export type CompletionKind = "Command" | "Keyword" | "FixedField" | "JsonField";
+
+/** One completion candidate of the query field (U2:BR9.1). */
+export interface CompletionCandidate {
+  text: string;
+  kind: CompletionKind;
+}
+
+/** The result rows of one viewport request (U1:BR6.4). */
+export interface QueryRowWindow {
+  runId: number;
+  holdingsEpoch: number;
+  offset: number;
+  /** Empty when the run or the epoch is not the shown result's. */
+  rows: QueryRow[];
+  totalCount: number;
 }
 
 export interface SessionView {
@@ -283,6 +465,10 @@ export interface SessionView {
   fetchCancelAvailable: boolean;
   /** The notice of the last fetch when it was cancelled (U5:BR5.8). */
   cancelNotice: CancelNoticeView | null;
+  /** Which screen's fetch runs (261017-insights-query U1:BR2.3). */
+  fetchOwner: FetchOwner;
+  /** The Log Analytics screen (261017-insights-query U1). */
+  insights: InsightsView;
 }
 
 /** Whether an SSO login is under way (Starting or Waiting). */
@@ -627,6 +813,56 @@ export function updateLogGroupFilter(text: string): Promise<void> {
 /** Selects one log group. */
 export function selectLogGroup(name: string, generation: number): Promise<void> {
   return invoke<void>("select_log_group", { name, generation });
+}
+
+/**
+ * Changes one field of the Log Analytics screen (U1:BR1.3, BR1.4); refused
+ * while its query runs. The log groups go as a list of names (U3:BR4.1), the
+ * other fields as a text. The new state arrives through `session-changed`.
+ */
+export function updateAnalyticsInput(
+  field: AnalyticsField,
+  value: string | readonly string[],
+  generation: number,
+): Promise<void> {
+  return invoke<void>("update_analytics_input", { field, value, generation });
+}
+
+/**
+ * [Run query] (U1 UC1): the core reads the query, then fetches and evaluates.
+ * Resolves with nothing; a reading problem arrives as the QueryError phase.
+ */
+export function runQuery(): Promise<void> {
+  return invoke<void>("run_query");
+}
+
+/** [Cancel] of the Log Analytics screen (UC4); nothing happens when it cannot be pressed. */
+export function cancelQuery(): Promise<void> {
+  return invoke<void>("cancel_query");
+}
+
+/** At most `limit` result rows from `offset` of the shown result (U1:BR6.4). */
+export function getQueryRows(
+  runId: number,
+  holdingsEpoch: number,
+  offset: number,
+  limit: number,
+): Promise<QueryRowWindow> {
+  return invoke<QueryRowWindow>("get_query_rows", { runId, holdingsEpoch, offset, limit });
+}
+
+/** The fields of result row `index` of the shown result (U2:BR7.3). */
+export function getQueryRowDetail(
+  runId: number,
+  holdingsEpoch: number,
+  index: number,
+): Promise<QueryRowDetail> {
+  return invoke<QueryRowDetail>("get_query_row_detail", { runId, holdingsEpoch, index });
+}
+
+/** The words and field names the query field completes (U2:BR9.1, Should). */
+export function getCompletionCandidates(): Promise<CompletionCandidate[]> {
+  return invoke<CompletionCandidate[]>("get_completion_candidates");
 }
 
 /** The selector that identifies a profile row. */

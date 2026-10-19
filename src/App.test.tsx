@@ -9,7 +9,17 @@ import type {
   SessionView,
 } from "./api";
 import { App } from "./App";
-import { connectedView, logEvent, rowWindow, sessionView, ssoLoginView } from "./test/fixtures";
+import {
+  connectedView,
+  insightsView,
+  logEvent,
+  queryRow,
+  queryRowWindow,
+  resultSummary,
+  rowWindow,
+  sessionView,
+  ssoLoginView,
+} from "./test/fixtures";
 
 const handlers: {
   session?: (view: SessionView) => void;
@@ -47,6 +57,12 @@ vi.mock("./api", async (importOriginal) => {
     cancelSsoLogin: vi.fn(),
     dismissSsoLogin: vi.fn(),
     openSsoUrl: vi.fn(),
+    updateAnalyticsInput: vi.fn(),
+    runQuery: vi.fn(),
+    cancelQuery: vi.fn(),
+    getQueryRows: vi.fn(),
+    getQueryRowDetail: vi.fn(),
+    getCompletionCandidates: vi.fn(async () => []),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
       handlers.session = handler;
       return () => undefined;
@@ -61,6 +77,10 @@ vi.mock("./api", async (importOriginal) => {
     }),
   };
 });
+
+// 261017-insights-query U1: Ace does not run in jsdom.
+vi.mock("./aceLoader", () => ({ loadAce: () => Promise.resolve({}) }));
+vi.mock("@cloudscape-design/components/code-editor", () => import("./test/codeEditorMock"));
 
 const api = await import("./api");
 
@@ -123,10 +143,16 @@ describe("App", () => {
       api.dismissSsoLogin,
       api.openSsoUrl,
       api.cancelFetch,
+      api.updateAnalyticsInput,
+      api.runQuery,
+      api.cancelQuery,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
     }
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, holdingsEpoch, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, holdingsEpoch),
+    );
   });
 
   it("shows the rows the core holds and follows the timeline version", async () => {
@@ -862,6 +888,10 @@ describe("App", () => {
       "top-bar-region",
       "top-bar-time-zone",
       "top-bar-settings-button",
+      // 261017-insights-query U1:BR1.1: the navigation at the left edge.
+      "app-navigation-close-button",
+      "app-navigation-links",
+      "app-navigation-links",
       // Gate fix 15b: the pane's close button sits in its heading.
       "log-group-pane-collapse-button",
       "log-group-pane-filter",
@@ -935,12 +965,16 @@ describe("App", () => {
     await screen.findByTestId("log-group-pane-collapsed");
     expect(screen.queryByTestId("log-group-pane")).not.toBeInTheDocument();
     expect(screen.queryByRole("separator")).not.toBeInTheDocument();
-    // Tab reaches the open button right after the top bar.
+    // Tab reaches the open button right after the top bar (and, since
+    // 261017-insights-query U1:BR1.1, the navigation at the left edge).
     for (const testId of [
       "top-bar-profile",
       "top-bar-region",
       "top-bar-time-zone",
       "top-bar-settings-button",
+      "app-navigation-close-button",
+      "app-navigation-links",
+      "app-navigation-links",
       "log-group-pane-expand-button",
       "fetch-form-submit-button",
     ]) {
@@ -1051,5 +1085,157 @@ describe("App", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ---- 261017-insights-query U1:BR1.1, BR1.2, BR1.7: the two screens -----
+
+  describe("switching between Log Management and Log Analytics", () => {
+    const shownView = () =>
+      connectedView({
+        selectedLogGroupName: "/aws/ecs/web",
+        eventCount: 3,
+        phase: "Done",
+      });
+
+    it("opens on Log Management and switches with the navigation, keeping Log Management", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(shownView());
+      const user = userEvent.setup();
+      render(<App locale="en" />);
+      await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+      expect(screen.getByTestId("app-page-logManagement")).toBeVisible();
+      expect(screen.queryByTestId("log-analytics-page")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("link", { name: "Log Analytics" }));
+      expect(screen.getByTestId("log-analytics-page")).toBeVisible();
+      expect(screen.getByTestId("app-page-logManagement")).not.toBeVisible();
+      expect(screen.getByTestId("app-page-announcement")).toHaveTextContent("Log Analytics");
+      // U1:BR1.7: Log Management's rows are still there, only hidden.
+      expect(screen.getAllByTestId("log-table-row")).toHaveLength(3);
+
+      await user.click(screen.getByRole("link", { name: "Log Management" }));
+      expect(screen.getByTestId("app-page-logManagement")).toBeVisible();
+      expect(screen.getByTestId("log-analytics-page")).not.toBeVisible();
+      expect(screen.getByTestId("app-page-announcement")).toHaveTextContent("Log Management");
+    });
+
+    it("switches with Ctrl+1 and Ctrl+2 outside macOS and Cmd+1 and Cmd+2 on macOS", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(shownView());
+      const { unmount } = render(<App locale="en" platform="Win32" />);
+      await screen.findByTestId("fetch-form");
+      fireEvent.keyDown(window, { key: "2", ctrlKey: true });
+      expect(screen.getByTestId("log-analytics-page")).toBeVisible();
+      fireEvent.keyDown(window, { key: "1", metaKey: true });
+      expect(screen.getByTestId("log-analytics-page")).toBeVisible();
+      fireEvent.keyDown(window, { key: "1", ctrlKey: true });
+      expect(screen.getByTestId("app-page-logManagement")).toBeVisible();
+      unmount();
+
+      render(<App locale="en" platform="MacIntel" />);
+      await screen.findByTestId("fetch-form");
+      fireEvent.keyDown(window, { key: "2", ctrlKey: true });
+      expect(screen.queryByTestId("log-analytics-page")).not.toBeInTheDocument();
+      fireEvent.keyDown(window, { key: "2", metaKey: true });
+      expect(screen.getByTestId("log-analytics-page")).toBeVisible();
+      fireEvent.keyDown(window, { key: "2", metaKey: true, shiftKey: true });
+      fireEvent.keyDown(window, { key: "1", metaKey: true });
+      expect(screen.getByTestId("app-page-logManagement")).toBeVisible();
+    });
+
+    it("moves the focus to the first field of the screen shown", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(shownView());
+      const user = userEvent.setup();
+      render(<App locale="en" />);
+      await screen.findByTestId("fetch-form");
+      await user.click(screen.getByRole("link", { name: "Log Analytics" }));
+      // The trigger, the first of the select's buttons (the token's × follows).
+      await waitFor(() =>
+        expect(
+          within(screen.getByTestId("log-group-multiselect")).getAllByRole("button")[0],
+        ).toHaveFocus(),
+      );
+      await user.click(screen.getByRole("link", { name: "Log Management" }));
+      await waitFor(() =>
+        expect(
+          within(screen.getByTestId("log-group-pane-filter")).getByRole("searchbox"),
+        ).toHaveFocus(),
+      );
+    });
+
+    it("keeps the navigation closed or open across switches until the app closes", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(shownView());
+      const user = userEvent.setup();
+      render(<App locale="en" platform="Win32" />);
+      await screen.findByTestId("fetch-form");
+      await user.click(screen.getByTestId("app-navigation-close-button"));
+      expect(screen.getByTestId("app-navigation-open-button")).toHaveFocus();
+      fireEvent.keyDown(window, { key: "2", ctrlKey: true });
+      expect(screen.getByTestId("log-analytics-page")).toBeVisible();
+      expect(screen.queryByTestId("app-navigation")).not.toBeInTheDocument();
+      await user.click(screen.getByTestId("app-navigation-open-button"));
+      expect(screen.getByTestId("app-navigation")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Log Analytics" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    });
+
+    it("runs a query and changes its input through the core, and shows a refused run's reason there", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(
+        connectedView({ insights: insightsView({ canRun: true }) }),
+      );
+      vi.mocked(api.runQuery).mockRejectedValue({ key: "session.busy" });
+      const user = userEvent.setup();
+      render(<App locale="en" />);
+      await screen.findByTestId("fetch-form");
+      await user.click(screen.getByRole("link", { name: "Log Analytics" }));
+      await user.click(screen.getByTestId("log-analytics-run-button"));
+      expect(api.runQuery).toHaveBeenCalledTimes(1);
+      const page = screen.getByTestId("app-page-logAnalytics");
+      expect(await within(page).findByTestId("command-error")).toHaveTextContent(
+        "A fetch is in progress.",
+      );
+      fireEvent.change(screen.getByTestId("code-editor"), {
+        target: { value: "filter @log = 'g'" },
+      });
+      expect(api.updateAnalyticsInput).toHaveBeenLastCalledWith(
+        "queryText",
+        "filter @log = 'g'",
+        0,
+      );
+    });
+  });
+
+  // ---- 261017-insights-query U1:BR7.1: the confirmation names both screens --
+
+  describe("asking before a connection change", () => {
+    const BOTH =
+      "The logs shown in Log Management and the query results in Log Analytics will be cleared. Change the connection?";
+    const pending = { proposedProfile: null, proposedRegion: "eu-west-1" };
+
+    it("says both screens' logs and results go when only the query screen shows results", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(
+        connectedView({
+          eventCount: 0,
+          pendingChange: pending,
+          insights: insightsView({
+            phase: "Done",
+            result: resultSummary({ rowCount: 2, evaluatedCount: 9 }),
+          }),
+        }),
+      );
+      render(<App locale="en" />);
+      const dialog = await screen.findByTestId("confirm-dialog-message");
+      expect(dialog).toHaveTextContent(BOTH);
+    });
+
+    it("says the same when only Log Management shows logs", async () => {
+      vi.mocked(api.getSession).mockResolvedValue(
+        connectedView({ eventCount: 3, phase: "Done", pendingChange: pending }),
+      );
+      render(<App locale="en" />);
+      const dialog = await screen.findByTestId("confirm-dialog-message");
+      expect(dialog).toHaveTextContent(BOTH);
+      expect(screen.getByRole("dialog", { name: "Change the connection?" })).toBeInTheDocument();
+    });
   });
 });

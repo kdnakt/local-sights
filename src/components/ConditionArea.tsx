@@ -165,7 +165,10 @@ export function ConditionArea({
   const zone = t(timeZoneLabelKey(session.timeZone));
   const fetching = session.phase === "Fetching";
   const dialogOpen = session.pendingChange !== null || session.settingsDialog === "Open";
-  const locked = fetching || dialogOpen;
+  // 261017-insights-query U1:BR2.3: one fetch for both screens; while Log
+  // Analytics fetches, the core refuses these fields' changes too (R-02).
+  const queryFetching = session.fetchOwner === "LogAnalytics";
+  const locked = fetching || dialogOpen || queryFetching;
   const reasonInput = {
     start: drafts.start,
     end: drafts.end,

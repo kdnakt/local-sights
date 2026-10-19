@@ -31,6 +31,14 @@ fn main() {
             "dismiss_sso_login",
             "open_sso_url",
             "cancel_fetch",
+            // 261017-insights-query U1: the Log Analytics screen.
+            "update_analytics_input",
+            "run_query",
+            "cancel_query",
+            "get_query_rows",
+            // 261017-insights-query U2: an opened row and completion.
+            "get_query_row_detail",
+            "get_completion_candidates",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

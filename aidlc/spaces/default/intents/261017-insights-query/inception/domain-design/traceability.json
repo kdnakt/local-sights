@@ -1,0 +1,319 @@
+{
+  "stage": "domain-design",
+  "upstream_ids": [
+    "FR1",
+    "FR2",
+    "FR3",
+    "FR4",
+    "FR5",
+    "FR6",
+    "FR7",
+    "FR8",
+    "FR9",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR1.7",
+    "FR1.8",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR2.5",
+    "FR2.6",
+    "FR2.7",
+    "FR2.8",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR3.7",
+    "FR3.8",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR5.5",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR6.4",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3",
+    "FR7.4",
+    "FR7.5",
+    "FR7.6",
+    "FR8.1",
+    "FR8.2",
+    "FR9.1",
+    "FR9.2",
+    "FR9.3"
+  ],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "LogAnalyticsPage, InsightsSession, QueryRunner" },
+    { "id": "FR2", "status": "OK", "target": "QueryStore, FetchCoordinator, QueryRunner" },
+    { "id": "FR3", "status": "OK", "target": "QueryParser, QueryEvaluator" },
+    { "id": "FR4", "status": "OK", "target": "EventFieldReader" },
+    { "id": "FR5", "status": "OK", "target": "QueryParser, QueryEvaluator" },
+    { "id": "FR6", "status": "OK", "target": "QueryParser, InsightsSession, QueryEditor" },
+    { "id": "FR7", "status": "OK", "target": "QueryResultTable, QueryEvaluator" },
+    { "id": "FR8", "status": "N/A", "target": "README の記述で、書くコードの部品ではない（作る段階で README を直す）" },
+    { "id": "FR9", "status": "OK", "target": "QueryEditor, EventFieldReader, QueryParser" },
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "AppNavigation"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "LogAnalyticsPage"
+    },
+    {
+      "id": "FR1.3",
+      "status": "OK",
+      "target": "LogGroupMultiselect"
+    },
+    {
+      "id": "FR1.4",
+      "status": "OK",
+      "target": "InsightsSession"
+    },
+    {
+      "id": "FR1.5",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR1.6",
+      "status": "OK",
+      "target": "InsightsSession"
+    },
+    {
+      "id": "FR1.7",
+      "status": "OK",
+      "target": "QueryRunner"
+    },
+    {
+      "id": "FR1.8",
+      "status": "OK",
+      "target": "AppShell"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "QueryStore"
+    },
+    {
+      "id": "FR2.2",
+      "status": "OK",
+      "target": "FetchCoordinator"
+    },
+    {
+      "id": "FR2.3",
+      "status": "OK",
+      "target": "QueryStore"
+    },
+    {
+      "id": "FR2.4",
+      "status": "OK",
+      "target": "FetchCoordinator"
+    },
+    {
+      "id": "FR2.5",
+      "status": "OK",
+      "target": "FetchCoordinator"
+    },
+    {
+      "id": "FR2.6",
+      "status": "OK",
+      "target": "FetchCoordinator"
+    },
+    {
+      "id": "FR2.7",
+      "status": "OK",
+      "target": "QueryStore"
+    },
+    {
+      "id": "FR2.8",
+      "status": "OK",
+      "target": "QueryStore"
+    },
+    {
+      "id": "FR3.1",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR3.2",
+      "status": "OK",
+      "target": "QueryEvaluator"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "QueryEvaluator"
+    },
+    {
+      "id": "FR3.4",
+      "status": "OK",
+      "target": "QueryEvaluator"
+    },
+    {
+      "id": "FR3.5",
+      "status": "OK",
+      "target": "QueryEvaluator"
+    },
+    {
+      "id": "FR3.6",
+      "status": "OK",
+      "target": "QueryEvaluator"
+    },
+    {
+      "id": "FR3.7",
+      "status": "OK",
+      "target": "QueryEvaluator"
+    },
+    {
+      "id": "FR3.8",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR4.1",
+      "status": "OK",
+      "target": "EventFieldReader"
+    },
+    {
+      "id": "FR4.2",
+      "status": "OK",
+      "target": "EventFieldReader"
+    },
+    {
+      "id": "FR4.3",
+      "status": "OK",
+      "target": "EventFieldReader"
+    },
+    {
+      "id": "FR4.4",
+      "status": "OK",
+      "target": "EventFieldReader"
+    },
+    {
+      "id": "FR4.5",
+      "status": "OK",
+      "target": "EventFieldReader"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR5.4",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR5.5",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR6.1",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR6.2",
+      "status": "OK",
+      "target": "QueryParser"
+    },
+    {
+      "id": "FR6.3",
+      "status": "OK",
+      "target": "InsightsSession"
+    },
+    {
+      "id": "FR6.4",
+      "status": "OK",
+      "target": "InsightsSession"
+    },
+    {
+      "id": "FR7.1",
+      "status": "OK",
+      "target": "QueryResultTable"
+    },
+    {
+      "id": "FR7.2",
+      "status": "OK",
+      "target": "QueryResultTable"
+    },
+    {
+      "id": "FR7.3",
+      "status": "OK",
+      "target": "QueryResultTable"
+    },
+    {
+      "id": "FR7.4",
+      "status": "OK",
+      "target": "QueryResultTable"
+    },
+    {
+      "id": "FR7.5",
+      "status": "OK",
+      "target": "QueryResultTable"
+    },
+    {
+      "id": "FR7.6",
+      "status": "OK",
+      "target": "QueryRunner"
+    },
+    {
+      "id": "FR8.1",
+      "status": "N/A",
+      "target": "README の記述で、書くコードの部品ではない（作る段階で README を直す）"
+    },
+    {
+      "id": "FR8.2",
+      "status": "N/A",
+      "target": "README の記述で、書くコードの部品ではない（作る段階で README を直す）"
+    },
+    {
+      "id": "FR9.1",
+      "status": "OK",
+      "target": "QueryEditor"
+    },
+    {
+      "id": "FR9.2",
+      "status": "OK",
+      "target": "QueryEditor"
+    },
+    {
+      "id": "FR9.3",
+      "status": "OK",
+      "target": "LogAnalyticsPage"
+    }
+  ]
+}

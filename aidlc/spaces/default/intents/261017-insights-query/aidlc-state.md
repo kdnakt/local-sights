@@ -132,7 +132,7 @@ Per unit: [TBD]
 - [ ] nfr-design — SKIP
 - [ ] infrastructure-design — SKIP
 - [x] code-generation — EXECUTE
-- [-] build-and-test — EXECUTE
+- [?] build-and-test — EXECUTE
 - [ ] ci-pipeline — SKIP
 
 ### OPERATION PHASE
@@ -149,7 +149,7 @@ Per unit: [TBD]
 - **Current Stage**: build-and-test
 - **Next Stage**: none
 - **Status**: Running
-- **Last Updated**: 2026-10-19T03:33:22Z
+- **Last Updated**: 2026-10-19T12:13:44Z
 
 - **Construction Autonomy Mode**: autonomous
 

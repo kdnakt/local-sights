@@ -79,7 +79,7 @@
 | T-NFR12 | requirements.md NFR12、project.md Forbidden | 外部に何も送らない | 足した行に外部への送信はない（一致したのは関数の名前 `finish_fetch`・`report_fetch` だけ） | security-test-instructions.md の差分の確かめ | build-and-test | Met |
 | T-SM1 | requirements.md SM1・NFR3、U4 BR3.3 | 互換を確かめる 20 本のクエリで、コンソールとアプリの結果が同じ（終了コード 0） | 23 本すべて Same（3 回目、2026-10-19） | 下の 15（`insights-export.sh` → `compat_check`） | 開発者の手元。この計画に後の段はない | Met |
 | T-WS-MAC | team.md Walking Skeleton の 2・3、U1〜U3 code-summary | macOS で、実際の AWS で取得してクエリの結果が出る。取り足し・キャッシュ・接続の切り替え・ログの画面の振る舞いが前と同じ | 開発者の Mac でひととおり確かめて問題なし（複数のロググループを含む） | 下の 9（開発者の報告、2026-10-18） | 開発者の手元 | Met |
-| T-WS-WIN | team.md Walking Skeleton の 2・3 | Windows 11（CI で作ったインストーラで入れたアプリ）で同じことができる | まだ確かめていない | 同上 | 開発者の手元 | Unverified |
+| T-WS-WIN | team.md Walking Skeleton の 2・3 | Windows 11（CI で作ったインストーラで入れたアプリ）で同じことができる | 確かめていない。開発者の答えで、この作業では飛ばした（2026-10-19、下の 7） | — | 開発者の手元 | Unverified |
 | T-ACE | U2 code-generation の review R-04、FR9.2 | 本物の Ace で、色分け・補完の候補・エラーの下線と行の横の印が出る | 開発者の Mac で、補完と色分けに問題なし。ひととおりの確認で問題なし | 下の 9（開発者の報告、2026-10-18） | 開発者の手元 | Met |
 
 ## 6. 失敗の扱い
@@ -93,6 +93,8 @@
 2026-10-18：開発者の答えは「PR作ってCI結果みよう」。PR を作り、macOS・Windows の CI の結果で T-NFR8-OS を確かめる。結果が出たらこの表を更新する。手元の確かめ（T-SM1、T-WS-MAC、T-WS-WIN、T-ACE）は、まだ残っている。
 
 2026-10-18：CI の結果（下の 8）を見たあと、残り 4 つの扱いについて、開発者の答えは「Abort」（ここで止め、手元で確かめたあとに続きから再開する）。Build and Test の承認は開いていない。再開したら、手元の確かめの結果でこの表を更新する。U4 のコードのレビューの R-01〜R-05 も残っている。
+
+2026-10-19：互換の確かめは 3 回目で 23 本すべて Same になり、T-SM1 は Met（下の 15）。残る T-WS-WIN（Windows 11）について、開発者の答えは「今回は飛ばす」。T-WS-WIN は `Unverified` のまま残し、開発者が受け入れた。Windows の CI（Tauri app (windows-latest) と Rust のテスト）は通っている（下の 8、T-NFR8-OS）。
 
 ## 8. PR の CI（kdnakt/local-sights#34、コミット `4114fb2`）
 

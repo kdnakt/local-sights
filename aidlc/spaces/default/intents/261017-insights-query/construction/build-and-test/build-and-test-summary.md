@@ -44,16 +44,17 @@
 | T-DEPS | team.md Code Style | npm audit と cargo-deny が通る | 通った | test-results.md の 1 | build-and-test | Met |
 | T-NFR5 | NFR5 | 読み取りの 3 つの API だけ | 新しい API なし。テストが通った | security-test-instructions.md | build-and-test | Met |
 | T-NFR12 | NFR12 | 外部に何も送らない | 足した行に送信なし | security-test-instructions.md | build-and-test | Met |
-| T-SM1 | SM1・NFR3、U4 BR3.3 | 20 本のクエリでコンソールとアプリの結果が同じ | 未実施 | U4 code-summary の手順 | 開発者の手元 | Unverified |
+| T-SM1 | SM1・NFR3、U4 BR3.3 | 互換を確かめるクエリでコンソールとアプリの結果が同じ | 23 本すべて Same（3 回目、Loop-back 2・3 のあと） | test-results.md の 11・13・15 | 開発者の手元 | Met |
 | T-WS-MAC | team.md Walking Skeleton | macOS で実際の AWS で取得して結果が出る | 開発者の Mac でひととおり問題なし | test-results.md の 9 | 開発者の手元 | Met |
-| T-WS-WIN | team.md Walking Skeleton | Windows 11 で同じ | 未実施 | U3 code-summary | 開発者の手元 | Unverified |
+| T-WS-WIN | team.md Walking Skeleton | Windows 11 で同じ | 確かめていない（開発者の答えで飛ばした、2026-10-19） | test-results.md の 7 | 開発者の手元 | Unverified |
 | T-ACE | U2 review R-04、FR9.2 | 本物の Ace で色分け・補完・エラーの印が出る | 開発者の Mac で問題なし | test-results.md の 9 | 開発者の手元 | Met |
 
 ## 4. 準備の具合
 
 - **ビルドの準備**：できている。
 - **テストの準備**：このコンテナで流せるものはすべて通った。
-- **配る準備**：まだ。上の `Unverified` 4 つ（コンソールとの互換、2 つの OS での薄い一本、本物の Ace）が残っている。どれもこのコンテナでは流せない。macOS・Windows の CI は PR kdnakt/local-sights#34 で通った。IB-11 が終わるまで `v0.2.0` のタグは付けない（team.md Deployment）。
+- **配る準備**：残る `Unverified` は T-WS-WIN（Windows 11 の手元の確かめ）だけで、開発者がこの作業では飛ばすと決めた。macOS・Windows の CI は PR kdnakt/local-sights#34 で通っている。IB-11 が終わるまで `v0.2.0` のタグは付けない（team.md Deployment）。`v0.2.0` を配る前に Windows 11 で確かめるのがよい。
+- **Loop-back**：3 回（U4 のスクリプトの指摘、互換の確かめの違い 2 回）。記録は test-results.md の Loop-Back Log。上限に達した。
 
 ## 5. 分かっている限界と残り
 
@@ -70,13 +71,14 @@
   - Minor R-04：CLI の標準エラーをクエリの ID に混ぜている。
   - Minor R-05：U4 の code-summary の書式の記述が古い（store.rs は U4 で直した）。
   - Minor R-06：スクリプトのテストは Linux の CI だけで流れ、macOS の bash 3.2 では未確認。
-  - これらは互換の確かめ（T-SM1）の信頼に関わるため、手元で流す前に直すのがよい。
+  - R-01〜R-05 は Loop-back 1 で直した。R-06 は手元の互換の確かめ（macOS の bash 3.2）で動くことを確かめた。
 - **U3 の残り**（Minor）：`read_overlaps` がキャッシュのファイルを丸ごと読む、接続を変えるまで保持が増え続ける、`holdings_epoch` を使っていない。
-- **仮の決まり**（U2）：型の比べ方と AND・OR・NOT などの大文字は、コンソールでまだ確かめていない。互換の確かめ（p01〜p09）で比べる。
+- **仮の決まり**（U2）：互換の確かめ（p01〜p12）でコンソールと合わせた。真偽値は 1／0、数として読めない文字列の大小は合わない、項目どうしの比べに対応し項目がないときは合わない、`limit 0` は 0 行。左辺の項目がないときの項目どうしの比べは、まだ仮の決まり。
+- **レビューで持ち越した Minor**：`DEFAULT_RESULT_LIMIT` の説明と U2 の code-summary の部品の表に `limit 0` の古い記述が残る。U4 の確認用プログラムは `limit 0` を絞りなしと扱う（比べには影響しない）。`parse` の正規表現の中の `limit` はスクリプトがコマンドとみなす。
 - **次の版の改善の候補（開発者の気づき、2026-10-18）**：コンソールは検索中に結果を少しずつ表示するが、このアプリは終わってから出す。開発者の答えで次の版に回した（`sort`・`limit` があると途中の結果は並びが変わる点も考える）。
 - **今後の改善の候補（開発者の気づき、2026-10-18）**：リージョンを選ぶ欄に名前（東京、バージニア北部など）が出ず、検索もできない。前からある接続の画面のこと。
 - **JSON の数**：CloudTrail には JSON の数の項目がほとんどなく、JSON の数の比べは確かめられないまま残る（U4 R-04）。
 
 ## 6. 結果
 
-失敗：落ちたコマンドと `Not Met` の目標はないが、`Unverified` が 4 つある。開発者の判断は `test-results.md` の 7 に記録する。
+失敗：落ちたコマンドと `Not Met` の目標はない。`Unverified` は T-WS-WIN の 1 つで、開発者がこの作業では飛ばすと決めた（`test-results.md` の 7）。

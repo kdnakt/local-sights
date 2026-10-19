@@ -5,6 +5,7 @@
 - Builds: クエリの言語の残り（JSON の項目、fields・sort・limit、not (…)、エラーの下線と印、可変の列と打ち切りの表示、行を開いた項目の一覧、README の対応範囲、書く手助け）と、U1 から回した 3 つの直し
 - Touches: `crates/local-sights-core/src/query/`（plan・parser・fields・evaluator・runner）、`insights_session.rs`、`src-tauri/src/lib.rs`・`build.rs`・capabilities、`src/api.ts`・`QueryEditor.tsx`・`QueryResultTable.tsx`・`LogAnalyticsPage.tsx`・`i18n/messages.ts`、`README.md`
 - Tests: Rust 約 60 件（部品ごとに 5〜8 件。純粋なロジックはテスト先行、コンソールで確かめた結果をそのまま例にする）と Vitest 約 25 件、速さの測り（無視つきのテスト）、既存のテストはすべて通したまま
+- Loop-back 2（Build and Test のコンソールとの互換の確かめから戻った直し、2026-10-19）: Step 19〜23 で、数字でない文字列の大小の比べ、真偽値の出し方（1／0）、項目どうしの比べを、コンソールに合わせる。触るのは `query/` の parser・plan・evaluator と、その説明（README・エラーの文言）と U2 の記録
 
 ## 上流と前提
 
@@ -36,36 +37,46 @@
 
 ### 準備
 
-- [x] **Step 1. 構成**：`query/` に新しいファイルは足さず、今のファイルを広げる（plan・parser・fields・evaluator・runner）。自然順の比べ方だけは `query/natural.rs` に分ける。新しい Rust のクレートは足さない（JSON は今の `serde_json`）。画面側の新しい依存は足さない（色分けと補完は Ace の仕組みを使う）。
-- [x] **Step 2. テストの道具を確かめる**：`unit-test-instructions.md` の U2 の範囲のコマンドが今のリポジトリで動くことを確かめる。
+- [ ] **Step 1. 構成**：`query/` に新しいファイルは足さず、今のファイルを広げる（plan・parser・fields・evaluator・runner）。自然順の比べ方だけは `query/natural.rs` に分ける。新しい Rust のクレートは足さない（JSON は今の `serde_json`）。画面側の新しい依存は足さない（色分けと補完は Ace の仕組みを使う）。
+- [ ] **Step 2. テストの道具を確かめる**：`unit-test-instructions.md` の U2 の範囲のコマンドが今のリポジトリで動くことを確かめる。
 
 ### 純粋なロジック（テストを先に書いてから実装する）
 
-- [x] **Step 3. 読み取りの拡張（QueryParser）**：`plan.rs` に Command（Filter・Fields・Sort・Limit）・SortKey・JSON の FieldRef を足し、条件の木のどの部分にも Span を持たせる（BR10.3）。`parser.rs` に fields・sort・limit、`not (…)` だけの否定と項目の直後の `not like`・`not in`（BR2.4、R-07）、and > or（BR2.5）、JSON の項目の名前とバッククォート（BR1.1、BR1.3）、数字だけの区切りは Unsupported（R-06）、limit の 0〜100,000 と 100,001 以上・負の数・小数の Syntax（BR5.1）、`limit any`・`fields … as`・`display` などの Unsupported（BR2.1）を足す。エラーは種類・文言の鍵・言葉・行・列・長さを返す（BR2.2、BR2.3）。先にテスト（8 件ほど）：Q1a の 3a・3c・3d の大文字の言葉（R-03）、4a〜4c の優先順位、3b・4d・4e・5e の `not` の書き方は Syntax、`not (a and b)` は読める、`a.b` と `` `user.id` `` と `` a.`b.c` ``、`a.0` は Unsupported、`limit 100001` は Syntax、エラーの場所と長さ。
-- [x] **Step 4. JSON の項目（EventFieldReader）**：`fields.rs` に、メッセージを JSON のオブジェクトとして読み、道筋で値を取り出す関数と、値の種類（Missing・Text・Number・Boolean）を足す（BR1.2〜BR1.4）。null・オブジェクト・配列は Missing。読めない・壊れた・配列・文字列だけのメッセージは JSON の項目なし。項目の名前の収集（BR1.7、名前に `.` などを含むキーはバッククォートつき、R-09）。先にテスト（8 件ほど）：要件の受け入れ基準の `{"level":"error","http":{"status":500}}`、壊れた JSON、配列だけのメッセージ、null と入れ子のオブジェクトは Missing、真偽値、キーに `.` を含む名前、名前の収集の上限（500 個）と並び。
-- [x] **Step 5. 型の比べ方と自然順**：`evaluator.rs` に BR1.5（ない項目）と BR1.6（型の違う値）の比べ方を、`natural.rs` に BR4.2・BR4.3 の自然順（数の側・数でない側の分け方は R-05 のとおり）を書く。先にテスト（10 件ほど）：Q1a の 5c・5d・5f・5g（ない項目）、6b〜6h（型の違う値。6a は起きないことの説明だけ）、資料の自然順の例（`!:`・`#`・`*%04`・`0#`・`5A`・`111A`・`2345_`・`@`・`@_`・`A`・`A9876fghj`・`a12345hfh`・`0`・`01`・`1`・`2`・`3`）、ない値は昇順で先・降順で後ろ（5h・5i）、`sort @timestamp` は数として並ぶ。確かめていない組のテストには「仮の決まり」と名前を付ける（R-01）。
-- [x] **Step 6. 命令を順に当てはめる評価（QueryEvaluator）**：`evaluator.rs` の評価を、最初の並びを決まった並び（@timestamp の降順、同じ時刻はロググループ・ストリーム・順番の昇順、BR4.4）にしてから、命令を順に当てはめる形にする（BR3.1）。filter は 10,000 件ずつの区切りで、1 回の当てはめの中で 1 つのイベントの JSON は 1 回だけ読む（R-02）。sort は鍵を区切りごとに取り出してから鍵だけで安定に並べる（R-02）。fields の列（BR3.2、BR3.3）、limit と既定の上限 10,000（BR5.1、BR5.2、`limit 0` は R-04 のとおり）、最後に結果の行だけを対象に値のない列を外す（BR3.4、R-02）。QueryResult に列・matchedCount（R-08 の定義）・truncatedAt を足す。先にテスト（8 件ほど）：sort なしは降順（Q1b の 1d）、`sort @timestamp` は昇順（1a）、`sort … desc`、同じ値の並び、`limit 5 | filter …` の順、fields を 2 回、値のない列は出さない（5j）、既定の上限で切ると truncatedAt、`filter a | limit 5 | filter b` の matchedCount、区切りごとに止める信号で止まる。
-- [x] **Step 7. 行の値の読み出しの判断**：`evaluator.rs` の行の範囲の読み出しに、列ごとの値（BR7.1 の書き方）と、1 行の項目と値の一覧（決まった 4 つ、JSON の項目の名前の順、BR7.3、R-09）を足す。先にテスト（5 件ほど）：列の値、値のないセルは空、数と真偽値の書き方、一覧の並び、runId・epoch が違えば空。
+- [ ] **Step 3. 読み取りの拡張（QueryParser）**：`plan.rs` に Command（Filter・Fields・Sort・Limit）・SortKey・JSON の FieldRef を足し、条件の木のどの部分にも Span を持たせる（BR10.3）。`parser.rs` に fields・sort・limit、`not (…)` だけの否定と項目の直後の `not like`・`not in`（BR2.4、R-07）、and > or（BR2.5）、JSON の項目の名前とバッククォート（BR1.1、BR1.3）、数字だけの区切りは Unsupported（R-06）、limit の 0〜100,000 と 100,001 以上・負の数・小数の Syntax（BR5.1）、`limit any`・`fields … as`・`display` などの Unsupported（BR2.1）を足す。エラーは種類・文言の鍵・言葉・行・列・長さを返す（BR2.2、BR2.3）。先にテスト（8 件ほど）：Q1a の 3a・3c・3d の大文字の言葉（R-03）、4a〜4c の優先順位、3b・4d・4e・5e の `not` の書き方は Syntax、`not (a and b)` は読める、`a.b` と `` `user.id` `` と `` a.`b.c` ``、`a.0` は Unsupported、`limit 100001` は Syntax、エラーの場所と長さ。
+- [ ] **Step 4. JSON の項目（EventFieldReader）**：`fields.rs` に、メッセージを JSON のオブジェクトとして読み、道筋で値を取り出す関数と、値の種類（Missing・Text・Number・Boolean）を足す（BR1.2〜BR1.4）。null・オブジェクト・配列は Missing。読めない・壊れた・配列・文字列だけのメッセージは JSON の項目なし。項目の名前の収集（BR1.7、名前に `.` などを含むキーはバッククォートつき、R-09）。先にテスト（8 件ほど）：要件の受け入れ基準の `{"level":"error","http":{"status":500}}`、壊れた JSON、配列だけのメッセージ、null と入れ子のオブジェクトは Missing、真偽値、キーに `.` を含む名前、名前の収集の上限（500 個）と並び。
+- [ ] **Step 5. 型の比べ方と自然順**：`evaluator.rs` に BR1.5（ない項目）と BR1.6（型の違う値）の比べ方を、`natural.rs` に BR4.2・BR4.3 の自然順（数の側・数でない側の分け方は R-05 のとおり）を書く。先にテスト（10 件ほど）：Q1a の 5c・5d・5f・5g（ない項目）、6b〜6h（型の違う値。6a は起きないことの説明だけ）、資料の自然順の例（`!:`・`#`・`*%04`・`0#`・`5A`・`111A`・`2345_`・`@`・`@_`・`A`・`A9876fghj`・`a12345hfh`・`0`・`01`・`1`・`2`・`3`）、ない値は昇順で先・降順で後ろ（5h・5i）、`sort @timestamp` は数として並ぶ。確かめていない組のテストには「仮の決まり」と名前を付ける（R-01）。
+- [ ] **Step 6. 命令を順に当てはめる評価（QueryEvaluator）**：`evaluator.rs` の評価を、最初の並びを決まった並び（@timestamp の降順、同じ時刻はロググループ・ストリーム・順番の昇順、BR4.4）にしてから、命令を順に当てはめる形にする（BR3.1）。filter は 10,000 件ずつの区切りで、1 回の当てはめの中で 1 つのイベントの JSON は 1 回だけ読む（R-02）。sort は鍵を区切りごとに取り出してから鍵だけで安定に並べる（R-02）。fields の列（BR3.2、BR3.3）、limit と既定の上限 10,000（BR5.1、BR5.2、`limit 0` は R-04 のとおり）、最後に結果の行だけを対象に値のない列を外す（BR3.4、R-02）。QueryResult に列・matchedCount（R-08 の定義）・truncatedAt を足す。先にテスト（8 件ほど）：sort なしは降順（Q1b の 1d）、`sort @timestamp` は昇順（1a）、`sort … desc`、同じ値の並び、`limit 5 | filter …` の順、fields を 2 回、値のない列は出さない（5j）、既定の上限で切ると truncatedAt、`filter a | limit 5 | filter b` の matchedCount、区切りごとに止める信号で止まる。
+- [ ] **Step 7. 行の値の読み出しの判断**：`evaluator.rs` の行の範囲の読み出しに、列ごとの値（BR7.1 の書き方）と、1 行の項目と値の一覧（決まった 4 つ、JSON の項目の名前の順、BR7.3、R-09）を足す。先にテスト（5 件ほど）：列の値、値のないセルは空、数と真偽値の書き方、一覧の並び、runId・epoch が違えば空。
 
 ### 境界の層（実装してからテストを書いて実行する）
 
-- [x] **Step 8. 実行の流れ（QueryRunner）**：`runner.rs` の評価の段を、Step 6 の評価に置き換える。区切りごとの進み具合と止める信号は U1 のまま。評価が答えを返さずに終わったら、評価の失敗として知らせる（BR10.2）。取得が終わったら、JSON の項目の名前を集める（BR1.7、Should）。そのあとテスト（6 件ほど、U1 の偽のゲートウェイを使う）：JSON の項目と sort と limit を使うクエリが最後まで進む、並べ替えの区切りの間の [Cancel] で止まる、評価の失敗が FetchFailed ではなく評価の失敗になる、名前の収集。
-- [x] **Step 9. クエリの画面の状態（InsightsSession）**：EvaluationFailed の段階を足し、前の結果を消す（BR10.2、R-08）。評価の終わりの反映で [Cancel] の印が立っていれば、結果を捨てて Cancelled にする（最後の区切りのあと・保持が 0 件のときを含む、BR10.1）。SessionView に列・件数・matchedCount・打ち切りを足す。そのあとテスト（6 件ほど）：最後の区切りのあとの [Cancel]、保持が 0 件のときの [Cancel]、EvaluationFailed で前の結果が消える、打ち切りの要約、接続を変えると EvaluationFailed から Idle に戻る。
+- [ ] **Step 8. 実行の流れ（QueryRunner）**：`runner.rs` の評価の段を、Step 6 の評価に置き換える。区切りごとの進み具合と止める信号は U1 のまま。評価が答えを返さずに終わったら、評価の失敗として知らせる（BR10.2）。取得が終わったら、JSON の項目の名前を集める（BR1.7、Should）。そのあとテスト（6 件ほど、U1 の偽のゲートウェイを使う）：JSON の項目と sort と limit を使うクエリが最後まで進む、並べ替えの区切りの間の [Cancel] で止まる、評価の失敗が FetchFailed ではなく評価の失敗になる、名前の収集。
+- [ ] **Step 9. クエリの画面の状態（InsightsSession）**：EvaluationFailed の段階を足し、前の結果を消す（BR10.2、R-08）。評価の終わりの反映で [Cancel] の印が立っていれば、結果を捨てて Cancelled にする（最後の区切りのあと・保持が 0 件のときを含む、BR10.1）。SessionView に列・件数・matchedCount・打ち切りを足す。そのあとテスト（6 件ほど）：最後の区切りのあとの [Cancel]、保持が 0 件のときの [Cancel]、EvaluationFailed で前の結果が消える、打ち切りの要約、接続を変えると EvaluationFailed から Idle に戻る。
 
 ### Tauri のコマンドと画面（実装してからテストを書いて実行する）
 
-- [x] **Step 10. Tauri のコマンド**：`get_query_rows` に列の値を足し、`get_query_row_detail` と `get_completion_candidates`（Should）を足す（functional-spec の 3 章）。build.rs・capabilities・generate_handler にも足し、Tauri のビルドが作る権限ファイルもリポジトリに置く。評価の失敗の知らせを段階に反映する（U1 の回復の処理が「GetLogEvents の失敗」にしないように直す、BR10.2）。そのあとテスト（4 件ほど）：コマンドの登録と許可の一致、行の値の形、行の一覧の形、評価の失敗の段階。
-- [x] **Step 11. 画面とアプリの橋渡し（ApiBridge）**：`src/api.ts` に新しいコマンドの関数と型（列、値、打ち切り、EvaluationFailed、補完の候補）を足す。
-- [x] **Step 12. 結果の表とエラーの印（QueryResultTable・QueryEditor）**：`QueryResultTable.tsx` を可変の列にし、件数と「Showing N」（BR5.3、BR7.2）、行を開いた項目と値の一覧（BR7.3、R-09）を出す。見えている行だけを読む作りは U1 のまま（BR7.4）。`QueryEditor.tsx` に、エラーの範囲の下線と行番号の横の印を出し、文を書き換えたら消す（BR6.1）。EvaluationFailed の表示（BR10.2）。`i18n/messages.ts` に英語と日本語の文言を足す。そのあとテスト（12 件ほど）：列が fields に合う、既定の列、件数と打ち切り、行を開いた一覧、値のないセル、エラーの下線と印、書き換えで消える、EvaluationFailed の文言と前の結果が消える。
-- [x] **Step 13. 書く手助け（Should：QueryEditor・LogAnalyticsPage）**：補完（命令・言葉・決まった項目・JSON の項目の名前、Ctrl+Space、BR9.1）、構文の色分け（命令・項目・文字列・数・正規表現、BR9.2）、例のクエリ（5 つほど、書きかけの文があれば置き換える前に確かめる、BR9.3）。そのあとテスト（8 件ほど。CodeEditor は U1 と同じ差し替えを使い、補完と色分けの規則は Ace に渡す前の純粋な関数で確かめる）：候補の中身、まだ取得していなければ JSON の名前を出さない、色分けの言葉の分け方、例のクエリの置き換えと確認。
+- [ ] **Step 10. Tauri のコマンド**：`get_query_rows` に列の値を足し、`get_query_row_detail` と `get_completion_candidates`（Should）を足す（functional-spec の 3 章）。build.rs・capabilities・generate_handler にも足し、Tauri のビルドが作る権限ファイルもリポジトリに置く。評価の失敗の知らせを段階に反映する（U1 の回復の処理が「GetLogEvents の失敗」にしないように直す、BR10.2）。そのあとテスト（4 件ほど）：コマンドの登録と許可の一致、行の値の形、行の一覧の形、評価の失敗の段階。
+- [ ] **Step 11. 画面とアプリの橋渡し（ApiBridge）**：`src/api.ts` に新しいコマンドの関数と型（列、値、打ち切り、EvaluationFailed、補完の候補）を足す。
+- [ ] **Step 12. 結果の表とエラーの印（QueryResultTable・QueryEditor）**：`QueryResultTable.tsx` を可変の列にし、件数と「Showing N」（BR5.3、BR7.2）、行を開いた項目と値の一覧（BR7.3、R-09）を出す。見えている行だけを読む作りは U1 のまま（BR7.4）。`QueryEditor.tsx` に、エラーの範囲の下線と行番号の横の印を出し、文を書き換えたら消す（BR6.1）。EvaluationFailed の表示（BR10.2）。`i18n/messages.ts` に英語と日本語の文言を足す。そのあとテスト（12 件ほど）：列が fields に合う、既定の列、件数と打ち切り、行を開いた一覧、値のないセル、エラーの下線と印、書き換えで消える、EvaluationFailed の文言と前の結果が消える。
+- [ ] **Step 13. 書く手助け（Should：QueryEditor・LogAnalyticsPage）**：補完（命令・言葉・決まった項目・JSON の項目の名前、Ctrl+Space、BR9.1）、構文の色分け（命令・項目・文字列・数・正規表現、BR9.2）、例のクエリ（5 つほど、書きかけの文があれば置き換える前に確かめる、BR9.3）。そのあとテスト（8 件ほど。CodeEditor は U1 と同じ差し替えを使い、補完と色分けの規則は Ace に渡す前の純粋な関数で確かめる）：候補の中身、まだ取得していなければ JSON の名前を出さない、色分けの言葉の分け方、例のクエリの置き換えと確認。
 
 ### 説明と仕上げ
 
-- [x] **Step 14. README**：対応範囲の一覧を短く書き、今の動きと食い違う記述（「streams are read one after another」など）を直す（BR8.1）。
-- [x] **Step 15. 手元の確認用プログラム**：`fetch_check.rs` の `--query` が、fields・sort・limit と JSON の項目を使うクエリでも、列と件数と先頭の行を出すようにする。
-- [x] **Step 16. 全体の確かめ**：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`npm run build` を手元で通す。既存のテストとログ管理の画面の速さのテストが今と同じに通ることを確かめる。
-- [x] **Step 17. 速さの測り（NFR1、OQ3）**：取得済み 10 万件と 100 万件で、filter だけ、JSON の項目を使う filter、JSON の項目の sort、fields・sort・limit を合わせたクエリの評価の時間を、無視つきのテスト（`--ignored`、`--release`）で測る。並べ替えの間に [Cancel] が効くまでの遅れも測る（R-02）。結果を `code-summary.md` に記録する。合否の数値は、この結果を見て Build and Test で人と決める（決めた数値は下げない）。
-- [x] **Step 18. 記録**：`code-summary.md`（仮の決まりの一覧と U4 に引き継ぐ確かめ：R-01・R-03・R-04、速さの測りの結果を含む）、`traceability.json`（BR1.1〜BR10.3 をそれぞれの実装かテストのファイルに）、`source-manifest.json` を書く。
+- [ ] **Step 14. README**：対応範囲の一覧を短く書き、今の動きと食い違う記述（「streams are read one after another」など）を直す（BR8.1）。
+- [ ] **Step 15. 手元の確認用プログラム**：`fetch_check.rs` の `--query` が、fields・sort・limit と JSON の項目を使うクエリでも、列と件数と先頭の行を出すようにする。
+- [ ] **Step 16. 全体の確かめ**：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run`、`npm run build` を手元で通す。既存のテストとログ管理の画面の速さのテストが今と同じに通ることを確かめる。
+- [ ] **Step 17. 速さの測り（NFR1、OQ3）**：取得済み 10 万件と 100 万件で、filter だけ、JSON の項目を使う filter、JSON の項目の sort、fields・sort・limit を合わせたクエリの評価の時間を、無視つきのテスト（`--ignored`、`--release`）で測る。並べ替えの間に [Cancel] が効くまでの遅れも測る（R-02）。結果を `code-summary.md` に記録する。合否の数値は、この結果を見て Build and Test で人と決める（決めた数値は下げない）。
+- [ ] **Step 18. 記録**：`code-summary.md`（仮の決まりの一覧と U4 に引き継ぐ確かめ：R-01・R-03・R-04、速さの測りの結果を含む）、`traceability.json`（BR1.1〜BR10.3 をそれぞれの実装かテストのファイルに）、`source-manifest.json` を書く。
+
+### Loop-back 2：コンソールとの互換の確かめの違いの直し
+
+Build and Test（`construction/build-and-test/test-results.md` の 11 と Loop-Back Log の Loop-back 2）から戻った直し。開発者のコンソールで CloudTrail のロググループを使った確かめの結果に合わせて、U2 の仮の決まり（BR1.6 など）を直す。設計書は書き換えず、この計画の手順として直す（project.md Corrections）。
+
+- [ ] **Step 19. 数字でない文字列の大小の比べ（p03）**：`<`・`<=`・`>`・`>=` で、両辺の値がどちらも数として読めない文字列のときは、条件に合わないとする（コンソールで `eventName > "M"` は 0 行だった）。片方だけが数として読めるときの今の扱いは変えない。先にテスト：`eventName > "M"` は合わない、`eventVersion > 1.05`（数字だけの文字列と数）は今のとおり合う、`=`・`!=` は今のとおり。仮の決まりのテスト（`provisional_…`）のうち、この組のものは確かめた決まりとして名前と中身を直す。
+- [ ] **Step 20. 真偽値の出し方（p04）**：JSON の真偽値を、結果の一覧の値と行を開いた一覧で `true` → `1`、`false` → `0` と出す（BR7.1 の書き方を直す。開発者の答え「コンソールに合わせる」）。比べ（`readOnly = "true"` が合うこと）と like・`=~` で見る文字は今のまま変えない（コンソールで `readOnly = "true"` は 830 行合った）。false が 0 になるかは次の互換の確かめで確かめるため、テストの名前に仮の決まりと書く。先にテスト：一覧の値が 1・0 になる、`readOnly = "true"` は今のとおり合う。
+- [ ] **Step 21. 項目どうしの比べ（p05）**：比べの右辺に引用符のない言葉（`true`・`false` を含む）や項目の道筋（`a.b`、`@logStream` など）を書いたとき、対応外のエラー（`query.unsupported.fieldComparison`）にせず、右辺も項目として読み、両辺の項目の値を比べる（開発者の答え「項目どうしの比べに対応する」）。比べ方は値と値の比べ（BR1.6、Step 19 の直しを含む）と同じにする。どちらかの項目がないときは、左辺がないときの決まり（BR1.5：`=`・`<` などは合わない、`!=` は合う）と同じに扱い、仮の決まりと書く。`in`・`like`・`=~` の右辺は今のまま（項目は書けない）。先にテスト：`readOnly = true`（`true` という項目がない）は 0 行、`a = b` で値が同じ行だけ合う、`a != b`、`a < b`（数）、片方がない行、`@logStream = @log` のような決まった項目どうし、`toMillis(@timestamp)` を右辺に書く形。読み取りのテスト：今までエラーにしていた形がエラーにならず、項目どうしの比べとして読める。
+- [ ] **Step 22. 説明とエラーの文言**：README の対応範囲の一覧に「項目どうしの比べ」を足し、真偽値は 1／0 と出すことを書く。使わなくなった `query.unsupported.fieldComparison` の文言は、ほかで使っていなければ画面の文言（英語と日本語）から外す。補完と色分けは変えない。
+- [ ] **Step 23. 全体の確かめと記録**：`cargo fmt --all --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`、`cargo test -p local-sights-core --examples`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通す。速さのテスト（`cargo test --release -p local-sights-core --lib -- --ignored`）が今の合否の数値（10 万件 10 秒、100 万件 100 秒）を保つことを確かめる。`code-summary.md` に Loop-back 2 の直しと、確かめた決まり・残る仮の決まりを書き足し、`traceability.json` と `source-manifest.json` を直す。`aidlc engine sensor-traceability --output-path aidlc/spaces/default/intents/261017-insights-query/construction/u2-query-language/code-generation/traceability.json` を通す。
 
 ## 要件・決まりと手順の対応
 
@@ -78,7 +89,8 @@
 | FR8.1・FR8.2（BR8.1） | Step 14 |
 | FR9.1〜FR9.3（BR1.7、BR9.1〜BR9.3、Should） | Step 4、Step 8、Step 13 |
 | U1 から回した直し（BR10.1〜BR10.3） | Step 3、Step 8、Step 9、Step 10 |
-| NFR1・NFR2 | Step 6、Step 17 |
+| NFR1・NFR2 | Step 6、Step 17、Step 23 |
+| SM1・FR4.4・FR4.5（コンソールとの互換、Loop-back 2） | Step 19、Step 20、Step 21、Step 22 |
 
 ## Testing Contract
 

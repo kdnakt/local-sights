@@ -174,18 +174,25 @@ the console; see the AWS documentation,
 [CloudWatch Logs Insights query syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html),
 for how to write one. This version reads the following part of it.
 
-| Supported                                                                                                                                                                                                         |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (up to 100,000; without one, 10,000 rows), joined with `\|` and applied in the order written                                                      |
-| Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``) |
-| Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                            |
-| `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                  |
+| Supported                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (up to 100,000; without one, 10,000 rows), joined with `\|` and applied in the order written                                                                                                        |
+| Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``)                                                   |
+| Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                                                                              |
+| Comparing two fields, such as `a = b` or `@logStream != @log`: a name without quotes after `=`, `!=`, `<`, `<=`, `>` or `>=` is a field, so `readOnly = true` compares with a field named `true` (as the console reads it); write `readOnly = "true"` for the value |
+| `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                                                                    |
 
-| Not supported                                                                                                                                 |
-| --------------------------------------------------------------------------------------------------------------------------------------------- |
-| The other commands (`stats`, `parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)           |
-| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and comparing two fields |
-| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                         |
+| Not supported                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The other commands (`stats`, `parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)                                  |
+| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]` |
+| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                                                |
+
+As in the console, a JSON `true` or `false` is shown as `1` or `0` in the
+result and in an opened row, but is compared as the text: `readOnly = "true"`
+keeps the rows whose `readOnly` is `true`. `<`, `<=`, `>` and `>=` between
+two texts that are no numbers (such as `eventName > "M"`) keep no row; texts
+of digits compare as numbers.
 
 A query that uses what is not supported, or has a writing mistake, is not run;
 the screen says what and where, without fetching anything.

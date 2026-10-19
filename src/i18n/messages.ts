@@ -763,8 +763,8 @@ export const messages = {
     ja: "演算子「{word}」にはこの版では対応していません。",
   },
   "query.unsupported.fieldComparison": {
-    en: 'Comparing with "{word}" is not supported in this version. Compare with a string or a number.',
-    ja: "「{word}」との比較にはこの版では対応していません。文字列か数値と比べてください。",
+    en: 'A field such as "{word}" cannot be written after like, =~ or in. Write a string, a number or a /regex/.',
+    ja: "like、=~、in の後ろには「{word}」のような項目を書けません。文字列、数値、/正規表現/ を書いてください。",
   },
   "query.syntax.notNeedsParen": {
     en: "Put the condition after not in parentheses, such as not (@message like /x/). Use not like, not in or != after a field.",

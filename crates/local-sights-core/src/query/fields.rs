@@ -103,12 +103,15 @@ pub fn json_value<'a>(object: &'a Map<String, Value>, keys: &[String]) -> FieldV
 }
 
 /// The text of a JSON value as a cell shows it (U2:BR7.1), `None` for no
-/// value.
+/// value. A boolean is shown `1` or `0` as the console shows it
+/// (261017-insights-query Loop-back 2, p04: `1` checked, `0` provisional
+/// until the next console check); comparisons, `like` and `=~` still see the
+/// text `true` or `false`.
 fn written(value: Option<&Value>) -> Option<String> {
     match value? {
         Value::String(text) => Some(text.clone()),
         Value::Number(number) => Some(number.to_string()),
-        Value::Bool(flag) => Some(flag.to_string()),
+        Value::Bool(flag) => Some(if *flag { "1" } else { "0" }.to_string()),
         Value::Null | Value::Array(_) | Value::Object(_) => None,
     }
 }
@@ -448,7 +451,7 @@ mod tests {
     #[test]
     fn cells_are_written_as_the_values_are() {
         // U2:BR7.1: strings as they are, numbers as written (whole numbers
-        // exactly), true and false, nothing without a value.
+        // exactly), nothing without a value. Booleans: see the p04 tests.
         let event =
             event(r#"{"s":"a\nb","n":500,"big":1234567890123456789,"d":1.5,"t":true,"z":null}"#);
         let fields = EventFields::new(&event, GROUP);
@@ -457,7 +460,7 @@ mod tests {
         assert_eq!(shown(&["n"]).as_deref(), Some("500"));
         assert_eq!(shown(&["big"]).as_deref(), Some("1234567890123456789"));
         assert_eq!(shown(&["d"]).as_deref(), Some("1.5"));
-        assert_eq!(shown(&["t"]).as_deref(), Some("true"));
+        assert_eq!(shown(&["t"]).as_deref(), Some("1"));
         assert_eq!(shown(&["z"]), None);
         assert_eq!(shown(&["nothing"]), None);
         assert_eq!(
@@ -479,10 +482,46 @@ mod tests {
             vec![
                 ("a.b".to_string(), None),
                 ("a.c".to_string(), Some("x".to_string())),
-                ("m.n.o".to_string(), Some("false".to_string())),
+                ("m.n.o".to_string(), Some("0".to_string())),
                 ("z".to_string(), Some("1".to_string())),
             ]
         );
+    }
+
+    #[test]
+    fn p04_a_true_boolean_is_shown_as_1_in_cells_and_opened_rows() {
+        // Checked at the console in Loop-back 2: readOnly true is shown 1.
+        let event = event(r#"{"readOnly":true,"flag":"true"}"#);
+        let fields = EventFields::new(&event, GROUP);
+        assert_eq!(fields.display(&json(&["readOnly"])).as_deref(), Some("1"));
+        assert_eq!(
+            fields.display(&json(&["flag"])).as_deref(),
+            Some("true"),
+            "a string true stays as it is"
+        );
+        assert_eq!(
+            fields.json_fields(),
+            vec![
+                ("flag".to_string(), Some("true".to_string())),
+                ("readOnly".to_string(), Some("1".to_string())),
+            ]
+        );
+        // The value compared is still the boolean (p04 at the console).
+        assert_eq!(
+            fields.value(&json(&["readOnly"])),
+            FieldValue::Boolean(true)
+        );
+    }
+
+    #[test]
+    fn provisional_p04_a_false_boolean_is_shown_as_0() {
+        // Not checked at the console yet (Loop-back 2): the next
+        // compatibility check confirms it.
+        let event = event(r#"{"readOnly":false,"m":{"n":false}}"#);
+        let fields = EventFields::new(&event, GROUP);
+        assert_eq!(fields.display(&json(&["readOnly"])).as_deref(), Some("0"));
+        assert_eq!(fields.display(&json(&["m", "n"])).as_deref(), Some("0"));
+        assert_eq!(fields.json_fields()[0].1.as_deref(), Some("0"));
     }
 
     #[test]

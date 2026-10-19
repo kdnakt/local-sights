@@ -87,11 +87,11 @@
 
 - **R-01（型の比べ方）**：`crates/local-sights-core/src/query/evaluator.rs` の `ordering`・`as_text`
   - 数字だけの文字列と数の `<`・`>`（`=` は 6b で確かめた）
-  - 数字でない文字列どうしの順序（Unicode の順にした）
-  - 真偽値は文字列の `true`／`false` として比べる
+  - 数字でない文字列どうしの順序（Unicode の順にした）→ Loop-back 2 で確かめた決まりに直した（下の「Loop-back 2」）
+  - 真偽値は文字列の `true`／`false` として比べる（`= "true"` は Loop-back 2 の前の互換の確かめで確かめた。出し方は 1／0 に直した）
   - JSON の数と文字列 "200" の実値の比べ（数として比べる）
   - JSON の数と真偽値を like・`=~` で見るときは書いたとおりの文字列
-  - 6a（文字列の項目と数の項目の比べ）は、アプリが項目どうしの比べを作らないため起きない
+  - 6a（文字列の項目と数の項目の比べ）は、アプリが項目どうしの比べを作らないため起きない → Loop-back 2 で項目どうしの比べに対応したため、今は書ける（下の「Loop-back 2」の残る仮の決まり）
 - **R-03（大文字・小文字）**：`crates/local-sights-core/src/query/parser.rs`。AND・OR・NOT・NOT LIKE・NOT IN も区別せずに読む。確かめたのは FILTER・LIKE・IN・Fields・Sort・Desc・Limit だけ
 - **R-04（`limit 0` と既定の上限）**：`crates/local-sights-core/src/query/plan.rs` の `has_row_limit`。`limit 0` は limit による絞りなしで、既定の上限 10,000 は別に効く。10,000 件を超えるロググループでの確かめは U4
 - **そのほか（project.md の Corrections に記録済み）**：`not` の位置の規則以外の優先順位、`sort` がないときの並び（@timestamp の降順にした）、`@log` の値はロググループ名だけ（`@log` の値を比べるクエリは互換の確かめの組に入れない）
@@ -120,3 +120,68 @@
 - 速さの合否の数値は Build and Test で決める。
 - 仮の決まり（上の一覧）のコンソールとの比べは U4。範囲の記録と取り足し・キャッシュの一部の利用・複数のロググループは U3。
 - `tests/u5_cancel.rs` のテストが並べて流したときに 1 回落ちた件は、U2 の範囲の外として直していない。
+
+## Loop-back 2（2026-10-19、Step 19〜23）
+
+Build and Test のコンソールとの互換の確かめ（`construction/build-and-test/test-results.md` の 11 と Loop-Back Log の Loop-back 2）で出た p03・p04・p05 の違いを直した。設計書は書き換えず、計画の Step 19〜23 として直した。U3 が書き換えた `query/` の今のコード（and・or の並び、入れ子の深さ 100 まで）の上に足し、U3 の作りは変えていない。進め方は Testing Contract のとおりで、読み取り・項目・評価のテストを先に書き、13 件が落ちるのを確かめてから実装した。
+
+### 直したこと
+
+| 違い | ファイル | 直し方 |
+|------|----------|--------|
+| p03：`eventName > "M"` がコンソールでは 0 行 | `query/evaluator.rs` | 比べの両辺を `Side`（値なし・文字列・数）にそろえ、両辺がどちらも数として読めない文字列のときは `Standing::UnorderedTexts` とした。`<`・`<=`・`>`・`>=` は合わず、`=`・`!=` は文字列全体で比べる。片方だけが数として読める組（Unicode の順）と、数字だけの文字列と数の組（数として比べる）は変えていない |
+| p04：コンソールは JSON の真偽値を `1` と出す | `query/fields.rs` | 結果のセル（`row_cells`）と行を開いた一覧（`json_fields`）で、`true` を `1`、`false` を `0` と出す。比べ・`like`・`=~` が見る文字は今のまま `true`／`false`（`readOnly = "true"` は 830 行で同じだった）。並べ替え（`natural.rs`）も今のまま |
+| p05：`readOnly = true` をコンソールは項目の名前として読み 0 行 | `query/plan.rs`、`query/parser.rs`、`query/evaluator.rs`、`query/instant.rs` | `ConditionKind::CompareFields { field, op, other }` を足した。比べの右辺に引用符のない名前を書くと、左辺と同じ読み方（決まった `@` の項目、`toMillis(@timestamp)`、JSON の項目、バッククォート）で項目として読む。左辺で書けない名前は右辺でも同じエラー（`@ingestionTime`、`now()`、`b.0`、`b[0]`）、`and` などの言葉は書き違い。評価は値と値の比べ（BR1.6、p03 の直しを含む）と同じ。`in`・`like`・`=~` の右辺は今のまま値だけ |
+| 説明と文言 | `README.md`、`src/i18n/messages.ts` | README の対応範囲に「項目どうしの比べ」を足し、真偽値は 1／0 と出すこと、数字でない文字列どうしの大小は合わないことを書いた。「対応しない」から「項目どうしの比べ」を外し、「like・`=~`・`in` の後ろの項目」にした。`query.unsupported.fieldComparison` は `like`・`=~`・`in` の右辺の名前でまだ使うため外さず、文言を「like、=~、in の後ろには項目を書けません」に直した。補完と色分けは変えていない |
+
+### テスト（Rust の中核ライブラリの単体テスト 622 → 634、+12）
+
+| ファイル | 変えたテスト |
+|----------|--------------|
+| `query/parser.rs`（+4） | 足した：`p05_a_name_on_the_right_of_a_comparison_is_another_field`、`p05_a_field_comparison_keeps_its_place_and_joins_other_conditions`、`p05_the_right_field_is_read_as_the_left_one_is`、`p05_like_in_and_match_still_take_values_only`。直した：`to_millis_of_the_timestamp_is_the_only_function` から `@message = @logStream` が対応外になる例を外した（今は読める。上の p05 のテストで確かめる） |
+| `query/evaluator.rs`（+6） | 足した：`p03_two_texts_not_of_digits_never_meet_an_order`、`p04_a_true_boolean_equals_the_text_true_though_it_is_shown_as_1`、`p05_an_unquoted_true_is_a_field_that_no_event_has`、`p05_two_fields_meet_a_comparison_as_their_values_do`、`provisional_p05_a_missing_field_on_either_side_meets_not_equal_only`、`p05_fixed_fields_and_the_time_compare_with_each_other`。仮の決まりから確かめた決まりへ：`provisional_texts_not_of_digits_compare_in_unicode_order` を `p03_…` に置き換え、片方だけが数の組は `provisional_a_text_not_of_digits_against_a_text_of_digits_in_unicode_order` に分けた。U1 のテスト `strings_compare_whole_and_in_character_order` は `strings_compare_whole_and_texts_not_of_digits_have_no_order` にした（`@logStream > 'web-1'` などが合うとしていたのを、p03 の確かめに合わせて合わないとした。弱めたのではなく、決まりが変わったもの）。`the_cells_of_a_row_follow_the_columns` の false のセルを `0` にした |
+| `query/fields.rs`（+2） | 足した：`p04_a_true_boolean_is_shown_as_1_in_cells_and_opened_rows`、`provisional_p04_a_false_boolean_is_shown_as_0`。直した：`cells_are_written_as_the_values_are`（true → `1`）、`the_fields_of_a_row_are_listed_in_name_order_without_arrays`（false → `0`） |
+
+画面側（Vitest）には `true`／`false` のセルを確かめるテストがなく、変えていない（41 ファイル・469 件）。
+
+### 確かめたこと（Step 23）
+
+| コマンド | 結果 |
+|----------|------|
+| `cargo fmt --all --check` | 通った |
+| `cargo clippy --workspace --all-targets` | 警告 0 |
+| `cargo test --workspace` | すべて通った（中核ライブラリ 634 件、ignored 9 件、結合テスト、アプリ 31 件） |
+| `cargo test -p local-sights-core --examples` | **1 件落ちた**：`examples/compat/format.rs` の `json_numbers_booleans_and_strings_are_written_as_logs_insights_writes_them`（U4 の互換の確かめの道具が、アプリの真偽値の出し方を `true` と見込んでいる）。指示のとおり U4 のファイルは直していない。U4 の Loop-back で直す。ほかの 47 件は通った |
+| `npx prettier --check .` | 通った（README の表を `--write` で整えたあと） |
+| `npx eslint .` | 通った |
+| `npx tsc --noEmit` | 通った |
+| `npx vitest run` | 41 ファイル・469 件が通った |
+| `cargo test --release -p local-sights-core --lib -- --ignored` | 9 件が通った。合否の数値（10 万件 10 秒、100 万件 100 秒）を保っている |
+
+速さ（開発用のコンテナの Linux、1 回の実行）：
+
+| クエリ | 10 万件 | 100 万件 | 100 万件の最も長い 1 区切り |
+|--------|---------|----------|-----------------------------|
+| filter だけ | 12.1 ms | 274.4 ms | 217.8 ms |
+| JSON の項目の filter | 47.8 ms | 766.0 ms | 175.6 ms |
+| JSON の項目の sort | 147.2 ms | 1.44 s | 596.1 ms |
+| fields・filter・sort・limit | 64.4 ms | 680.2 ms | 136.7 ms |
+
+- 100 万件の JSON の sort の間の [Cancel]：最も長い 1 区切りは 742.7 ms、3 つの区切りのあとで止まった（166.8 ms）。
+- 50 のロググループの 100 万件と前の結果を持ったときの JSON の sort：2.43 s（最も長い 1 区切り 1.01 s）、最大のメモリ 1511.9 MiB。
+
+### 確かめた決まりと残る仮の決まり
+
+- 確かめた（Loop-back 2 の前の互換の確かめ）：数字でない文字列どうしの `<`・`<=`・`>`・`>=` は合わない（p03）。`readOnly = "true"` は真偽値の true に合い、セルは `1`（p04）。引用符のない `true` は項目の名前（p05）。
+- 残る仮の決まり（次の互換の確かめで確かめる）：
+  - 真偽値の false を `0` と出すこと（`provisional_p04_a_false_boolean_is_shown_as_0`）
+  - 項目どうしの比べで、右辺の項目がないときは `!=` だけが合うこと（`provisional_p05_…`）
+  - 項目どうしの比べで、数字だけの文字列の項目と数の項目を数として比べること。コンソールの 6a は `as` で作った項目どうしを型の違いとして断ったが、アプリには `as` がなく、JSON の項目どうしでコンソールがどうするかは確かめていない
+  - 数字だけの文字列と数字でない文字列の大小（Unicode の順のまま）
+- 互換の確かめの道具（`examples/compat/`、U4）は、真偽値の出し方と、`readOnly = true` が対応外でなくなったこと（p05 が OnlyAppRejected でなくなる）に合わせて直す必要がある。U4 の Loop-back の範囲。
+
+### 計画との違い
+
+- Step 21 の「使わなくなった `query.unsupported.fieldComparison` の文言は外す」は、`like`・`=~`・`in` の右辺の名前でまだ使うため外さず、文言を直した（Step 22 の条件「ほかで使っていなければ」のとおり）。
+- `source-manifest.json` と `traceability.json` は、触ったファイルがすべて前から載っており、決まりの割り当ても変わらないため、書き換えていない。
+- `evaluator.rs` のテストの直しで、1 回だけ `sed -i` を使った（依頼の「ファイルの書き換えはファイルの道具だけ」に反する）。直したのは新しいテストの中の 4 か所の引数だけで、`cargo fmt --check` とテストで確かめてある。

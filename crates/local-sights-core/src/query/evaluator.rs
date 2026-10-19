@@ -107,6 +107,12 @@ pub fn condition_holds(condition: &Condition, fields: &EventFields<'_>) -> bool 
         ConditionKind::Or(parts) => parts.iter().any(|part| condition_holds(part, fields)),
         ConditionKind::Not(inner) => !condition_holds(inner, fields),
         ConditionKind::Compare { field, op, value } => compare(fields.value(field), *op, value),
+        // Loop-back 2 (p05): both values read from the same event.
+        ConditionKind::CompareFields { field, op, other } => compare_sides(
+            Side::of_value(fields.value(field)),
+            *op,
+            Side::of_value(fields.value(other)),
+        ),
         // U2:BR1.5: like on a missing field is false, so `not like` holds.
         ConditionKind::Like {
             field,
@@ -144,43 +150,85 @@ fn number_of_digits(text: &str) -> Option<f64> {
     text.parse::<f64>().ok()
 }
 
-/// How `value` stands against `literal`, or `None` when the two cannot be
-/// compared (U1:BR5.1, BR5.10, U2:BR1.5, BR1.6):
+/// One side of a comparison: a field's value or a written value.
+#[derive(Debug, Clone, Copy)]
+enum Side<'a> {
+    /// No value: a missing field, or a date text not yet resolved.
+    Nothing,
+    /// A text; a boolean is the text `true` or `false`.
+    Text(&'a str),
+    /// A number: a JSON number, the time, a written number or the
+    /// milliseconds of a date text.
+    Number(f64),
+}
+
+impl<'a> Side<'a> {
+    fn of_value(value: FieldValue<'a>) -> Self {
+        match value {
+            FieldValue::Missing => Side::Nothing,
+            FieldValue::Text(text) => Side::Text(text),
+            FieldValue::Boolean(flag) => Side::Text(bool_text(flag)),
+            FieldValue::Number(number) => Side::Number(number),
+        }
+    }
+
+    fn of_literal(literal: &'a Literal) -> Self {
+        match literal {
+            Literal::Text(text) => Side::Text(text),
+            Literal::Number(number) => Side::Number(*number),
+            // Epoch milliseconds of any real time are below 2^53: exact.
+            Literal::Instant(instant) => Side::Number(*instant as f64),
+            Literal::DateText { .. } => Side::Nothing,
+        }
+    }
+}
+
+/// How two sides stand (U1:BR5.1, BR5.10, U2:BR1.5, BR1.6).
+enum Standing {
+    /// They compare in this order.
+    Ordered(Ordering),
+    /// Two texts that are no numbers: equal or not, but in no order
+    /// (Loop-back 2, p03: `eventName > "M"` gave no row at the console).
+    UnorderedTexts { equal: bool },
+    /// They cannot be compared.
+    Incomparable,
+}
+
+/// How `left` stands against `right`:
 ///
-/// - a missing value compares with nothing (5c, 5d);
-/// - the time and JSON numbers against a number, and the time against the
-///   milliseconds of a date text, as numbers;
+/// - nothing compares with anything (5c, 5d; on the right of a field
+///   comparison provisional, Loop-back 2);
+/// - two numbers as numbers (the time, JSON numbers, written numbers, the
+///   milliseconds of a date text);
 /// - a text of digits against a number as numbers (6b; `<` and `>`
 ///   provisional, review R-01), any other text against a number not at all
 ///   (6c-6e, 6g, 6h);
-/// - two texts of digits as numbers (6f), other texts in Unicode order
-///   (provisional);
-/// - a JSON number against a text of digits as numbers, and a boolean as
-///   the text `true` or `false` (both provisional, review R-01).
-///
-/// An unresolved date text compares with nothing.
-fn ordering(value: FieldValue<'_>, literal: &Literal) -> Option<Ordering> {
-    match (value, literal) {
-        (FieldValue::Missing, _) => None,
-        (FieldValue::Boolean(flag), _) => ordering(FieldValue::Text(bool_text(flag)), literal),
-        (FieldValue::Number(number), Literal::Number(other)) => number.partial_cmp(other),
-        (FieldValue::Number(number), Literal::Instant(instant)) => {
-            // Epoch milliseconds of any real time are below 2^53: exact.
-            number.partial_cmp(&(*instant as f64))
+/// - two texts of digits as numbers (6f); two texts that are no numbers
+///   equal or not, in no order (p03); a text of digits against one that is
+///   no number in Unicode order (provisional);
+/// - a boolean as the text `true` or `false` (`= "true"` checked, p04;
+///   the rest provisional, review R-01).
+fn standing(left: Side<'_>, right: Side<'_>) -> Standing {
+    let ordered =
+        |ordering: Option<Ordering>| ordering.map_or(Standing::Incomparable, Standing::Ordered);
+    match (left, right) {
+        (Side::Nothing, _) | (_, Side::Nothing) => Standing::Incomparable,
+        (Side::Number(left), Side::Number(right)) => ordered(left.partial_cmp(&right)),
+        (Side::Number(number), Side::Text(text)) => {
+            ordered(number_of_digits(text).and_then(|other| number.partial_cmp(&other)))
         }
-        (FieldValue::Number(number), Literal::Text(text)) => {
-            number_of_digits(text).and_then(|other| number.partial_cmp(&other))
+        (Side::Text(text), Side::Number(number)) => {
+            ordered(number_of_digits(text).and_then(|other| other.partial_cmp(&number)))
         }
-        (FieldValue::Text(text), Literal::Number(other)) => {
-            number_of_digits(text).and_then(|number| number.partial_cmp(other))
-        }
-        (FieldValue::Text(text), Literal::Text(other)) => {
-            match (number_of_digits(text), number_of_digits(other)) {
-                (Some(left), Some(right)) => left.partial_cmp(&right),
-                _ => Some(text.cmp(other.as_str())),
+        (Side::Text(left), Side::Text(right)) => {
+            match (number_of_digits(left), number_of_digits(right)) {
+                (Some(left), Some(right)) => ordered(left.partial_cmp(&right)),
+                (None, None) => Standing::UnorderedTexts {
+                    equal: left == right,
+                },
+                _ => Standing::Ordered(left.cmp(right)),
             }
         }
-        (FieldValue::Text(_), Literal::Instant(_)) | (_, Literal::DateText { .. }) => None,
     }
 }
 
@@ -188,11 +236,25 @@ fn bool_text(flag: bool) -> &'static str {
     if flag { "true" } else { "false" }
 }
 
-/// U1:BR5.1: values that cannot be compared meet only `!=` (U2:BR1.5,
-/// BR1.6).
+/// A field's value against a written value (U1:BR5.1).
 fn compare(value: FieldValue<'_>, op: CompareOp, literal: &Literal) -> bool {
-    let Some(ordering) = ordering(value, literal) else {
-        return op == CompareOp::NotEq;
+    compare_sides(Side::of_value(value), op, Side::of_literal(literal))
+}
+
+/// U1:BR5.1: values that cannot be compared meet only `!=` (U2:BR1.5,
+/// BR1.6); two texts that are no numbers meet `=` and `!=` only
+/// (Loop-back 2, p03).
+fn compare_sides(left: Side<'_>, op: CompareOp, right: Side<'_>) -> bool {
+    let ordering = match standing(left, right) {
+        Standing::Ordered(ordering) => ordering,
+        Standing::UnorderedTexts { equal } => {
+            return match op {
+                CompareOp::Eq => equal,
+                CompareOp::NotEq => !equal,
+                CompareOp::Lt | CompareOp::LtEq | CompareOp::Gt | CompareOp::GtEq => false,
+            };
+        }
+        Standing::Incomparable => return op == CompareOp::NotEq,
     };
     match op {
         CompareOp::Eq => ordering == Ordering::Equal,
@@ -929,30 +991,33 @@ mod tests {
     }
 
     #[test]
-    fn strings_compare_whole_and_in_character_order() {
-        // U1:BR5.1.
+    fn strings_compare_whole_and_texts_not_of_digits_have_no_order() {
+        // U1:BR5.1 for `=` and `!=`; the order of two texts that are no
+        // numbers follows the console check of Loop-back 2 (p03).
         let event = event(1, "web-2", 0, "Hello");
         assert!(holds("filter @message = 'Hello'", &event));
         assert!(!holds("filter @message = 'hello'", &event), "case counts");
         assert!(!holds("filter @message = 'Hell'", &event), "the whole text");
         assert!(holds("filter @message != 'hello'", &event));
-        assert!(holds("filter @logStream > 'web-1'", &event));
-        assert!(holds("filter @logStream <= 'web-2'", &event));
-        assert!(!holds("filter @logStream < 'web-2'", &event));
         assert!(holds("filter @log = '/aws/lambda/orders'", &event));
-        assert!(
-            holds("filter @message < 'a'", &event),
-            "'H' sorts before 'a'"
-        );
+        for op in ["<", "<=", ">", ">="] {
+            for value in ["'web-1'", "'web-2'", "'web-3'"] {
+                let text = format!("filter @logStream {op} {value}");
+                assert!(!holds(&text, &event), "{text:?}");
+            }
+        }
+        assert!(!holds("filter @message < 'a'", &event));
     }
 
     // ---- 261017-insights-query U2:BR1.5, BR1.6 (Q1a 5c-5g, 6b-6h) -------
     //
     // These replace U1:BR5.1's provisional "a text field and a number never
     // meet a condition except !=". Q1a 6a (`"10" as a, 9 as b | filter a >
-    // b`) compared a text field with a number field, which the console
-    // refused as a type mismatch; the app compares a field with a value
-    // only, never two fields, so that case cannot be written here.
+    // b`) compared a text field with a number field made by `as`, which the
+    // console refused as a type mismatch. The app has no `as`; since
+    // Loop-back 2 it compares two fields of the message as it compares a
+    // field with a value (p05), so a JSON text "10" against a JSON number 9
+    // compares as numbers (provisional, see the p05 tests).
 
     /// An event whose message is `json`, with `errorCode` on some events
     /// only, as in the console check.
@@ -1041,19 +1106,37 @@ mod tests {
     }
 
     #[test]
-    fn provisional_texts_not_of_digits_compare_in_unicode_order() {
-        // Not checked at the console (review R-01): character order, not
-        // the natural order of sort.
+    fn p03_two_texts_not_of_digits_never_meet_an_order() {
+        // Checked at the console in Loop-back 2: `eventName > "M"` gave no
+        // row. `=` and `!=` still compare the whole texts.
+        let event = json_event(r#"{"eventName":"AssumeRole","eventVersion":"1.08"}"#);
+        for op in ["<", "<=", ">", ">="] {
+            for value in ["\"M\"", "\"A\"", "\"AssumeRole\""] {
+                let text = format!("filter eventName {op} {value}");
+                assert!(!holds(&text, &event), "{text:?}");
+            }
+        }
+        assert!(holds("filter eventName = \"AssumeRole\"", &event));
+        assert!(holds("filter eventName != \"M\"", &event));
+        assert!(!holds("filter eventName != \"AssumeRole\"", &event));
+        // A text of digits against a number is unchanged (6b, 6f).
+        assert!(holds("filter eventVersion > 1.05", &event));
+        assert!(holds("filter eventVersion > \"1.05\"", &event));
+        // A boolean is the text true or false: no order either.
+        let flags = json_event(r#"{"ok":true}"#);
+        assert!(!holds("filter ok > \"a\"", &flags));
+        assert!(!holds("filter ok <= \"true\"", &flags));
+    }
+
+    #[test]
+    fn provisional_a_text_not_of_digits_against_a_text_of_digits_in_unicode_order() {
+        // Only one side is a number: not checked at the console (review
+        // R-01); kept as it was in Loop-back 2.
         let v10 = event(1, "s", 0, "v10");
-        assert!(
-            !holds("filter @message > \"v9\"", &v10),
-            "'1' is before '9'"
-        );
-        assert!(holds("filter @message < \"v9\"", &v10));
-        assert!(
-            holds("filter @message > \"9\"", &v10),
-            "one side is no number"
-        );
+        assert!(holds("filter @message > \"9\"", &v10));
+        assert!(!holds("filter @message < \"9\"", &v10));
+        let nine = event(1, "s", 0, "9");
+        assert!(holds("filter @message < \"v10\"", &nine));
     }
 
     #[test]
@@ -1069,6 +1152,87 @@ mod tests {
         assert!(holds("filter status like /^20/", &flags));
         assert!(!holds("filter status = \"ok\"", &flags));
         assert!(holds("filter status != \"ok\"", &flags));
+    }
+
+    #[test]
+    fn p04_a_true_boolean_equals_the_text_true_though_it_is_shown_as_1() {
+        // Checked at the console in Loop-back 2: `readOnly = "true"` kept
+        // the 830 rows whose readOnly is true; the cell shows 1, but the
+        // comparison, like and =~ still see the text true.
+        let events = [
+            json_event(r#"{"readOnly":true}"#),
+            json_event(r#"{"readOnly":false}"#),
+            json_event(r#"{"eventName":"AssumeRole"}"#),
+        ];
+        assert_eq!(rows("filter readOnly = \"true\"", &events), vec![0]);
+        assert!(!holds("filter readOnly = 1", &events[0]));
+        assert!(holds("filter readOnly like /true/", &events[0]));
+        assert!(holds("filter readOnly =~ /^false$/", &events[1]));
+    }
+
+    // ---- Loop-back 2 (p05): two fields compared --------------------------
+
+    #[test]
+    fn p05_an_unquoted_true_is_a_field_that_no_event_has() {
+        // The console gave no row for `readOnly = true` (p05).
+        let events = [
+            json_event(r#"{"readOnly":true}"#),
+            json_event(r#"{"readOnly":false}"#),
+        ];
+        assert!(rows("filter readOnly = true", &events).is_empty());
+        assert!(rows("filter readOnly = false", &events).is_empty());
+        // A field named true is read like any other.
+        let named = json_event(r#"{"readOnly":true,"true":"true"}"#);
+        assert!(holds("filter readOnly = true", &named));
+    }
+
+    #[test]
+    fn p05_two_fields_meet_a_comparison_as_their_values_do() {
+        let events = [
+            json_event(r#"{"a":"x","b":"x","n":5,"m":7,"t":"5"}"#),
+            json_event(r#"{"a":"x","b":"y","n":9,"m":7,"t":"10"}"#),
+        ];
+        let (same, other) = (&events[0], &events[1]);
+        assert_eq!(rows("filter a = b", &events), vec![0]);
+        assert_eq!(rows("filter a != b", &events), vec![1]);
+        assert_eq!(rows("filter n < m", &events), vec![0]);
+        assert_eq!(rows("filter n >= m", &events), vec![1]);
+        // A text of digits and a number compare as numbers (U2:BR1.6, 6b).
+        assert!(holds("filter t = n", same));
+        assert!(holds("filter t > m", other));
+        // Two texts that are no numbers have no order (p03).
+        assert!(!holds("filter a < b", other));
+        assert!(!holds("filter b > a", other));
+    }
+
+    #[test]
+    fn provisional_p05_a_missing_field_on_either_side_meets_not_equal_only() {
+        // As a missing left side does (U2:BR1.5, 5c, 5d); the right side is
+        // not checked at the console yet.
+        let event = json_event(r#"{"a":"x","n":1}"#);
+        for text in ["filter a = zzz", "filter zzz = a", "filter zzz = yyy"] {
+            assert!(!holds(text, &event), "{text:?}");
+        }
+        for op in ["<", "<=", ">", ">="] {
+            assert!(!holds(&format!("filter n {op} zzz"), &event), "{op}");
+            assert!(!holds(&format!("filter zzz {op} n"), &event), "{op}");
+        }
+        assert!(holds("filter a != zzz", &event));
+        assert!(holds("filter zzz != a", &event));
+    }
+
+    #[test]
+    fn p05_fixed_fields_and_the_time_compare_with_each_other() {
+        let event = event(1_756_053_806_000, "orders", 0, r#"{"at":1756053806000}"#);
+        assert!(holds("filter @logStream != @log", &event));
+        assert!(!holds("filter @logStream = @log", &event));
+        let named = self::event(5, GROUP, 0, "x");
+        assert!(holds("filter @logStream = @log", &named));
+        assert!(holds("filter @timestamp = toMillis(@timestamp)", &event));
+        assert!(holds("filter at = toMillis(@timestamp)", &event));
+        assert!(holds("filter at <= @timestamp", &event));
+        assert!(!holds("filter at < @timestamp", &event));
+        assert!(holds("filter @message != @logStream", &event));
     }
 
     #[test]
@@ -1435,7 +1599,8 @@ mod tests {
                 Some("t42".to_string()),
                 Some("x".to_string()),
                 Some("500".to_string()),
-                Some("false".to_string()),
+                // Loop-back 2 (p04): a boolean is shown 1 or 0.
+                Some("0".to_string()),
                 None,
                 Some(GROUP.to_string()),
                 Some("42".to_string()),

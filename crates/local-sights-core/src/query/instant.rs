@@ -165,7 +165,9 @@ fn resolve_condition(condition: Condition, zone: Tz) -> Result<Condition, QueryP
                 .collect::<Result<_, _>>()?,
             negated,
         },
-        other @ (ConditionKind::Like { .. } | ConditionKind::Match { .. }) => other,
+        other @ (ConditionKind::CompareFields { .. }
+        | ConditionKind::Like { .. }
+        | ConditionKind::Match { .. }) => other,
     };
     Ok(Condition::new(kind, condition.span))
 }

@@ -300,6 +300,21 @@ pub enum ConditionKind {
         /// The value compared with.
         value: Literal,
     },
+    /// `field op other`: two fields of the same event compared, the right
+    /// one written as a name without quotes, such as `a = b`, `a = true` or
+    /// `@logStream = @log` (261017-insights-query U2 Loop-back 2, p05). The
+    /// values compare as a field with a value does (U2:BR1.6); a missing
+    /// field on either side meets `!=` only, as a missing left side does
+    /// (U2:BR1.5; for the right side provisional until the next console
+    /// check).
+    CompareFields {
+        /// The left field.
+        field: FieldRef,
+        /// The comparison.
+        op: CompareOp,
+        /// The right field.
+        other: FieldRef,
+    },
     /// `field like value` or `field not like value`.
     Like {
         /// The field read (never the timestamp, U1:BR5.6).

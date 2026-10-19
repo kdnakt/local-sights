@@ -24,6 +24,12 @@
 //! part of a condition keeps its place, from its first word to its last
 //! (U2:BR10.3).
 //!
+//! On the right of a comparison (`=`, `!=`, `<`, `<=`, `>`, `>=`) a name
+//! without quotes is another field, read as the left one is, so `readOnly =
+//! true` compares with a field named `true` (Loop-back 2, p05, as the
+//! console reads it). After `like`, `=~` and in an `in` list only values are
+//! taken.
+//!
 //! A `/` starts a regular expression and a `-` before a digit starts a
 //! negative number only where a value is expected; elsewhere both are
 //! arithmetic operators, which are not run (U1:BR5.7). The word reader is
@@ -98,7 +104,8 @@ pub mod keys {
     pub const UNSUPPORTED_TIMESTAMP_OPERATOR: &str = "query.unsupported.timestampOperator";
     /// An arithmetic operator (U1:BR5.7).
     pub const UNSUPPORTED_OPERATOR: &str = "query.unsupported.operator";
-    /// A field compared with another field.
+    /// A field after `like`, `not like`, `=~`, or in an `in` list; only the
+    /// comparisons take another field (Loop-back 2, p05).
     pub const UNSUPPORTED_FIELD_COMPARISON: &str = "query.unsupported.fieldComparison";
     /// `not` at the start of a condition without `(` after it (U2:BR2.4).
     pub const NOT_NEEDS_PAREN: &str = "query.syntax.notNeedsParen";
@@ -1157,12 +1164,21 @@ impl Parser {
         };
         match &operator.kind {
             TokenKind::Compare(op) => {
-                let value = self.compare_value(&field)?;
-                Ok(ConditionKind::Compare {
-                    field,
-                    op: *op,
-                    value,
-                })
+                let op = *op;
+                let Some(token) = self.next_value()? else {
+                    return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+                };
+                if !matches!(token.kind, TokenKind::Name(_)) {
+                    let value = self.scalar(&field, token)?;
+                    return Ok(ConditionKind::Compare { field, op, value });
+                }
+                // A name without quotes on the right is another field, read
+                // as the left one is (Loop-back 2, p05).
+                if token.kind.bare().is_some_and(is_keyword) {
+                    return Err(unexpected(token));
+                }
+                let other = self.operand(token)?;
+                Ok(ConditionKind::CompareFields { field, op, other })
             }
             TokenKind::Match => {
                 if field.is_timestamp() {
@@ -1191,16 +1207,8 @@ impl Parser {
         }
     }
 
-    /// The value of a comparison (U1:BR5.1); a text compared with the
-    /// timestamp is a date text (U1:BR5.9).
-    fn compare_value(&mut self, field: &FieldRef) -> Result<Literal, QueryProblem> {
-        let Some(token) = self.next_value()? else {
-            return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
-        };
-        self.scalar(field, token)
-    }
-
-    /// One string or number value of a comparison or a list.
+    /// One string or number value of a comparison or a list (U1:BR5.1); a
+    /// text compared with the timestamp is a date text (U1:BR5.9).
     fn scalar(&mut self, field: &FieldRef, token: Token) -> Result<Literal, QueryProblem> {
         match token.kind {
             TokenKind::Number(number) => Ok(Literal::Number(number)),
@@ -1220,8 +1228,9 @@ impl Parser {
         }
     }
 
-    /// A name where a value is expected: a function call or another field,
-    /// neither of which is run.
+    /// A name where only a value is taken (in a `[` list, after `like` or
+    /// `=~`): a function call or another field, neither of which is run
+    /// there. A comparison takes another field (Loop-back 2, p05).
     fn word_value(&mut self, token: Token) -> Result<QueryProblem, QueryProblem> {
         let key = if self.peek_is(&TokenKind::LParen)? {
             keys::UNSUPPORTED_FUNCTION
@@ -1733,16 +1742,165 @@ mod tests {
                 "now",
                 at(1, 21, 3),
             ),
-            (
-                "filter @message = @logStream",
-                keys::UNSUPPORTED_FIELD_COMPARISON,
-                "@logStream",
-                at(1, 19, 10),
-            ),
         ] {
             let found = problem(text);
             assert_eq!(found.kind, ProblemKind::Unsupported, "{text:?}");
             assert_eq!(found.message_key, key, "{text:?}");
+            assert_eq!(found.word.as_deref(), Some(word), "{text:?}");
+            assert_eq!(found.span, span, "{text:?}");
+        }
+    }
+
+    // ---- Loop-back 2 (p05): a name on the right of a comparison ----------
+
+    fn compare_fields(field: FieldRef, op: CompareOp, other: FieldRef) -> Condition {
+        condition(ConditionKind::CompareFields { field, op, other })
+    }
+
+    #[test]
+    fn p05_a_name_on_the_right_of_a_comparison_is_another_field() {
+        // The console reads the unquoted `true` as a field name (p05).
+        assert_eq!(
+            only("filter readOnly = true"),
+            compare_fields(
+                json(&["readOnly"], "readOnly"),
+                CompareOp::Eq,
+                json(&["true"], "true")
+            )
+        );
+        for (text, field, op, other) in [
+            (
+                "filter a = b",
+                json(&["a"], "a"),
+                CompareOp::Eq,
+                json(&["b"], "b"),
+            ),
+            (
+                "filter a != false",
+                json(&["a"], "a"),
+                CompareOp::NotEq,
+                json(&["false"], "false"),
+            ),
+            (
+                "filter http.status < limits.`max.status`",
+                json(&["http", "status"], "http.status"),
+                CompareOp::Lt,
+                json(&["limits", "max.status"], "limits.`max.status`"),
+            ),
+            (
+                "filter @message = @logStream",
+                FieldRef::Message,
+                CompareOp::Eq,
+                FieldRef::LogStream,
+            ),
+            (
+                "filter @logStream = @log",
+                FieldRef::LogStream,
+                CompareOp::Eq,
+                FieldRef::Log,
+            ),
+            (
+                "filter @timestamp >= toMillis(@timestamp)",
+                FieldRef::Timestamp,
+                CompareOp::GtEq,
+                FieldRef::TimestampMillis,
+            ),
+            (
+                "filter startedAt <= toMillis(@timestamp)",
+                json(&["startedAt"], "startedAt"),
+                CompareOp::LtEq,
+                FieldRef::TimestampMillis,
+            ),
+        ] {
+            assert_eq!(only(text), compare_fields(field, op, other), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn p05_a_field_comparison_keeps_its_place_and_joins_other_conditions() {
+        let read = plan("filter a = b and c = 'x'");
+        let Some(CommandKind::Filter(whole)) = read.commands.first().map(|c| &c.kind) else {
+            panic!("no filter");
+        };
+        let ConditionKind::And(parts) = &whole.kind else {
+            panic!("not an and: {whole:?}");
+        };
+        assert_eq!(parts[0].span, at(1, 8, 5), "`a = b`");
+        assert!(matches!(parts[0].kind, ConditionKind::CompareFields { .. }));
+        assert!(matches!(parts[1].kind, ConditionKind::Compare { .. }));
+    }
+
+    #[test]
+    fn p05_the_right_field_is_read_as_the_left_one_is() {
+        // What a field cannot be on the left it cannot be on the right.
+        for (text, kind, key, word, span) in [
+            (
+                "filter a = @ingestionTime",
+                ProblemKind::Unsupported,
+                keys::UNSUPPORTED_FIELD,
+                Some("@ingestionTime"),
+                at(1, 12, 14),
+            ),
+            (
+                "filter a = now()",
+                ProblemKind::Unsupported,
+                keys::UNSUPPORTED_FUNCTION,
+                Some("now"),
+                at(1, 12, 3),
+            ),
+            (
+                "filter a = toMillis(@message)",
+                ProblemKind::Unsupported,
+                keys::UNSUPPORTED_TO_MILLIS_ARGUMENT,
+                Some("toMillis"),
+                at(1, 12, 8),
+            ),
+            (
+                "filter a = b.0",
+                ProblemKind::Unsupported,
+                keys::UNSUPPORTED_ARRAY_ELEMENT,
+                Some("b.0"),
+                at(1, 12, 3),
+            ),
+            (
+                "filter a = b[0]",
+                ProblemKind::Unsupported,
+                keys::UNSUPPORTED_ARRAY_ELEMENT,
+                Some("b"),
+                at(1, 12, 1),
+            ),
+            (
+                "filter a = and",
+                ProblemKind::Syntax,
+                keys::UNEXPECTED_TOKEN,
+                Some("and"),
+                at(1, 12, 3),
+            ),
+        ] {
+            let found = problem(text);
+            assert_eq!(found.kind, kind, "{text:?}");
+            assert_eq!(found.message_key, key, "{text:?}");
+            assert_eq!(found.word.as_deref(), word, "{text:?}");
+            assert_eq!(found.span, span, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn p05_like_in_and_match_still_take_values_only() {
+        // Only the comparisons take a field on the right (Loop-back 2).
+        for (text, word, span) in [
+            ("filter a like b", "b", at(1, 15, 1)),
+            ("filter a not like b", "b", at(1, 19, 1)),
+            ("filter a =~ b", "b", at(1, 13, 1)),
+            ("filter a in [b]", "b", at(1, 14, 1)),
+        ] {
+            let found = problem(text);
+            assert_eq!(found.kind, ProblemKind::Unsupported, "{text:?}");
+            assert_eq!(
+                found.message_key,
+                keys::UNSUPPORTED_FIELD_COMPARISON,
+                "{text:?}"
+            );
             assert_eq!(found.word.as_deref(), Some(word), "{text:?}");
             assert_eq!(found.span, span, "{text:?}");
         }

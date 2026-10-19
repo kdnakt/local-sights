@@ -158,3 +158,24 @@ U4 の Code Generation で R-01〜R-05 を直し（コミット `b6c04de`）、U
 - **Root-cause stage**：code-generation（u4-compat-check：(1)、u2-query-language：(2)〜(4)）
 - **Planned fix**：(1) スクリプトは、クエリに `limit` がないときだけ `--limit 10000` を渡す。(2) `<`・`<=`・`>`・`>=` で両辺が数として読めない文字列のときは合わない（コンソールに合わせる）。(3) JSON の真偽値は結果の一覧と比べの文字で `1`／`0` と出す（開発者の答え「コンソールに合わせる」。false が 0 になるかは次の互換の確かめで確かめる）。(4) 引用符のない言葉を比べの右辺に書いたときは項目の名前として読み、項目どうしの比べに対応する（開発者の答え「項目どうしの比べに対応する」）。
 - **Estimated impact**：手間 中（U2 の評価と読み取りの変更とテスト、U4 のスクリプトの小さな変更、それぞれ計画の承認とレビューをもう一度）。費用 0。危うさ 中（クエリの評価を変えるため、既存のテストを全部通し、互換の確かめをもう一度流す）。開発者が (3)・(4) の扱いを選んだ（2026-10-19）。
+
+## 12. Loop-back 2 のあとの流し直し（2026-10-19、コミット `881b802`）
+
+U2 の Code Generation で (2)〜(4) を直し（`fe4910a`、レビュー READY、作業単位の確かめは成功）、U4 の Code Generation で (1) と比べの道具を直した（`881b802`、レビュー READY、作業単位の確かめは成功）。U4 では、クエリの組に p10（項目どうしの `=`）、p11（右辺の項目がないときの `!=`）、p12（数字でない文字列と数字だけの文字列の大小）を足し、23 本にした。
+
+| コマンド | 結果 |
+|---|---|
+| `cargo test --workspace` | 743 件が通過、9 件は既定で無視（速さのテスト）。中核ライブラリの単体は 634 件（622 → 634） |
+| `cargo test -p local-sights-core --examples` | compat_check 51 件（48 → 51）、fetch_check 7 件、すべて通過 |
+| `cargo test --release -p local-sights-core --lib -- --ignored` | 9 件とも通過（U2 の開発で流した。10 万件で最も遅い JSON の sort が 147 ms、100 万件で 1.44 s。NFR1 の 10 秒・100 秒以内のまま） |
+| `npx vitest run` | 41 ファイル・469 件が通過 |
+| `cargo fmt --all --check`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit` | 通過 |
+| `cargo clippy --workspace --all-targets` | 警告・エラーなし |
+| `bash -n scripts/compat/insights-export.sh` | 通過 |
+
+レビューの Minor で、次の互換の確かめと手元で見るもの（直していない。project.md Corrections のとおり、レビューを記録したあとの指摘は持ち越す）：
+
+- U2：数字でない文字列と数字だけの文字列の大小は仮の決まり（Unicode の順）のまま → p12 で確かめる。右辺の項目がないときは `!=` だけが合う仮の決まり → p11 で確かめる。`@timestamp > now` のような形は、今は項目 `now` として読む（前は対応外の関数のエラー）。
+- U4：`parse` の正規表現の中の `limit` はコマンドとみなす（`--limit 10000` を渡さない側に倒れる。今の組に `parse` はない）。limit の判定は macOS の bash 3.2 と awk ではまだ流していない → 手元の互換の確かめが初めての実行になる。
+
+残りは T-SM1（コンソールとの互換、23 本でもう一度、開発者の Mac）と T-WS-WIN（Windows 11、最後にまとめて）。

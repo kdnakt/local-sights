@@ -19,7 +19,7 @@
     "check:version": "node scripts/release/check-version.mjs"
   },
   "dependencies": {
-    "@cloudscape-design/components": "^3.0.1396",
+    "@cloudscape-design/components": "^3.0.1400",
     "@cloudscape-design/design-tokens": "^3.0.114",
     "@cloudscape-design/global-styles": "^1.0.71",
     "@tauri-apps/api": "^2.12.4",

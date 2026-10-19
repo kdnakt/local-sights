@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-completion-candidates"
+description = "Enables the get_completion_candidates command without any pre-configured scope."
+commands.allow = ["get_completion_candidates"]
+
+[[permission]]
+identifier = "deny-get-completion-candidates"
+description = "Denies the get_completion_candidates command without any pre-configured scope."
+commands.deny = ["get_completion_candidates"]

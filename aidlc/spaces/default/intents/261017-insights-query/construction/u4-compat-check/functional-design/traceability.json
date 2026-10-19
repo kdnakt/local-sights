@@ -1,0 +1,429 @@
+{
+  "stage": "functional-design",
+  "unit": "u4-compat-check",
+  "upstream_ids": [
+    "FR1",
+    "FR2",
+    "FR3",
+    "FR4",
+    "FR5",
+    "FR6",
+    "FR7",
+    "FR8",
+    "FR9",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR1.7",
+    "FR1.8",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR2.4",
+    "FR2.5",
+    "FR2.6",
+    "FR2.7",
+    "FR2.8",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR3.7",
+    "FR3.8",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR5.5",
+    "FR5.6",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR6.4",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3",
+    "FR7.4",
+    "FR7.5",
+    "FR7.6",
+    "FR8.1",
+    "FR8.2",
+    "FR9.1",
+    "FR9.2",
+    "FR9.3"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR4",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR6",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR8",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR9",
+      "status": "N/A",
+      "target": "まとまりの見出し。U4 は機能要件を持たない（SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.1",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.2",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.3",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.4",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.5",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.6",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.7",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR1.8",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.1",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.2",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.3",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.4",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.5",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.6",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.7",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR2.8",
+      "status": "N/A",
+      "target": "U3 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.1",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.2",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.3",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.4",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.5",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.6",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.7",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR3.8",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR4.1",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR4.2",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR4.3",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR4.4",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR4.5",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5.1",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5.2",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5.3",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5.4",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5.5",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR5.6",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR6.1",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR6.2",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR6.3",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR6.4",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7.1",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7.2",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7.3",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7.4",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7.5",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR7.6",
+      "status": "N/A",
+      "target": "U1 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR8.1",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR8.2",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR9.1",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR9.2",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    },
+    {
+      "id": "FR9.3",
+      "status": "N/A",
+      "target": "U2 の作業単位に割り当て（U4 は SM1・NFR3・NFR4 を受け持つ）"
+    }
+  ],
+  "reverse": [
+    {
+      "id": "BR1.1",
+      "status": "N/A",
+      "target": "NFR4・NFR5（手元だけで用意し、リポジトリに置かない） から来る決まり"
+    },
+    {
+      "id": "BR1.2",
+      "status": "N/A",
+      "target": "NFR4・NFR5（手元だけで用意し、リポジトリに置かない） から来る決まり"
+    },
+    {
+      "id": "BR1.3",
+      "status": "N/A",
+      "target": "NFR4・NFR5（手元だけで用意し、リポジトリに置かない） から来る決まり"
+    },
+    {
+      "id": "BR1.4",
+      "status": "N/A",
+      "target": "NFR4・NFR5（手元だけで用意し、リポジトリに置かない） から来る決まり"
+    },
+    {
+      "id": "BR2.1",
+      "status": "N/A",
+      "target": "SM1・SM2（コンソールとの互換の比べ方） から来る決まり"
+    },
+    {
+      "id": "BR2.2",
+      "status": "N/A",
+      "target": "SM1・SM2（コンソールとの互換の比べ方） から来る決まり"
+    },
+    {
+      "id": "BR2.3",
+      "status": "N/A",
+      "target": "SM1・SM2（コンソールとの互換の比べ方） から来る決まり"
+    },
+    {
+      "id": "BR2.4",
+      "status": "N/A",
+      "target": "SM1・SM2（コンソールとの互換の比べ方） から来る決まり"
+    },
+    {
+      "id": "BR2.5",
+      "status": "N/A",
+      "target": "SM1・SM2（コンソールとの互換の比べ方） から来る決まり"
+    },
+    {
+      "id": "BR2.6",
+      "status": "N/A",
+      "target": "SM1・SM2（コンソールとの互換の比べ方） から来る決まり"
+    },
+    {
+      "id": "BR3.1",
+      "status": "N/A",
+      "target": "NFR3（互換を確かめるクエリの組と報告） から来る決まり"
+    },
+    {
+      "id": "BR3.2",
+      "status": "N/A",
+      "target": "NFR3（互換を確かめるクエリの組と報告） から来る決まり"
+    },
+    {
+      "id": "BR3.3",
+      "status": "N/A",
+      "target": "NFR3（互換を確かめるクエリの組と報告） から来る決まり"
+    }
+  ]
+}

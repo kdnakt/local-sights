@@ -1,282 +1,212 @@
-# アーキテクチャ（Local Sights）
+# 構成（Local Sights）
 
-走査したコミット：`9d08cbf5c6d97820f0ec7f276c3ce6020c903eb5`（2026-10-12）。部品の一覧は [component-inventory.md](component-inventory.md)、公開の口は [api-documentation.md](api-documentation.md) を参照。
+走査したコミット：`2760b13b8bc5b6daba36a6c283b3958c974a5a2d`（2026-10-17）。部品の名前は [component-inventory.md](component-inventory.md) の見出しと同じ綴りで使う。図は `flowchart` と `sequenceDiagram` だけを使い、目で構文を確かめた。どの図にも下に文章の説明を付けた。
 
 ## Architecture Analysis
 
 ### System Overview
 
-Local Sights は 1 台の Mac の中だけで動くデスクトップアプリで、3 つの層からなる。
+1 台の PC で動くデスクトップアプリで、サーバーは無い。3 つの層に分かれる。
 
-1. **画面（`src/`）**：React 19 と Cloudscape の部品で描く。自分では状態を持たず、中核が作った `SessionView` をそのまま表示し、利用者の操作を Tauri のコマンドとして送る（ADR-001）。ログの行も持たず、見えている範囲の行だけを `get_rows` で読む。
-2. **アプリ（`src-tauri/`）**：Tauri 2 の薄いつなぎ。コマンドを受けて中核の `AppSession` を変え、結果はイベント（`session-changed`、`fetch-progress`、`filter-progress`）で画面に送る。取得・一覧・絞り込み・設定のファイル作業・AWS CLI の起動を非同期タスクや別スレッドで動かす。
-3. **中核（`crates/local-sights-core/`）**：GUI に依存しないライブラリ。判断はすべてここにあり、AWS には `CloudWatchLogsGateway` trait を通してだけ届く。
+1. **中核ライブラリ** `crates/local-sights-core`（Rust）：取得の流れ、時刻順の保持、絞り込み、キャッシュ、画面の状態（`AppSession`）など、判断のすべて。GUI に依存しない（ADR-001）。AWS には `CloudWatchLogsGateway` trait を通してだけ触れる。
+2. **アプリ** `src-tauri`（Rust、Tauri 2）：Tauri のコマンドとイベントの配線、共有状態（`AppState`）、非同期のタスクと別スレッドの起動、OS ごとの処理（AWS CLI の起動と停止、ブラウザ）。判断は持たない。
+3. **画面** `src/`（React 19 + TypeScript + Cloudscape）：中核が押し出す `SessionView` を映し、操作をコマンドで送るだけ。ログのイベントは持たず、見えている行だけを `get_rows` で読む。
 
-AWS 側は CloudWatch Logs の読み取り 3 操作だけを使う。サーバーや自前のバックエンドは無い。
+外の世界は AWS（CloudWatch Logs の読み取り 3 操作）、AWS の設定ファイル（読むだけ）、OS の設定・キャッシュフォルダ、AWS CLI（SSO ログインのときだけ）である。
 
 ### Architectural Style
 
-**単一プロセスのデスクトップアプリ（モノリス）で、中核は「ポートとアダプター」に近い形**である。根拠：
+単一プロセスのデスクトップアプリで、内部は「中核（純粋な判断と流れ）／境界（AWS・ファイル・プロセス）／薄い配線／表示だけの画面」に分けた層構造である。根拠：
 
-- 中核は GUI フレームワークに依存しない（`lib.rs` の説明、`Cargo.toml` に tauri が無い）。
-- 外部への出口は trait で切られている：AWS は `CloudWatchLogsGateway`、取得の進み具合は `FetchSink`、保持先は `TimelineStore`／`HeldEvents`、一覧の受け口は `ListingSink`、ローカル時刻は `TimeZoneContext`、再試行の揺らぎは `JitterSource`。アプリ側がそれぞれの実装（`AwsCloudWatchLogsGateway`、`TauriSink`、`Mutex<LogView>` など）を差し込む。
-- 判断は純粋関数に寄せ、流れを持つ部分（`run_fetch`、`plan_streams`、`fetch_stream`、`run_listing`）と分けている（`paging::decide`、`streams::is_selected`、`RetryPolicy::decide`、`decide_job_status`、`cache::plan::decide_write` など）。
-- 状態は 1 つの `AppSession`（`Arc<Mutex<_>>`）に集め、画面は push されたスナップショットを映すだけ。
+- 中核の `lib.rs` の説明（GUI に依存しない、AWS は gateway の trait だけ）。
+- `src-tauri/src/lib.rs` の説明（"This crate stays thin: every decision lives in `local-sights-core`"）。
+- 画面の `App.tsx`（"It holds no state of its own beyond mirroring the session view the core pushes"）。
+- 状態を変えるコマンドは何も返さず、結果は `session-changed` イベントで届く（遅れた応答が新しい状態を上書きしない）。
 
 ### Component Relationships
 
 ```mermaid
-flowchart TB
-  subgraph Screen["画面 src/（React + Cloudscape）"]
-    App["App.tsx"]
-    Api["api.ts"]
-    Cond["ConditionArea"]
-    Status["StatusLine"]
-    Banner["FetchErrorBanner"]
-    Fail["FailureList"]
-    Table["LogTable"]
+flowchart LR
+  subgraph Screen["画面 src/"]
+    AppShell["AppShell"]
+    ConditionArea["ConditionArea"]
+    LogFilterInput["LogFilterInput"]
+    LogTable["LogTable"]
+    StatusLine["StatusLine"]
+    ApiBridge["ApiBridge api.ts"]
   end
-  subgraph Tauri["アプリ src-tauri/"]
-    Cmds["Tauri コマンド 25 個"]
-    Sink["TauriSink（FetchSink）"]
-    LSink["TauriListingSink"]
-    Sso["sso_cli（AWS CLI 起動）"]
+  subgraph App["アプリ src-tauri"]
+    TauriApp["TauriApp lib.rs"]
+    TauriSink["TauriSink"]
+    SsoCliRunner["SsoCliRunner"]
+    BrowserOpener["BrowserOpener"]
   end
-  subgraph Core["中核 crates/local-sights-core/"]
-    Session["AppSession"]
-    Coord["FetchCoordinator（run_fetch / run_fetch_with_cache）"]
-    Planner["StreamPlanner（plan_streams）"]
-    Fetcher["EventFetcher（fetch_stream）"]
-    Retry["RetryPolicy / Retrier / AbortSignal"]
-    View["LogView（EventTimeline + FilterEngine）"]
-    Cache["LogCache（plan + ファイル）"]
-    GW["CloudWatchLogsGateway（trait）"]
-    AwsGW["AwsCloudWatchLogsGateway"]
-    Listing["LogGroupBrowser（run_listing）"]
+  subgraph Core["中核 local-sights-core"]
+    AppSession["AppSession"]
+    LogView["LogView"]
+    EventTimeline["EventTimeline"]
+    FilterEngine["FilterEngine"]
+    FetchCoordinator["FetchCoordinator"]
+    StreamPlanner["StreamPlanner"]
+    EventFetcher["EventFetcher"]
+    StreamSchedule["StreamSchedule"]
+    CallPacer["CallPacer"]
+    RetryPolicy["RetryPolicy"]
+    LogCache["LogCache"]
+    CachePlan["CachePlan"]
+    Gateway["CloudWatchLogsGateway"]
+    AwsGateway["AwsCloudWatchLogsGateway"]
   end
-  AWS[("CloudWatch Logs：読み取り 3 操作")]
-  CLI[("AWS CLI：aws sso login")]
-  Disk[("OS のキャッシュフォルダ / 設定フォルダ")]
+  AWS[("CloudWatch Logs")]
+  Disk[("OS のキャッシュと設定のフォルダ")]
+  CLI[("AWS CLI")]
 
-  App --> Api
-  Cond --> App
-  Status --> App
-  Banner --> App
-  Fail --> App
-  Table --> Api
-  Api -- "invoke" --> Cmds
-  Cmds -- "session-changed / fetch-progress / filter-progress" --> Api
-  Cmds --> Session
-  Cmds --> Coord
-  Cmds --> Listing
-  Cmds --> Sso
-  Coord --> Planner
-  Coord --> Fetcher
-  Planner --> Retry
-  Fetcher --> Retry
-  Planner --> GW
-  Fetcher --> GW
-  Listing --> GW
-  Coord --> View
-  Coord --> Cache
-  Coord --> Sink
-  Sink --> Session
-  Sink --> View
-  Listing --> LSink
-  LSink --> Session
-  GW -.->|実装| AwsGW
-  AwsGW --> AWS
-  Sso --> CLI
-  Cache --> Disk
-  Session --> Disk
+  AppShell --> ConditionArea
+  ConditionArea --> LogFilterInput
+  AppShell --> LogTable
+  AppShell --> StatusLine
+  AppShell --> ApiBridge
+  LogTable --> ApiBridge
+  ApiBridge -- "コマンド" --> TauriApp
+  TauriApp -- "イベント" --> ApiBridge
+  TauriApp --> AppSession
+  TauriApp --> LogView
+  TauriApp --> FetchCoordinator
+  TauriApp --> SsoCliRunner
+  TauriApp --> BrowserOpener
+  FetchCoordinator --> TauriSink
+  TauriSink --> AppSession
+  LogView --> EventTimeline
+  LogView --> FilterEngine
+  FetchCoordinator --> LogView
+  FetchCoordinator --> StreamPlanner
+  FetchCoordinator --> EventFetcher
+  FetchCoordinator --> StreamSchedule
+  FetchCoordinator --> LogCache
+  EventFetcher --> CallPacer
+  EventFetcher --> RetryPolicy
+  StreamPlanner --> RetryPolicy
+  EventFetcher --> Gateway
+  StreamPlanner --> Gateway
+  LogCache --> CachePlan
+  AwsGateway -.->|"実装"| Gateway
+  AwsGateway --> AWS
+  LogCache --> Disk
+  SsoCliRunner --> CLI
 ```
 
-テキストでの説明（図の代わり）：
-
-- 画面の `App.tsx` が各部品（条件欄 `ConditionArea`、状態行 `StatusLine`、エラー `FetchErrorBanner`、失敗一覧 `FailureList`、一覧 `LogTable`）をまとめ、`api.ts` を通して Tauri のコマンドを呼び、3 種類のイベントを受ける。
-- アプリの各コマンドは中核の `AppSession` を変える。取得は `run_fetch_with_cache`（`FetchCoordinator`）を非同期タスクで動かし、進み具合は `TauriSink` が `AppSession` に写してイベントで送る。ロググループの一覧は `run_listing` を動かし `TauriListingSink` が受ける。SSO ログインは `sso_cli` が AWS CLI を起動する。
-- `FetchCoordinator` は `StreamPlanner`（`DescribeLogStreams`）でストリームを選び、`EventFetcher`（`GetLogEvents`）で各ストリームを読む。どちらも `Retrier` を通して呼び、`CloudWatchLogsGateway` に届く。本番の実装は `AwsCloudWatchLogsGateway` で、AWS SDK を使う。
-- 取れたイベントは `LogView`（`EventTimeline` と `FilterEngine` を 1 つのロックに入れたもの）に入る。ディスクキャッシュ `LogCache` は OS のキャッシュフォルダに、設定ファイルは OS の設定フォルダに置く。
+文章での説明：画面の `AppShell` は条件欄 `ConditionArea`（その中に絞り込みの欄 `LogFilterInput`）、一覧 `LogTable`、状態行 `StatusLine` を並べ、すべての呼び出しを `ApiBridge`（`api.ts`）経由で Tauri のコマンドとして `TauriApp` に送る。`TauriApp` は `AppSession`（画面の状態）と `LogView`（保持中のイベント `EventTimeline` と絞り込み `FilterEngine` を 1 つのロックに入れたもの）を持ち、取得は `FetchCoordinator` に任せる。`FetchCoordinator` は `StreamPlanner` でストリームを選び、`StreamSchedule` の順で最大 8 本を `EventFetcher` で読み、各ページを `LogView` に足し、進み具合を `TauriSink` 経由で `AppSession` に伝える。AWS には `CloudWatchLogsGateway` の実装 `AwsCloudWatchLogsGateway` だけが触れる。キャッシュ `LogCache` は判断を `CachePlan` に任せ、OS のキャッシュフォルダに書く。SSO ログインのときだけ `SsoCliRunner` が AWS CLI を起動し、`BrowserOpener` が既定のブラウザを開く。
 
 ### Data Flow
 
-1. 利用者が条件を入れる → `update_input` → `AppSession` が検証し、理由を `validation_errors` として返す（日時は中核がタイムゾーンを考えて読む）。
-2. ［取得］ → `start_fetch(generation)` → `AppSession::begin_fetch` が `Fetching` に移り、前回の結果を消し、検証済みの条件（プロファイルとリージョンを含む）を返す。
-3. アプリが中断の組（`abort_pair`）を作り、取得タスクを起動する。
-4. `run_fetch_with_cache`：キャッシュが有効なら別スレッドで見に行き、1 つの保存範囲が取得範囲を丸ごと含めば、AWS を呼ばずにその内容を一度に `LogView` に入れて終わる。含まなければ `run_fetch` へ。
-5. `run_fetch`：`LogView` を空にする（版が上がる）→ `plan_streams` が `DescribeLogStreams` を最終イベントの新しい順にページで読み、範囲に関わるストリームを選ぶ（範囲開始の 1 時間前より古いストリームが出たら打ち切り）→ 選んだストリームを 1 つずつ `fetch_stream` で `GetLogEvents` のページの終わりまで読む。各ページは届くたびに `LogView` に混ぜ込まれ（時刻・ストリーム名・順番の順）、絞り込みにもかけられる。
-6. 進み具合（一覧のページ、ページの追加）は軽い `fetch-progress` で、段階の変化（開始、一覧の終わり、ストリームの終わり、取得の終わり）は `session-changed` で画面に届く。画面は版が変わるたびに見えている行を `get_rows` で読み直す。
-7. 終わり：すべて成功し記録できる範囲があれば、`LogView` から別スレッドで少しずつ写してキャッシュファイルに書き（一時ファイル→改名）、その後で取得を終える。`AppSession::finish_fetch` が `Done` か `Failed` に移り、失敗ストリームと通知を保つ。
+- **取得条件**：画面の開始・終了の入力（`update_input`）は `AppSession` の `DateTimeInput` に入り、選んだタイムゾーンで読んで `TimeRange`（開始は秒の 0 ms、終了は 999 ms まで、`time_range.rs`）になる。接続（プロファイル・リージョン）とロググループ（1 つ）は `AppSession` が持つ。`start_fetch` で `begin_fetch` が `ValidatedFetch { request: FetchRequest, range: TimeRange }` を返す（`request.rs`）。
+- **取得**：`run_fetch_with_cache` → キャッシュが有効なら照会（当たれば AWS を呼ばない）→ 外れれば `run_fetch`：最初に `LogView` を捨てる（`discard`）→ `DescribeLogStreams` を最終イベントの新しい順に読み、範囲に関わるストリームを選ぶ → 最大 8 本を同時に `GetLogEvents`（`startFromHead`、`startTime`〜`endTime`）でページの終わりまで読む → 各ページに `sequence` を振って `LogEvent` にし、`TimelineStore::add` で `LogView` に足す。
+- **保持**：`EventTimeline` はページを並べ替えて入る位置から混ぜ込み、`(timestamp, logStreamName, sequence)` 順の `Vec<LogEvent>` を保つ。ストリームごとの `sequence → timestamp` の索引で位置を二分探索する。足すたび・捨てるたびに版（`timelineVersion`）が上がる。
+- **絞り込み**：`set_log_filter` で文字列を渡すと `FilterEngine` の条件が変わり、別スレッドの走査が 4,096 件ずつロックを取って判定する。取得中に届いたページは、同じロックの中で走査位置までだけ判定する。結果は一致したイベントの並びキーの整列済み配列。進み具合は `filter-progress`（100 ms に 1 回まで、終わりは必ず）。
+- **表示**：画面は見えている範囲の `offset`／`limit` で `get_rows` を呼ぶ（1 回 1,000 行まで）。絞り込み中は結果の中の位置で数え、キーからタイムラインの行を二分探索して返す。時刻の表示文字列は `AppSession::display_rows` が選んだタイムゾーンで作る。
+- **キャッシュ**：全ストリームが成功した取得だけ、取得開始の 5 分前までの範囲を JSON Lines（先頭が見出し）で書く。ファイル名はキー（プロファイル, リージョン, ロググループ）の SHA-256。
 
 ### Key Design Decisions
 
-- **画面は状態を持たない（ADR-001）**：表示はすべて `SessionView` から。コマンドは結果を返さず、結果はイベントで届くので、遅れた応答が新しい状態を上書きしない。
-- **行は中核が持つ**：画面は見えている行だけを読む。100 万件でも画面のメモリと描画が増えない（U3:BR4.3、NFR3）。
-- **進み具合は軽いメッセージで**：ページごとに `SessionView` 全体を送らず `FetchProgressUpdate` を送る（U3 review R-05）。
-- **ロックの順はセッション → LogView**：取得は 1 ページごとに `LogView` を短く取るだけで、両方を同時に持たない。
-- **接続の世代**：接続に依存する操作は画面が最後に見た世代を添え、古い世代の操作は答えずに捨てる（U3:BR6.7）。
-- **再試行は中核の決まり**：スロットリングと通信失敗だけを、固定の待ち（1・2・4・8・16 秒 ±20%）で最大 5 回。中断はどの待ちの間にも効く。
-- **失敗の詳細は許可リスト**：SDK の元のメッセージは出さず、種類と許可された項目（API 名、要求 ID、プロファイル、ロググループ、ストリームなど）だけで作る。
-- **キャッシュは「全部成功した取得だけ」「直近 5 分は除く」「1 つの保存範囲で丸ごと賄えるときだけ使う」**：中途半端なデータで誤った結果を見せないため。ファイルは所有者だけが読めるようにする。
-- **AWS CLI に SSO を任せる**：アプリは SSO の API もトークンも触らない（project.md の例外の決まり）。
+| 決定 | 中身 | 影響（IB-11 から見て） |
+|------|------|------------------------|
+| 判断は中核に置く（ADR-001） | 画面は状態を持たず、Tauri は配線だけ | クエリの解釈と評価も中核に置けば、今のテスト（中核の行カバレッジ 80%）の網に入る |
+| 画面はイベントを持たない | 見えている行だけを `get_rows` で読む | 結果の件数が多くても画面の負担は変わらない。`fields` で列が変わると `RowWindow`／`DisplayRow` の形を広げる必要がある |
+| 時刻順のタイムライン 1 本 | 並びキー `(timestamp, logStreamName, sequence)`、ページは混ぜ込み | `sort` で別の順を出すには、結果側に別の並びを持つ必要がある。ロググループを複数にするとキーにグループが要る |
+| 絞り込みは LogView の 1 ロックの中 | 追加と判定、破棄と結果の空化が同時に起きる（U5 R-02） | クエリの評価も同じ継ぎ目（`on_added`／`scan_chunk`／`rows`）に入れられる |
+| 走査は 4,096 件ずつ、券で古い作業を捨てる | 画面の行の読み出しは長く待たない | 重い評価（JSON の取り出し）でも同じ刻みで回せる |
+| 取得は毎回まるごと取り直す | `run_fetch` の最初に破棄 | 「足りない分だけ取り足す」は新しい流れになる |
+| 呼んでよい API は 3 つだけ | gateway の trait に 3 操作だけ | Logs Insights の API は使えない。クエリはすべて手元で評価する |
+| OS ごとの処理は `cfg` の境界に閉じ込める | `sso_cli/unix.rs`・`windows.rs`、`browser.rs`、`cache/mod.rs` の権限 | クエリの層は OS に依存しない純粋な処理にできる |
 
 ### Improvement Opportunities
 
-今回の intent（並行取得、上限内の呼び出し、取り消し、経過時間）の観点で、構造上の手当てが要る箇所を挙げる（詳しい根拠と行番号は [code-quality-assessment.md](code-quality-assessment.md)）。
-
-- **直列を前提にした受け口**：`FetchSink` は `&mut self`、`fetch_stream` のページ受け取りは `FnMut` で、`run_fetch` は閉包の中で受け口と件数を可変で借りている。並行に読むには、受け口と件数の集計を共有できる形（ロック、または 1 本の通知の通り道に集める形）に変える必要がある。
-- **一覧が終わるまでストリームを読み始めない**：`plan_streams` が最後まで終わってから取得が始まる。一覧のページが多いロググループでは、一覧と取得を重ねる余地がある。
-- **アカウント全体の呼び出し回数を抑える仕組みが無い**：今は直列なので自然に抑えられている。並行にすると、全タスクで共有する速さの上限（とスロットリング時に下げる仕組み）が要る。AWS SDK の既定の再試行が明示されずに重なっている見込みもあり、呼び出し回数の見積もりを狂わせる。
-- **中断＝ログを捨てる**：今の中断はウィンドウを閉じるときのためのもので、取れたログを捨てて Idle に戻す。利用者の取り消しで「残す」には、新しい終わり方（あるいは Aborted の意味の変更）と、セッション・状態行・キャッシュの判定・終了確認の文言の見直しが要る。
-- **時刻順の混ぜ込みの費用**：ページを入れる位置から後ろを作り直すので、ストリームを同時に読み時刻の古いページが後から届くほど、1 ページあたりの作業と `LogView` のロック時間が増える。
-- **経過時間の源が無い**：進み具合に開始時刻が無く、画面はイベントが来たときだけ描き直す。
-- **`AppSession` が大きい**：接続・取得・絞り込み・キャッシュ設定・終了確認・SSO を 1 つの型が持つ（`session.rs` 本体 約 2000 行）。取り消しの状態を足すとさらに増える。
+- `AppSession`（`session.rs` 5,428 行）は接続・取得・絞り込み・キャッシュ設定・閉じる確認・SSO・経過時間・取り消しを 1 つの型に持つ。クエリの状態を足すなら、別の型に分けて `AppSession` からは持つだけにすると見通しが保てる。
+- `FilterCondition::matches` は判定のたびに `to_lowercase()` で文字列を作る。大きな件数では確保の費用が効く。
+- 保持中のイベントは範囲を記録していないため、「どこまで取ったか」はキャッシュの `CoveredRange` にしか無い。取り足しにはタイムライン側にも取得済み範囲の記録が要る。
+- `README.md` の「streams are read one after another」は今の同時取得と食い違う。
 
 ## Interaction Diagrams
 
-### 1. AWS から取得する（キャッシュ無効、またはキャッシュに無い）
+### 取得 → タイムライン → 絞り込み → 表示
 
 ```mermaid
 sequenceDiagram
-  actor User as 利用者
-  participant UI as 画面（ConditionArea / App / api.ts）
-  participant Cmd as アプリ（start_fetch）
+  participant UI as 画面 AppShell
+  participant App as TauriApp
   participant S as AppSession
   participant C as FetchCoordinator
-  participant P as StreamPlanner
-  participant F as EventFetcher
-  participant R as Retrier
   participant G as AwsCloudWatchLogsGateway
   participant V as LogView
-  participant K as TauriSink
-
-  User->>UI: ［取得］
-  UI->>Cmd: invoke start_fetch(generation)
-  Cmd->>S: begin_fetch(generation)
-  S-->>Cmd: ValidatedFetch（Fetching に移る）
-  Cmd-->>UI: session-changed（Fetching）
-  Cmd->>C: spawn run_fetch_with_cache(..., abort signal)
-  C->>V: discard()（版 +1）
-  C->>K: on_started
-  K-->>UI: session-changed
-  loop 一覧のページごと
-    C->>P: plan_streams
-    P->>R: call(DescribeLogStreams)
-    R->>G: describe_log_streams（失敗なら待って再試行）
-    G-->>R: ページ
-    P->>K: on_listing_progress
-    K-->>UI: fetch-progress
+  UI->>App: start_fetch(generation)
+  App->>S: begin_fetch(generation)
+  S-->>App: ValidatedFetch（FetchRequest と TimeRange）
+  App-->>UI: session-changed（Fetching）
+  App->>C: run_fetch_with_cache（非同期タスク）
+  C->>V: discard（保持中を捨て、結果も空にする）
+  C->>G: DescribeLogStreams（新しい順、ページごと）
+  G-->>C: ストリームの一覧
+  loop 最大 8 本を同時に
+    C->>G: GetLogEvents（startFromHead、範囲、次のトークン）
+    G-->>C: 1 ページのイベント
+    C->>V: add（混ぜ込みと、絞り込みの判定を同じロックで）
+    C->>S: on_batch（TauriSink 経由）
+    App-->>UI: fetch-progress（件数、版、絞り込みの要約）
   end
-  C->>K: on_planned（対象ストリーム数）
-  K-->>UI: session-changed
-  loop 選んだストリームを 1 つずつ
-    C->>F: fetch_stream(stream)
-    loop ページの終わりまで
-      F->>R: call(GetLogEvents)
-      R->>G: get_log_events
-      G-->>F: ページ
-      F->>V: add(events)（時刻順に混ぜ込み、絞り込み）
-      F->>K: on_batch
-      K-->>UI: fetch-progress（件数、版）
-      UI->>Cmd: get_rows(offset, limit)（版が変わったら）
-    end
-    C->>K: on_stream_finished
-    K-->>UI: session-changed
-  end
-  C->>K: on_finished（Completed / CompletedWithFailures / Failed）
-  K->>S: finish_fetch
-  K-->>UI: session-changed（Done / Failed）
+  C->>S: finish_fetch（TauriSink 経由）
+  App-->>UI: session-changed（Done）
+  UI->>App: get_rows(offset, limit)
+  App->>V: rows(offset, limit)
+  V-->>App: RowWindow
+  App->>S: display_rows（時刻をタイムゾーンで書く）
+  App-->>UI: DisplayRowWindow
 ```
 
-テキストでの説明：［取得］で `start_fetch` が呼ばれ、セッションが `Fetching` になった状態がすぐ画面に届く。取得タスクは `LogView` を空にし、ストリームの一覧をページごとに読み（各ページで軽い進み具合を送る）、一覧が終わると対象数を知らせる。その後、選んだストリームを 1 つずつ、`GetLogEvents` のページの終わりまで読み、各ページを `LogView` に混ぜ込んで進み具合を送る。画面は版が変わるたびに見えている行を読み直す。ストリームが 1 つ終わるごとにセッション全体を送り、最後に状態を決めて `Done` か `Failed` にする。呼び出しはすべて `Retrier` を通り、スロットリングと通信失敗は待ってから同じ要求を送り直す。3 ストリーム続けて再試行を使い切ると、残りは呼ばずに失敗とする。
+文章での説明：画面が `start_fetch` を送ると、`AppSession` が条件を確かめて `ValidatedFetch` を返し、状態が Fetching になる。`FetchCoordinator` はまず `LogView` を捨て、ストリームを選び、最大 8 本を同時に `GetLogEvents` で読む。ページが届くたびに `LogView` に足し（同じロックの中で絞り込みの判定もする）、`TauriSink` が `AppSession` を更新して軽い `fetch-progress` を送る。終わると `session-changed` で Done が届く。画面は版が変わるたびに、見えている範囲だけを `get_rows` で読み、時刻は中核が書いた文字列をそのまま出す。
 
-### 2. キャッシュの経路（有効なとき）
+### 絞り込みの文字列を変える
 
 ```mermaid
 sequenceDiagram
-  participant C as FetchCoordinator（run_fetch_with_cache）
-  participant B as 別スレッド（spawn_blocking）
-  participant L as LogCache
-  participant V as LogView
-  participant K as TauriSink（DeferredFinishSink 越し）
-  participant UI as 画面
-
-  C->>B: look_up(key, start, end)
-  B->>L: lookup（見出し行で判定、該当範囲を読む）
-  alt 1 つの保存範囲が丸ごと含む（Hit）
-    L-->>C: イベント（番号を振り直す）
-    C->>V: discard() → add(全件を一度に)
-    C->>K: on_started → on_batch → on_finished（Completed、Hit）
-    K-->>UI: 状態行に「キャッシュから表示」
-  else 無い / 範囲が足りない / 壊れている
-    C->>C: run_fetch（図 1 と同じ。終わりは保留）
-    alt Completed かつ失敗ストリーム 0 かつ記録できる範囲あり
-      C->>K: on_saving
-      K-->>UI: fetch-progress（キャッシュに保存中）
-      C->>B: LogView から 4,096 件ずつ写す
-      C->>B: write（一時ファイル → 改名、0600）
-      C->>K: on_finished（Saved / SaveFailed）
-    else それ以外（失敗、中断、記録できる範囲なし）
-      C->>K: on_finished（NotSaved）
-    end
-  end
-```
-
-テキストでの説明：キャッシュが有効なら、取得範囲を丸ごと含む保存範囲があるかを別スレッドで調べる。あれば AWS を呼ばず、全件を一度に `LogView` に入れて `Completed` で終える。無ければ図 1 の取得を行い、その終わりをいったん保留する。すべてのストリームが成功し（`Completed`、失敗 0）、取得開始の 5 分前までに記録できる部分があれば、`LogView` から 4,096 件ずつ写して一時ファイルに書き、改名で置き換えてから取得を終える。キャッシュが読めなかったときは AWS から取り直し、その旨を状態行に出す。中断された取得や失敗を含む取得は書き込まない。
-
-### 3. 中断（今はウィンドウを閉じるときだけ）
-
-```mermaid
-sequenceDiagram
-  actor User as 利用者
-  participant W as ウィンドウ / アプリ
+  participant F as LogFilterInput
+  participant App as TauriApp
   participant S as AppSession
-  participant UI as 画面（CloseConfirmDialog）
-  participant A as AbortHandle
+  participant V as LogView
+  participant W as 走査スレッド
+  F->>F: 入力が 300 ms 止まるのを待つ
+  F->>App: set_log_filter(text)
+  App->>S: update_log_filter（前後の空白を除き、同じなら何もしない）
+  App->>V: set_filter（filterId を上げ、結果を空にして Filtering）
+  App-->>F: session-changed（filterSummary）
+  App->>W: spawn_blocking で走査を始める（券つき）
+  loop 4,096 件ずつ
+    W->>V: scan_chunk（ロックを取り、判定して離す）
+    W-->>F: filter-progress（100 ms に 1 回まで）
+  end
+  W-->>F: filter-progress（Ready）
+  F->>App: get_rows（結果の中の位置で）
+```
+
+文章での説明：絞り込みの欄は入力が 300 ms 止まると（Enter なら直ちに）`set_log_filter` を送る。`AppSession` が空白を除いて前と同じか比べ、変わっていれば `LogView` の `FilterEngine` が新しい条件と空の結果で Filtering になる。別スレッドが券を持って 4,096 件ずつ判定し、途中経過を `filter-progress` で知らせる。文字列が変わるか取得し直しでタイムラインが捨てられると券が古くなり、走査は止まる。画面は結果の版が変わるたびに行を読み直す。
+
+### キャッシュに当たる取得
+
+```mermaid
+sequenceDiagram
   participant C as FetchCoordinator
+  participant K as LogCache
   participant V as LogView
-
-  User->>W: ウィンドウを閉じる / Cmd+Q
-  W->>S: request_close()
-  S-->>W: Prevent（Fetching のため確認待ち）
-  W-->>UI: session-changed（closeConfirmation = Pending）
-  User->>UI: ［閉じる］
-  UI->>W: confirm_close
-  W->>A: abort()
-  A-->>C: 待ちの最中・次の呼び出しの前に止まる
-  C->>V: discard()（取れたログを捨てる）
-  C->>S: on_finished（Aborted） → Idle、件数 0
-  W->>W: app.exit(0)
-```
-
-テキストでの説明：取得中にウィンドウを閉じようとすると確認が出る。［取得を続ける］なら何も変わらない。［閉じる］なら中断信号を送り、取得は待ちの最中か次の呼び出しの前に止まり、取れたログを捨てて `Aborted` で終わり、アプリが終了する。利用者が取得だけを止める操作は今は無い。
-
-### 4. SSO ログイン（認証エラーから）
-
-```mermaid
-sequenceDiagram
-  actor User as 利用者
-  participant UI as 画面（FetchErrorBanner / LogGroupPane / SsoLoginModal）
-  participant Cmd as アプリ（start_sso_login）
-  participant S as AppSession
-  participant Cli as sso_cli（別スレッド）
-  participant Aws as AWS CLI（aws sso login）
   participant G as AwsCloudWatchLogsGateway
-
-  User->>UI: ［SSO でサインイン］（AuthRequired のとき）
-  UI->>Cmd: invoke start_sso_login
-  Cmd->>S: start_sso_login（対象プロファイルと引数を決める）
-  Cmd->>Cli: run_login（シェルなし、新しいプロセスグループ）
-  Cli->>Aws: 起動（/opt/homebrew/bin/aws か /usr/local/bin/aws）
-  Aws-->>Cli: 出力行
-  Cli->>S: 許可された URL と確認コードだけ
-  S-->>UI: session-changed（Waiting、URL、コード）
-  User->>Aws: ブラウザで承認
-  Aws-->>Cli: 終了コード 0
-  Cli->>S: finish_sso_login（Succeeded）
-  Cmd->>G: clear_clients()（認証を読み直させる）
-  Cmd->>Cmd: ロググループの一覧を読み直す
-  S-->>UI: session-changed
+  C->>K: lookup（別スレッド、キーと範囲）
+  alt 1 つの記録範囲が要求全体を含む
+    K-->>C: Hit（イベント、sequence を振り直し）
+    C->>V: discard と 1 回の add
+  else 当たらない、または壊れている
+    K-->>C: NoCache または ReadFailed
+    C->>G: run_fetch（AWS から全範囲）
+    C->>V: ページごとに add
+    C->>K: 全ストリーム成功なら、開始の 5 分前までを書く
+  end
 ```
 
-テキストでの説明：取得や一覧で認証エラーが出て、選んだプロファイル（または `source_profile` の先）に SSO の設定があるとき、［SSO でサインイン］が出る。押すとアプリが AWS CLI の `aws sso login` を起動し、出力から許可された `https://` の URL と確認コードだけを取り出して画面に出す。利用者がブラウザで承認して CLI が成功すると、SDK のクライアントを捨てて認証を読み直させ、ロググループの一覧を読み直す。取り消し、5 分の時間切れ、アプリの終了では CLI のプロセスグループ全体を止める。
+文章での説明：キャッシュが有効なときは、まず別スレッドで照会する。1 つの記録範囲が要求範囲全体を含めば、AWS を呼ばずに保持中を捨てて全件を 1 回で足す。そうでなければ AWS から全範囲を取り直し、全ストリームが成功したときだけ、取得開始の 5 分前までの範囲を書き込む（既存の記録範囲とつなぐ）。部分的に当たった分だけを使い、残りを取り足すことはしない。

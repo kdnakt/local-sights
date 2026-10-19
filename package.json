@@ -23,6 +23,7 @@
     "@cloudscape-design/design-tokens": "^3.0.114",
     "@cloudscape-design/global-styles": "^1.0.71",
     "@tauri-apps/api": "^2.12.2",
+    "ace-builds": "^1.44.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

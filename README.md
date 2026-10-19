@@ -14,8 +14,9 @@ no telemetry or crash reports anywhere.
 > and end as a date (`yyyy/mm/dd`, typed or picked from a calendar) and a
 > time (`hh:mm:ss`) in local time or UTC and press
 > **Fetch**: every stream of the group that matters for the range is read,
-> one after another, and the events are listed in time order as they arrive
-> ("time / stream / message"). Throttling and network errors are retried;
+> up to eight streams side by side, and the events are listed in time order
+> as they arrive ("time / stream / message"). Throttling and network errors
+> are retried;
 > streams that still fail are listed separately while the rest is shown.
 > The list draws only the visible rows, so a million events scroll smoothly.
 > The log filter narrows the fetched events to those whose message contains
@@ -26,7 +27,9 @@ no telemetry or crash reports anywhere.
 > message; the reason why **Fetch** is unavailable is shown under the field
 > it belongs to, a failed fetch is an error alert above the list that says
 > what happened and what to do next; closing the window while fetching asks
-> first.
+> first. A second screen, **Log Analytics** (the navigation on the left),
+> runs CloudWatch Logs Insights-style queries on logs it fetches for itself;
+> see [Log Analytics queries](#log-analytics-queries).
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -161,6 +164,42 @@ stays until the next **Fetch**, a profile or region change, or another log
 group. A cancel after every stream was already read counts as a finished
 fetch. Closing the window still asks first and discards everything, also
 after **Cancel**.
+
+## Log Analytics queries
+
+The Log Analytics screen fetches the chosen log group and time range with the
+same three read APIs and evaluates the query on your machine; it never calls
+the Logs Insights APIs (`StartQuery` and the like). The query is written as in
+the console; see the AWS documentation,
+[CloudWatch Logs Insights query syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html),
+for how to write one. This version reads the following part of it.
+
+| Supported                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (0 to 100,000, `limit 0` giving no row; without one, 10,000 rows), joined with `\|` and applied in the order written                                                                                |
+| Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``)                                                   |
+| Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                                                                              |
+| Comparing two fields, such as `a = b` or `@logStream != @log`: a name without quotes after `=`, `!=`, `<`, `<=`, `>` or `>=` is a field, so `readOnly = true` compares with a field named `true` (as the console reads it); write `readOnly = "true"` for the value |
+| `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                                                                    |
+
+| Not supported                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The other commands (`stats`, `parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)                                  |
+| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]` |
+| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                                                |
+
+As in the console, a JSON `true` or `false` is shown as `1` or `0` in the
+result and in an opened row, but is compared as the text: `readOnly = "true"`
+keeps the rows whose `readOnly` is `true`. `<`, `<=`, `>` and `>=` between
+two texts keep no row when either of them is no number (such as
+`eventName > "M"` or `eventName > "5"`); texts of digits compare as numbers,
+with each other and with numbers. When two fields are compared and either is
+missing from an event, the event meets no comparison, not even `!=` (so
+`eventName != errorCode` keeps only events that have `errorCode`); a missing
+field against a value still meets `!=`.
+
+A query that uses what is not supported, or has a writing mistake, is not run;
+the screen says what and where, without fetching anything.
 
 ## Sign in with SSO
 
@@ -434,6 +473,39 @@ failed stream (or an incomplete stream listing) with its failure kind and
 safe detail. Exit code 0 means success, 1 that something failed, 2 invalid
 arguments. The check has no **Cancel**: it always reads to the end.
 
+### Compare Log Analytics with the console's Logs Insights
+
+`compat_check` compares the app's query results with the console's Logs
+Insights on the same log group and period, for the query set in
+`crates/local-sights-core/examples/compat_queries.txt` (written for a
+CloudTrail log group; write another set for other logs). It is by hand only,
+on your own machine with your own credentials. First export the Logs Insights
+results with the AWS CLI (it runs `start-query` and `get-query-results` only;
+Logs Insights is charged by the data it reads, so keep the period short), into
+a folder **outside** the repository, since the files hold log contents. The
+period must have ended at least 30 minutes ago; pick start and end seconds
+with few events. A query without its own `limit` is started with
+`--limit 10000`, the app's row cap; a query with `limit` is left to it.
+
+```bash
+PROFILE=dev REGION=us-east-1 GROUP=CloudTrail START=1767435900 END=1767439500 \
+  OUT=~/insights-export ./scripts/compat/insights-export.sh
+cargo run -p local-sights-core --example compat_check -- --export-dir ~/insights-export
+```
+
+The check reads the profile, region, log group and period from
+`settings.json` in that folder, fetches the period once as the Log Analytics
+screen does (`DescribeLogStreams` and `GetLogEvents` only) and compares every
+query: the collection of rows, `@ptr` aside, and for queries with `sort` the
+order of the sort values. It prints one line a query (`Same`, `Different`,
+`BothRejected`, `OnlyAppRejected`, `OnlyInsightsRejected`, `Skipped` for an
+unsorted result cut at its row limit, `NotCompared` for a missing or
+unfinished export), the first five rows on one side only (the time and the
+first 40 characters of each value), then the counts. Exit code 0 means every
+compared query was the same, 1 a difference, 2 that it could not compare.
+Give both the same `QUERIES=` / `--queries` file when you use another set.
+Record the summary, not the log contents, in the unit's `code-summary.md`.
+
 ## App icon
 
 The icon is drawn in `src-tauri/icons/source/icon.svg` (a rounded dark blue
@@ -478,6 +550,7 @@ npm run typecheck && npm run lint && npm run format:check
 npm audit
 npm run check:version           # same version in Cargo.toml, Cargo.lock, package.json, tauri.conf.json
 cargo test -p local-sights-core --example fetch_check  # fetch_check argument parsing (--region is required)
+cargo test -p local-sights-core --example compat_check # compat_check's comparison with sample data, a fake gateway and a fake aws CLI
 ```
 
 The OS-specific code (`cfg(unix)` / `cfg(windows)` in `src-tauri/src/sso_cli/`,

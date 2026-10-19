@@ -1,0 +1,36 @@
+# 261017-insights-query U4: the query set compared with the console's Logs Insights (BR3.1).
+# One query a line: id<TAB>order|set<TAB>purpose<TAB>query. Lines starting with # are notes.
+# The field names follow a CloudTrail log group (eventSource, eventName, errorCode,
+# userIdentity.type, userIdentity.invokedBy, readOnly, eventVersion, awsRegion). For another log group, write another
+# file and pass it with QUERIES= (insights-export.sh) and --queries (compat_check).
+# Query texts only: never put log contents here (NFR4). No @log values and no date texts.
+# order = the rows are compared in order (queries with sort, BR2.3); set = only the collection.
+q01-doc-latest	order	資料の例（fields・sort・limit）	fields @timestamp, @message | sort @timestamp desc | limit 20
+q02-doc-like	order	資料の例（like）	fields @timestamp, @message | filter @message like /Exception/ | sort @timestamp desc | limit 20
+q03-doc-regex-ci	set	資料の例（(?i)）	fields eventName | filter eventName like /(?i)assumerole/
+q04-doc-in	set	資料の例（in）	fields @timestamp, eventName | filter eventName in ["AssumeRole", "Decrypt"]
+q05-doc-and	set	資料の例（and と比べる）	fields eventName, awsRegion | filter (eventSource = "kms.amazonaws.com" and awsRegion = "us-east-1")
+q06-nested	set	JSON の入れ子	fields userIdentity.type, eventName | filter userIdentity.type = "AWSService"
+q07-match	set	=~	fields eventName | filter eventName =~ /^Get/
+q08-not-paren	set	not (…)	fields eventName | filter not (eventName like /Get/ or eventName like /List/)
+q09-sort-natural	order	自然順	fields eventName | sort eventName asc | limit 200
+q10-sort-missing	order	ない値の並び	fields errorCode, eventName | sort errorCode desc | limit 50
+q11-nosort-set	set	sort がないとき（集まりだけ）	fields @timestamp, eventName | filter eventSource = "sts.amazonaws.com"
+p01-numstr-gt	set	仮：数字だけの文字列と数の >	fields eventVersion | filter eventVersion > 1.05
+p02-numstr-lt	set	仮：数字だけの文字列と数の <	fields eventVersion | filter eventVersion < 1.09
+p03-text-order	set	仮：数字でない文字列どうしの順	fields eventName | filter eventName > "M"
+p04-bool	set	仮：真偽値と文字列	fields eventName, readOnly | filter readOnly = "true"
+p05-bool-literal	set	仮：引用符のない true は項目（ない項目との比べ）	fields eventName, readOnly | filter readOnly = true
+p06-upper-and-or-not	set	仮：AND・OR・NOT の大文字	fields eventName | filter eventSource = "kms.amazonaws.com" AND NOT (eventName = "Decrypt" OR eventName = "Encrypt")
+p07-upper-not-like-in	set	仮：NOT LIKE・NOT IN の大文字	fields eventName | filter eventName NOT LIKE /Get/ | filter eventName NOT IN ["AssumeRole"]
+p08-limit0	set	仮：limit 0（10,000 件を超える期間で意味がある）	fields @timestamp | limit 0
+# R-04: CloudTrail's eventVersion is a JSON string, so p09 checks a digits-only JSON string
+# against a string with =. JSON numbers stay unchecked with CloudTrail; add a query set for a
+# log group with JSON numbers to check them.
+p09-json-number	set	仮：数字だけの文字列（JSON の文字列）と文字列の =	fields eventName | filter eventVersion = "1.08"
+# Loop-back 2: the rules U2's review (loop-back 2) left as provisional. p10 and p11 compare two
+# fields (the right side is a field since U2 loop-back 2); p12 a non-numeric string with a
+# digits-only string (no match between two non-numeric strings since U2 loop-back 2).
+p10-field-eq	set	仮：項目どうしの =	fields eventName, eventSource | filter userIdentity.invokedBy = eventSource
+p11-field-ne-missing	set	仮：右辺の項目がないときの !=	fields eventName, errorCode | filter eventName != errorCode
+p12-text-vs-digits	set	仮：数字でない文字列と数字だけの文字列の大小	fields eventName | filter eventName > "5"

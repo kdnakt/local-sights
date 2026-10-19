@@ -116,6 +116,16 @@ impl EventTimeline {
         self.version
     }
 
+    /// Hands over every held event, in order, and is empty after; the
+    /// version goes up as for a discard (BR4.5). Only the query screen's
+    /// one-range holders use it, to pass a finished fetch on to its
+    /// QueryStore (261017-insights-query U3, functional-design review R-01).
+    pub fn take_events(&mut self) -> Vec<LogEvent> {
+        self.timestamps.clear();
+        self.version += 1;
+        std::mem::take(&mut self.events)
+    }
+
     /// At most `limit` events from `offset` (BR4.3). Copies only the
     /// requested rows, so the cost does not depend on the held count.
     pub fn rows(&self, offset: usize, limit: usize) -> RowWindow {
@@ -331,6 +341,27 @@ mod tests {
         assert_eq!(timeline.position_of("s", 0), None);
         assert_eq!(timeline.clear(), 4, "a discard always counts");
         assert_eq!(timeline.version(), 4);
+    }
+
+    #[test]
+    fn taking_the_events_hands_them_over_in_order_and_empties_the_timeline() {
+        // 261017-insights-query U3, R-01.
+        let mut timeline = EventTimeline::new();
+        timeline.append(page("b", 0, &[20, 10]));
+        timeline.append(page("a", 0, &[15]));
+        let before = timeline.version();
+        let taken = timeline.take_events();
+        assert_eq!(
+            taken
+                .iter()
+                .map(|e| (e.timestamp, e.log_stream_name.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(10, "b"), (15, "a"), (20, "b")]
+        );
+        assert!(timeline.is_empty());
+        assert_eq!(timeline.version(), before + 1);
+        assert_eq!(timeline.position_of("a", 0), None, "the index goes too");
+        assert!(timeline.take_events().is_empty());
     }
 
     /// Ten streams of interleaved times, each read in pages, like a fetch.

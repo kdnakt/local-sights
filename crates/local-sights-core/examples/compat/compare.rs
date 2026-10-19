@@ -594,7 +594,10 @@ mod tests {
 
     #[test]
     fn both_refusing_is_no_difference_and_one_side_refusing_is() {
-        let refused_app = AppSide::Rejected("Unsupported query.unsupported.fieldComparison".into());
+        // What the app gives for `filter eventName like eventSource`, which
+        // the core still refuses (loop-back 2; p05 is read now).
+        let refused_app =
+            AppSide::Rejected("Unsupported query.unsupported.fieldComparison (eventSource)".into());
         let refused_insights = InsightsSide::Rejected("MalformedQueryException".into());
         let both = compare_query(&set_spec(), &refused_app, &refused_insights);
         assert_eq!(both.verdict, Verdict::BothRejected);
@@ -606,7 +609,7 @@ mod tests {
         assert_eq!(only_app.verdict, Verdict::OnlyAppRejected);
         assert_eq!(
             only_app.app_message.as_deref(),
-            Some("Unsupported query.unsupported.fieldComparison")
+            Some("Unsupported query.unsupported.fieldComparison (eventSource)")
         );
         assert_eq!(only_app.insights_count, Some(1));
         let only_insights =

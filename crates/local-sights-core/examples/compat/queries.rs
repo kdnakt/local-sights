@@ -253,12 +253,16 @@ mod tests {
     fn the_shipped_query_set_is_read_by_the_app_and_order_queries_sort() {
         use local_sights_core::query::parser::parse_query;
         let set = parse_query_set(include_str!("../compat_queries.txt")).unwrap();
-        assert_eq!(set.len(), 20, "functional-spec 3 lists 20 queries");
+        assert_eq!(
+            set.len(),
+            23,
+            "functional-spec 3 lists 20 queries; loop-back 2 adds p10-p12"
+        );
         for query in &set {
             // BR3.1: no @log value and no date text in the set.
             assert!(!query.text.contains("@log "), "{}", query.id);
-            // A query the app refuses (p05's bare `true` today) is still
-            // compared: both refusing is no difference (BR2.4).
+            // A query the app refuses would still be compared: both
+            // refusing is no difference (BR2.4).
             match parse_query(&query.text) {
                 Ok(plan) => assert_eq!(
                     plan.has_sort(),
@@ -276,5 +280,35 @@ mod tests {
             .find(|query| query.id == "p09-json-number")
             .unwrap();
         assert!(p09.purpose.contains("JSON の文字列"), "R-04");
+        // Loop-back 2: p05's bare `true` is a field now (U2 loop-back 2), and
+        // p10-p12 check the provisional rules U2's review left; the app reads
+        // them all.
+        for id in [
+            "p05-bool-literal",
+            "p10-field-eq",
+            "p11-field-ne-missing",
+            "p12-text-vs-digits",
+        ] {
+            let query = set.iter().find(|query| query.id == id).unwrap();
+            assert!(parse_query(&query.text).is_ok(), "{id}");
+        }
+        let p05 = set
+            .iter()
+            .find(|query| query.id == "p05-bool-literal")
+            .unwrap();
+        assert!(p05.purpose.contains("項目"), "{}", p05.purpose);
+    }
+
+    /// The app-refused example the compare and report tests use in place of
+    /// p05 (loop-back 2): a field after `like` is still refused by the core.
+    #[test]
+    fn a_field_after_like_is_still_refused_by_the_app() {
+        use local_sights_core::query::parser::parse_query;
+        use local_sights_core::query::plan::ProblemKind;
+        let problem = parse_query("fields eventName | filter eventName like eventSource")
+            .expect_err("a field after like is not taken");
+        assert_eq!(problem.kind, ProblemKind::Unsupported);
+        assert_eq!(problem.message_key, "query.unsupported.fieldComparison");
+        assert_eq!(problem.word.as_deref(), Some("eventSource"));
     }
 }

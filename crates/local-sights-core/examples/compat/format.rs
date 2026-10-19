@@ -6,7 +6,8 @@
 //! number is written as serde_json writes it (whole numbers exactly,
 //! decimals in their shortest form: the text written in the log is not kept
 //! by the app, so `1.0` or `1e3` would come out as `1.0` and `1000.0`), a
-//! boolean as `true` / `false` and a string as it is. A column without a
+//! boolean as `1` / `0` as Logs Insights writes it (the cells the app shows
+//! since U2 loop-back 2, compat run p04) and a string as it is. A column without a
 //! value is left out of the row, as Logs Insights leaves the field out of
 //! its row. `@ptr` is the console's own field and never compared (BR2.1).
 
@@ -114,10 +115,26 @@ mod tests {
                 ("count", "42"),
                 ("eventVersion", "1.08"),
                 ("ratio", "0.5"),
-                ("readOnly", "true"),
+                ("readOnly", "1"),
                 ("userIdentity.type", "AWSService"),
             ]),
-            "null is no value and is left out, as the console leaves it out"
+            "true is 1 as Logs Insights writes it (compat run p04); null is no value and is \
+             left out, as the console leaves it out"
+        );
+    }
+
+    /// Compat run p04 (loop-back 2): Logs Insights writes a JSON `false` as
+    /// `0`, also in a nested field; a string "false" stays as it is.
+    #[test]
+    fn json_false_is_written_as_0_and_the_string_false_as_it_is() {
+        let plan = parse_query("fields readOnly, flags.managed, text").unwrap();
+        let row = result_row(
+            1_767_435_981_414,
+            r#"{"readOnly":false,"flags":{"managed":true},"text":"false"}"#,
+        );
+        assert_eq!(
+            app_row(&plan.columns(), &row),
+            pairs(&[("flags.managed", "1"), ("readOnly", "0"), ("text", "false")])
         );
     }
 

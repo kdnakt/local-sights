@@ -480,7 +480,8 @@ results with the AWS CLI (it runs `start-query` and `get-query-results` only;
 Logs Insights is charged by the data it reads, so keep the period short), into
 a folder **outside** the repository, since the files hold log contents. The
 period must have ended at least 30 minutes ago; pick start and end seconds
-with few events.
+with few events. A query without its own `limit` is started with
+`--limit 10000`, the app's row cap; a query with `limit` is left to it.
 
 ```bash
 PROFILE=dev REGION=us-east-1 GROUP=CloudTrail START=1767435900 END=1767439500 \

@@ -1,21 +1,21 @@
 # Code Summary — U4 互換の確認用プログラム（u4-compat-check）
 
-上流：`code-generation-plan.md`（Step 1〜Step 9、Loop-back 1 の Step 10〜Step 14）、コードのレビュー 1 回目（`reviews/review-01.md`）の指摘 R-01〜R-05（下の「Loop-back 1 の直し」）、`functional-design/`（`rules.md` の BR1.1〜BR3.3、`functional-spec.md`、`entities.md`、質問票 Q1 = A）、機能設計のレビュー 1 回目の指摘 R-01〜R-06（計画の表のとおり手順の中で直した）、`unit-test-instructions.md`。Testing Contract は `custom`（比べ方などの純粋なロジックはテスト先行、取得の配線とスクリプトは実装してからテスト）。コミットと push はしていない。
+上流：`code-generation-plan.md`（Step 1〜Step 9、Loop-back 1 の Step 10〜Step 14、Loop-back 2 の Step 15〜Step 19）、互換の確かめの結果（`construction/build-and-test/test-results.md` の 11 章と Loop-Back Log の Loop-back 2、下の「Loop-back 2 の直し」）、コードのレビュー 1 回目（`reviews/review-01.md`）の指摘 R-01〜R-05（下の「Loop-back 1 の直し」）、`functional-design/`（`rules.md` の BR1.1〜BR3.3、`functional-spec.md`、`entities.md`、質問票 Q1 = A）、機能設計のレビュー 1 回目の指摘 R-01〜R-06（計画の表のとおり手順の中で直した）、`unit-test-instructions.md`。Testing Contract は `custom`（比べ方などの純粋なロジックはテスト先行、取得の配線とスクリプトは実装してからテスト）。コミットと push はしていない。
 
 ## 作ったもの・変えたもの
 
 | ファイル | 中身 | 決まり |
 |---|---|---|
-| `crates/local-sights-core/examples/compat_queries.txt`（新規） | クエリの組 20 本（`id<TAB>order\|set<TAB>目的<TAB>クエリ`）。functional-spec の 3 章のとおりで、p09 の目的を「数字だけの文字列（JSON の文字列）と文字列の =」に直した。クエリの文だけで、ログの中身は含まない | BR3.1、R-04 |
+| `crates/local-sights-core/examples/compat_queries.txt`（新規） | クエリの組 23 本（`id<TAB>order\|set<TAB>目的<TAB>クエリ`）。functional-spec の 3 章の 20 本で、p09 の目的を「数字だけの文字列（JSON の文字列）と文字列の =」に直した。Loop-back 2 で p05 の目的を直し、p10〜p12 を足した。クエリの文だけで、ログの中身は含まない | BR3.1、R-04 |
 | `crates/local-sights-core/examples/compat/queries.rs`（新規） | クエリの組の読み込み。`#` の注記と空行を飛ばす。id は英数字と `-` だけで重ならない。クエリの文は 10,000 文字まで | BR3.1 |
 | `crates/local-sights-core/examples/compat/settings.rs`（新規） | `settings.json`（RunSettings）の読み込みと確かめ、END が 30 分以上前か、書き出しのフォルダがリポジトリの外か（部品ごとの前方一致、大文字・小文字を無視する指定つき） | BR1.2〜BR1.4、R-05 |
 | `crates/local-sights-core/examples/compat/export.rs`（新規） | `<id>.json` の読み込み。Complete は行（`@ptr` を除く）、Error は断った文、それ以外の status は「走り切らなかった」。`exportedAtSeconds` が settings.json と違うか、ないファイルは「ほかの回の書き出し」（Loop-back 1） | BR2.1、R-02、コードのレビュー R-01・R-02 |
-| `crates/local-sights-core/examples/compat/format.rs`（新規） | アプリの行を Logs Insights の書き方に合わせる。`@timestamp` は UTC の `YYYY-MM-DD HH:MM:SS.sss`、JSON の数は serde_json の書き方、真偽値は `true`・`false`、値のない列は行に入れない | BR2.2、R-06 |
+| `crates/local-sights-core/examples/compat/format.rs`（新規） | アプリの行を Logs Insights の書き方に合わせる。`@timestamp` は UTC の `YYYY-MM-DD HH:MM:SS.sss`、JSON の数は serde_json の書き方、真偽値は `1`・`0`（Loop-back 2。U2 の直しで結果の一覧が出す値のまま）、値のない列は行に入れない | BR2.2、R-06 |
 | `crates/local-sights-core/examples/compat/compare.rs`（新規） | 1 本のクエリの比べ。NotCompared → 断り方 → sort のない上限の Skipped → 列の名前 → 切り目の同順位を除く → 多重集合 → sort の値の並び | BR2.1、BR2.3〜BR2.5、R-01、R-02、R-06 |
 | `crates/local-sights-core/examples/compat/report.rs`（新規） | 終了コード（0 互換、1 違いあり、2 比べられなかった）、クエリごとの報告の行、行の要約（時刻と値の先頭 40 文字）、最後の数の要約 | BR2.6、BR3.2、R-02、R-03 |
 | `crates/local-sights-core/examples/compat/mod.rs`（新規） | 上の 6 つのモジュールをまとめる | — |
 | `crates/local-sights-core/examples/compat_check.rs`（新規） | 確認用プログラム。`--export-dir`（と `--queries`）を受け取り、フォルダと期間を確かめ、settings.json の条件で、クエリの画面と同じ流れ（QueryStore と QueryRunner、DescribeLogStreams・GetLogEvents だけ）で期間を 1 回取得し、クエリごとにアプリの中核で読み取りと評価をして比べ、報告を出す。期間は START の 0 ms から END の 999 ms | BR1.1〜BR1.4、BR2.1〜BR2.6、BR3.2、R-01、R-03、R-05 |
-| `scripts/compat/insights-export.sh`（新規、実行の権限つき） | 書き出しのスクリプト。PROFILE（なくてもよい）・REGION・GROUP・START・END・OUT・QUERIES・WAIT_SECONDS。OUT の実際の場所がリポジトリの外か、END が 30 分以上前かを確かめてから、settings.json と、クエリごとの `<id>.json`（status と results、Error のときはリクエスト ID を除いた断った文、どのファイルにも settings.json と同じ `exportedAtSeconds`）を書く。start-query には `--limit 10000` を渡し、標準エラーは一時ファイルに分ける。Error はクエリの書き方の誤り（`MalformedQueryException`）のときだけで、ほかの失敗は Unknown。macOS の bash 3.2 でも動く書き方にした | BR1.1〜BR1.4、R-03、R-05、コードのレビュー R-01〜R-04 |
+| `scripts/compat/insights-export.sh`（新規、実行の権限つき） | 書き出しのスクリプト。PROFILE（なくてもよい）・REGION・GROUP・START・END・OUT・QUERIES・WAIT_SECONDS。OUT の実際の場所がリポジトリの外か、END が 30 分以上前かを確かめてから、settings.json と、クエリごとの `<id>.json`（status と results、Error のときはリクエスト ID を除いた断った文、どのファイルにも settings.json と同じ `exportedAtSeconds`）を書く。start-query には、クエリに `limit` のコマンドがないときだけ `--limit 10000` を渡し（Loop-back 2）、標準エラーは一時ファイルに分ける。Error はクエリの書き方の誤り（`MalformedQueryException`）のときだけで、ほかの失敗は Unknown。macOS の bash 3.2 でも動く書き方にした | BR1.1〜BR1.4、R-03、R-05、コードのレビュー R-01〜R-04 |
 | `crates/local-sights-core/Cargo.toml` | `[[example]] compat_check` を登録した（新しいクレートは足していない） | — |
 | `.gitignore` | `insights-export/` を念のため足した | BR1.2 |
 | `README.md` | 「Compare Log Analytics with the console's Logs Insights」の節と、テストのコマンドの 1 行 | — |
@@ -29,10 +29,10 @@
 |---|---|---|
 | 資料の例（DocExample） | q01〜q05 | fields・sort・limit、like、`(?i)`、in、and |
 | 基本 | q06〜q11 | JSON の入れ子、`=~`、`not (…)`、自然順の sort、ない値の sort、sort のないとき（集まりだけ） |
-| 仮の決まり（Provisional） | p01〜p09 | 数字だけの文字列と数の `>`・`<`、数字でない文字列どうしの順、真偽値と文字列・`true`、AND・OR・NOT・NOT LIKE・NOT IN の大文字、`limit 0`、数字だけの JSON の文字列と文字列の `=` |
+| 仮の決まり（Provisional） | p01〜p12 | 数字だけの文字列と数の `>`・`<`、数字でない文字列どうしの順、真偽値と文字列、引用符のない `true`（項目）、AND・OR・NOT・NOT LIKE・NOT IN の大文字、`limit 0`、数字だけの JSON の文字列と文字列の `=`、項目どうしの `=`、右辺の項目がないときの `!=`、数字でない文字列と数字だけの文字列の大小 |
 
 - 比べ方は、sort のある 4 本（q01、q02、q09、q10）が order、残りが set。組のファイルのテストで「order ⇔ sort がある」を確かめる。
-- p05（`readOnly = true`）は今のアプリが読めない（`query.unsupported.fieldComparison`、`true` を項目の名前と読む）。BR2.4 で Logs Insights の答えと比べる（両方が断れば BothRejected、Logs Insights だけが読めれば OnlyAppRejected で違いとして出る）。
+- p05（`readOnly = true`）は、U2 の Loop-back 2 の直しで、アプリも引用符のない `true` を項目の名前として読む（項目どうしの比べ）。組のファイルのテストで、p05 と p10〜p12 をアプリが読めることを確かめる。今の組には、アプリが断るクエリはない（断り方の比べ BR2.4 は、`compare.rs`・`report.rs` のテストで、今もアプリが断る `filter eventName like eventSource` の形の例で確かめる）。
 
 ### 確かめられないまま残る組
 
@@ -42,18 +42,18 @@
 
 ## テストの数
 
-`cargo test -p local-sights-core --example compat_check`：48 件（Step 9 の時点で 42 件、Loop-back 1 で 6 件を足した。AWS には接続しない）。
+`cargo test -p local-sights-core --example compat_check`：51 件（Step 9 の時点で 42 件、Loop-back 1 で 6 件、Loop-back 2 で 3 件を足した。AWS には接続しない）。
 
 | 部品 | 件数 | 進め方 |
 |---|---|---|
-| `compat/queries.rs`（クエリの組の読み込みと、入れた組そのもの） | 6 | テスト先行 |
+| `compat/queries.rs`（クエリの組の読み込みと、入れた組そのもの、`like` の後ろの項目をアプリが断ること） | 7 | テスト先行 |
 | `compat/settings.rs`（settings.json と `exportedAtSeconds`、END、フォルダ） | 5 | テスト先行 |
-| `compat/format.rs`（@timestamp、JSON の値、@ptr） | 3 | テスト先行 |
+| `compat/format.rs`（@timestamp、JSON の値、真偽値の `1`・`0`、@ptr） | 4 | テスト先行 |
 | `compat/export.rs`（書き出しの読み込み、start-query の失敗を書いた Unknown、ほかの回の書き出し） | 5 | テスト先行 |
 | `compat/compare.rs`（多重集合、列、並び、同順位、切り目の同順位、列のない行、断り方、Skipped、NotCompared、ほかの回の書き出し） | 11 | テスト先行 |
 | `compat/report.rs`（終了コード、行の要約、報告の行、数の要約） | 6 | テスト先行 |
 | `compat_check.rs` の配線（偽のゲートウェイと一時フォルダ：同じなら 0、違えば 1、取得の失敗と書き出しの欠けは 2、前の回の書き出しが残っていれば 2、切り目の同順位と境目の秒、prepare のフォルダと期間、引数） | 7 | 実装してからテスト |
-| `compat_check.rs` のスクリプト（`bash -n`、偽の `aws` で settings.json と `<id>.json`、リポジトリの中の OUT と近すぎる END で止まる、認証切れ・アクセスの拒否は Unknown で比べない、`--limit 10000` と標準エラーの警告） | 5 | 実装してからテスト（`#[cfg(unix)]`） |
+| `compat_check.rs` のスクリプト（`bash -n`、偽の `aws` で settings.json と `<id>.json`、リポジトリの中の OUT と近すぎる END で止まる、認証切れ・アクセスの拒否は Unknown で比べない、`--limit 10000` と標準エラーの警告、`limit` のあるクエリには `--limit` を渡さない） | 6 | 実装してからテスト（`#[cfg(unix)]`） |
 
 テスト先行の部品は、仮の中身でテストが失敗することを確かめてから実装した。比べ方のテストを流す中で、Logs Insights の結果が 0 行のときに列の違いとして扱ってしまう誤りが見つかり、列は両方に行があるときだけ比べるように直した。
 
@@ -90,13 +90,15 @@ cargo run -p local-sights-core --example compat_check -- --export-dir ~/insights
 - スクリプトは `aws` と `jq` を使う。終了コードは 0（すべて Complete か Error）、1（Complete・Error 以外のクエリがある。start-query が書き方の誤り以外の理由で失敗したもの（認証切れなど）を含む）、2（設定の誤りで何も流さなかった）。Error は start-query が `MalformedQueryException` で断ったときだけ。
 - 1 回目は開発者の Mac の bash 3.2（`/bin/bash`）で流す。スクリプトのテスト（偽の `aws`）は CI の Linux のランナーでだけ流れ、macOS の bash 3.2 での動きは自動では確かめていないため（コードのレビュー R-06）。
 - 同じ OUT を使い回してよい。前の回の `<id>.json` が残っていても、`exportedAtSeconds` が settings.json と違えば確認用プログラムは比べず NotCompared にする（ファイルは消さない）。
-- 件数の上限は、クエリに `limit` がなければ 10,000（スクリプトは `--limit 10000` を渡し、確認用プログラムも 10,000 とみなす）。
+- 件数の上限は、クエリに `limit` がなければ 10,000（スクリプトは `--limit 10000` を渡し、確認用プログラムも 10,000 とみなす）。`limit` のあるクエリには `--limit` を渡さず、クエリの `limit` に任せる（Loop-back 2）。
 - 確認用プログラムの報告は 1 行が 1 本のクエリ（`id  結果  insights=件数  app=件数`、`tied-at-cut=…`・`first-out-of-order-row=…`・`boundary-events` の印つき）。違いがあれば片方にだけある行を最初の 5 つまで出す。最後に結果ごとの数を出す。終了コードは 0（互換）、1（違いあり）、2（比べられなかった）。
 - `boundary-events` の印のあるクエリで違いが出たら、まず期間の端の秒の扱い（R-03）を疑う。
 
 ## 手元の比べの結果（BR3.3）
 
-まだ流していない。流したら、ここと Build and Test の記録に次を残す（ログの中身は残さない）。
+1 回目（2026-10-18、開発者の Mac）：CloudTrail のロググループ、期間 1 時間、イベント 992 件。Same 13、Different 6、OnlyAppRejected 1、NotCompared 0（終了コード 1）。違いの原因の見立てと直し方は `test-results.md` の 11 章と下の「Loop-back 2 の直し」のとおり。Loop-back 2 の直しのあと、23 本の組でもう一度流す。
+
+流したら、ここと Build and Test の記録に次を残す（ログの中身は残さない）。
 
 - ロググループの種類、期間の長さ、期間の中のイベントの数
 - 結果ごとの数（Same・Different・BothRejected・OnlyAppRejected・OnlyInsightsRejected・Skipped・NotCompared）
@@ -140,6 +142,38 @@ Build and Test から戻り、コードのレビュー 1 回目の指摘を直�
 | `npx prettier --check .` | 通る |
 | `aidlc engine sensor-traceability --output-path …/traceability.json` | pass（gaps・orphans・invalid なし、findings 0） |
 
+## Loop-back 2 の直し（Step 15〜Step 18）
+
+Build and Test の互換の確かめ（`test-results.md` の 11 章）から戻った直し。開発者は p04（真偽値を `1`／`0` と出す）と p05（項目どうしの比べに対応する）をコンソールに合わせると決め、U2 は `fe4910a` で直し済み。U4 ではスクリプトの誤りと、U2 の直しに合わせた比べの道具を直した。アプリ本体と中核ライブラリ（`src/`）は変えていない。
+
+| 違い・決まり | 直したこと | 手順 |
+|---|---|---|
+| q01・q02・q09・q10 が Different（Logs Insights だけが 992・68・992・992 行） | 原因はスクリプト。Loop-back 1 の R-03 の直しで start-query に必ず `--limit 10000` を渡していたため、API の上限がクエリの `limit 20` などより優先され、Logs Insights がすべての行を返した（アプリの 20・20・200・50 行が正しい）。スクリプトは、クエリに `limit` のコマンド（クエリの先頭か `\|` の後ろの最初の言葉が `limit`、大文字・小文字を問わない）がないときだけ `--limit 10000` を渡す。判定の前に、引用符の文字列、`` ` `` の名前、正規表現（`like`・`=~`・`(`・`,` の後ろの `/…/`）、`#` の注記を空白に置き換えるため、`like /limit/` や文字列の中の `\| limit` はコマンドとみなさない。判定は awk（macOS の awk でも動く書き方）。説明の前提の 1 行も直した | Step 15 |
+| p04 が Different（値の書き方） | `format.rs` の BR2.2 の書き方の合わせで、真偽値を `1`／`0` とする。アプリの行は U2 の直しのあとの `row_cells`（結果の一覧が出す値）をそのまま使うため、実装の行は変わらず、説明だけを直した。テストは、落ちていた期待値を `1` に直し、`false` が `0`（入れ子の項目の `true` は `1`、文字列の `"false"` はそのまま）になる例を足した | Step 16 |
+| p05 が OnlyAppRejected | U2 の直しで、アプリも引用符のない `true` を項目として読む。組のファイルの p05 の目的を「引用符のない true は項目（ない項目との比べ）」に直した | Step 17 |
+| U2 のレビューで残った仮の決まり | p10 項目どうしの `=`（`filter userIdentity.invokedBy = eventSource`）、p11 右辺の項目がないときの `!=`（`filter eventName != errorCode`）、p12 数字でない文字列と数字だけの文字列の大小（`filter eventName > "5"`）を組に足した（20 本 → 23 本） | Step 17 |
+| p05 を「アプリが断る例」に使っていたテスト | `compare.rs`・`report.rs` の断り方のテストの例を、今も中核が断る `filter eventName like eventSource`（`query.unsupported.fieldComparison (eventSource)`）に置き換えた。中核がこの形を本当に断ることを `queries.rs` のテストで確かめる。テストの中身（BothRejected・OnlyAppRejected・OnlyInsightsRejected、報告の行の長さ）は変えていない | Step 17 |
+
+計画との違い：
+
+- Step 16 の「先にテスト」：テストの期待値を `1`／`0` にした時点で、U2 の直しにより `app_row` はすでに `1`／`0` を返していたため、テストは失敗を経ずに通った。`format.rs` の実装の行は変えず、説明だけを直した。
+- Step 15 の判定は、計画の「先頭か `|` の後ろの `limit`」に加えて、大文字の `LIMIT` もコマンドとみなす（Logs Insights の言葉の大文字・小文字の扱いが確かめられていないため、`LIMIT` のクエリの上限を API で上書きしない向きにした）。`` ` `` の名前と `#` の注記も、文字列と同じく判定の外にした（アプリの読み取りと同じ扱い）。
+- 組のファイルの先頭の注記の項目名の一覧に `userIdentity.invokedBy` を足した。
+- Step 19 の前に、Step 15・Step 17 で書いたテストの行が rustfmt の書式と違っていたため、`cargo fmt --all` をかけた（変わったのは `compat_check.rs` と `compat/compare.rs` だけ）。
+- Step 18 の README：互換の確かめの節には `--limit 10000` の前提の行がもともとなかったため、直すのではなく、「`limit` のないクエリだけ `--limit 10000`（アプリの上限）で始め、`limit` のあるクエリはその `limit` に任せる」の 1 文を足した。
+
+### 確かめたこと（Step 19）
+
+| コマンド | 結果 |
+|---|---|
+| `bash -n scripts/compat/insights-export.sh` | 通る |
+| `cargo test -p local-sights-core --examples` | compat_check 51 件、fetch_check 7 件、すべて通る（直す前は compat_check 47 件が通り、`json_numbers_booleans_and_strings_are_written_as_logs_insights_writes_them` の 1 件が落ちていた） |
+| `cargo fmt --all --check` | 通る |
+| `cargo clippy --workspace --all-targets` | 警告・エラーなし |
+| `cargo test --workspace` | すべて通る（743 件、ライブラリ 634 件ほか、9 件は既定で無視） |
+| `npx prettier --check .` | 通る |
+| `aidlc engine sensor-traceability --output-path …/traceability.json` | pass（gaps・orphans・invalid なし、findings 0） |
+
 ## 残っていること
 
-- **手元の比べ（BR3.3）**：開発者が UC1・UC2 を流し、上の「手元の比べの結果」と Build and Test の記録に残す。違いが出たときにアプリを直すか受け入れるかは、そこで決める（functional-spec 8）。1 回目は macOS の bash 3.2 で流す（コードのレビュー R-06）。
+- **手元の比べ（BR3.3）**：1 回目は流して `test-results.md` の 11 章に記録した。Loop-back 2 の直し（U2 の `fe4910a` と、この直し）のあと、開発者が 23 本の組で UC1・UC2 をもう一度流し、上の「手元の比べの結果」と Build and Test の記録に残す。p03（U2 の直しで合うはず）、p04 の `false` が `0` になるか、p10〜p12 の結果を見る。違いが出たときにアプリを直すか受け入れるかは、そこで決める（functional-spec 8）。

@@ -911,7 +911,7 @@ mod tests {
         write(outside.path(), SETTINGS_FILE, &settings_json);
         let ready = prepare(&args(outside.path()), &repository, END + 1_800).unwrap();
         assert_eq!(ready.settings, settings());
-        assert_eq!(ready.queries.len(), 20);
+        assert_eq!(ready.queries.len(), 23);
         let too_soon = prepare(&args(outside.path()), &repository, END + 1_799).unwrap_err();
         assert!(too_soon.contains("30 minutes"), "{too_soon}");
         // A temporary folder inside the crate: removed when the test ends.
@@ -1108,8 +1108,9 @@ esac
             );
         }
 
-        /// Code review R-03, R-04: every query is started with `--limit
-        /// 10000`, and a warning start-query prints on standard error while
+        /// Code review R-03, R-04: every query without its own `limit` is
+        /// started with `--limit 10000`, and a warning start-query prints on
+        /// standard error while
         /// it succeeds does not spoil the query ID.
         #[test]
         fn the_script_asks_for_10000_rows_and_a_warning_does_not_spoil_the_query_id() {
@@ -1159,6 +1160,68 @@ esac
                 .unwrap()
                 .collect();
             assert!(left.is_empty(), "{left:?}");
+        }
+
+        /// Loop-back 2 (q01, q02, q09, q10): a query with its own `limit`
+        /// command is started without `--limit 10000`, which would override
+        /// it; a query without one still gets it. `limit` inside a regular
+        /// expression or a string, or as part of a longer name, is not a
+        /// command.
+        #[test]
+        fn the_script_leaves_a_query_with_its_own_limit_to_that_limit() {
+            let cases: [(&str, &str, bool); 7] = [
+                ("q1-none", "fields eventName", true),
+                (
+                    "q2-piped",
+                    "fields eventName | sort eventName asc | limit 20",
+                    false,
+                ),
+                ("q3-first", "limit 5", false),
+                ("q4-upper", "fields eventName | LIMIT 3", false),
+                (
+                    "q5-regex",
+                    "fields @message | filter @message like /x|limit 2/",
+                    true,
+                ),
+                (
+                    "q6-string",
+                    r#"fields eventName | filter eventName = "| limit 3""#,
+                    true,
+                ),
+                (
+                    "q7-name",
+                    "fields limitless | filter limitless =~ /limit/",
+                    true,
+                ),
+            ];
+            let queries: String = cases
+                .iter()
+                .map(|(id, query, _)| format!("{id}\tset\tlimit\t{query}\n"))
+                .collect();
+            let fake = Fake::with_queries(&queries);
+            let out = fake.folder.path().join("export");
+            let output = fake.run(&out, END);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success(),
+                "{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                stdout.contains("queries: 7  Complete: 7  Error: 0  other: 0"),
+                "{stdout}"
+            );
+            let calls = fake.calls();
+            for (id, query, capped) in cases {
+                let call = calls
+                    .lines()
+                    .find(|call| {
+                        call.starts_with("logs start-query ")
+                            && call.contains(&format!("--query-string {query} --query"))
+                    })
+                    .unwrap_or_else(|| panic!("{id} was not started: {calls}"));
+                assert_eq!(call.contains("--limit 10000"), capped, "{id}: {call}");
+            }
         }
 
         /// Code review R-01: start-query failing for expired credentials or

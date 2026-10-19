@@ -267,14 +267,15 @@ mod tests {
         );
         let refused = compare_query(
             &spec,
-            &AppSide::Rejected("Unsupported query.unsupported.fieldComparison (true)".into()),
+            // `filter eventName like eventSource`: still refused by the
+            // app (loop-back 2; p05's bare `true` is read now).
+            &AppSide::Rejected(
+                "Unsupported query.unsupported.fieldComparison (eventSource)".into(),
+            ),
             &InsightsSide::Rejected(format!("MalformedQueryException: {}", "y".repeat(300))),
         );
-        let lines = query_lines("p05-bool-literal", &refused, false);
-        assert_eq!(
-            lines[0],
-            "p05-bool-literal  BothRejected  insights=-  app=-"
-        );
+        let lines = query_lines("x01-like-field", &refused, false);
+        assert_eq!(lines[0], "x01-like-field  BothRejected  insights=-  app=-");
         assert!(
             lines
                 .iter()

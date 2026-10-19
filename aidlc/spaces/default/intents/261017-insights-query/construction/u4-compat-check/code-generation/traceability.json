@@ -84,7 +84,7 @@
     {"id": "NFR3", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries.txt"},
     {"id": "NFR4", "status": "OK", "target": "crates/local-sights-core/examples/compat/settings.rs"},
     {"id": "NFR5", "status": "OK", "target": "crates/local-sights-core/examples/compat_check.rs"},
-    {"id": "NFR6", "status": "N/A", "target": "確認用プログラムは開発者の手元だけで動かし配らない。Rust のテストは各 OS のランナーで流れ、スクリプトのテスト（Loop-back 1 で 5 件）は Unix のランナーだけで流れる。macOS の bash 3.2 での動きは 1 回目の手元の実行で確かめる（コードのレビュー R-06、code-summary.md）"},
+    {"id": "NFR6", "status": "N/A", "target": "確認用プログラムは開発者の手元だけで動かし配らない。Rust のテストは各 OS のランナーで流れ、スクリプトのテスト（Loop-back 2 で 6 件）は Unix のランナーだけで流れる。macOS の bash 3.2 での動きは開発者の手元の実行で確かめる（コードのレビュー R-06、test-results.md の 11 章、code-summary.md）"},
     {"id": "NFR7", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs"},
     {"id": "NFR8", "status": "N/A", "target": "Build and Test の CI の合否で確かめる。例は cargo-llvm-cov の対象の外で、この作業では中核ライブラリ 96.60% を測った（code-summary.md）"},
     {"id": "NFR9", "status": "N/A", "target": "画面を変えていない（U1〜U3 に割り当て）"},
@@ -106,6 +106,6 @@
     {"id": "BR2.6", "status": "OK", "target": "crates/local-sights-core/examples/compat/report.rs"},
     {"id": "BR3.1", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries.txt"},
     {"id": "BR3.2", "status": "OK", "target": "crates/local-sights-core/examples/compat/report.rs"},
-    {"id": "BR3.3", "status": "Deferred", "target": "開発者が手元で UC1・UC2 を流したあと、報告の要約を code-summary.md の「手元の比べの結果」と Build and Test の記録に残す"}
+    {"id": "BR3.3", "status": "Deferred", "target": "1 回目の結果は test-results.md の 11 章に記録済み。Loop-back 2 の直しのあと、開発者が 23 本の組で UC1・UC2 をもう一度流し、報告の要約を code-summary.md の「手元の比べの結果」と Build and Test の記録に残す"}
   ]
 }

@@ -32,8 +32,10 @@
 #            compat_check the same file with --queries.
 #   WAIT_SECONDS  optional; how long to wait for one query (default 600).
 #
-# Every query is started with --limit 10000: compat_check assumes that cap
-# for a query without its own `limit`, the same as the app (code review R-03).
+# A query without its own `limit` command is started with --limit 10000:
+# compat_check assumes that cap for it, the same as the app (code review
+# R-03). A query with `limit` is started without --limit, so its own `limit`
+# decides the rows (--limit would override it; compat run, loop-back 2).
 #
 # Output: one line a query with its status, then the counts. No credentials and
 # no log contents are printed. Exit codes: 0 every query ended Complete or was
@@ -138,6 +140,48 @@ refusal_message() {
   tail -n 1 | sed -E 's/[[:space:]]*\(?[Rr]equest[ _-]?[Ii][Dd][:=]?[[:space:]]*[0-9A-Fa-f-]{8,}\)?//g'
 }
 
+# Whether the query has a `limit` command: `limit` as the first word of the
+# query or of a part after `|` (any case). Quoted strings, `names`, regular
+# expressions (a `/` where a value is expected: after like, =~, `(` or `,`)
+# and `#` comments are blanked first, so `like /limit/` or "| limit" inside
+# a string is not a command (loop-back 2). awk, as on macOS; "\047" is '.
+has_limit_command() {
+  printf '%s\n' "$1" | awk '
+    { text = text $0 "\n" }
+    END {
+      blanked = ""; quote = ""; n = length(text)
+      for (i = 1; i <= n; i++) {
+        c = substr(text, i, 1)
+        if (quote == "#") {
+          if (c == "\n") { quote = ""; blanked = blanked c } else { blanked = blanked " " }
+          continue
+        }
+        if (quote != "") {
+          if (c == "\\") { i++; blanked = blanked "  "; continue }
+          if (c == quote) { quote = "" }
+          blanked = blanked " "
+          continue
+        }
+        if (c == "\"" || c == "\047" || c == "`" || c == "#") { quote = c; blanked = blanked " "; continue }
+        if (c == "/") {
+          before = tolower(blanked)
+          sub(/[ \t\r\n]+$/, "", before)
+          if (before ~ /(^|[^a-z0-9_.@])like$/ || before ~ /(=~|[(,])$/) {
+            quote = "/"; blanked = blanked " "; continue
+          }
+        }
+        blanked = blanked c
+      }
+      parts = split(blanked, part, "|")
+      for (p = 1; p <= parts; p++) {
+        word = tolower(part[p])
+        sub(/^[ \t\r\n]+/, "", word)
+        if (word ~ /^limit([^a-z0-9_.@]|$)/) { found = 1 }
+      }
+      exit(found ? 0 : 1)
+    }'
+}
+
 TAB=$(printf '\t')
 CR=$(printf '\r')
 ran=0
@@ -174,11 +218,17 @@ while IFS= read -r line || [ -n "$line" ]; do
   # compare it.
   # Code review R-03: --limit 10000, the row cap compat_check takes for a
   # query without `limit` (U2:BR5.1), instead of StartQuery's own default.
+  # Loop-back 2: only for a query without `limit`; --limit overrides the
+  # query's own `limit` (q01, q02, q09 and q10 differed by that).
   # Code review R-04: standard error goes to ERR_FILE, so a warning of the
   # CLI never becomes part of the query ID.
+  LIMIT_ARGS=()
+  if ! has_limit_command "$query"; then
+    LIMIT_ARGS=(--limit 10000)
+  fi
   if ! query_id=$(aws_logs start-query --log-group-name "$GROUP" --start-time "$START" \
-    --end-time "$END" --limit 10000 --query-string "$query" --query queryId --output text \
-    2>"$ERR_FILE"); then
+    --end-time "$END" ${LIMIT_ARGS[@]+"${LIMIT_ARGS[@]}"} --query-string "$query" \
+    --query queryId --output text 2>"$ERR_FILE"); then
     message=$(refusal_message <"$ERR_FILE")
     if grep -q 'MalformedQueryException' "$ERR_FILE"; then
       jq -n --arg message "$message" --argjson at "$NOW" \

@@ -77,7 +77,7 @@
 | T-DEPS | team.md Code Style | `npm audit --audit-level=high` と `cargo deny check` が通る | どちらも通った | 上の 1 | build-and-test | Met |
 | T-NFR5 | requirements.md NFR5、project.md Forbidden | 呼ぶ AWS API は読み取りの 3 つだけ | 新しい API はない。偽のゲートウェイのテストと、スクリプトのテスト（`logs start-query`・`logs get-query-results` だけ）が通った | 上の 2、security-test-instructions.md | build-and-test | Met |
 | T-NFR12 | requirements.md NFR12、project.md Forbidden | 外部に何も送らない | 足した行に外部への送信はない（一致したのは関数の名前 `finish_fetch`・`report_fetch` だけ） | security-test-instructions.md の差分の確かめ | build-and-test | Met |
-| T-SM1 | requirements.md SM1・NFR3、U4 BR3.3 | 互換を確かめる 20 本のクエリで、コンソールとアプリの結果が同じ（終了コード 0） | まだ流していない（本人の AWS 認証情報が要る） | U4 code-summary の手順（`insights-export.sh` → `compat_check`） | 開発者の手元。この計画に後の段はない | Unverified |
+| T-SM1 | requirements.md SM1・NFR3、U4 BR3.3 | 互換を確かめる 20 本のクエリで、コンソールとアプリの結果が同じ（終了コード 0） | 23 本すべて Same（3 回目、2026-10-19） | 下の 15（`insights-export.sh` → `compat_check`） | 開発者の手元。この計画に後の段はない | Met |
 | T-WS-MAC | team.md Walking Skeleton の 2・3、U1〜U3 code-summary | macOS で、実際の AWS で取得してクエリの結果が出る。取り足し・キャッシュ・接続の切り替え・ログの画面の振る舞いが前と同じ | 開発者の Mac でひととおり確かめて問題なし（複数のロググループを含む） | 下の 9（開発者の報告、2026-10-18） | 開発者の手元 | Met |
 | T-WS-WIN | team.md Walking Skeleton の 2・3 | Windows 11（CI で作ったインストーラで入れたアプリ）で同じことができる | まだ確かめていない | 同上 | 開発者の手元 | Unverified |
 | T-ACE | U2 code-generation の review R-04、FR9.2 | 本物の Ace で、色分け・補完の候補・エラーの下線と行の横の印が出る | 開発者の Mac で、補完と色分けに問題なし。ひととおりの確認で問題なし | 下の 9（開発者の報告、2026-10-18） | 開発者の手元 | Met |
@@ -218,3 +218,15 @@ U2 の Code Generation で (1)〜(3) を直した（`693b3af`、レビュー REA
 レビューの Minor（直していない。レビューを記録したあとの指摘は持ち越す）：`DEFAULT_RESULT_LIMIT` の説明（plan.rs）と code-summary.md の部品の表に `limit 0` を絞りなしとする古い記述が残る。`limit 0` のとき画面は「合うイベントなし」と出す（コンソールも 0 行）。U4 の確認用プログラムは `limit 0` を絞りなし（上限 10,000）と扱うが、アプリが 0 行・打ち切りなしになるため両側 0 行で同じになり、比べには影響しない。
 
 残りは T-SM1（23 本でもう一度、開発者の Mac。p08・p11・p12 が Same になるか）と T-WS-WIN（Windows 11、最後にまとめて）。Loop-back は上限の 3 回に達したため、これ以降に違いが出たら直さず、既知の違いとして README と記録に残すか、開発者に判断を仰ぐ。
+
+## 15. コンソールとの互換の確かめ・3 回目（T-SM1、開発者の Mac、2026-10-19、コミット `8af7d04`）
+
+条件：11・13 と同じ（CloudTrail のロググループ、期間 1 時間 START=1767435900・END=1767439500）。イベント 992 件、ストリーム 4 本、失敗したストリーム 0。書き出しは 23 本すべて Complete（Error 0、そのほか 0）。書き出しのフォルダはリポジトリの外の新しい空のフォルダ。開発者が手元で流した。
+
+結果：Same 23、Different 0、BothRejected 0、OnlyAppRejected 0、OnlyInsightsRejected 0、Skipped 0、NotCompared 0。ログの中身は記録しない。
+
+- Loop-back 3 の直しが効き、p08（0 行）、p11（73 行）、p12（0 行）がコンソールと一致した。
+- ほかの 20 本も 13 と同じ行数で一致したまま。
+- T-SM1 を Met にする（上の表の行も更新）。
+
+残りは T-WS-WIN（Windows 11、最後にまとめて）。

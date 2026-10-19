@@ -1419,8 +1419,8 @@ mod tests {
 
     #[tokio::test]
     async fn the_copies_are_the_rows_left_after_the_limit_or_the_default_cut() {
-        // BR3.2: at most what `limit` (up to 100,000) or the default 10,000
-        // leaves is copied.
+        // BR3.2: at most what `limit` (0 to 100,000; 0 leaves no row,
+        // Loop-back 3 p08) or the default 10,000 leaves is copied.
         let events: Vec<(String, String, i64, String)> = (0..12_000i64)
             .map(|i| {
                 (

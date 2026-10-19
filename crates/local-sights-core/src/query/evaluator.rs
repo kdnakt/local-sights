@@ -108,11 +108,9 @@ pub fn condition_holds(condition: &Condition, fields: &EventFields<'_>) -> bool 
         ConditionKind::Not(inner) => !condition_holds(inner, fields),
         ConditionKind::Compare { field, op, value } => compare(fields.value(field), *op, value),
         // Loop-back 2 (p05): both values read from the same event.
-        ConditionKind::CompareFields { field, op, other } => compare_sides(
-            Side::of_value(fields.value(field)),
-            *op,
-            Side::of_value(fields.value(other)),
-        ),
+        ConditionKind::CompareFields { field, op, other } => {
+            compare_fields(fields.value(field), *op, fields.value(other))
+        }
         // U2:BR1.5: like on a missing field is false, so `not like` holds.
         ConditionKind::Like {
             field,
@@ -187,8 +185,9 @@ impl<'a> Side<'a> {
 enum Standing {
     /// They compare in this order.
     Ordered(Ordering),
-    /// Two texts that are no numbers: equal or not, but in no order
-    /// (Loop-back 2, p03: `eventName > "M"` gave no row at the console).
+    /// Two texts of which either is no number: equal or not, but in no
+    /// order (Loop-back 2, p03: `eventName > "M"` gave no row at the
+    /// console; Loop-back 3, p12: nor did `eventName > "5"`).
     UnorderedTexts { equal: bool },
     /// They cannot be compared.
     Incomparable,
@@ -196,16 +195,16 @@ enum Standing {
 
 /// How `left` stands against `right`:
 ///
-/// - nothing compares with anything (5c, 5d; on the right of a field
-///   comparison provisional, Loop-back 2);
+/// - nothing compares with anything (5c, 5d; two fields with one missing
+///   never get here, see [`compare_fields`]);
 /// - two numbers as numbers (the time, JSON numbers, written numbers, the
 ///   milliseconds of a date text);
 /// - a text of digits against a number as numbers (6b; `<` and `>`
 ///   provisional, review R-01), any other text against a number not at all
 ///   (6c-6e, 6g, 6h);
-/// - two texts of digits as numbers (6f); two texts that are no numbers
-///   equal or not, in no order (p03); a text of digits against one that is
-///   no number in Unicode order (provisional);
+/// - two texts of digits as numbers (6f); two texts of which either is no
+///   number equal or not, in no order (p03, Loop-back 3 p12: `eventName >
+///   "5"` gave no row at the console);
 /// - a boolean as the text `true` or `false` (`= "true"` checked, p04;
 ///   the rest provisional, review R-01).
 fn standing(left: Side<'_>, right: Side<'_>) -> Standing {
@@ -223,10 +222,11 @@ fn standing(left: Side<'_>, right: Side<'_>) -> Standing {
         (Side::Text(left), Side::Text(right)) => {
             match (number_of_digits(left), number_of_digits(right)) {
                 (Some(left), Some(right)) => ordered(left.partial_cmp(&right)),
-                (None, None) => Standing::UnorderedTexts {
+                // p03 (two texts no numbers) and p12 (one of them no
+                // number): equal or not, in no order.
+                _ => Standing::UnorderedTexts {
                     equal: left == right,
                 },
-                _ => Standing::Ordered(left.cmp(right)),
             }
         }
     }
@@ -241,9 +241,20 @@ fn compare(value: FieldValue<'_>, op: CompareOp, literal: &Literal) -> bool {
     compare_sides(Side::of_value(value), op, Side::of_literal(literal))
 }
 
+/// Two fields of the same event (Loop-back 2, p05): a missing field on
+/// either side meets no comparison, not even `!=` (Loop-back 3, p11:
+/// `eventName != errorCode` kept only the events that have errorCode; for a
+/// missing left field provisional). Otherwise as a field against a value.
+fn compare_fields(left: FieldValue<'_>, op: CompareOp, right: FieldValue<'_>) -> bool {
+    if left == FieldValue::Missing || right == FieldValue::Missing {
+        return false;
+    }
+    compare_sides(Side::of_value(left), op, Side::of_value(right))
+}
+
 /// U1:BR5.1: values that cannot be compared meet only `!=` (U2:BR1.5,
-/// BR1.6); two texts that are no numbers meet `=` and `!=` only
-/// (Loop-back 2, p03).
+/// BR1.6); two texts of which either is no number meet `=` and `!=` only
+/// (Loop-back 2, p03; Loop-back 3, p12).
 fn compare_sides(left: Side<'_>, op: CompareOp, right: Side<'_>) -> bool {
     let ordering = match standing(left, right) {
         Standing::Ordered(ordering) => ordering,
@@ -543,11 +554,10 @@ impl Evaluation {
         match (command, pass) {
             (CommandKind::Fields(_), _) => following(),
             (CommandKind::Limit(count), _) => {
-                // U2:BR5.1: 0 keeps every row.
-                if *count > 0 {
-                    self.rows
-                        .truncate(usize::try_from(*count).unwrap_or(usize::MAX));
-                }
+                // U2:BR5.1: the first `count` rows; 0 keeps none (Loop-back
+                // 3, p08: `limit 0` gave no row at the console).
+                self.rows
+                    .truncate(usize::try_from(*count).unwrap_or(usize::MAX));
                 following()
             }
             (CommandKind::Filter(_), Pass::Fresh) => Stage::Command {
@@ -713,7 +723,10 @@ impl Evaluation {
         let Stage::Done { columns } = self.stage else {
             return None;
         };
-        let truncated_at = (self.rows.len() < self.matched).then_some(self.rows.len());
+        // U2:BR5.3: a cut is shown only when rows are left; `limit 0` leaves
+        // none, so nothing is shown as cut (Loop-back 3, p08).
+        let truncated_at =
+            (!self.rows.is_empty() && self.rows.len() < self.matched).then_some(self.rows.len());
         Some(EvalOutput {
             rows: self.rows,
             columns,
@@ -1129,14 +1142,33 @@ mod tests {
     }
 
     #[test]
-    fn provisional_a_text_not_of_digits_against_a_text_of_digits_in_unicode_order() {
-        // Only one side is a number: not checked at the console (review
-        // R-01); kept as it was in Loop-back 2.
-        let v10 = event(1, "s", 0, "v10");
-        assert!(holds("filter @message > \"9\"", &v10));
+    fn p12_a_text_not_of_digits_against_a_text_of_digits_never_meets_an_order() {
+        // Checked at the console in Loop-back 3 (p12): `eventName > "5"`
+        // gave no row. It replaces the provisional Unicode order; p03 now
+        // holds when either side is no number.
+        let event = json_event(r#"{"eventName":"AssumeRole","eventVersion":"1.08","five":"5"}"#);
+        for op in ["<", "<=", ">", ">="] {
+            let text = format!("filter eventName {op} \"5\"");
+            assert!(!holds(&text, &event), "{text:?}");
+            // The same with the texts the other way round, as fields.
+            for (left, right) in [("eventName", "five"), ("five", "eventName")] {
+                let text = format!("filter {left} {op} {right}");
+                assert!(!holds(&text, &event), "{text:?}");
+            }
+        }
+        let v10 = self::event(1, "s", 0, "v10");
+        assert!(!holds("filter @message > \"9\"", &v10));
         assert!(!holds("filter @message < \"9\"", &v10));
-        let nine = event(1, "s", 0, "9");
-        assert!(holds("filter @message < \"v10\"", &nine));
+        let nine = self::event(1, "s", 0, "9");
+        assert!(!holds("filter @message < \"v10\"", &nine));
+        // `=` and `!=` still compare the whole texts.
+        assert!(!holds("filter eventName = \"5\"", &event));
+        assert!(holds("filter eventName != \"5\"", &event));
+        assert!(holds("filter eventName != five", &event));
+        // Both sides numbers: unchanged (p01, p02, 6b, 6f).
+        assert!(holds("filter eventVersion > 1.05", &event));
+        assert!(holds("filter eventVersion > \"1.05\"", &event));
+        assert!(holds("filter eventVersion < five", &event));
     }
 
     #[test]
@@ -1206,19 +1238,41 @@ mod tests {
     }
 
     #[test]
-    fn provisional_p05_a_missing_field_on_either_side_meets_not_equal_only() {
-        // As a missing left side does (U2:BR1.5, 5c, 5d); the right side is
-        // not checked at the console yet.
+    fn p11_a_missing_right_field_meets_no_comparison_not_even_not_equal() {
+        // Checked at the console in Loop-back 3 (p11): `eventName !=
+        // errorCode` kept only the 73 events that have errorCode.
+        let events = [
+            json_event(r#"{"eventName":"AssumeRole"}"#),
+            json_event(r#"{"eventName":"GetObject","errorCode":"AccessDenied"}"#),
+            json_event(r#"{"eventName":"Same","errorCode":"Same"}"#),
+        ];
+        assert_eq!(rows("filter eventName != errorCode", &events), vec![1]);
+        assert_eq!(rows("filter eventName = errorCode", &events), vec![2]);
         let event = json_event(r#"{"a":"x","n":1}"#);
-        for text in ["filter a = zzz", "filter zzz = a", "filter zzz = yyy"] {
-            assert!(!holds(text, &event), "{text:?}");
+        for op in ["=", "!=", "<", "<=", ">", ">="] {
+            assert!(!holds(&format!("filter a {op} zzz"), &event), "a {op}");
+            assert!(!holds(&format!("filter n {op} zzz"), &event), "n {op}");
         }
-        for op in ["<", "<=", ">", ">="] {
-            assert!(!holds(&format!("filter n {op} zzz"), &event), "{op}");
-            assert!(!holds(&format!("filter zzz {op} n"), &event), "{op}");
+    }
+
+    #[test]
+    fn provisional_p11_a_missing_left_field_meets_no_comparison_either() {
+        // Not checked at the console: treated as a missing right field is.
+        let event = json_event(r#"{"a":"x","n":1}"#);
+        for op in ["=", "!=", "<", "<=", ">", ">="] {
+            assert!(!holds(&format!("filter zzz {op} a"), &event), "{op} a");
+            assert!(!holds(&format!("filter zzz {op} n"), &event), "{op} n");
+            assert!(!holds(&format!("filter zzz {op} yyy"), &event), "{op}");
         }
-        assert!(holds("filter a != zzz", &event));
-        assert!(holds("filter zzz != a", &event));
+    }
+
+    #[test]
+    fn p11_a_missing_field_against_a_value_still_meets_not_equal() {
+        // U2:BR1.5 (Q1a 5c, 5d) is unchanged for a value on the right.
+        let event = json_event(r#"{"eventName":"AssumeRole"}"#);
+        assert!(holds("filter errorCode != \"zzz\"", &event));
+        assert!(holds("filter errorCode != 1", &event));
+        assert!(!holds("filter errorCode = \"zzz\"", &event));
     }
 
     #[test]
@@ -1509,16 +1563,44 @@ mod tests {
     }
 
     #[test]
-    fn provisional_limit_0_limits_nothing_but_the_default_cut_stays() {
-        // Review R-04: not checked on more than 10,000 events.
+    fn p08_limit_0_gives_no_row_and_says_nothing_was_cut() {
+        // Checked at the console in Loop-back 3 (p08): `fields @timestamp |
+        // limit 0` gave no row. It replaces review R-04's provisional
+        // "limit 0 limits nothing". matched still counts the rows before
+        // the limit (review R-08), but nothing is shown as cut.
         let events: Vec<LogEvent> = (0..10_500i64).map(|i| event(i, "s", 0, "m")).collect();
-        let zero = output("limit 0", &events);
+        let zero = output("fields @timestamp | limit 0", &events);
         assert_eq!(
             (zero.rows.len(), zero.matched_count, zero.truncated_at),
-            (10_000, 10_500, Some(10_000))
+            (0, 10_500, None)
         );
         let few = output("limit 0", &events[..7]);
-        assert_eq!((few.rows.len(), few.truncated_at), (7, None), "Q1a 7c");
+        assert_eq!((few.rows.len(), few.truncated_at), (0, None));
+    }
+
+    #[test]
+    fn p08_limit_0_before_or_after_a_filter_gives_no_row() {
+        let events = timed_json(&[
+            (1, r#"{"level":"error"}"#),
+            (2, r#"{"level":"info"}"#),
+            (3, r#"{"level":"error"}"#),
+        ]);
+        let before = output("limit 0 | filter level = 'error'", &events);
+        assert_eq!(
+            (before.rows.len(), before.matched_count, before.truncated_at),
+            (0, 0, None)
+        );
+        let after = output("filter level = 'error' | limit 0", &events);
+        assert_eq!(
+            (after.rows.len(), after.matched_count, after.truncated_at),
+            (0, 2, None)
+        );
+        let one = output("filter level = 'error' | limit 1", &events);
+        assert_eq!(
+            (one.rows, one.matched_count, one.truncated_at),
+            (vec![2], 2, Some(1)),
+            "limit 1 is unchanged"
+        );
     }
 
     #[test]

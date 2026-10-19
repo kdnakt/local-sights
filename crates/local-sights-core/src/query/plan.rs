@@ -304,9 +304,9 @@ pub enum ConditionKind {
     /// one written as a name without quotes, such as `a = b`, `a = true` or
     /// `@logStream = @log` (261017-insights-query U2 Loop-back 2, p05). The
     /// values compare as a field with a value does (U2:BR1.6); a missing
-    /// field on either side meets `!=` only, as a missing left side does
-    /// (U2:BR1.5; for the right side provisional until the next console
-    /// check).
+    /// field on either side meets no comparison, not even `!=` (Loop-back 3,
+    /// p11: checked for the right side at the console; for the left side
+    /// provisional). A field against a value keeps U2:BR1.5.
     CompareFields {
         /// The left field.
         field: FieldRef,
@@ -369,7 +369,8 @@ pub enum CommandKind {
     Fields(Vec<FieldRef>),
     /// `sort`: orders the rows by these keys (U2:BR4.1-BR4.4).
     Sort(Vec<SortKey>),
-    /// `limit`: the first rows only; 0 keeps every row (U2:BR5.1).
+    /// `limit`: the first rows only; 0 keeps no row (U2:BR5.1, Loop-back 3,
+    /// p08).
     Limit(u32),
 }
 
@@ -435,13 +436,14 @@ impl QueryPlan {
         columns
     }
 
-    /// Whether a `limit` from 1 to [`MAX_LIMIT`] is written; without one the
-    /// result is cut at [`DEFAULT_RESULT_LIMIT`] (U2:BR5.2, `limit 0` alone
-    /// included, provisional: functional-design review R-04).
+    /// Whether a `limit` from 0 to [`MAX_LIMIT`] is written; without one the
+    /// result is cut at [`DEFAULT_RESULT_LIMIT`] (U2:BR5.2). `limit 0` is a
+    /// limit of no row (261017-insights-query Loop-back 3, p08), replacing
+    /// functional-design review R-04's provisional "limit 0 limits nothing".
     pub fn has_row_limit(&self) -> bool {
         self.commands
             .iter()
-            .any(|command| matches!(command.kind, CommandKind::Limit(count) if count > 0))
+            .any(|command| matches!(command.kind, CommandKind::Limit(_)))
     }
 }
 
@@ -501,7 +503,11 @@ mod tests {
             commands: vec![command(CommandKind::Limit(0))],
         };
         assert_eq!(bare.columns(), vec![FieldRef::Timestamp, FieldRef::Message]);
-        assert!(!bare.has_row_limit(), "limit 0 asks for no limit");
+        assert!(bare.has_row_limit(), "limit 0 is a limit of no row (p08)");
+        let none = QueryPlan {
+            commands: vec![command(CommandKind::Fields(vec![FieldRef::Timestamp]))],
+        };
+        assert!(!none.has_row_limit());
         assert_eq!(bare.filters().count(), 0);
     }
 }

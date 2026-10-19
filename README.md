@@ -176,7 +176,7 @@ for how to write one. This version reads the following part of it.
 
 | Supported                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (up to 100,000; without one, 10,000 rows), joined with `\|` and applied in the order written                                                                                                        |
+| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (0 to 100,000, `limit 0` giving no row; without one, 10,000 rows), joined with `\|` and applied in the order written                                                                                |
 | Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``)                                                   |
 | Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                                                                              |
 | Comparing two fields, such as `a = b` or `@logStream != @log`: a name without quotes after `=`, `!=`, `<`, `<=`, `>` or `>=` is a field, so `readOnly = true` compares with a field named `true` (as the console reads it); write `readOnly = "true"` for the value |
@@ -191,8 +191,12 @@ for how to write one. This version reads the following part of it.
 As in the console, a JSON `true` or `false` is shown as `1` or `0` in the
 result and in an opened row, but is compared as the text: `readOnly = "true"`
 keeps the rows whose `readOnly` is `true`. `<`, `<=`, `>` and `>=` between
-two texts that are no numbers (such as `eventName > "M"`) keep no row; texts
-of digits compare as numbers.
+two texts keep no row when either of them is no number (such as
+`eventName > "M"` or `eventName > "5"`); texts of digits compare as numbers,
+with each other and with numbers. When two fields are compared and either is
+missing from an event, the event meets no comparison, not even `!=` (so
+`eventName != errorCode` keeps only events that have `errorCode`); a missing
+field against a value still meets `!=`.
 
 A query that uses what is not supported, or has a writing mistake, is not run;
 the screen says what and where, without fetching anything.

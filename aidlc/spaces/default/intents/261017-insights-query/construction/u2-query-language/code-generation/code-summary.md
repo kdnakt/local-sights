@@ -93,7 +93,7 @@
   - JSON の数と真偽値を like・`=~` で見るときは書いたとおりの文字列
   - 6a（文字列の項目と数の項目の比べ）は、アプリが項目どうしの比べを作らないため起きない → Loop-back 2 で項目どうしの比べに対応したため、今は書ける（下の「Loop-back 2」の残る仮の決まり）
 - **R-03（大文字・小文字）**：`crates/local-sights-core/src/query/parser.rs`。AND・OR・NOT・NOT LIKE・NOT IN も区別せずに読む。確かめたのは FILTER・LIKE・IN・Fields・Sort・Desc・Limit だけ
-- **R-04（`limit 0` と既定の上限）**：`crates/local-sights-core/src/query/plan.rs` の `has_row_limit`。`limit 0` は limit による絞りなしで、既定の上限 10,000 は別に効く。10,000 件を超えるロググループでの確かめは U4
+- **R-04（`limit 0` と既定の上限）**：`crates/local-sights-core/src/query/plan.rs` の `has_row_limit`。`limit 0` は limit による絞りなしで、既定の上限 10,000 は別に効く。10,000 件を超えるロググループでの確かめは U4 → Loop-back 3 で確かめた決まり（`limit 0` は 0 行）に直した（下の「Loop-back 3」）
 - **そのほか（project.md の Corrections に記録済み）**：`not` の位置の規則以外の優先順位、`sort` がないときの並び（@timestamp の降順にした）、`@log` の値はロググループ名だけ（`@log` の値を比べるクエリは互換の確かめの組に入れない）
 
 ## 計画や設計との違い
@@ -185,3 +185,66 @@ Build and Test のコンソールとの互換の確かめ（`construction/build-
 - Step 21 の「使わなくなった `query.unsupported.fieldComparison` の文言は外す」は、`like`・`=~`・`in` の右辺の名前でまだ使うため外さず、文言を直した（Step 22 の条件「ほかで使っていなければ」のとおり）。
 - `source-manifest.json` と `traceability.json` は、触ったファイルがすべて前から載っており、決まりの割り当ても変わらないため、書き換えていない。
 - `evaluator.rs` のテストの直しで、1 回だけ `sed -i` を使った（依頼の「ファイルの書き換えはファイルの道具だけ」に反する）。直したのは新しいテストの中の 4 か所の引数だけで、`cargo fmt --check` とテストで確かめてある。
+
+## Loop-back 3（2026-10-19、Step 24〜27）
+
+Build and Test の 2 回目の互換の確かめ（`construction/build-and-test/test-results.md` の 13 と Loop-Back Log の Loop-back 3。23 本のうち Same 20・Different 3）で残った p08・p11・p12 の 3 つの仮の決まりを、コンソールに合わせた（開発者の答え「U2 を直してコンソールに合わせる」）。最後の Loop-back のため、変えたのはこの 3 つの決まりだけで、設計書は書き換えていない。U3 が書き換えた `query/`（runner.rs・store.rs）の作りは変えていない。進め方は Testing Contract のとおりで、評価のテストを先に書き、落ちるのを確かめてから実装した（Step 24 で 3 件、Step 25 で 2 件、Step 26 で 1 件が落ちた）。
+
+### 直したこと
+
+| 違い | ファイル | 直し方 |
+|------|----------|--------|
+| p08：`fields @timestamp \| limit 0` はコンソールでは 0 行 | `query/evaluator.rs`、`query/plan.rs`、`query/runner.rs`（説明だけ） | `limit` の当てはめで 0 も行数として切る（0 行を残す）。`QueryPlan::has_row_limit` は `limit 0` も limit として数え、既定の上限 10,000 で切らない。結果の行が 0 のときは打ち切り（`truncated_at`）を出さない。matchedCount の定義（R-08：limit で切る前の件数）は変えていない |
+| p11：`eventName != errorCode` はコンソールでは `errorCode` のある 73 行だけ | `query/evaluator.rs`（`compare_fields` を足した）、`query/plan.rs`（説明） | 項目どうしの比べ（`CompareFields`）で、どちらかの項目がないイベントは `!=` を含めてどの比べにも合わない。右辺がないときは確かめた決まり、左辺がないときは仮の決まり。値との比べ（右辺が文字列や数）の BR1.5（ない項目は `!=` だけ合う）は変えていない |
+| p12：`eventName > "5"` はコンソールでは 0 行 | `query/evaluator.rs`（`standing`） | 文字列どうしの `<`・`<=`・`>`・`>=` は、片方でも数として読めなければ合わない（p03 の決まりを、片方だけが数の組に広げた。前は Unicode の順だった）。`=`・`!=` は文字列全体で比べる。両辺が数として読めるとき（p01・p02、6b・6f）は今のとおり。項目どうしの比べでも同じ |
+| 説明 | `README.md` | 対応範囲の `limit` を「0 to 100,000, `limit 0` giving no row」にし、型の違う値の比べの段落に、片方でも数でない文字列の大小は合わないこと、項目どうしの比べで項目がないときはどの比べにも合わないこと（値との比べの `!=` は合うこと）を書いた。表は `npx prettier --write README.md` で整えた |
+
+### テスト（Rust の中核ライブラリの単体テスト 634 → 637、+3）
+
+| ファイル | 変えたテスト |
+|----------|--------------|
+| `query/evaluator.rs`（+3） | 仮の決まりから確かめた決まりへ：`provisional_limit_0_limits_nothing_but_the_default_cut_stays` を `p08_limit_0_gives_no_row_and_says_nothing_was_cut` に、`provisional_a_text_not_of_digits_against_a_text_of_digits_in_unicode_order` を `p12_a_text_not_of_digits_against_a_text_of_digits_never_meets_an_order`（`eventName > "5"`、項目どうしで向きを変えた形、`eventVersion > 1.05` は合う、を含む）に置き換えた。`provisional_p05_a_missing_field_on_either_side_meets_not_equal_only` を、`p11_a_missing_right_field_meets_no_comparison_not_even_not_equal`（確かめた決まり）と `provisional_p11_a_missing_left_field_meets_no_comparison_either`（仮の決まり）に分けた。足した：`p08_limit_0_before_or_after_a_filter_gives_no_row`（`limit 0 \| filter …`・`filter … \| limit 0` は 0 行、`limit 1` は今のとおり）、`p11_a_missing_field_against_a_value_still_meets_not_equal` |
+| `query/plan.rs`（±0） | `the_columns_are_the_fields_in_order_once_or_the_default_two` で、`limit 0` だけのクエリは `has_row_limit` が真（前は偽）、`limit` のないクエリは偽、とした |
+
+画面側（Vitest）は変えていない（41 ファイル・469 件）。
+
+### 確かめたこと（Step 27）
+
+| コマンド | 結果 |
+|----------|------|
+| `cargo fmt --all --check` | 通った（一度 `evaluator.rs` の 1 か所の折り返しで差が出たため、ファイルの道具で直した） |
+| `cargo clippy --workspace --all-targets` | 警告 0 |
+| `cargo test --workspace` | すべて通った（中核ライブラリ 637 件、ignored 9 件、結合テスト、アプリ 31 件） |
+| `cargo test -p local-sights-core --examples` | すべて通った（51 件と 7 件） |
+| `npx prettier --check .` | 通った |
+| `npx eslint .` | 通った |
+| `npx tsc --noEmit` | 通った |
+| `npx vitest run` | 41 ファイル・469 件が通った |
+| `cargo test --release -p local-sights-core --lib -- --ignored` | 9 件が通った。合否の数値（10 万件 10 秒、100 万件 100 秒）を保っている |
+| `aidlc engine sensor-traceability --output-path …/traceability.json` | pass（gaps・orphans・invalid なし） |
+
+速さ（開発用のコンテナの Linux、1 回の実行）：
+
+| クエリ | 10 万件 | 100 万件 | 100 万件の最も長い 1 区切り |
+|--------|---------|----------|-----------------------------|
+| filter だけ | 18.5 ms | 303.9 ms | 242.1 ms |
+| JSON の項目の filter | 76.4 ms | 932.4 ms | 247.0 ms |
+| JSON の項目の sort | 180.3 ms | 1.93 s | 884.8 ms |
+| fields・filter・sort・limit | 82.7 ms | 933.1 ms | 173.4 ms |
+
+- 100 万件の JSON の sort の間の [Cancel]：最も長い 1 区切りは 907.3 ms、3 つの区切りのあとで止まった（208.5 ms）。
+- 50 のロググループの 100 万件と前の結果を持ったときの JSON の sort：2.64 s（最も長い 1 区切り 1.07 s）、最大のメモリ 1568.4 MiB。
+
+### 確かめた決まりと残る仮の決まり
+
+- 確かめた（2 回目の互換の確かめ）：`limit 0` は 0 行（p08）。項目どうしの比べで右辺の項目がないイベントは `!=` にも合わない（p11）。片方でも数として読めない文字列の大小は合わない（p12）。
+- 残る仮の決まり：
+  - 項目どうしの比べで、左辺の項目がないときもどの比べにも合わないこと（`provisional_p11_a_missing_left_field_meets_no_comparison_either`）
+  - Loop-back 2 の一覧のうち、上で確かめたもの以外（真偽値の false を `0` と出すこと、数字だけの文字列の項目と数の項目を数として比べること など）。2 回目の互換の確かめで Same だったものは test-results.md の 13 のとおり
+- 互換の確かめの道具（`examples/compat_check.rs`、U4）の `limit 0` の扱い（下の「計画との違い」）。
+
+### 計画との違い
+
+- `traceability.json` と `source-manifest.json` は、触ったファイル（`README.md`、`query/evaluator.rs`・`plan.rs`・`runner.rs`）がすべて前から載っており、決まり（BR1.5・BR1.6・BR5.1）の割り当て先も変わらないため、書き換えていない。traceability の sensor は通った。
+- `runner.rs` には `limit 0` の説明がなく、`limit` の範囲を書いたテストの注記だけを直した。
+- U4 の `examples/compat_check.rs` は、`row_cap` と `next_row_after_cut` で `limit 0` を「絞りなし（上限 10,000）」として扱っている（`CommandKind::Limit(count) if count > 0`）。今はアプリ側が 0 行・打ち切りなしになるため、`next_row_after_cut` は呼ばれず、比べの上限（cap）が 10,000 のままでも両側 0 行で同じになり、例のテストは落ちていない。ただし説明（「`limit 0` keeps every row up to 10,000」）は今のアプリと食い違う。指示のとおり U4 のファイルは直していない。

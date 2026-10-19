@@ -6,6 +6,7 @@
 - Touches: `crates/local-sights-core/src/query/`（plan・parser・fields・evaluator・runner）、`insights_session.rs`、`src-tauri/src/lib.rs`・`build.rs`・capabilities、`src/api.ts`・`QueryEditor.tsx`・`QueryResultTable.tsx`・`LogAnalyticsPage.tsx`・`i18n/messages.ts`、`README.md`
 - Tests: Rust 約 60 件（部品ごとに 5〜8 件。純粋なロジックはテスト先行、コンソールで確かめた結果をそのまま例にする）と Vitest 約 25 件、速さの測り（無視つきのテスト）、既存のテストはすべて通したまま
 - Loop-back 2（Build and Test のコンソールとの互換の確かめから戻った直し、2026-10-19）: Step 19〜23 で、数字でない文字列の大小の比べ、真偽値の出し方（1／0）、項目どうしの比べを、コンソールに合わせる。触るのは `query/` の parser・plan・evaluator と、その説明（README・エラーの文言）と U2 の記録
+- Loop-back 3（互換の確かめ・2 回目から戻った直し、2026-10-19）: Step 24〜27 で、`limit 0` は 0 行、項目どうしの比べで項目がないときはどの比べも合わない、片方でも数として読めない文字列の大小は合わない、をコンソールに合わせる。触るのは `query/` の plan・evaluator（と runner の説明）、README、U2 の記録
 
 ## 上流と前提
 
@@ -72,11 +73,20 @@
 
 Build and Test（`construction/build-and-test/test-results.md` の 11 と Loop-Back Log の Loop-back 2）から戻った直し。開発者のコンソールで CloudTrail のロググループを使った確かめの結果に合わせて、U2 の仮の決まり（BR1.6 など）を直す。設計書は書き換えず、この計画の手順として直す（project.md Corrections）。
 
-- [x] **Step 19. 数字でない文字列の大小の比べ（p03）**：`<`・`<=`・`>`・`>=` で、両辺の値がどちらも数として読めない文字列のときは、条件に合わないとする（コンソールで `eventName > "M"` は 0 行だった）。片方だけが数として読めるときの今の扱いは変えない。先にテスト：`eventName > "M"` は合わない、`eventVersion > 1.05`（数字だけの文字列と数）は今のとおり合う、`=`・`!=` は今のとおり。仮の決まりのテスト（`provisional_…`）のうち、この組のものは確かめた決まりとして名前と中身を直す。
-- [x] **Step 20. 真偽値の出し方（p04）**：JSON の真偽値を、結果の一覧の値と行を開いた一覧で `true` → `1`、`false` → `0` と出す（BR7.1 の書き方を直す。開発者の答え「コンソールに合わせる」）。比べ（`readOnly = "true"` が合うこと）と like・`=~` で見る文字は今のまま変えない（コンソールで `readOnly = "true"` は 830 行合った）。false が 0 になるかは次の互換の確かめで確かめるため、テストの名前に仮の決まりと書く。先にテスト：一覧の値が 1・0 になる、`readOnly = "true"` は今のとおり合う。
-- [x] **Step 21. 項目どうしの比べ（p05）**：比べの右辺に引用符のない言葉（`true`・`false` を含む）や項目の道筋（`a.b`、`@logStream` など）を書いたとき、対応外のエラー（`query.unsupported.fieldComparison`）にせず、右辺も項目として読み、両辺の項目の値を比べる（開発者の答え「項目どうしの比べに対応する」）。比べ方は値と値の比べ（BR1.6、Step 19 の直しを含む）と同じにする。どちらかの項目がないときは、左辺がないときの決まり（BR1.5：`=`・`<` などは合わない、`!=` は合う）と同じに扱い、仮の決まりと書く。`in`・`like`・`=~` の右辺は今のまま（項目は書けない）。先にテスト：`readOnly = true`（`true` という項目がない）は 0 行、`a = b` で値が同じ行だけ合う、`a != b`、`a < b`（数）、片方がない行、`@logStream = @log` のような決まった項目どうし、`toMillis(@timestamp)` を右辺に書く形。読み取りのテスト：今までエラーにしていた形がエラーにならず、項目どうしの比べとして読める。
-- [x] **Step 22. 説明とエラーの文言**：README の対応範囲の一覧に「項目どうしの比べ」を足し、真偽値は 1／0 と出すことを書く。使わなくなった `query.unsupported.fieldComparison` の文言は、ほかで使っていなければ画面の文言（英語と日本語）から外す。補完と色分けは変えない。
-- [x] **Step 23. 全体の確かめと記録**：`cargo fmt --all --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`、`cargo test -p local-sights-core --examples`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通す。速さのテスト（`cargo test --release -p local-sights-core --lib -- --ignored`）が今の合否の数値（10 万件 10 秒、100 万件 100 秒）を保つことを確かめる。`code-summary.md` に Loop-back 2 の直しと、確かめた決まり・残る仮の決まりを書き足し、`traceability.json` と `source-manifest.json` を直す。`aidlc engine sensor-traceability --output-path aidlc/spaces/default/intents/261017-insights-query/construction/u2-query-language/code-generation/traceability.json` を通す。
+- [ ] **Step 19. 数字でない文字列の大小の比べ（p03）**：`<`・`<=`・`>`・`>=` で、両辺の値がどちらも数として読めない文字列のときは、条件に合わないとする（コンソールで `eventName > "M"` は 0 行だった）。片方だけが数として読めるときの今の扱いは変えない。先にテスト：`eventName > "M"` は合わない、`eventVersion > 1.05`（数字だけの文字列と数）は今のとおり合う、`=`・`!=` は今のとおり。仮の決まりのテスト（`provisional_…`）のうち、この組のものは確かめた決まりとして名前と中身を直す。
+- [ ] **Step 20. 真偽値の出し方（p04）**：JSON の真偽値を、結果の一覧の値と行を開いた一覧で `true` → `1`、`false` → `0` と出す（BR7.1 の書き方を直す。開発者の答え「コンソールに合わせる」）。比べ（`readOnly = "true"` が合うこと）と like・`=~` で見る文字は今のまま変えない（コンソールで `readOnly = "true"` は 830 行合った）。false が 0 になるかは次の互換の確かめで確かめるため、テストの名前に仮の決まりと書く。先にテスト：一覧の値が 1・0 になる、`readOnly = "true"` は今のとおり合う。
+- [ ] **Step 21. 項目どうしの比べ（p05）**：比べの右辺に引用符のない言葉（`true`・`false` を含む）や項目の道筋（`a.b`、`@logStream` など）を書いたとき、対応外のエラー（`query.unsupported.fieldComparison`）にせず、右辺も項目として読み、両辺の項目の値を比べる（開発者の答え「項目どうしの比べに対応する」）。比べ方は値と値の比べ（BR1.6、Step 19 の直しを含む）と同じにする。どちらかの項目がないときは、左辺がないときの決まり（BR1.5：`=`・`<` などは合わない、`!=` は合う）と同じに扱い、仮の決まりと書く。`in`・`like`・`=~` の右辺は今のまま（項目は書けない）。先にテスト：`readOnly = true`（`true` という項目がない）は 0 行、`a = b` で値が同じ行だけ合う、`a != b`、`a < b`（数）、片方がない行、`@logStream = @log` のような決まった項目どうし、`toMillis(@timestamp)` を右辺に書く形。読み取りのテスト：今までエラーにしていた形がエラーにならず、項目どうしの比べとして読める。
+- [ ] **Step 22. 説明とエラーの文言**：README の対応範囲の一覧に「項目どうしの比べ」を足し、真偽値は 1／0 と出すことを書く。使わなくなった `query.unsupported.fieldComparison` の文言は、ほかで使っていなければ画面の文言（英語と日本語）から外す。補完と色分けは変えない。
+- [ ] **Step 23. 全体の確かめと記録**：`cargo fmt --all --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`、`cargo test -p local-sights-core --examples`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通す。速さのテスト（`cargo test --release -p local-sights-core --lib -- --ignored`）が今の合否の数値（10 万件 10 秒、100 万件 100 秒）を保つことを確かめる。`code-summary.md` に Loop-back 2 の直しと、確かめた決まり・残る仮の決まりを書き足し、`traceability.json` と `source-manifest.json` を直す。`aidlc engine sensor-traceability --output-path aidlc/spaces/default/intents/261017-insights-query/construction/u2-query-language/code-generation/traceability.json` を通す。
+
+### Loop-back 3：互換の確かめ・2 回目の違いの直し
+
+Build and Test（`test-results.md` の 13 と Loop-Back Log の Loop-back 3）から戻った直し。開発者のコンソールでの 2 回目の確かめ（23 本、Same 20・Different 3）で残った 3 本の仮の決まりを、コンソールに合わせる（開発者の答え「U2 を直してコンソールに合わせる」）。これが最後の Loop-back のため、変えるのはこの 3 つの決まりだけにする。設計書は書き換えず、この計画の手順として直す。
+
+- [x] **Step 24. `limit 0` は 0 行（p08）**：`limit 0` を「絞りなし」ではなく、0 行を返す limit として扱う（コンソールで `limit 0` は 0 行だった）。`limit 0` のときは既定の上限 10,000 での打ち切りの表示も出さない（結果は 0 行のため）。matchedCount の定義（R-08）は変えない。先にテスト：`provisional_limit_0_limits_nothing_but_the_default_cut_stays` を確かめた決まり（`limit 0` は 0 行）に直す、`limit 0 | filter …` と `filter … | limit 0` も 0 行、`limit 1` は今のとおり。plan.rs と runner.rs の `limit 0` の説明も直す。
+- [x] **Step 25. 項目どうしの比べで項目がないとき（p11）**：項目どうしの比べ（`CompareFields`）で、右辺の項目がないイベントは、`!=` を含めてどの比べにも合わないとする（コンソールで `eventName != errorCode` は `errorCode` のある 73 行だけだった）。左辺の項目がないときも同じに扱う（確かめていないため仮の決まりと書く）。値との比べ（右辺が文字列や数）の BR1.5（左辺がないとき `!=` は合う）は変えない。先にテスト：`provisional_p05_a_missing_field_on_either_side_meets_not_equal_only` を、右辺がないときはどの比べも合わない（確かめた決まり）と、左辺がないときも合わない（仮の決まり）に分けて直す、値との比べの `!=` は今のとおり合う。
+- [x] **Step 26. 片方だけ数として読めない大小（p12）**：`<`・`<=`・`>`・`>=` で、両辺の片方でも数として読めない文字列のときは、条件に合わないとする（コンソールで `eventName > "5"` は 0 行だった。Step 19 の p03 の決まりを、片方だけが数の場合に広げる）。両辺が数として読めるとき（数字だけの文字列と数、p01・p02）と、`=`・`!=` は今のとおり。先にテスト：`provisional_a_text_not_of_digits_against_a_text_of_digits_in_unicode_order` を確かめた決まり（合わない）に直す、`eventName > "5"`・`"5" < eventName` は合わない、`eventVersion > 1.05` は今のとおり合う。項目どうしの比べでも同じ。
+- [x] **Step 27. 説明・全体の確かめと記録**：README の対応範囲の「型の違う値の比べ」と `limit 0` の記述を直す。`cargo fmt --all --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace`、`cargo test -p local-sights-core --examples`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、`npx vitest run` を通し、速さのテスト（`cargo test --release -p local-sights-core --lib -- --ignored`）が今の合否の数値を保つことを確かめる。`code-summary.md` に Loop-back 3 の直しと、確かめた決まり・残る仮の決まりを書き足し、`traceability.json` を直して `aidlc engine sensor-traceability --output-path aidlc/spaces/default/intents/261017-insights-query/construction/u2-query-language/code-generation/traceability.json` を通す。
 
 ## 要件・決まりと手順の対応
 
@@ -91,6 +101,7 @@ Build and Test（`construction/build-and-test/test-results.md` の 11 と Loop-B
 | U1 から回した直し（BR10.1〜BR10.3） | Step 3、Step 8、Step 9、Step 10 |
 | NFR1・NFR2 | Step 6、Step 17、Step 23 |
 | SM1・FR4.4・FR4.5（コンソールとの互換、Loop-back 2） | Step 19、Step 20、Step 21、Step 22 |
+| SM1・FR4.5・FR3.8（コンソールとの互換、Loop-back 3：BR1.5・BR1.6・BR5.1） | Step 24、Step 25、Step 26、Step 27 |
 
 ## Testing Contract
 

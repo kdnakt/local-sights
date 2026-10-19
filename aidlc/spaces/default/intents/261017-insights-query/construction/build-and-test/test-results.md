@@ -201,3 +201,20 @@ U2 の Code Generation で (2)〜(4) を直し（`fe4910a`、レビュー READY�
 - **Root-cause stage**：code-generation（u2-query-language）
 - **Planned fix**：(1) `limit 0` は 0 行を返す。(2) 項目どうしの比べで、どちらかの項目がないときは、`!=` を含めてどの比べも合わない。(3) `<`・`<=`・`>`・`>=` で、どちらか片方でも数として読めない文字列のときは合わない（p03 の決まりを、片方だけが数の場合に広げる）。開発者の答え「U2 を直してコンソールに合わせる」（2026-10-19）。
 - **Estimated impact**：手間 小（U2 の評価の小さな変更とテスト、計画の承認とレビューをもう一度）。費用 0。危うさ 小（既存のテストを全部通し、互換の確かめをもう一度流す）。これが 3 回目の Loop-back で、上限に達する。
+
+## 14. Loop-back 3 のあとの流し直し（2026-10-19、コミット `693b3af`）
+
+U2 の Code Generation で (1)〜(3) を直した（`693b3af`、レビュー READY、作業単位の確かめは成功）。U4 は変えていない。
+
+| コマンド | 結果 |
+|---|---|
+| `cargo test --workspace` | すべて通過。中核ライブラリの単体は 637 件（634 → 637）、9 件は既定で無視（速さのテスト） |
+| `cargo test -p local-sights-core --examples` | compat_check 51 件、fetch_check 7 件、すべて通過 |
+| `cargo test --release -p local-sights-core --lib -- --ignored` | 9 件とも通過（最も遅い 100 万件の JSON の sort で 1.93 s。NFR1 の 10 秒・100 秒以内のまま） |
+| `npx vitest run` | 41 ファイル・469 件が通過 |
+| `cargo fmt --all --check`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit` | 通過 |
+| `cargo clippy --workspace --all-targets` | 警告・エラーなし |
+
+レビューの Minor（直していない。レビューを記録したあとの指摘は持ち越す）：`DEFAULT_RESULT_LIMIT` の説明（plan.rs）と code-summary.md の部品の表に `limit 0` を絞りなしとする古い記述が残る。`limit 0` のとき画面は「合うイベントなし」と出す（コンソールも 0 行）。U4 の確認用プログラムは `limit 0` を絞りなし（上限 10,000）と扱うが、アプリが 0 行・打ち切りなしになるため両側 0 行で同じになり、比べには影響しない。
+
+残りは T-SM1（23 本でもう一度、開発者の Mac。p08・p11・p12 が Same になるか）と T-WS-WIN（Windows 11、最後にまとめて）。Loop-back は上限の 3 回に達したため、これ以降に違いが出たら直さず、既知の違いとして README と記録に残すか、開発者に判断を仰ぐ。

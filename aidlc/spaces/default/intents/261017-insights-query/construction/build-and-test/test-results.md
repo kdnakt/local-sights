@@ -179,3 +179,18 @@ U2 の Code Generation で (2)〜(4) を直し（`fe4910a`、レビュー READY�
 - U4：`parse` の正規表現の中の `limit` はコマンドとみなす（`--limit 10000` を渡さない側に倒れる。今の組に `parse` はない）。limit の判定は macOS の bash 3.2 と awk ではまだ流していない → 手元の互換の確かめが初めての実行になる。
 
 残りは T-SM1（コンソールとの互換、23 本でもう一度、開発者の Mac）と T-WS-WIN（Windows 11、最後にまとめて）。
+
+## 13. コンソールとの互換の確かめ・2 回目（T-SM1、開発者の Mac、2026-10-19、コミット `b088e2b`）
+
+条件：11 と同じ（CloudTrail のロググループ、期間 1 時間 START=1767435900・END=1767439500）。イベント 992 件、ストリーム 4 本、失敗したストリーム 0。書き出しは 23 本すべて Complete（Error 0、そのほか 0）。書き出しのフォルダはリポジトリの外の新しい空のフォルダ。
+
+結果：Same 20、Different 3、BothRejected 0、OnlyAppRejected 0、OnlyInsightsRejected 0、Skipped 0、NotCompared 0（違いあり）。ログの中身は記録しない。
+
+| クエリ | 結果 | 原因の見立て |
+|---|---|---|
+| q01〜q11、p01〜p07、p09、p10 | Same | Loop-back 2 の直しが効いた。q01・q02・q09・q10 はクエリの `limit` どおりの行数（20・20・200・50）になり、limit の判定は macOS の bash 3.2 と awk で動いた。p03（0 行）、p04（830 行、値の書き方も一致）、p05（0 行）、p10（22 行）も一致 |
+| p08-limit0（`limit 0`） | Different（Logs Insights 0、アプリ 992） | アプリの仮の決まり（`limit 0` を上限なしとして扱う）が違った。コンソールは `limit 0` で 0 行を返す |
+| p11-field-ne-missing（`eventName != errorCode`） | Different（Logs Insights 73、アプリ 992） | アプリの仮の決まり（右辺の項目がないときは `!=` だけが合う）が違った。コンソールは右辺の項目がないイベントを合わないとし、`errorCode` があるイベントだけを返した |
+| p12-text-vs-digits（`eventName > "5"`） | Different（Logs Insights 0、アプリ 992） | アプリの仮の決まり（数字でない文字列と数字だけの文字列は Unicode の順で比べる）が違った。p03 と同じく、コンソールでは片方が数として読めない大小の比べは合わない |
+
+3 本とも U2 のコードの仮の決まりで、スクリプトと比べの道具の誤りではない。

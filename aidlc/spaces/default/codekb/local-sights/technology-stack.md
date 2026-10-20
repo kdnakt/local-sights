@@ -1,75 +1,72 @@
 # 技術の構成（Local Sights）
 
-走査したコミット：`2760b13b8bc5b6daba36a6c283b3958c974a5a2d`（2026-10-17）。版は `Cargo.lock` と `package-lock.json` に固定されたもの（宣言の範囲はかっこ内）。
+> 2026-10-20、コミット `3208713`。版は `Cargo.lock` と `package-lock.json`（lockfileVersion 3）に固定されているものを書く。宣言の範囲は `Cargo.toml` の `[workspace.dependencies]` と `package.json`。依存の間の関係と管理の仕方は `dependencies.md`。
 
 ## 言語と実行環境
 
-| 種類 | 中身 | 根拠 |
-|------|------|------|
-| Rust | edition 2024、rust-version 1.85 以上（stable） | `Cargo.toml` の `[workspace.package]` |
-| TypeScript | 6.0.3（`tsc --noEmit` で型検査） | `package.json`、`tsconfig.json` |
-| Node.js | 22（CI と開発） | `.github/workflows/ci.yml`、`README.md` |
-| 実行する OS | macOS（Apple Silicon）、Windows 11（x64）。CI は Linux・macOS・Windows で組み立てて試す | team.md Deployment、`ci.yml` |
-| WebView | macOS は WKWebView、Windows は WebView2（インストーラが取得する `downloadBootstrapper`）、Linux（CI だけ）は WebKitGTK 4.1 | `tauri.conf.json`、`ci.yml` |
+| 層 | 言語・環境 | 根拠 |
+|---|---|---|
+| 中核・アプリ | Rust、edition 2024、`rust-version = "1.85"`、CI は `dtolnay/rust-toolchain` の stable | `Cargo.toml:6-9`、`.github/workflows/ci.yml:31` |
+| 画面 | TypeScript 6.0.3（`tsc --noEmit` で型検査）、React 19.3.0、ES modules（`"type": "module"`） | `package.json`、`tsconfig.json` |
+| スクリプト | Node.js 22.18 以上（`versions.ts` を型除去で直接 import）、bash（`insights-export.sh`） | `scripts/release/check-version.mjs:12-13` |
+| 配布 | macOS（Apple Silicon、`.dmg`）、Windows 11 x64（NSIS `-setup.exe`、`installMode: currentUser`、WebView2 は `downloadBootstrapper`） | `src-tauri/tauri.conf.json`、`release.yml` |
+| 版 | 0.2.0（`Cargo.toml`、`Cargo.lock` の 2 クレート、`package.json`、`tauri.conf.json` でそろえ、`check-version.mjs` が検査） | `docs/releasing.md:28-48` |
 
 ## 枠組みとライブラリ（Rust）
 
-| 名前 | 版 | 使いどころ |
-|------|----|------------|
-| tauri | 2.12.3（`2`） | デスクトップアプリ、コマンドとイベント、パスの解決、メニュー |
-| tauri-build | 2.7.2（`2`） | ビルド時の生成 |
-| aws-config | 1.12.0（`1`） | 認証と接続先の解決（SDK の既定の連鎖） |
-| aws-sdk-cloudwatchlogs | 1.156.0（`1`、default-features 無し、`default-https-client`・`rt-tokio`） | 読み取り 3 操作。古い rustls 0.21 を引く `rustls` 機能を外している |
-| aws-credential-types | `1` | 認証情報の型（扱うだけで保存しない） |
-| tokio | 1.53.2（`rt-multi-thread`・`macros`・`sync`、中核は `time`） | 非同期実行、待ち、停止信号、別スレッド |
-| futures-util | 0.3.34（`std` だけ） | 同時取得の `FuturesUnordered` |
-| serde / serde_json | 1.0.229 / 1.0.152 | 画面への JSON、キャッシュの JSON Lines、設定ファイル |
-| chrono | 0.4.45（`std`・`clock`） | 時刻 |
-| chrono-tz | 0.10.4 | IANA のタイムゾーン（夏時間） |
-| iana-time-zone | 0.1.65 | OS のタイムゾーン名 |
-| regex | 1.13.1 | 失敗の詳細の伏せ字 |
-| sha2 | 0.11.0 | キャッシュのファイル名 |
+| crate | 版 | 使う場所と目的 |
+|---|---|---|
+| tauri / tauri-build | 2.12.3 / 2.7.2 | アプリの枠組み。`custom-protocol` feature で画面を同梱 |
+| aws-config | 1.12.0 | プロファイルとリージョンの解決（認証情報はアプリが読まない） |
+| aws-sdk-cloudwatchlogs | 1.156.0 | 読み取り 3 操作。default-features off、`rustls` だけ |
+| aws-credential-types、aws-smithy-runtime-api、aws-smithy-types | （SDK と同系） | 型と、テストでの SDK エラーの組み立て（dev） |
+| rustls | 0.23.46 | TLS（SDK 経由） |
+| tokio | 1.53.3 | 非同期の実行（rt-multi-thread, macros, sync, time；dev で test-util の止まった時計） |
+| futures-util | 0.3.34 | `FuturesUnordered` で最大 8 本の同時読み（default-features off、std） |
+| chrono / chrono-tz / iana-time-zone | 0.4.45 / 0.10.4 / 0.1.65 | 時刻の読み書き、IANA のゾーン、OS のゾーンの名前 |
+| regex | 1.13.1 | クエリの `like /…/` と `=~`、SSO の出力の抜き出し |
+| serde / serde_json | 1.0.229 / 1.0.154 | IPC の JSON、キャッシュの JSON Lines、設定、メッセージの JSON 読み |
+| sha2 | 0.11.1 | キャッシュの鍵のファイル名 |
 | thiserror | 2.0.21 | エラー型 |
-| uuid | 1.28.0（`v4`） | セッション ID など |
-| fastrand | 2.5.0 | 再試行の待ちの揺らぎ |
-| home | 0.5.12 | ホームフォルダ（AWS の設定ファイルの場所） |
-| libc | 0.2.190（`cfg(unix)` だけ） | AWS CLI のプロセスグループの停止（`killpg`） |
-| windows-sys | `0.61`（`cfg(windows)` だけ、Tauri が組み立てる版） | ジョブオブジェクト、`ShellExecuteW` |
-| tempfile | 3.27.0（開発時だけ） | テストの一時フォルダ |
-| aws-smithy-runtime-api / aws-smithy-types | `1`（開発時だけ） | SDK のエラーを作るテスト |
+| uuid | 1.28.0 | 一時ファイルの名前など（v4） |
+| fastrand | 2.5.0 | 再試行のジッター |
+| home | 0.5.12 | `~/.aws` の場所 |
+| tempfile | 3.27.0（dev） | キャッシュと偽の CLI のテスト |
+| libc | 0.2.190（`cfg(unix)`、アプリ） | `killpg` でプロセスグループを止める |
+| windows-sys | 0.61.2（`cfg(windows)`、アプリ） | ジョブオブジェクトと `ShellExecuteW` |
 
 ## 枠組みとライブラリ（画面）
 
-| 名前 | 版 | 使いどころ |
-|------|----|------------|
-| React / react-dom | 19.3.0 | 画面 |
-| @cloudscape-design/components | 3.0.1396 | AWS コンソールと同じ部品（TextFilter、Table、DatePicker、Modal など） |
-| @cloudscape-design/design-tokens / global-styles | `^3.0.114` / `^1.0.71` | 色と明暗 |
-| @tauri-apps/api | 2.12.2 | `invoke` と `listen` |
-| @tauri-apps/cli | 2.12.1 | 開発とビルド |
-| Vite | 8.3.4 | 開発サーバー（1420 番）とビルド（`es2022`、`dist/`） |
-| Vitest | 5.0.3（`@vitest/coverage-v8`） | 画面のテスト（jsdom）と行カバレッジ |
-| Testing Library | dom 10.4、react 16.3、user-event 14.6、jest-dom 7.0 | 部品のテスト |
-| ESLint | 10.12.0（typescript-eslint 8、react-hooks 7、react-refresh 0.5） | 画面の lint |
-| Prettier | 3.9.10 | 画面の整形（`printWidth` 100） |
-| @resvg/resvg-js | 2.6 | アイコンの書き出し |
+| パッケージ | 版 | 目的 |
+|---|---|---|
+| react / react-dom | 19.3.0 | 画面 |
+| @cloudscape-design/components | 3.0.1400 | 部品（TopNavigation、SideNavigation、Table、Multiselect、CodeEditor、Modal、Alert、DatePicker、TimeInput、ButtonDropdown など） |
+| @cloudscape-design/design-tokens / global-styles | 3.0.114 / 1.0.71 | 自前で描く部分の色、明暗モード |
+| ace-builds | 1.44.0 | CodeEditor のエディタ本体（アプリ内から読み込み、ネットワークなし） |
+| @tauri-apps/api | 2.12.4 | `invoke` と `listen` |
+| vite / @vitejs/plugin-react | 8.3.4 / 6.1.2 | ビルドと開発サーバー（1420 番） |
+| typescript / typescript-eslint / eslint / eslint-plugin-react-hooks / eslint-plugin-react-refresh / globals | 6.0.3 / 8.71.2 / 10.12.0 / 7.1.1 / 0.5.7 / 17.13.0 | 型検査と lint |
+| prettier | 3.9.10 | 整形（printWidth 100、semi、double quote、trailingComma all） |
+| vitest / @vitest/coverage-v8 / jsdom | 5.0.4 / 5.0.4 / 30.1.2 | テストとカバレッジ（行 80%） |
+| @testing-library/react / dom / jest-dom / user-event | 16.3.3 / 10.4.2 / 7.0.1 / 14.6.8 | 画面のテスト |
+| @tauri-apps/cli | 2.12.3 | `npm run tauri dev` / `build` |
+| @resvg/resvg-js | 2.6.2 | アイコンの SVG → PNG |
 
 ## ビルド・テスト・配布の道具
 
-| 道具 | 使いどころ |
-|------|------------|
-| Cargo（ワークスペース） | 中核とアプリの組み立てとテスト |
-| rustfmt、clippy | 整形と lint（CI、clippy の警告はエラーにしない） |
-| cargo-llvm-cov 0.9.1 | 中核の行カバレッジ（80% 未満で失敗） |
-| cargo-deny | 脆弱性・ライセンス・出どころの確認（`deny.toml`、実際に組み立てる機能だけ） |
-| npm、`npm audit --audit-level=high` | 画面の依存と監査 |
-| Tauri の bundler | macOS は `.dmg`（中に `.app`、アドホック署名）、Windows は NSIS（`currentUser`、管理者の権限なし） |
-| GitHub Actions | CI と Release（`v*` タグ） |
-| Dependabot | cargo・npm・Actions を毎週 |
+- **ビルド**：Cargo（ワークスペース）、Vite（`npm run build` = `tsc --noEmit && vite build`）、Tauri CLI（`beforeBuildCommand: npm run build`、`frontendDist: ../dist`）。
+- **テスト**：`cargo test --workspace`、`cargo llvm-cov -p local-sights-core --fail-under-lines 80`（cargo-llvm-cov 0.9.1）、`cargo test … --doc`、`cargo test … --examples`、`npm run test:coverage`（Vitest、行 80%）。
+- **検査**：`cargo fmt --all --check`、`cargo clippy`（警告は警告のまま）、cargo-deny（`EmbarkStudios/cargo-deny-action` v2.1.1）、`npx tsc --noEmit`、`npx eslint .`、`npx prettier --check .`、`npm audit --audit-level=high`、`npm run check:version`。
+- **CI**：GitHub Actions（`actions/checkout` v7.0.1、`actions/setup-node` v7.1.0、`Swatinem/rust-cache` v2.9.2、すべて SHA 固定）。Linux ランナーでカバレッジ、3 OS でアプリのビルドとテスト。Dependabot が cargo・npm・github-actions を週次でまとめて上げる。
+- **配布**：`release.yml` が `v*` タグで `.dmg`（アドホック署名 `APPLE_SIGNING_IDENTITY=-`、公証なし）と NSIS x64 を作り、`gh release create --verify-tag` で 1 つの Release に。`release-dry-run.yml` は手動で作成だけを試す。更新は手で入れ替え、自動更新はない。
+- **改行**：`.gitattributes` で全テキストを LF に固定（Windows の checkout で整形の検査が一致するため）。
 
-## IB-11 から見た技術の手持ち
+## 設定・データの置き場所
 
-- JSON の読み取りは、中核がすでに `serde_json` を依存に持つ（キャッシュ用）。新しい依存なしにメッセージの JSON を読める。
-- 正規表現は `regex` 1 が中核にある（今は伏せ字にだけ使う）。Logs Insights の `like /…/` などに使うなら、同じ版で足りる。
-- クエリの構文解析のための依存（パーサーのライブラリ）は今は無い。足すなら cargo-deny のライセンス許可リスト（MIT・Apache-2.0 など）と team.md の依存の決まりに合わせる。
-- 画面の入力欄は Cloudscape の部品だけで作っている。複数行の入力には `Textarea` などが使える。補完や色分け（Should の B8・B9）に使えそうな Cloudscape の `CodeEditor` は、外部のエディタ（Ace）を別に読み込む前提の部品で、今は使っておらず依存にも無い（採否は後のステージで確かめる）。
+- 利用者の AWS 設定：`~/.aws/config`、`~/.aws/credentials`（読みだけ。`AWS_PROFILE` などの環境変数も見る）。
+- アプリの設定とキャッシュ：Tauri の `app_config_dir` の下の `settings.json` と `log-cache/`（macOS は `~/Library` の下、Windows は `AppData` の下）。キャッシュは JSON Lines、unix では 0700/0600。
+- 画面の記憶：`localStorage` にペインの幅と開閉（`local-sights.logGroupPaneWidthPercent`、`local-sights.logGroupPaneCollapsed`）。
+
+## この作業（carryover-fixes）から見た技術の手持ち
+
+5 項目はいずれも今の依存の範囲で直せる。リージョンの名前（5）は表をコードに持てばよく、新しい crate は要らない。検索できる選択欄は Cloudscape の `Select`（`filteringType="auto"`）が `ButtonDropdown` の代わりになる。英語の単複（4）は `translate` の置き換えに数の分岐を足すか、文言を数に依存しない形にする。

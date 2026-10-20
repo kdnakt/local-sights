@@ -44,7 +44,7 @@
 | T-DEPS | team.md Code Style | npm audit と cargo-deny が通る | 通った | test-results.md の 1 | build-and-test | Met |
 | T-NFR5 | NFR5 | 読み取りの 3 つの API だけ | 新しい API なし。テストが通った | security-test-instructions.md | build-and-test | Met |
 | T-NFR12 | NFR12 | 外部に何も送らない | 足した行に送信なし | security-test-instructions.md | build-and-test | Met |
-| T-SM1 | SM1・NFR3、U4 BR3.3 | 互換を確かめるクエリでコンソールとアプリの結果が同じ | 23 本すべて Same（3 回目、Loop-back 2・3 のあと） | test-results.md の 11・13・15 | 開発者の手元 | Met |
+| T-SM1 | SM1・NFR3、U4 BR3.3 | 互換を確かめるクエリでコンソールとアプリの結果が同じ | 23 本すべて Same（3 回目、Loop-back 2・3 のあと。配布した v0.2.0 の `cd453f0` でも 4 回目を流し 23 本すべて Same） | test-results.md の 11・13・15・16 | 開発者の手元 | Met |
 | T-WS-MAC | team.md Walking Skeleton | macOS で実際の AWS で取得して結果が出る | 開発者の Mac でひととおり問題なし | test-results.md の 9 | 開発者の手元 | Met |
 | T-WS-WIN | team.md Walking Skeleton | Windows 11 で同じ | 確かめていない（開発者の答えで飛ばした、2026-10-19） | test-results.md の 7 | 開発者の手元 | Unverified |
 | T-ACE | U2 review R-04、FR9.2 | 本物の Ace で色分け・補完・エラーの印が出る | 開発者の Mac で問題なし | test-results.md の 9 | 開発者の手元 | Met |
@@ -59,7 +59,7 @@
 ## 5. 分かっている限界と残り
 
 - **手元で確かめること**：
-  1. 互換の確かめ（U4）：`PROFILE=… REGION=… GROUP=CloudTrail START=… END=… OUT=~/insights-export ./scripts/compat/insights-export.sh` のあとに `cargo run -p local-sights-core --example compat_check -- --export-dir ~/insights-export`。結果の要約（ロググループの種類、期間の長さ、件数、結果の数、違いのあったクエリと原因の見立て）を残す。ログの中身は残さない。
+  1. 互換の確かめ（U4）：`PROFILE=… REGION=… GROUP=CloudTrail START=… END=… OUT=~/insights-export ./scripts/compat/insights-export.sh` のあとに `cargo run -p local-sights-core --example compat_check -- --export-dir ~/insights-export`。結果の要約（ロググループの種類、期間の長さ、件数、結果の数、違いのあったクエリと原因の見立て）を残す。ログの中身は残さない。 済み：4 回流し、3 回目と 4 回目（v0.2.0 の `cd453f0`）は 23 本すべて Same（`test-results.md` の 16 章）。
   2. 薄い一本（macOS と Windows 11）：複数のロググループで実行して結果が出る、同じ期間の 2 回目は AWS から取得しない、期間を広げると足りない部分だけを取得する、キャッシュから読む、接続を変えると捨てる、ログの画面が前と同じ。
   3. 本物の Ace の目視。
   4. macOS のメモリ（`/usr/bin/time -l`）。

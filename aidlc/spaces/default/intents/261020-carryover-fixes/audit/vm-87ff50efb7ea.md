@@ -910,3 +910,473 @@
 **Agent**: aidlc-pipeline-deploy-agent
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-20T12:25:43Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a9af2ca0a04177cc2
+**Message**: Committed the stage diary and pushed. The one remaining untracked file is AI-DLC's machine-local marker for the release engineer's work still in progress, not repository content. I'll continue when th
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-20T12:26:21Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+**Context**: inception > practices-discovery > team-practices.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-20T12:26:28Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/discovered-rules.md
+**Context**: inception > practices-discovery > discovered-rules.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-20T12:26:29Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-timestamp.md
+**Context**: inception > practices-discovery > practices-discovery-timestamp.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-20T12:28:28Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:29:06Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-20T12:29:07Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-pipeline-deploy-agent
+**Agent ID**: a515ff1f8d32c603f
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-20T12:30:12Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:30:14Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: How would you like to answer the questions?
+**Options**: Guide me,I'll edit the file,Chat
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:31:45Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["Guide me"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:31:45Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: 進め方の確認の質問を 6 つ、`aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md` に用意しました（次の版の番号とタグの時期、Deployment 節の細部、ほかの 4 節の確認、Windows の手元確認を飛ばす扱い、新しい制約）。どう答えますか？
+**Reply**: Guide me
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:31:52Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Guide me
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:31:52Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q1
+**Options**: A. v0.2.1,B. v0.3.0,C. タグの直前に決める,X. Other
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:32:39Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["C. タグの直前に決める"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:32:40Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: v0.2.0 のあとに配る次の版のタグをどうしますか？今回の作業で利用者に見える変更は、接続の画面のリージョンの選択欄に名前を出して検索できるようにする点だけで、保存形式や API は変えません。
+**Reply**: C. タグの直前に決める
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:32:51Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q1: C. タグの直前に決める
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:32:51Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q2
+**Options**: A. マージ後すぐ手順どおり打つ,B. 次の機能と合わせる,C. この作業では決めない,X. Other
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:32:53Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:34:03Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["B. 次の機能と合わせる"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:34:03Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: 次の版のタグはいつ打ちますか？
+**Reply**: B. 次の機能と合わせる
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:34:14Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q2: B. 次の機能と合わせる
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:34:15Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q3 (select all that apply)
+**Options**: A. PR #35 も含まれると書く,B. release.yml の実際に合わせて細かく書く,C. 公開済みの版の一覧を独立の箇条書きに,D. どれも入れない,X. Other
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:34:17Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:35:31Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["C. 公開済みの版の一覧を独立に"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:35:32Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: Deployment 節の「次の版」の箇条書きを書き換えるにあたり、次のうち入れたいものを選んでください（複数可）。
+**Reply**: C. 公開済みの版の一覧を独立に
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:35:42Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q3: C. 公開済みの版の一覧を独立の箇条書きに
+**Picker Note**: Not what the person picked in the picker ("C. 公開済みの版の一覧を独立に").
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:35:43Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q4
+**Options**: A. 4 節とも変更なし,B. 変えたい節がある,X. Other
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:35:44Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:36:16Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["A. 4 節とも変更なし"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:36:17Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: Way of Working・Walking Skeleton・Testing Posture・Code Style の 4 節は、証拠（CI のジョブ名、80% のカバレッジ、cargo-deny、.gitattributes の LF、インストーラの形など）と一致していました。文面は変更なしでよいですか？
+**Reply**: A. 4 節とも変更なし
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:36:26Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q4: A. 4 節とも変更なし
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:36:26Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q5
+**Options**: A. この作業だけの例外として記録に残す,B. 節に条件を足す,X. Other
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:36:28Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:39:44Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["A. この作業だけの例外"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:39:45Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: Walking Skeleton の節は「両方の OS に効く変更では、macOS と Windows の両方で手元の確認を行う」と決めています。今回の作業は Windows の手元の確認を飛ばします。この扱いをどう残しますか？
+**Reply**: A. この作業だけの例外
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:39:59Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q5: A. この作業だけの例外として記録に残す
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:39:59Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Q6
+**Options**: A. どちらも None. でよい,B. 足したいものがある,X. Other
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:40:01Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:40:43Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["A. どちらも None."]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:40:43Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: 今回、新しい強い制約（ALWAYS / NEVER で書くもの）は見当たりませんでした。Mandated・Forbidden はどちらも None. でよいですか？既存の 4 つの Forbidden（認証情報を書かない、読み取り 3 API 以外を呼ばない、テストや CI から AWS につながない、テレメトリを送らない）はそのまま残ります。
+**Reply**: A. どちらも None.
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:41:40Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Q6: A. どちらも None. でよい
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:41:42Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-questions.md
+**Context**: inception > practices-discovery > practices-discovery-questions.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:41:43Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/memory.md
+**Context**: inception > practices-discovery > memory.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:43:11Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+**Context**: inception > practices-discovery > team-practices.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:43:19Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+**Context**: inception > practices-discovery > team-practices.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:43:24Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/discovered-rules.md
+**Context**: inception > practices-discovery > discovered-rules.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-20T12:43:26Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-timestamp.md
+**Context**: inception > practices-discovery > practices-discovery-timestamp.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:43:43Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:43:50Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:00Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:11Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:13Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:15Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:17Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---

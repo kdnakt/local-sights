@@ -1380,3 +1380,388 @@
 **Context**: inception > practices-discovery > evidence.md
 
 ---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:19Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:21Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:27Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-20T12:44:34Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: a1d44e8b8986eacc0
+**Message**: Committed the interview record and pushed. The four practice documents are still being finalized by the release engineer and will be committed once that integration hands back, together with the stage
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:52Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:54Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:44:57Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:45:09Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-20T12:45:38Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Context**: inception > practices-discovery > evidence.md
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:46:28Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---
+
+## Subagent Completed
+**Timestamp**: 2026-10-20T12:46:28Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: aidlc-pipeline-deploy-agent
+**Agent ID**: a744a17fcfa4c6d09
+
+---
+
+## Practices Discovered
+**Timestamp**: 2026-10-20T12:46:45Z
+**Event**: PRACTICES_DISCOVERED
+**Sources Scanned**: team.md (baseline), project.md, org.md, codekb/local-sights (6 artifacts), .github/workflows (ci, release, release-dry-run), dependabot.yml, docs/releasing.md, docs/install.md, git log
+**Drafts**: team-practices.md, discovered-rules.md
+
+---
+
+## Decision Recorded
+**Timestamp**: 2026-10-20T12:46:55Z
+**Event**: DECISION_RECORDED
+**Stage**: practices-discovery
+**Decision**: Anything to add for next time?
+**Options**: Nothing to add,Add a note
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:48:08Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["Nothing to add","Keep none of these"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:48:09Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: Anything to add for next time?（次回のために書き添えておきたいことはありますか？）
+**Reply**: Nothing to add
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:48:09Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: この段階の日誌から、次回以降の作業に残す価値があるものを選んでください（複数可）。
+**Reply**: Keep none of these
+
+---
+
+## Question Answered
+**Timestamp**: 2026-10-20T12:48:20Z
+**Event**: QUESTION_ANSWERED
+**Stage**: practices-discovery
+**Details**: Nothing to add
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:23Z
+**Event**: SENSOR_FIRED
+**Fire id**: 83a71d9a
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:23Z
+**Event**: SENSOR_PASSED
+**Fire id**: 83a71d9a
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+**Duration ms**: 453
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:24Z
+**Event**: SENSOR_FIRED
+**Fire id**: 6d0b37db
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/discovered-rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:24Z
+**Event**: SENSOR_PASSED
+**Fire id**: 6d0b37db
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/discovered-rules.md
+**Duration ms**: 460
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:25Z
+**Event**: SENSOR_FIRED
+**Fire id**: 484fc4a3
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:25Z
+**Event**: SENSOR_PASSED
+**Fire id**: 484fc4a3
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Duration ms**: 418
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:26Z
+**Event**: SENSOR_FIRED
+**Fire id**: 7c3316d1
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-timestamp.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:26Z
+**Event**: SENSOR_PASSED
+**Fire id**: 7c3316d1
+**Sensor ID**: required-sections
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-timestamp.md
+**Duration ms**: 440
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:27Z
+**Event**: SENSOR_FIRED
+**Fire id**: 38a7cc85
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:27Z
+**Event**: SENSOR_PASSED
+**Fire id**: 38a7cc85
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/team-practices.md
+**Duration ms**: 411
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:27Z
+**Event**: SENSOR_FIRED
+**Fire id**: bb715033
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/discovered-rules.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:28Z
+**Event**: SENSOR_PASSED
+**Fire id**: bb715033
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/discovered-rules.md
+**Duration ms**: 411
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:28Z
+**Event**: SENSOR_FIRED
+**Fire id**: e9ce0a32
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:29Z
+**Event**: SENSOR_PASSED
+**Fire id**: e9ce0a32
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/evidence.md
+**Duration ms**: 427
+
+---
+
+## Sensor Fired
+**Timestamp**: 2026-10-20T12:48:29Z
+**Event**: SENSOR_FIRED
+**Fire id**: 65ef70b5
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-timestamp.md
+
+---
+
+## Sensor Passed
+**Timestamp**: 2026-10-20T12:48:30Z
+**Event**: SENSOR_PASSED
+**Fire id**: 65ef70b5
+**Sensor ID**: upstream-coverage
+**Stage slug**: practices-discovery
+**Output path**: aidlc/spaces/default/intents/261020-carryover-fixes/inception/practices-discovery/practices-discovery-timestamp.md
+**Duration ms**: 396
+
+---
+
+## Stage Awaiting Approval
+**Timestamp**: 2026-10-20T12:48:30Z
+**Event**: STAGE_AWAITING_APPROVAL
+**Stage**: practices-discovery
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-20T12:50:47Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["Approve"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-20T12:50:47Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: 進め方の確認（Practices Discovery）が終わりました。承認すると、team.md の 5 節がこの文面に置き換わります（変わるのは Deployment 節の「次の版」の 2 箇条書きだけ）。どう進めますか？
+**Reply**: Approve
+
+---
+
+## Practices Affirmed
+**Timestamp**: 2026-10-20T12:50:55Z
+**Event**: PRACTICES_AFFIRMED
+**Affirming User**: kdnakt
+**Sections Written**: Way of Working, Walking Skeleton, Testing Posture, Deployment, Code Style
+**Mandated Rules Appended**: 1
+**Forbidden Rules Appended**: 0
+
+---
+
+## Gate Approved
+**Timestamp**: 2026-10-20T12:51:11Z
+**Event**: GATE_APPROVED
+**Stage**: practices-discovery
+**User Input**: Approve
+**Person Reply**: Approve
+
+---
+
+## Stage Completion
+**Timestamp**: 2026-10-20T12:51:11Z
+**Event**: STAGE_COMPLETED
+**Stage**: practices-discovery
+**Validation Basis**: {"graphContract":"sha256:886af627a0fea6d271a662e4a54b4c5993ecee715d6144d46d4a58c2bc3d19bb","inputs":[{"artifact":"architecture","contentHash":"sha256:df3baefc16ff2e27740bb20babccefd68e591177f1b1d1a5b4b01b71a20bd485","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:58aa6939143dae08d5da7c629d385264fad48ebf4cd97020063229418e8b8c73"},{"artifact":"business-overview","contentHash":"sha256:0f59fa6c7371c57bc3251a70484365804f111800ee708a0e8b171e2fe076b4a2","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:77c77e967b91d6a0db11e16c3d65af7c48540cd1e5007a0fa1b11ff26349cbcb"},{"artifact":"code-quality-assessment","contentHash":"sha256:aae7d09386c9ef2c010c81875ffaf000f1b422c1ae16328c1554eb18db146594","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:d5b0c5ef954b699a8748fa8a615d2bf3e73f1bbbe47eb061860d4eab1493d7ca"},{"artifact":"code-structure","contentHash":"sha256:1c27d39a4478dfb762aaa62f8542d12e783cfc2aa3a444b5aa26bd1a70a9fdf1","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:5d554269ed35d08101a1ca8168279c04e6390e96a2e4fb3205ff09d30e1d5405"},{"artifact":"dependencies","contentHash":"sha256:ece0c25c57e93ab3388856d2492541c3e5aae60a9a53d86576f66bba128d845d","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:d63dfa3d73af06d1da193fc3ddcf15af6c2c066e18d7ee41bd837c8074872e46"},{"artifact":"technology-stack","contentHash":"sha256:8dfa5c58f9510e4743a6c04dfc5df9e72565c3633196c3d30ffabf920f26fb43","instanceCount":1,"presentCount":1,"producer":"reverse-engineering","required":false,"structureHash":"sha256:8653e9061c3a40bc56c3e8b38236ece0394b0229b899017e18b4e17b21e9447d"}],"outputs":[{"artifact":"discovered-rules","contentHash":"sha256:e1c687678a5c95cae6e6dcc008740394176d00bab40d72e39225676317abbee4","instanceCount":1,"presentCount":1,"producer":"practices-discovery","required":true,"structureHash":"sha256:bc09f9d893299e7216fdfe9bc422fe8904e26498cd133f4f064ec289853bd6fa"},{"artifact":"evidence","contentHash":"sha256:b626e5cf5e18820513839403803431beaa4122a70db7ad8769ec322b345ef2cb","instanceCount":1,"presentCount":1,"producer":"practices-discovery","required":true,"structureHash":"sha256:5411e83938ecd4dd0ce26c3f8e4d9ab009807dd0d0c5689df3aaa7a333968f9c"},{"artifact":"practices-discovery-timestamp","contentHash":"sha256:c0aeed6699a810b8162c1e3cd061074577c326ff67bdf89da26efe39c07b1f08","instanceCount":1,"presentCount":1,"producer":"practices-discovery","required":true,"structureHash":"sha256:6831731afe67194a8402b4d3cb7c2dbb88e5d4760bfe682bedb7db06283b04a8"},{"artifact":"team-practices","contentHash":"sha256:5b499b682398a2e7af6fbc5d8dc2c8e79e95636a8979ead4f2142d9bcac174dc","instanceCount":1,"presentCount":1,"producer":"practices-discovery","required":true,"structureHash":"sha256:6424778c2ff9fd4a79d6db6184861e401889e5ecf89f84ecb498773b60239983"}],"projectType":"brownfield","schema":3}
+**Details**: Stage Practices Discovery approved by gate
+**Tokens In**: 1432
+**Tokens Out**: 31181
+**Cache Read**: 23779025
+**Cache Write**: 1164089
+**Cost USD**: 26.83
+**By Model**: fable-5-1=26.83
+**By Agent**: main=19.27; aidlc-pipeline-deploy-agent=7.56
+**Tokens By Model**: fable-5-1=1.4k/31.2k/23.8M/1.2M
+**Tokens By Agent**: main=948/27k/20.8M/635.2k; aidlc-pipeline-deploy-agent=484/4.2k/2.9M/528.9k
+
+---
+
+## Stage Start
+**Timestamp**: 2026-10-20T12:51:11Z
+**Event**: STAGE_STARTED
+**Stage**: requirements-analysis
+**Agent**: aidlc-product-agent
+**Answer Mode**: guide (reused from practices-discovery)
+
+---

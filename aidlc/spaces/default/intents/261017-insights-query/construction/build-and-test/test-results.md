@@ -232,3 +232,16 @@ U2 の Code Generation で (1)〜(3) を直した（`693b3af`、レビュー REA
 - T-SM1 を Met にする（上の表の行も更新）。
 
 残りは T-WS-WIN（Windows 11、最後にまとめて）。
+
+## 16. コンソールとの互換の確かめ・4 回目（T-SM1、開発者の Mac、2026-10-20、配布した v0.2.0 のコード `cd453f0`）
+
+v0.2.0 のリリース（タグ `v0.2.0`、`main` の `cd453f0`）のあと、配布したコードそのもので開発者が手元で流した。15 からの差は Dependabot の更新 8 本（tokio 1.53.3、serde_json 1.0.154、sha2 0.11.1、Tauri の npm パッケージ、Cloudscape、vitest、typescript-eslint、coverage-v8）だけで、アプリと中核ライブラリのコードは変えていない。
+
+条件：11・13・15 と同じ（CloudTrail のロググループ、期間 1 時間 START=1767435900・END=1767439500、`us-east-1`）。イベント 992 件、ストリーム 4 本、失敗したストリーム 0、取得は 12 回の呼び出し・4.5 秒・スロットリング 0。書き出しは 23 本すべて Complete（Error 0、そのほか 0）。書き出しのフォルダはリポジトリの外の新しい空のフォルダ。
+
+結果：Same 23、Different 0、BothRejected 0、OnlyAppRejected 0、OnlyInsightsRejected 0、Skipped 0、NotCompared 0。行数は 15 と同じ。ログの中身は記録しない。
+
+- q01・q09・q10 は `tied-at-cut`（切り目で sort の値が同じ行が 10/10・120/120・1/1）が付いたが、切り目の前後の行の並びを比べた上で Same。
+- T-SM1 は Met のまま。配布した版でもコンソールとの互換が保たれていることの確かめになる。
+
+残りは T-WS-WIN（Windows 11）。v0.2.0 の Release dry run の成果物を開発者が Windows 11 に入れて起動・取得を確かめた（2026-10-20）が、IB-11 の薄い一本の項目（複数のロググループ、取り足し、キャッシュ、接続の変更）を Windows で個別に確かめた記録はない。

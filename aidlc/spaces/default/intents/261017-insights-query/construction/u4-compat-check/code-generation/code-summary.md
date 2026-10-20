@@ -104,6 +104,12 @@ cargo run -p local-sights-core --example compat_check -- --export-dir ~/insights
 - 結果ごとの数（Same・Different・BothRejected・OnlyAppRejected・OnlyInsightsRejected・Skipped・NotCompared）
 - 違いのあったクエリと、原因の見立て（アプリの読み取り・評価の誤り、仮の決まりの違い、取得の違い）と、アプリを直すか違いを受け入れて README に書くか
 
+2 回目（2026-10-19、`b088e2b`）：同じ条件、23 本。Same 20、Different 3（p08・p11・p12、どれも U2 の仮の決まり）。Loop-back 3 で U2 を直した。`test-results.md` の 13 章。
+
+3 回目（2026-10-19、`8af7d04`）：同じ条件、23 本すべて Same。T-SM1 を Met にした。`test-results.md` の 15 章。
+
+4 回目（2026-10-20、配布した v0.2.0 の `cd453f0`）：同じ条件、23 本すべて Same。依存関係の更新のあとも互換が保たれている。`test-results.md` の 16 章。
+
 ## 計画や設計との違い
 
 - **モジュールを 2 つ足した**：計画の Step 1 は `export.rs`・`format.rs`・`compare.rs`・`report.rs` の 4 つだったが、クエリの組の読み込み（Step 2）を `queries.rs`、settings.json とフォルダ・期間の確かめ（Step 3）を `settings.rs` に分けた。
@@ -176,4 +182,4 @@ Build and Test の互換の確かめ（`test-results.md` の 11 章）から戻�
 
 ## 残っていること
 
-- **手元の比べ（BR3.3）**：1 回目は流して `test-results.md` の 11 章に記録した。Loop-back 2 の直し（U2 の `fe4910a` と、この直し）のあと、開発者が 23 本の組で UC1・UC2 をもう一度流し、上の「手元の比べの結果」と Build and Test の記録に残す。p03（U2 の直しで合うはず）、p04 の `false` が `0` になるか、p10〜p12 の結果を見る。違いが出たときにアプリを直すか受け入れるかは、そこで決める（functional-spec 8）。
+- **手元の比べ（BR3.3）**：済み。4 回流し、3 回目（`8af7d04`）と 4 回目（v0.2.0 の `cd453f0`）は 23 本すべて Same（上の「手元の比べの結果」と `test-results.md` の 11・13・15・16 章）。左辺の項目がないときの項目どうしの比べだけは組に例がなく、仮の決まりのまま。

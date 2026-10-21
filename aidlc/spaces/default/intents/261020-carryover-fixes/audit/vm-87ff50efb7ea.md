@@ -3767,3 +3767,34 @@
 **Context**: construction > build-and-test > build-and-test-summary.md
 
 ---
+
+## Subagent Completed
+**Timestamp**: 2026-10-21T08:25:53Z
+**Event**: SUBAGENT_COMPLETED
+**Agent Type**: unknown
+**Agent ID**: aa1aa347bdf0a97b9
+**Message**: 確認したよ、全部OK
+
+---
+
+## Session End
+**Timestamp**: 2026-10-21T08:30:32Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-21T08:35:02Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-21T08:35:07Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---

@@ -3647,3 +3647,43 @@
 **Context**: construction > build-and-test > build-instructions.md
 
 ---
+
+## Human Turn
+**Timestamp**: 2026-10-21T03:58:02Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-21T03:58:03Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-21T04:06:32Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Picked**: ["PR を作って CI を待つ (Recommended)"]
+
+---
+
+## Question Replied
+**Timestamp**: 2026-10-21T04:06:33Z
+**Event**: QUESTION_REPLIED
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+**Question**: 手元（Linux）では全部通りました（Rust 762 件・画面 496 件、カバレッジはライブラリ 96.6%・画面 90.0%、速さの 9 件、不安定だったテスト 200/200）。macOS・Windows のランナーと cargo-deny は CI でしか確かめられず、CI は PR で動きます。どうしますか？
+**Reply**: PR を作って CI を待つ (Recommended)
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-21T04:07:52Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/cross-unit-traceability.md
+**Context**: construction > build-and-test > cross-unit-traceability.md
+
+---

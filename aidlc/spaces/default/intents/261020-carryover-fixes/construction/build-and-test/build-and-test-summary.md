@@ -52,18 +52,22 @@ Test Strategy は Standard。
 | T-A2-macos-plural | requirements.md A2（FR4.1） | macOS の GUI で英語の単数形「1 stream」を目で確かめる | 英語の画面で「Fetch cancelled. 1 stream was not finished …」と出た（2026-10-21、開発者のスクリーンショット） | 開発者の Mac での目視（`npx tauri dev -- -- -AppleLanguages "(en)"` で起動） | build-and-test | Met |
 | T-A2-macos-cancel | requirements.md A2（FR4.2） | macOS の GUI で中断の知らせと空のときの余白を目で確かめる | 中断の知らせが警告の色で、条件の欄とログの一覧のあいだに出た（同じスクリーンショット） | 開発者の Mac での目視 | build-and-test | Met |
 | T-FR4.4 | requirements.md FR4.4（Build and Test の目視から足した依頼） | 進み具合がクエリの枠の中、［Run query］の並びの下に出て、結果の枠には出ない | 置き場所のテスト 4 件を含め 31/31 件が通過。CI（ec0aa5b）も成功 | `src/components/LogAnalyticsPage.test.tsx`、run 39606616095 | build-and-test | Met |
-| T-A2-macos-fr44 | requirements.md A2（FR4.4） | macOS の GUI で、進み具合の置き場所を目で確かめる | Pending | 開発者の Mac での目視 | build-and-test | Pending |
-| T-A2-macos-query | requirements.md A2（FR2） | macOS の GUI でロググループを変えてクエリを実行し直す | 見ていない | 自動のテスト（`query::runner`、`query::store`）は通過 | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |
+| T-A2-macos-fr44 | requirements.md A2（FR4.4） | macOS の GUI で、進み具合の置き場所を目で確かめる | 進み具合が［Run query］の並びのすぐ下に出て、結果の枠は見出しだけだった（2 つのロググループ、前回の結果なし。2026-10-21、開発者のスクリーンショット） | 開発者の Mac での目視 | build-and-test | Met |
+| T-A2-macos-query | requirements.md A2（FR2） | macOS の GUI でロググループを変えてクエリを実行し直す | 開発者の報告：ロググループを変えて実行し直しても結果が出た（2026-10-21） | 開発者の Mac での目視（会話での報告） | build-and-test | Met |
 
 ## 準備の状態
 
 - ビルド：準備できている。
-- テスト：自動のテストと CI はすべて通った。macOS の目視（A2）は、リージョンの選択欄だけを行った。英語の単数形、中断の知らせ、クエリの画面の 3 つは見ていない（Unverified）。この 3 つは自動のテストで振る舞いを確かめている。目で見ていないのは見た目だけ。
+- テスト：準備できている。自動のテストと CI はすべて通った。macOS の目視（A2）も、次の 5 つをすべて行った。
+  - リージョンの選択欄
+  - 英語の単数形
+  - 中断の知らせ
+  - クエリの画面の実行し直し
+  - FR4.4 の進み具合の置き場所
 - 配ること：この作業だけでは配らない（team.md Deployment）。次の機能と合わせて、版を上げる PR → Release dry run → 両 OS での手元の確認 → タグの順で進める。
 
 ## 残っていること
 
-- macOS の目視（A2）のうち、英語の単数形、中断の知らせ、クエリの画面の 3 つ。次の版を配る前の両 OS の手元の確認（`docs/releasing.md`）で見る。
 - 開発者からの要望：英語の画面を確かめるのに OS の言語を変えるのは手間なので、アプリの中で言語を切り替えられるとよい。この作業の範囲外。次の作業の候補として残す。
 - Windows の手元の確認は省く（A1）。Windows は CI のランナーのビルドとテストで確かめた。GUI の見た目（日本語の名前の表示、選択欄の操作）は、次の版を配る前の両 OS での手元の確認で見る。
 - Code Generation のレビューの Minor 3 件：

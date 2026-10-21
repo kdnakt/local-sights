@@ -5690,3 +5690,25 @@
 **Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
 
 ---
+
+## Session End
+**Timestamp**: 2026-10-21T16:52:38Z
+**Event**: SESSION_ENDED
+**Reason**: other
+
+---
+
+## Session Resume
+**Timestamp**: 2026-10-21T16:57:34Z
+**Event**: SESSION_RESUMED
+**Source**: resume
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---
+
+## Human Turn
+**Timestamp**: 2026-10-21T16:57:40Z
+**Event**: HUMAN_TURN
+**Session**: f10565c9-f1ac-59de-8841-0b708ce9fe84
+
+---

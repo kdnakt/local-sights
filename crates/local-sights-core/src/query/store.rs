@@ -30,8 +30,9 @@
 //! Every run start and every connection change increments the epoch; the
 //! view is only read while the epoch is the one it was built for.
 //!
-//! The holdings go only when the connection changes or the app closes
-//! (BR1.6): a log group no longer chosen keeps its holdings.
+//! A log group no longer chosen loses its holdings when the next run starts
+//! (BR1.3, 261020-carryover-fixes FR2.2.1); every holding goes when the
+//! connection changes or the app closes (BR1.6).
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -50,7 +51,8 @@ use crate::timeline::EventTimeline;
 /// GroupHoldings, 261017-insights-query U3:BR1.2, BR1.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Holding {
-    /// Taken as fetched: kept until the connection changes.
+    /// Taken as fetched: kept until the connection changes or a run starts
+    /// without its log group (261020-carryover-fixes FR2.2.1).
     Committed,
     /// Used for this run only, discarded when the next run starts.
     Staging,
@@ -285,11 +287,15 @@ impl QueryStore {
         self.holdings.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// U3:BR1.3: a run of `keys` (in the order chosen) starts. The staging
-    /// events of every log group go, the epoch goes up and the previous view
-    /// with it. Returns the new epoch.
+    /// U3:BR1.3: a run of `keys` (in the order chosen) starts. The holdings
+    /// of every log group not in `keys` go, events and ranges alike, so
+    /// choosing it again fetches it again (261020-carryover-fixes FR2.2.1,
+    /// FR2.2.2); the staging events of the chosen ones go, their committed
+    /// events and ranges stay (FR2.2.3). The epoch goes up and the previous
+    /// view with it. Returns the new epoch.
     pub fn begin_run(&self, keys: Vec<HoldingKey>) -> u64 {
         let mut holdings = self.lock();
+        holdings.groups.retain(|key, _| keys.contains(key));
         for group in holdings.groups.values_mut() {
             group.discard_staging();
         }
@@ -884,29 +890,64 @@ mod tests {
         );
     }
 
+    /// Runs `keys` and settles `[100, 199]` with one event for each of them.
+    fn run_and_settle(store: &QueryStore, keys: &[HoldingKey]) -> u64 {
+        let epoch = store.begin_run(keys.to_vec());
+        for group in keys {
+            store.settle_range(
+                group,
+                range(100, 199),
+                vec![event(100, "a", 0)],
+                true,
+                LATER,
+            );
+        }
+        epoch
+    }
+
     #[test]
-    fn a_log_group_no_longer_chosen_keeps_its_holdings_until_the_connection_changes() {
-        // BR1.6.
+    fn a_log_group_no_longer_chosen_is_discarded_at_the_next_run() {
+        // 261020-carryover-fixes FR2.2.1, FR2.2.3, FR2.2.4 (BR1.3, BR1.6).
         let store = QueryStore::new();
         let (orders, payments) = (key("/orders"), key("/payments"));
-        store.begin_run(vec![orders.clone()]);
-        store.settle_range(
-            &orders,
-            range(100, 199),
-            vec![event(100, "a", 0)],
-            true,
-            LATER,
-        );
-        let epoch = store.begin_run(vec![payments.clone()]);
-        assert_eq!(store.counts(&orders), (1, 0), "kept");
+        run_and_settle(&store, &[orders.clone(), payments.clone()]);
+        let epoch = store.begin_run(vec![orders.clone()]);
+        assert_eq!(store.counts(&payments), (0, 0), "discarded");
+        assert!(store.covered_ranges(&payments).is_empty());
+        assert_eq!(store.counts(&orders), (1, 0), "still chosen: kept");
+        assert_eq!(store.covered_ranges(&orders), vec![range(100, 199)]);
+        assert_eq!(store.len(), 1);
         store.build_view(epoch, 0, 1_000);
-        assert!(view(&store, epoch).is_empty(), "but not in this run's view");
+        assert_eq!(view(&store, epoch), vec![row(100, "/orders", "a")]);
+        // A connection change still discards everything.
         let after = store.discard_all();
         assert_eq!(after, epoch + 1);
         assert_eq!(store.counts(&orders), (0, 0));
         assert!(store.covered_ranges(&orders).is_empty());
         assert!(store.is_empty());
         assert_eq!(store.view_len(epoch), None);
+    }
+
+    #[test]
+    fn a_log_group_chosen_again_is_fetched_again_while_the_others_keep_their_ranges() {
+        // 261020-carryover-fixes FR2.2.2, FR2.2.3.
+        let store = QueryStore::new();
+        let (orders, payments) = (key("/orders"), key("/payments"));
+        run_and_settle(&store, &[orders.clone(), payments.clone()]);
+        store.begin_run(vec![orders.clone()]);
+        store.begin_run(vec![orders.clone(), payments.clone()]);
+        assert_eq!(
+            store.missing_ranges(&payments, 100, 299),
+            vec![range(100, 299)],
+            "the whole period is fetched again"
+        );
+        assert_eq!(
+            store.missing_ranges(&orders, 100, 299),
+            vec![range(200, 299)],
+            "only the part not held"
+        );
+        assert_eq!(store.counts(&payments), (0, 0));
+        assert_eq!(store.counts(&orders), (1, 0));
     }
 
     #[test]

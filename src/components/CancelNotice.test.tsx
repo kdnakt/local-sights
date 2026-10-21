@@ -28,6 +28,29 @@ describe("CancelNotice (261012-parallel-fetch U5:BR5.11, NFR9.4)", () => {
     expect(within(screen.getByTestId("cancel-notice")).queryByRole("button")).toBeNull();
   });
 
+  it("keeps an empty status region on the screen while there is no notice (261020-carryover-fixes FR4.2)", () => {
+    render(<CancelNotice notice={null} t={t} />);
+    const region = screen.getByTestId("cancel-notice");
+    expect(region).toHaveAttribute("role", "status");
+    expect(region).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("cancel-notice-text")).toBeNull();
+    expect(region).toHaveClass("cancel-notice");
+  });
+
+  it("puts the notice into the region that was already there, and empties it again (FR4.2.1)", () => {
+    const { rerender } = render(<CancelNotice notice={null} t={t} />);
+    const before = screen.getByTestId("cancel-notice");
+    rerender(<CancelNotice notice={{ unfinishedStreams: 1 }} t={t} />);
+    const after = screen.getByTestId("cancel-notice");
+    expect(after).toBe(before);
+    expect(within(after).getByTestId("cancel-notice-text")).toHaveTextContent(
+      "Fetch cancelled. 1 stream was not finished, so some logs are missing.",
+    );
+    rerender(<CancelNotice notice={null} t={t} />);
+    expect(screen.getByTestId("cancel-notice")).toBe(before);
+    expect(before).toBeEmptyDOMElement();
+  });
+
   it("is worded as the refined mockups in Japanese", () => {
     const ja = createTranslator("ja");
     const { rerender } = render(<CancelNotice notice={{ unfinishedStreams: 0 }} t={ja} />);

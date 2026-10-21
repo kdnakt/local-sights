@@ -299,10 +299,9 @@ pub struct InsightsProgress {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultSummary {
-    /// The run that made it.
+    /// The run that made it; the rows and the details are asked for by it
+    /// alone (261020-carryover-fixes FR2.3.1).
     pub run_id: u64,
-    /// The holdings epoch its rows point into.
-    pub holdings_epoch: u64,
     /// Result rows (U2:BR7.2).
     pub row_count: u64,
     /// Events evaluated.
@@ -414,12 +413,10 @@ pub struct DetailField {
 pub struct QueryRowDetail {
     /// The run asked for.
     pub run_id: u64,
-    /// The holdings epoch asked for.
-    pub holdings_epoch: u64,
     /// The row's place in the result.
     pub index: u64,
     /// The fixed fields, then the JSON fields by name; empty when the run
-    /// or the epoch is not the shown one.
+    /// is not the shown one.
     pub fields: Vec<DetailField>,
 }
 
@@ -429,11 +426,9 @@ pub struct QueryRowDetail {
 pub struct QueryRowWindow {
     /// The run asked for.
     pub run_id: u64,
-    /// The holdings epoch asked for.
-    pub holdings_epoch: u64,
     /// Position of the first row.
     pub offset: u64,
-    /// The rows; empty when the run or the epoch is not the shown one.
+    /// The rows; empty when the run is not the shown one.
     pub rows: Vec<QueryRow>,
     /// Number of matching events of the shown result.
     pub total_count: u64,
@@ -514,7 +509,6 @@ fn chosen_log_groups(
 fn summary_of(result: &QueryResult) -> ResultSummary {
     ResultSummary {
         run_id: result.run_id,
-        holdings_epoch: result.holdings_epoch,
         row_count: count(result.row_count()),
         evaluated_count: count(result.evaluated_count),
         columns: result
@@ -1110,14 +1104,13 @@ impl InsightsSession {
 
     /// At most `limit` rows from `offset` of the shown result, when
     /// `run_id` is its run (U1:BR6.3, U3:BR3.2: read from the result's own
-    /// copies, so the QueryStore is not needed; `holdings_epoch` is only
-    /// sent back), with their cells for the result's columns (U2:BR7.1).
-    /// Each message is read as JSON once, now, and nothing is kept
-    /// (U2:BR7.4).
+    /// copies, so the QueryStore is not needed and the run number alone
+    /// tells the result, 261020-carryover-fixes FR2.3.2), with their cells
+    /// for the result's columns (U2:BR7.1). Each message is read as JSON
+    /// once, now, and nothing is kept (U2:BR7.4).
     pub fn display_rows(
         &self,
         run_id: u64,
-        holdings_epoch: u64,
         (offset, limit): (usize, usize),
         zone: Tz,
     ) -> QueryRowWindow {
@@ -1143,7 +1136,6 @@ impl InsightsSession {
             .collect();
         QueryRowWindow {
             run_id,
-            holdings_epoch,
             offset: u64::try_from(offset).unwrap_or(u64::MAX),
             rows,
             total_count,
@@ -1152,13 +1144,7 @@ impl InsightsSession {
 
     /// The fields of result row `index` of the shown result, when `run_id`
     /// is its run (U2:BR7.3, U3:BR3.2); no field otherwise.
-    pub fn display_row_detail(
-        &self,
-        run_id: u64,
-        holdings_epoch: u64,
-        index: usize,
-        zone: Tz,
-    ) -> QueryRowDetail {
+    pub fn display_row_detail(&self, run_id: u64, index: usize, zone: Tz) -> QueryRowDetail {
         let format_time = |time| format_display_in_zone(time, zone);
         let fields = self
             .result()
@@ -1175,7 +1161,6 @@ impl InsightsSession {
             .unwrap_or_default();
         QueryRowDetail {
             run_id,
-            holdings_epoch,
             index: u64::try_from(index).unwrap_or(u64::MAX),
             fields,
         }
@@ -1326,7 +1311,7 @@ mod tests {
     fn done(session: &mut InsightsSession, now: Instant, rows: Vec<usize>) -> u64 {
         let run_id = start(session, now).run_id;
         assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, 10), now));
-        session.finish_evaluation(QueryResult::new(run_id, 1, 10, copies(rows)), now);
+        session.finish_evaluation(QueryResult::new(run_id, 10, copies(rows)), now);
         assert_eq!(session.phase(), AnalyticsPhase::Done);
         run_id
     }
@@ -1586,14 +1571,14 @@ mod tests {
         assert_eq!(progress.event_count, 3);
         assert!(session.finish_fetch(current, &ended(JobStatus::Completed, 3), now));
         assert!(!session.on_evaluation_progress(old, 1, 3));
-        session.finish_evaluation(QueryResult::new(old, 1, 3, copies(vec![0])), now);
+        session.finish_evaluation(QueryResult::new(old, 3, copies(vec![0])), now);
         assert_eq!(
             session.phase(),
             AnalyticsPhase::Evaluating,
             "an old result is dropped"
         );
         assert!(session.on_evaluation_progress(current, 3, 3));
-        session.finish_evaluation(QueryResult::new(current, 2, 3, Vec::new()), now);
+        session.finish_evaluation(QueryResult::new(current, 3, Vec::new()), now);
         let view = session.view(&connected(), now);
         assert_eq!(view.phase, AnalyticsPhase::Done);
         assert_eq!(
@@ -1731,7 +1716,7 @@ mod tests {
         let now = Instant::now();
         let run_id = evaluating(&mut session, now, 3);
         assert_eq!(session.request_cancel(false), Some(run_id));
-        session.finish_evaluation(QueryResult::new(run_id, 1, 3, copies(vec![0, 1])), now);
+        session.finish_evaluation(QueryResult::new(run_id, 3, copies(vec![0, 1])), now);
         let view = session.view(&connected(), now);
         assert_eq!(view.phase, AnalyticsPhase::Cancelled);
         assert_eq!(view.result, None);
@@ -1746,7 +1731,7 @@ mod tests {
         let now = Instant::now();
         let run_id = evaluating(&mut session, now, 0);
         assert_eq!(session.request_cancel(false), Some(run_id));
-        session.finish_evaluation(QueryResult::new(run_id, 1, 0, Vec::new()), now);
+        session.finish_evaluation(QueryResult::new(run_id, 0, Vec::new()), now);
         assert_eq!(session.phase(), AnalyticsPhase::Cancelled);
     }
 
@@ -1802,7 +1787,6 @@ mod tests {
         session.finish_evaluation(
             QueryResult::from_output(
                 run_id,
-                4,
                 EvalOutput {
                     rows: (0..10_000).collect(),
                     columns: vec![
@@ -1855,7 +1839,6 @@ mod tests {
         session.finish_evaluation(
             QueryResult::from_output(
                 run_id,
-                4,
                 EvalOutput {
                     rows: vec![0],
                     columns: vec![FieldRef::Timestamp, level, gone],
@@ -1867,7 +1850,7 @@ mod tests {
             ),
             now,
         );
-        let window = session.display_rows(run_id, 4, (0, 50), UTC);
+        let window = session.display_rows(run_id, (0, 50), UTC);
         assert_eq!(
             window.rows[0].values,
             vec![
@@ -1877,15 +1860,15 @@ mod tests {
             ]
         );
         assert_eq!(window.rows[0].log_group_name, GROUP);
-        assert_eq!((window.holdings_epoch, window.total_count), (4, 1));
+        assert_eq!((window.run_id, window.total_count), (run_id, 1));
         assert!(
             session
-                .display_rows(run_id + 1, 4, (0, 50), UTC)
+                .display_rows(run_id + 1, (0, 50), UTC)
                 .rows
                 .is_empty(),
             "another run"
         );
-        let detail = session.display_row_detail(run_id, 4, 0, UTC);
+        let detail = session.display_row_detail(run_id, 0, UTC);
         let names: Vec<&str> = detail.fields.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(
             names,
@@ -1895,7 +1878,7 @@ mod tests {
         for (run, index) in [(run_id + 1, 0), (run_id, 1)] {
             assert!(
                 session
-                    .display_row_detail(run, 4, index, UTC)
+                    .display_row_detail(run, index, UTC)
                     .fields
                     .is_empty(),
                 "{run} {index}: nothing listed"
@@ -1935,7 +1918,7 @@ mod tests {
             (last.text.as_str(), last.kind),
             ("http.status", CompletionKind::JsonField)
         );
-        session.finish_evaluation(QueryResult::new(run_id, 1, 2, Vec::new()), now);
+        session.finish_evaluation(QueryResult::new(run_id, 2, Vec::new()), now);
         session.on_connection_changed();
         assert!(session.field_names().is_empty());
     }
@@ -1951,7 +1934,7 @@ mod tests {
         let old = done(&mut session, now, vec![5, 3]);
         let times = |session: &InsightsSession, run: u64| -> Vec<i64> {
             session
-                .display_rows(run, 1, (0, 10), UTC)
+                .display_rows(run, (0, 10), UTC)
                 .rows
                 .iter()
                 .map(|row| row.event.timestamp)
@@ -1966,7 +1949,7 @@ mod tests {
             session.view(&connected(), now).result.map(|r| r.run_id),
             Some(old)
         );
-        session.finish_evaluation(QueryResult::new(next, 2, 2, copies(vec![9])), now);
+        session.finish_evaluation(QueryResult::new(next, 2, copies(vec![9])), now);
         assert!(times(&session, old).is_empty(), "replaced");
         assert_eq!(times(&session, next), vec![9]);
     }
@@ -2107,7 +2090,7 @@ mod tests {
         let now = Instant::now();
         let first = evaluating(&mut session, now, 2);
         session.set_field_names(first, vec!["old.name".to_string()]);
-        session.finish_evaluation(QueryResult::new(first, 1, 2, Vec::new()), now);
+        session.finish_evaluation(QueryResult::new(first, 2, Vec::new()), now);
         assert_eq!(session.field_names(), ["old.name"]);
         let next = start(&mut session, now).run_id;
         assert!(session.field_names().is_empty(), "gone when the run starts");

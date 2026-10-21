@@ -404,6 +404,7 @@ export function App({ locale, platform }: AppProps) {
         <TopBar
           session={session}
           t={t}
+          locale={locale}
           onSelectProfile={handleSelectProfile}
           onSelectRegion={handleSelectRegion}
           onSelectTimeZone={handleSelectTimeZone}
@@ -490,8 +491,10 @@ export function App({ locale, platform }: AppProps) {
                   {page === "logManagement" && commandErrorAlert}
                   <FetchErrorBanner session={session} t={t} onSsoLogin={handleSsoLogin} />
                   {/* U5:BR5.11: in the error area's place; a cancelled fetch is
-                  not a failure, so the two never show together. */}
-                  {session.cancelNotice && <CancelNotice notice={session.cancelNotice} t={t} />}
+                  not a failure, so the two never show together. Its status
+                  region is always there, empty without a notice
+                  (261020-carryover-fixes FR4.2.1). */}
+                  <CancelNotice notice={session.cancelNotice} t={t} />
                   {LOG_TABLE_VARIANT === "cloudscape" ? (
                     <LogTableCloudscape {...tableProps} />
                   ) : (

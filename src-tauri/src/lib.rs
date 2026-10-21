@@ -1093,16 +1093,15 @@ fn cancel_running_query(
 
 /// At most `limit` result rows from `offset` of the run the screen shows
 /// (U1:BR6.4, 261017-insights-query U3:BR3.2); no rows for another run.
-/// `holdings_epoch` is only sent back with the rows.
+/// The run number alone tells the result (261020-carryover-fixes FR2.3.2).
 #[tauri::command]
 fn get_query_rows(
     run_id: u64,
-    holdings_epoch: u64,
     offset: u64,
     limit: u64,
     state: State<'_, AppState>,
 ) -> QueryRowWindow {
-    query_rows(&state.session, run_id, holdings_epoch, (offset, limit))
+    query_rows(&state.session, run_id, (offset, limit))
 }
 
 /// Reads the rows of [`get_query_rows`] from the shown result's own copies
@@ -1111,38 +1110,27 @@ fn get_query_rows(
 fn query_rows(
     session: &Mutex<AppSession>,
     run_id: u64,
-    holdings_epoch: u64,
     (offset, limit): (u64, u64),
 ) -> QueryRowWindow {
     let offset = usize::try_from(offset).unwrap_or(usize::MAX);
     let limit = usize::try_from(limit)
         .unwrap_or(usize::MAX)
         .min(MAX_ROWS_PER_REQUEST);
-    lock(session).display_query_rows(run_id, holdings_epoch, offset, limit)
+    lock(session).display_query_rows(run_id, offset, limit)
 }
 
 /// The fields of result row `index` of the run the screen shows
 /// (261017-insights-query U2:BR7.3, U3:BR3.2); no field for another run.
 #[tauri::command]
-fn get_query_row_detail(
-    run_id: u64,
-    holdings_epoch: u64,
-    index: u64,
-    state: State<'_, AppState>,
-) -> QueryRowDetail {
-    query_row_detail(&state.session, run_id, holdings_epoch, index)
+fn get_query_row_detail(run_id: u64, index: u64, state: State<'_, AppState>) -> QueryRowDetail {
+    query_row_detail(&state.session, run_id, index)
 }
 
 /// Reads [`get_query_row_detail`] from the shown result's own copy of the
 /// row.
-fn query_row_detail(
-    session: &Mutex<AppSession>,
-    run_id: u64,
-    holdings_epoch: u64,
-    index: u64,
-) -> QueryRowDetail {
+fn query_row_detail(session: &Mutex<AppSession>, run_id: u64, index: u64) -> QueryRowDetail {
     let index = usize::try_from(index).unwrap_or(usize::MAX);
-    lock(session).display_query_row_detail(run_id, holdings_epoch, index)
+    lock(session).display_query_row_detail(run_id, index)
 }
 
 /// The completion candidates of the query field (261017-insights-query
@@ -2235,21 +2223,76 @@ mod tests {
         names
     }
 
+    /// 261020-carryover-fixes FR4.3: whether the three lists of granted
+    /// commands are all non-empty and name exactly the same commands, in any
+    /// order; `Err` says which differs. How many commands there are is not
+    /// fixed, so adding one in all three places needs no change here.
+    fn same_commands(
+        manifest: &[String],
+        handler: &[String],
+        allowed: &[String],
+    ) -> Result<(), String> {
+        let lists = [
+            ("build.rs", manifest),
+            ("generate_handler", handler),
+            ("the capability", allowed),
+        ];
+        if let Some((name, _)) = lists.iter().find(|(_, list)| list.is_empty()) {
+            return Err(format!("{name} lists no command"));
+        }
+        let expected = sorted(manifest.to_vec());
+        for (name, list) in &lists[1..] {
+            let actual = sorted(list.to_vec());
+            if actual != expected {
+                return Err(format!(
+                    "{name} lists {actual:?}, build.rs lists {expected:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn the_manifest_the_capability_and_the_handler_list_the_same_commands() {
         // Infrastructure-design review R-01 (NFR8.15): a command is granted
         // in three places, and they must name exactly the same commands.
-        let manifest = sorted(manifest_commands(include_str!("../build.rs")));
-        let handler = sorted(handler_commands(include_str!("lib.rs")));
-        let allowed = sorted(allowed_commands(include_str!(
-            "../capabilities/default.json"
-        )));
-        assert!(manifest.contains(&"cancel_fetch".to_string()));
-        // 26 until 261017-insights-query U1 added the four query commands,
-        // 30 until U2 added the row detail and the completion candidates.
-        assert_eq!(manifest.len(), 32);
-        assert_eq!(handler, manifest);
-        assert_eq!(allowed, manifest);
+        let manifest = manifest_commands(include_str!("../build.rs"));
+        let handler = handler_commands(include_str!("lib.rs"));
+        let allowed = allowed_commands(include_str!("../capabilities/default.json"));
+        assert_eq!(same_commands(&manifest, &handler, &allowed), Ok(()));
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    #[test]
+    fn same_commands_fails_when_one_place_has_a_command_more() {
+        let two = names(&["cancel_fetch", "start_fetch"]);
+        let three = names(&["cancel_fetch", "new_command", "start_fetch"]);
+        assert!(same_commands(&two, &two, &three).is_err(), "the capability");
+        assert!(same_commands(&two, &three, &two).is_err(), "the handler");
+        assert!(same_commands(&three, &two, &two).is_err(), "build.rs");
+        let reordered = names(&["start_fetch", "cancel_fetch"]);
+        assert_eq!(same_commands(&two, &reordered, &two), Ok(()), "any order");
+    }
+
+    #[test]
+    fn same_commands_fails_when_one_place_lacks_a_command() {
+        let two = names(&["cancel_fetch", "start_fetch"]);
+        let one = names(&["start_fetch"]);
+        assert!(same_commands(&two, &one, &two).is_err());
+        assert!(same_commands(&two, &two, &one).is_err());
+        assert!(same_commands(&one, &two, &two).is_err());
+    }
+
+    #[test]
+    fn same_commands_fails_when_a_list_is_empty() {
+        let none: Vec<String> = Vec::new();
+        let one = names(&["start_fetch"]);
+        assert!(same_commands(&none, &none, &none).is_err(), "all empty");
+        assert!(same_commands(&one, &one, &none).is_err());
+        assert_eq!(same_commands(&one, &one, &one), Ok(()));
     }
 
     // ---- 261017-insights-query U1: the Log Analytics commands -----------
@@ -2431,18 +2474,16 @@ mod tests {
         let start = query_begun(&session, &abort, "filter @message like 'ERROR'")
             .start
             .unwrap();
-        let epoch = 3;
         {
             let mut locked = lock(&session);
             assert!(locked.finish_query_fetch(start.run_id, &completed_fetch()));
             locked.finish_query_evaluation(QueryResult::new(
                 start.run_id,
-                epoch,
                 2,
                 copied(vec![held(1_704_164_647_000, "b", 0)]),
             ));
         }
-        let window = query_rows(&session, start.run_id, epoch, (0, 50));
+        let window = query_rows(&session, start.run_id, (0, 50));
         assert_eq!(window.total_count, 1);
         assert_eq!(window.rows.len(), 1);
         let row = &window.rows[0];
@@ -2453,19 +2494,16 @@ mod tests {
         assert_eq!(json["rows"][0]["logGroupName"], "/aws/lambda/orders");
         assert_eq!(json["rows"][0]["displayTime"], "2024/01/02 03:04:07.000");
         assert_eq!(json["rows"][0]["message"], "ERROR b 0");
-        assert_eq!(json["holdingsEpoch"], epoch, "sent back");
+        assert_eq!(json["runId"], start.run_id);
         assert!(
-            query_rows(&session, start.run_id + 1, epoch, (0, 50))
+            json.get("holdingsEpoch").is_none(),
+            "no holdings epoch is sent (261020-carryover-fixes FR2.3)"
+        );
+        assert!(
+            query_rows(&session, start.run_id + 1, (0, 50))
                 .rows
                 .is_empty(),
             "another run"
-        );
-        assert_eq!(
-            query_rows(&session, start.run_id, epoch + 1, (0, 50))
-                .rows
-                .len(),
-            1,
-            "the copies do not depend on the holdings epoch"
         );
     }
 
@@ -2475,17 +2513,17 @@ mod tests {
     use local_sights_core::query::plan::{FieldRef, JsonPath};
 
     /// A query run of `session` that fetched `events` and is evaluating;
-    /// returns the run number, its holdings epoch and the events.
+    /// returns the run number and the events.
     fn query_evaluating(
         session: &Mutex<AppSession>,
         events: Vec<LogEvent>,
-    ) -> (u64, u64, Vec<LogEvent>) {
+    ) -> (u64, Vec<LogEvent>) {
         let abort = Mutex::new(None);
         let start = query_begun(session, &abort, "filter @message like 'ERROR'")
             .start
             .unwrap();
         assert!(lock(session).finish_query_fetch(start.run_id, &completed_fetch()));
-        (start.run_id, 1, events)
+        (start.run_id, events)
     }
 
     fn json_event(timestamp: i64, message: &str) -> LogEvent {
@@ -2502,13 +2540,12 @@ mod tests {
     /// `level` over the rows at `rows` of `events`, copied (U3:BR3.2).
     fn finish_with_level_column(
         session: &Mutex<AppSession>,
-        (run_id, epoch, events): (u64, u64, Vec<LogEvent>),
+        (run_id, events): (u64, Vec<LogEvent>),
         rows: Vec<usize>,
     ) {
         let copies = copied(rows.iter().map(|row| events[*row].clone()).collect());
         lock(session).finish_query_evaluation(QueryResult::from_output(
             run_id,
-            epoch,
             EvalOutput {
                 matched_count: rows.len(),
                 rows,
@@ -2534,9 +2571,9 @@ mod tests {
                 json_event(1_704_164_647_000, "plain"),
             ],
         );
-        let (run_id, epoch) = (evaluating.0, evaluating.1);
+        let run_id = evaluating.0;
         finish_with_level_column(&session, evaluating, vec![1, 0]);
-        let window = query_rows(&session, run_id, epoch, (0, 50));
+        let window = query_rows(&session, run_id, (0, 50));
         let json = serde_json::to_value(&window).unwrap();
         assert_eq!(json["rows"][0]["values"][0], "2024/01/02 03:04:07.000");
         assert!(
@@ -2563,9 +2600,9 @@ mod tests {
                 r#"{"level":"error","http":{"status":500}}"#,
             )],
         );
-        let (run_id, epoch) = (evaluating.0, evaluating.1);
+        let run_id = evaluating.0;
         finish_with_level_column(&session, evaluating, vec![0]);
-        let detail = query_row_detail(&session, run_id, epoch, 0);
+        let detail = query_row_detail(&session, run_id, 0);
         let json = serde_json::to_value(&detail).unwrap();
         let names: Vec<&str> = json["fields"]
             .as_array()
@@ -2588,9 +2625,7 @@ mod tests {
         assert_eq!(json["runId"], run_id);
         for (run, index) in [(run_id + 1, 0), (run_id, 1)] {
             assert!(
-                query_row_detail(&session, run, epoch, index)
-                    .fields
-                    .is_empty(),
+                query_row_detail(&session, run, index).fields.is_empty(),
                 "{run} {index}"
             );
         }
@@ -2602,7 +2637,7 @@ mod tests {
         // GetLogEvents, but an evaluating run is not said to have failed to
         // fetch.
         let session = query_ready_session();
-        let (run_id, _, _) = query_evaluating(&session, vec![json_event(1, "ERROR")]);
+        let (run_id, _) = query_evaluating(&session, vec![json_event(1, "ERROR")]);
         let failure = ApiFailure::new(
             FailureKind::Other,
             &SafeDetailFields {
@@ -2624,7 +2659,7 @@ mod tests {
         let session = query_ready_session();
         let before = lock(&session).query_completion_candidates();
         assert!(before.iter().any(|candidate| candidate.text == "filter"));
-        let (run_id, _, _) = query_evaluating(&session, vec![json_event(1, "ERROR")]);
+        let (run_id, _) = query_evaluating(&session, vec![json_event(1, "ERROR")]);
         lock(&session).set_query_field_names(run_id, vec!["http.status".to_string()]);
         let after = serde_json::to_value(lock(&session).query_completion_candidates()).unwrap();
         let last = after.as_array().unwrap().last().unwrap();

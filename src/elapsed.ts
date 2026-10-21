@@ -66,6 +66,13 @@ export function msUntilNextSecond(anchor: Anchor, nowMs: number): number {
  * - a running value of the same running fetch: the larger of it and the
  *   shown value, so the time never goes back while fetching;
  * - otherwise (a new fetch): the received value.
+ *
+ * The fetch numbers are only compared for equality, not for which is newer
+ * (261020-carryover-fixes FR3.3). So right after startup a late answer of
+ * an older `getSession` call, arriving after a newer view, carries another
+ * fetch number and is taken as a new fetch: the shown time can go back
+ * once, until the next view of the running fetch comes. This is kept as it
+ * is; it only happens to an answer that was already late.
  */
 export function nextAnchor(
   previous: Anchor | null,

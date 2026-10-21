@@ -16,8 +16,10 @@ use serde::Serialize;
 /// Most rows a `limit` can ask for (U2:BR5.1, Q1a 7a, 7b).
 pub const MAX_LIMIT: u32 = 100_000;
 
-/// Rows of a result when no `limit` from 1 to [`MAX_LIMIT`] is written
-/// (U2:BR5.2, OQ1).
+/// Rows of a result when no `limit` command is written (U2:BR5.2, OQ1). A
+/// written `limit` cuts at its own value instead, `limit 0` included, which
+/// gives no row ([`QueryPlan::has_row_limit`], 261017-insights-query
+/// Loop-back 3, p08; 261020-carryover-fixes FR3.1).
 pub const DEFAULT_RESULT_LIMIT: usize = 10_000;
 
 /// A place in the query text (entities.md Span). Lines and columns start at

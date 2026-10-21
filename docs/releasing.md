@@ -44,17 +44,20 @@ and the Release workflow runs the second before building anything. Both
 installers carry the same version in their file names
 (`Local-Sights_X.Y.Z_aarch64.dmg`, `Local-Sights_X.Y.Z_x64-setup.exe`).
 
-The next release is `v0.2.0`: the first one with the Windows installer, together
-with the faster fetching merged before it. There is no `v0.1.2`. A tag that has
-been published is never moved or reused.
+The published releases are `v0.1.0`, `v0.1.1` and `v0.2.0`, all tagged on
+commits of `main`. The number of the next release is decided just before it
+is tagged, not in advance; work merged after a release can wait and go out
+with the next feature. A tag that has been published is never moved or
+reused.
 
 ## Steps
 
-1. On a short-lived branch from `main`, raise the version (here to `0.2.0`):
-   - `Cargo.toml`: `version = "0.2.0"` under `[workspace.package]`.
+1. On a short-lived branch from `main`, raise the version to the new
+   `X.Y.Z`:
+   - `Cargo.toml`: `version = "X.Y.Z"` under `[workspace.package]`.
    - `package.json` and `package-lock.json`:
-     `npm version 0.2.0 --no-git-tag-version`.
-   - `src-tauri/tauri.conf.json`: `"version": "0.2.0"`.
+     `npm version X.Y.Z --no-git-tag-version`.
+   - `src-tauri/tauri.conf.json`: `"version": "X.Y.Z"`.
 2. Update `Cargo.lock` for the workspace crates: `cargo update -w`.
 3. Check: `npm run check:version` must print the new version.
 4. Commit, open a pull request to `main`, wait until every CI job is green,
@@ -77,14 +80,14 @@ been published is never moved or reused.
    ```bash
    git switch main
    git pull --ff-only
-   npm run check:version -- --tag v0.2.0
-   git tag v0.2.0
-   git push origin v0.2.0
+   npm run check:version -- --tag vX.Y.Z
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
 7. In the repository's **Actions** tab, follow the **Release** run for the tag
    (`verify` → `test` → `build-macos` and `build-windows` → `publish`). When it
-   is green, open **Releases**: `v0.2.0` is published (not a draft) with two
+   is green, open **Releases**: `vX.Y.Z` is published (not a draft) with two
    assets, one `aarch64` `.dmg` and one `x64-setup.exe`, and the notes name the
    commit it was built from. Earlier releases stay as they are.
 8. Install the published `.dmg` on your own Mac following
@@ -123,18 +126,18 @@ failed tag** (the run stopped before `publish`), move the tag to the fixed
 commit:
 
 ```bash
-git push --delete origin v0.2.0
-git tag -d v0.2.0
+git push --delete origin vX.Y.Z
+git tag -d vX.Y.Z
 git switch main && git pull --ff-only
-git tag v0.2.0
-git push origin v0.2.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 **A published release that turns out to be broken** (for example the Windows
 app does not start, or a fetch fails on one OS) is never fixed by moving or
 rebuilding its tag: people may already have installed from it, and a tag that
 has been published stays as it is. Fix `main` through a pull request and
-release the next patch version (`v0.2.1` after `v0.2.0`). Until then, point
+release the next patch version (`vX.Y.(Z+1)` after `vX.Y.Z`). Until then, point
 people to the previous version, which stays on the releases page.
 
 ## Running the workflow again for the same tag

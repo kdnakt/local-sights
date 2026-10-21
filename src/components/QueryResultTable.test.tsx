@@ -15,7 +15,6 @@ const api = await import("../api");
 
 const RESULT: ResultSummary = resultSummary({
   runId: 3,
-  holdingsEpoch: 7,
   rowCount: 500,
   evaluatedCount: 9_000,
 });
@@ -30,11 +29,10 @@ const rows: QueryRow[] = Array.from({ length: 500 }, (_, index) =>
 );
 
 /** The fields of an opened row as the core lists them (U2:BR7.3). */
-function detailOf(runId: number, holdingsEpoch: number, index: number): QueryRowDetail {
+function detailOf(runId: number, index: number): QueryRowDetail {
   const row = rows[index]!;
   return {
     runId,
-    holdingsEpoch,
     index,
     fields: [
       { name: "@timestamp", value: row.displayTime },
@@ -64,22 +62,22 @@ function renderTable(result: ResultSummary = RESULT, locale: "en" | "ja" = "en")
 describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.4)", () => {
   beforeEach(() => {
     vi.mocked(api.getQueryRows).mockReset();
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow(rows, offset, limit, runId, epoch),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow(rows, offset, limit, runId),
     );
     vi.mocked(api.getQueryRowDetail).mockReset();
-    vi.mocked(api.getQueryRowDetail).mockImplementation(async (runId, epoch, index) =>
-      detailOf(runId, epoch, index),
+    vi.mocked(api.getQueryRowDetail).mockImplementation(async (runId, index) =>
+      detailOf(runId, index),
     );
   });
 
-  it("reads only the rows in view, for the shown run and holdings epoch", async () => {
+  it("reads only the rows in view, for the shown run", async () => {
     renderTable();
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row").length).toBeGreaterThan(0),
     );
-    const [runId, epoch, offset, limit] = vi.mocked(api.getQueryRows).mock.calls.at(-1)!;
-    expect([runId, epoch, offset]).toEqual([3, 7, 0]);
+    const [runId, offset, limit] = vi.mocked(api.getQueryRows).mock.calls.at(-1)!;
+    expect([runId, offset]).toEqual([3, 0]);
     expect(limit).toBeLessThan(RESULT.rowCount);
     expect(screen.getAllByTestId("query-result-row")).toHaveLength(limit);
     expect(screen.getByRole("grid")).toHaveAttribute("aria-rowcount", "500");
@@ -94,9 +92,9 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
     expect(screen.getByTestId("query-result-table")).toHaveTextContent("@timestamp (UTC)");
   });
 
-  it("drops an answer for another run or holdings epoch", async () => {
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow(rows, offset, limit, runId, epoch + 1),
+  it("drops an answer for another run (261020-carryover-fixes FR2.3.3)", async () => {
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow(rows, offset, limit, runId - 1),
     );
     renderTable();
     await waitFor(() => expect(api.getQueryRows).toHaveBeenCalled());
@@ -118,7 +116,7 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
         "ERROR first line\n  at second line",
       ),
     );
-    expect(api.getQueryRowDetail).toHaveBeenCalledWith(3, 7, 1);
+    expect(api.getQueryRowDetail).toHaveBeenCalledWith(3, 1);
     const names = within(details)
       .getAllByRole("rowheader")
       .map((cell) => cell.textContent);
@@ -169,10 +167,10 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
     const shaped = [
       queryRow(0, "line one\nline two", ["core time 0", "500", "line one\nline two", null]),
     ];
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow(shaped, offset, limit, runId, epoch),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow(shaped, offset, limit, runId),
     );
-    renderTable(resultSummary({ runId: 3, holdingsEpoch: 7, rowCount: 1, columns }));
+    renderTable(resultSummary({ runId: 3, rowCount: 1, columns }));
     const header = screen.getByTestId("query-result-header");
     expect(Array.from(header.children).map((cell) => cell.textContent)).toEqual([
       "",
@@ -208,7 +206,7 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
     expect(screen.getByTestId("query-result-details-loading")).toHaveTextContent(
       "Loading the fields",
     );
-    answer(detailOf(3, 7, 0));
+    answer(detailOf(3, 0));
     await waitFor(() =>
       expect(screen.queryByTestId("query-result-details-loading")).not.toBeInTheDocument(),
     );
@@ -218,8 +216,8 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
   });
 
   it("drops the fields of another run and reports a failed read of them", async () => {
-    vi.mocked(api.getQueryRowDetail).mockImplementationOnce(async (runId, epoch, index) =>
-      detailOf(runId + 1, epoch, index),
+    vi.mocked(api.getQueryRowDetail).mockImplementationOnce(async (runId, index) =>
+      detailOf(runId + 1, index),
     );
     const user = userEvent.setup();
     const onError = renderTable();

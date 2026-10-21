@@ -586,7 +586,7 @@ async fn evaluate_held<S: QuerySink>(
         return QueryOutcome::EvaluationStopped;
     };
     let count = rows.len();
-    sink.on_evaluated(QueryResult::from_output(run.run_id, epoch, output, rows));
+    sink.on_evaluated(QueryResult::from_output(run.run_id, output, rows));
     QueryOutcome::Evaluated { rows: count }
 }
 
@@ -1250,6 +1250,43 @@ mod tests {
         let summary = recorder.summary.unwrap();
         assert_eq!(summary.groups[0].status, GroupFetchStatus::FromCache);
         assert!(!summary.from_aws);
+    }
+
+    #[tokio::test]
+    async fn a_log_group_left_out_of_a_run_is_fetched_whole_when_chosen_again() {
+        // 261020-carryover-fixes FR2.2.1-FR2.2.3: run both, then ORDERS
+        // only (PAYMENTS' holdings go), then both over a longer period:
+        // PAYMENTS is fetched again from the start, ORDERS only the part
+        // after what it holds.
+        let gateway = FakeLogs::with(&[
+            (ORDERS, "s1", at(10, 10, 0), "ERROR o1"),
+            (ORDERS, "s1", at(11, 10, 0), "ERROR o2"),
+            (PAYMENTS, "s1", at(10, 20, 0), "ERROR p1"),
+            (PAYMENTS, "s1", at(11, 20, 0), "ERROR p2"),
+        ]);
+        let store = Arc::new(QueryStore::new());
+        let query = "filter @message like 'ERROR'";
+        let both = run(query, &[ORDERS, PAYMENTS], at(10, 0, 0), at(11, 0, 0));
+        let (outcome, _) = query_with(&gateway, &store, &both, |_| {}).await;
+        assert_eq!(outcome, QueryOutcome::Evaluated { rows: 2 });
+        let orders_only = run(query, &[ORDERS], at(10, 0, 0), at(11, 0, 0));
+        let (outcome, _) = query_with(&gateway, &store, &orders_only, |_| {}).await;
+        assert_eq!(outcome, QueryOutcome::Evaluated { rows: 1 });
+        assert_eq!(store.counts(&key(PAYMENTS)), (0, 0), "discarded");
+        let before = gateway.event_calls().len();
+
+        let longer = run(query, &[ORDERS, PAYMENTS], at(10, 0, 0), at(11, 30, 0));
+        let (outcome, _) = query_with(&gateway, &store, &longer, |_| {}).await;
+        assert_eq!(outcome, QueryOutcome::Evaluated { rows: 4 });
+        let mut calls = gateway.event_calls()[before..].to_vec();
+        calls.sort();
+        assert_eq!(
+            calls,
+            [
+                (ORDERS.to_string(), at(11, 0, 1), at(11, 30, 1)),
+                (PAYMENTS.to_string(), at(10, 0, 0), at(11, 30, 1)),
+            ]
+        );
     }
 
     #[tokio::test]

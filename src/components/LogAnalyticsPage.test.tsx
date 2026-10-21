@@ -68,8 +68,8 @@ const results = () => screen.getByTestId("log-analytics-results");
 describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-7)", () => {
   beforeEach(() => {
     vi.mocked(api.getQueryRows).mockReset();
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, epoch),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId),
     );
     vi.mocked(api.getCompletionCandidates).mockReset();
     vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
@@ -214,7 +214,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
     );
-    expect(api.getQueryRows).toHaveBeenCalledWith(1, 2, 0, 2);
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 0, 2);
   });
 
   it("warns that a partial result is based on part of the logs and lists the failures (U1:BR2.5)", async () => {
@@ -234,7 +234,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
       }),
     );
     expect(screen.getByTestId("log-analytics-partial")).toHaveTextContent(
-      "Results are based on part of the logs. 1 streams could not be fetched.",
+      "Results are based on part of the logs. 1 stream could not be fetched.",
     );
     await user.click(screen.getByTestId("log-analytics-show-failures-button"));
     // U3:BR2.6: "log group / stream".
@@ -400,14 +400,8 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
   });
 
   it("shows the columns of fields with their cells (U2:BR7.1)", async () => {
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow(
-        [queryRow(0, "ERROR 0", ["core time 0", "500", null])],
-        offset,
-        limit,
-        runId,
-        epoch,
-      ),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow([queryRow(0, "ERROR 0", ["core time 0", "500", null])], offset, limit, runId),
     );
     renderPage(
       view({
@@ -507,7 +501,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
     );
-    expect(api.getQueryRows).toHaveBeenCalledWith(1, 2, 0, 2);
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 0, 2);
     rerender(
       view({
         phase: "Evaluating",

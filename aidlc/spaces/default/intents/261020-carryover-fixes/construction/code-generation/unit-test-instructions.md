@@ -33,6 +33,9 @@ cargo test -p local-sights --lib tests::same_commands
 
 # FR4.1・FR5（文と名前の表、絞り込み、一致）、FR4.2・FR5（部品）、FR2.3（画面の受け渡し）
 npx vitest run src/i18n src/components/TopBar.test.tsx src/components/CancelNotice.test.tsx src/components/QueryResultTable.test.tsx src/App.test.tsx
+
+# FR4.4：クエリの画面の進み具合の置き場所
+npx vitest run src/components/LogAnalyticsPage.test.tsx
 ```
 
 アプリのパッケージ名（`-p local-sights`）は `src-tauri/Cargo.toml` の `[package] name` に合わせる。違っていたら、その名前で流し、code-summary.md に書く。
@@ -50,6 +53,7 @@ npx vitest run src/i18n src/components/TopBar.test.tsx src/components/CancelNoti
 | 単数・複数（FR4.1） | `src/i18n/messages.test.ts` | 6 か所 × 単数・複数、対象外の文 2 件、日本語、文字列の `"1"`、単数形の表の形（テスト先行） |
 | 中断の知らせ（FR4.2） | `src/components/CancelNotice.test.tsx`・`src/App.test.tsx` | 今の 4 件＋2 件（空の囲み、同じ囲みに中身が入る）＋ App の 1 件 |
 | 権限のテスト（FR4.3） | `src-tauri/src/lib.rs` | 1 件を直し、`same_commands` の落ちる場面 3 件を足す |
+| 進み具合の置き場所（FR4.4） | `src/components/LogAnalyticsPage.test.tsx` | 4 件を足す（取得中はクエリの枠の中・前回の結果は結果の枠だけ・終わったら出ない・前回の結果がなければ結果の枠は見出しだけ）。置き場所を前提にした既存のテストを直す（文の期待値は変えない） |
 | 名前と絞り込み（FR5） | `src/i18n/regions.test.ts` | 名前の形 3 件、絞り込み 5 件、`STANDARD_REGIONS` との一致 1 件（テスト先行） |
 | リージョンの選択欄（FR5） | `src/components/TopBar.test.tsx`・`src/App.test.tsx` | 8 件を足し、ButtonDropdown 前提のテストを直す |
 

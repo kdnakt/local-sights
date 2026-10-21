@@ -10,7 +10,7 @@ IB-11（Logs Insights 互換のクエリ、261017-insights-query）と parallel-
 - **クエリの画面（Logs Insights の画面）の持ち方を正す。** キャッシュの読みすぎ、保持の増えすぎ、使われていない番号の受け渡しを直し、メモリと読み込みの無駄を減らす。
 - **記述と画面の小さな食い違いを直す。** 古い説明、英語の複数形、読み上げ、固定値のテスト、リージョン名のない選択欄。
 
-利用者に見える変更は、英語の単数・複数（FR4.1）、中断の知らせの読み上げ（FR4.2）、リージョンの選択欄の名前と絞り込み（FR5）だけである。この作業だけでは配らず、次の機能と合わせて配る（team.md Deployment、Practices Discovery Q2）。
+利用者に見える変更は、英語の単数・複数（FR4.1）、中断の知らせの読み上げ（FR4.2）、クエリの画面の進み具合の置き場所（FR4.4、Build and Test の目視で出た追加の依頼）、リージョンの選択欄の名前と絞り込み（FR5）だけである。この作業だけでは配らず、次の機能と合わせて配る（team.md Deployment、Practices Discovery Q2）。
 
 種類：不具合の修正と内部の整理（bugfix）。範囲：ライブラリ（`crates/local-sights-core`）・アプリ（`src-tauri`）・画面（`src`）・手順書（`docs/releasing.md`）の 4 か所。複雑さ：標準。
 
@@ -136,6 +136,22 @@ IB-11（Logs Insights 互換のクエリ、261017-insights-query）と parallel-
 - Given 3 か所の一覧が同じ、When テストを流す、Then 通る。
 - Given どこか 1 か所にだけコマンドを足す（または消す）、When テストを流す、Then 落ちる。
 
+#### FR4.4 クエリの画面の進み具合の置き場所（Build and Test の目視で出た追加の依頼、Q10 A）
+
+今は、クエリの実行中の進み具合が結果の枠（Results）の中に出ている。「Fetching logs (log group 1 / 1): 37 / 744 streams, 719 events」のような文で、前回の結果（「Results of the previous run」）の上にある。しかし進み具合は［Run query］を押したことで出るもので、前回の結果とは別のまとまりである（開発者の目視、2026-10-21）。
+
+- **FR4.4.1** 実行中の進み具合（`RunProgress`）は、クエリの枠（Log Analytics の入力の枠）の中、［Run query］の並び（`RunBar`）のすぐ下に出す。対象は、キャッシュの読み込み・準備・ストリームの列挙・取得・クエリの評価の各段階の文と、取得に失敗したロググループの数。結果の枠の中には出さない。
+- **FR4.4.2** 結果の枠は、結果の見出しと件数、前回の結果（「Results of the previous run」の表示を含む）、結果がないときの文だけを持つ。実行中で前回の結果がないときは、結果の枠の中身は空にする（A9）。
+- **FR4.4.3** 進み具合の文、読み上げ（`role="status"`）、出る条件（取得中と評価中だけ）、`data-testid="log-analytics-progress"` は変えない。置き場所だけを変える。
+- **FR4.4.4** 実行していないとき（終わった・中断した・失敗した・まだ実行していない）は、クエリの枠の中に進み具合を出さない。
+
+受け入れ基準
+
+- Given クエリの実行中（取得中または評価中）、When 画面を見る、Then 進み具合はクエリの枠の中の［Run query］の並びの下にあり、結果の枠の中にはない。
+- Given 前回の結果があるまま次の実行が始まった、When 画面を見る、Then 結果の枠には前回の結果（「Results of the previous run」）だけがあり、進み具合はクエリの枠の中にある。
+- Given 実行が終わった（Done）、When 画面を見る、Then クエリの枠の中に進み具合はない。
+- Given 前回の結果がないまま実行中、When 画面を見る、Then 結果の枠の中身は空で、進み具合はクエリの枠の中にある。
+
 ### FR5 リージョンの選択欄の名前と絞り込み（依頼 (5)）
 
 - **FR5.1** 組み込みのリージョン（今の 34 個、`catalog/regions.rs` の `STANDARD_REGIONS`）ごとに、英語と日本語の名前を持つ表を足す。名前は AWS の公式の名前（コンソールの表記）に合わせる（例：`ap-northeast-1` は「Asia Pacific (Tokyo)」「アジアパシフィック (東京)」、`us-east-1` は「US East (N. Virginia)」「米国東部 (バージニア北部)」）。
@@ -188,6 +204,7 @@ IB-11（Logs Insights 互換のクエリ、261017-insights-query）と parallel-
 - **A5 FR5.1 の名前の確かめ。** 34 個の名前（英語と日本語）は、Code Generation で AWS の公式の資料（リージョンの一覧のページの英語版と日本語版）と照らして確かめる。資料と食い違う名前は資料に合わせる。
 - **A6 FR5.2 の部品。** リージョンの選択欄は、絞り込みのできる Cloudscape の部品に替える（FR5.4 の絞り込みに必要）。見た目の細部（上の帯の中の並びと幅）は今に近づけ、標準の部品だけで作る（project.md Corrections：見た目は標準部品のみ）。名前の表を画面の側に置くのは、名前が画面の言語ごとの表示の文で、Rust 側に置くとリージョンごとに 2 つの言語の文を Tauri の境界を越えて運ぶことになり、コマンドの形も変わるため（代わりの案：Rust の `catalog/regions.rs` に名前を持たせ `SessionView` で送る。境界とテストが重くなるため採らない）。
 - **A7 FR5.4 の一致。** 日本語の名前の一致は、大文字・小文字の区別に加え、全角・半角の括弧の違いを区別しない程度にとどめる。読み仮名やローマ字の読みでは一致しない。
+- **A9 FR4.4 の空の結果の枠。** 前回の結果がないまま実行しているあいだ、結果の枠の中身は空にする。今の「まだ実行していません」の文は実行中には合わず、進み具合はクエリの枠の中にあるため。見た目の細部（余白）は標準の部品の既定に任せる（project.md Corrections：見た目は標準部品のみ）。
 - **A8 FR4.1 は数の文だけ。** 単数・複数を分けるのは、ストリームの数を含む英語の文に限る。ほかの数（イベントの数、ロググループの数など）の英語の文で同じ問題が見つかったら、同じ仕組みで直してよい（範囲を広げる場合は Code Generation の計画に書く）。
 
 ## Out of Scope
@@ -210,7 +227,7 @@ IB-11（Logs Insights 互換のクエリ、261017-insights-query）と parallel-
 ## Sources
 
 - Initial description: [desc] `aidlc/spaces/default/intents/261020-carryover-fixes/project-description.json`（依頼の 5 項目と前提）
-- 要件の確定の質問：[Q1]〜[Q9] `inception/requirements-analysis/requirements-analysis-questions.md`
+- 要件の確定の質問：[Q1]〜[Q10] `inception/requirements-analysis/requirements-analysis-questions.md`（Q10 は Build and Test の目視のあとに足した FR4.4 の扱い）
 - 進め方の確認：`inception/practices-discovery/team-practices.md`（Way of Working・Walking Skeleton・Testing Posture・Deployment・Code Style）と Practices Discovery の面談（Q1 C・Q2 B・Q5 A）
 - コードの知識ベース：`aidlc/spaces/default/codekb/local-sights/business-overview.md`（利用者と主な機能）、`architecture.md`（取得・クエリ・キャンセルの流れ）、`code-structure.md`（モジュールの配置）、`code-quality-assessment.md`（5 項目の技術的負債と行）
 - 走査の結果：`inception/reverse-engineering/developer-scan.md` の Handoff Summary（5 項目のファイルと行、26 ではなく 32、名前の表がないこと）

@@ -56,15 +56,17 @@
 
 ## CI（PR kdnakt/local-sights#36）
 
-| ジョブ | 1 回目（a55c4fc 〜 b10ddfc） | 2 回目（e6c53b4） |
+| ジョブ | 1 回目（b10ddfc） | 最後（13bc6a9、run 39542854716） |
 |---|---|---|
-| cargo-deny | 失敗：RUSTSEC-2026-0382（`rustls-webpki` 0.103.15、AWS SDK の `rustls` の下）。この作業の変更とは関係がなく、`main` の `Cargo.lock` でも同じ。`cargo update -p rustls-webpki` で 0.103.16 に上げた | Pending |
-| Rust library (fmt, clippy, test) | 取り消し前の途中の結果は使わない | Pending |
-| Front end (tsc, eslint, prettier, vitest, build) | 同上 | Pending |
-| Tauri app (ubuntu-latest) | 同上 | Pending |
-| Tauri app (macos-latest) | 同上 | Pending |
-| Tauri app (windows-latest) | 同上 | Pending |
-| GitGuardian Security Checks | 成功 | Pending |
+| cargo-deny | 失敗：RUSTSEC-2026-0382（`rustls-webpki` 0.103.15、AWS SDK の `rustls` の下）。この作業の変更とは関係がなく、`main` の `Cargo.lock` でも同じ。`cargo update -p rustls-webpki` で 0.103.16 に上げた（e6c53b4） | 成功 |
+| Rust library (fmt, clippy, test) | 次の push で取り消され、結果なし | 成功（`cargo llvm-cov --fail-under-lines 80` を含む） |
+| Front end (tsc, eslint, prettier, vitest, build) | 同上 | 成功（`npm run test:coverage` を含む） |
+| Tauri app (ubuntu-latest) | 同上 | 成功 |
+| Tauri app (macos-latest) | 同上 | 成功 |
+| Tauri app (windows-latest) | 同上 | 成功 |
+| GitGuardian Security Checks | 成功 | 成功 |
+
+13bc6a9 は e6c53b4 に記録の文書だけを足したコミットで、コードと `Cargo.lock` は e6c53b4 と同じ。
 
 ## 手元の目視（A2、macOS）
 

@@ -48,17 +48,21 @@ Test Strategy は Standard。
 | T-NFR6 | requirements.md NFR6 | 新しい文が英語と日本語の両方にある | 両方の言語がそろっている、というテストが通った | `src/i18n/messages.test.ts` | build-and-test | Met |
 | T-NFR7 | requirements.md NFR7、team.md Code Style | 書式・検査・依存関係のチェックが通る。テスト以外で `unwrap`／`expect` を足さない | fmt・clippy（警告 0）・tsc・ESLint・Prettier・npm audit・cargo-deny が成功 | test-results.md「ビルド」、CI の cargo-deny（13bc6a9） | build-and-test | Met |
 | T-FR1.3 | requirements.md FR1.3 | 直したテストが 200 回続けて通る | 200/200 | test-results.md「テスト」 | build-and-test | Met |
-| T-A2-macos-visual | requirements.md A2 | macOS の GUI で、リージョンの欄・英語の単数・複数・中断の知らせ・クエリの画面を目で確かめる | Pending | 開発者の Mac で行う（integration-test-instructions.md「手元の目視」） | build-and-test | Pending |
+| T-A2-macos-region | requirements.md A2（FR5） | macOS の GUI でリージョンの選択欄を目で確かめる | 開発者の報告：日本語の画面で問題なし（2026-10-21） | 開発者の Mac での目視（会話での報告） | build-and-test | Met |
+| T-A2-macos-plural | requirements.md A2（FR4.1） | macOS の GUI で英語の単数形「1 stream」を目で確かめる | 見ていない（英語に切り替える手間のため） | 自動のテスト（`src/i18n/messages.test.ts`、`StatusLine.test.tsx`）は通過 | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |
+| T-A2-macos-cancel | requirements.md A2（FR4.2） | macOS の GUI で中断の知らせと空のときの余白を目で確かめる | 見ていない | 自動のテスト（`CancelNotice.test.tsx`、`App.test.tsx`）は通過。余白は jsdom では確かめられない | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |
+| T-A2-macos-query | requirements.md A2（FR2） | macOS の GUI でロググループを変えてクエリを実行し直す | 見ていない | 自動のテスト（`query::runner`、`query::store`）は通過 | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |
 
 ## 準備の状態
 
 - ビルド：準備できている。
-- テスト：準備できている。自動のテストと CI はすべて通った。macOS の目視（A2）が残っている。
+- テスト：自動のテストと CI はすべて通った。macOS の目視（A2）は、リージョンの選択欄だけを行った。英語の単数形、中断の知らせ、クエリの画面の 3 つは見ていない（Unverified）。この 3 つは自動のテストで振る舞いを確かめている。目で見ていないのは見た目だけ。
 - 配ること：この作業だけでは配らない（team.md Deployment）。次の機能と合わせて、版を上げる PR → Release dry run → 両 OS での手元の確認 → タグの順で進める。
 
 ## 残っていること
 
-- macOS の目視（A2）。
+- macOS の目視（A2）のうち、英語の単数形、中断の知らせ、クエリの画面の 3 つ。次の版を配る前の両 OS の手元の確認（`docs/releasing.md`）で見る。
+- 開発者からの要望：英語の画面を確かめるのに OS の言語を変えるのは手間なので、アプリの中で言語を切り替えられるとよい。この作業の範囲外。次の作業の候補として残す。
 - Windows の手元の確認は省く（A1）。Windows は CI のランナーのビルドとテストで確かめた。GUI の見た目（日本語の名前の表示、選択欄の操作）は、次の版を配る前の両 OS での手元の確認で見る。
 - Code Generation のレビューの Minor 3 件：
   - R-01：リージョンの欄で、文字を打って閉じたあとの開き直し。macOS の目視で確かめる。

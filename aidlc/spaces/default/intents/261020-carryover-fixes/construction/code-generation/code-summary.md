@@ -1,6 +1,6 @@
 # Code Generation の記録（261020-carryover-fixes）
 
-作業単位はない（bugfix のスコープ）。承認済みの計画 `code-generation-plan.md` の 38 の手順をすべて終えた。入力は `inception/requirements-analysis/requirements.md` と、コードの知識ベース `aidlc/spaces/default/codekb/local-sights/`。
+作業単位はない（bugfix のスコープ）。承認済みの計画 `code-generation-plan.md` の Step 1〜38 を前の試みで終え（コミット a55c4fc、e6c53b4）、Build and Test の目視から足した FR4.4 の Step 39〜42 を今回の試みで終えた（下の「FR4.4 クエリの画面の進み具合の置き場所」の節）。入力は `inception/requirements-analysis/requirements.md` と、コードの知識ベース `aidlc/spaces/default/codekb/local-sights/`。
 
 ## 作ったもの・変えたもの
 
@@ -93,6 +93,56 @@ AWS の公式の資料「AWS Regions」の英語版 <https://docs.aws.amazon.com
 - **ライブラリの行カバレッジは手元で測れていない。** この環境に `cargo-llvm-cov` が入っていない。足した関数（`last_overlapping_range`、`verify_through`）はテストで通っている。CI の Linux のランナーの `cargo-llvm-cov`（80%）で確かめる。
 - **Windows の手元の確認は省く（A1）。** macOS の手元の確認（A2：リージョンの選択欄、英語の単数・複数、中断の知らせ、クエリの画面の実行の目視）は Build and Test で行う。
 - `.cancel-notice:empty` で囲みを並びから外したときの見た目（上の余白が今と同じであること）は jsdom では測れないため、macOS の目視で確かめる。
+
+## FR4.4 クエリの画面の進み具合の置き場所（Step 39〜42）
+
+Build and Test の macOS の目視（2026-10-21）で、Log Analytics の実行中の進み具合（例：「Fetching logs (log group 1 / 1): 37 / 744 streams, 719 events」）が結果の枠の中、「Results of the previous run」の上に出ていた点を直した。今回の試みで行ったのはこの節の手順だけで、Step 1〜38 は前の試みの変更がコードにあることを確かめただけ。
+
+### 変えたファイル
+
+| 要件 | ファイル | 変えたこと |
+|---|---|---|
+| FR4.4.1、FR4.4.3、FR4.4.4 | `src/components/LogAnalyticsPage.tsx` | `RunProgress` を `ResultBody` から外し、クエリの枠（`log-analytics-form` の `Container`）の中、`RunBar` のすぐ後ろに置いた。出す条件は今と同じ `Fetching`／`Evaluating` のときだけ（ページの `running`）。`RunProgress` の中身（文・`role="status"`・`data-testid="log-analytics-progress"`・失敗したロググループの数の行）は変えていない |
+| FR4.4.2（A9） | `src/components/LogAnalyticsPage.tsx` | `ResultBody` は、結果（実行中は前回の結果、`previous` の表示はそのまま）があればそれだけを出す。結果がなく実行中なら何も出さない（中断・取得の失敗・評価の失敗と同じ扱い）。結果の枠の見出し（「Results」と件数）は `ResultArea` のまま残る |
+| — | `src/components/LogAnalyticsPage.tsx` | 冒頭の説明、`ResultArea`・`RunProgress` の doc コメントを新しい置き場所に合わせて直した |
+| FR4.4 | `src/components/LogAnalyticsPage.test.tsx` | 置き場所のテスト 4 件を足し、既存の 1 件の名前を直した（下） |
+
+ログの画面（Log Management）の取得の進み具合は変えていない。
+
+### 決めたこと
+
+- **前回の結果が 0 件のとき。** 実行中に前回の結果が 0 件なら、今と同じく結果の枠に「No matching events.」を出す。FR4.4.2 の「結果がないときの文」にあたり、前回の結果の一部のため。
+- **空の結果の枠。** 中身を出さないだけにし、余白などの作り込みはしない（A9、Cloudscape の `Container` の既定のまま）。
+
+### テスト
+
+GUI の層のため、実装してからテストを書いて流した（Testing Contract の custom の順番）。
+
+- 既存の 27 件は、実装のあと文の期待値を変えずにそのまま通った（Step 40）。進み具合が結果の枠の中にあることや、実行中の「No results yet.」を前提にしたテストはなかった。前の置き場所を書いていたテストの名前「keeps the previous result shown under the progress while the next run goes」だけを「keeps the previous result shown while the next run goes」に直した（期待値は変えていない）。
+- 足したテスト（`describe("LogAnalyticsPage progress placement (261020-carryover-fixes FR4.4)")`、4 件）：
+  1. 取得中は、進み具合がクエリの枠の中で `log-analytics-run` より後ろにあり、結果の枠の中にはない。`role="status"`・文・失敗したロググループの数の行も確かめる（FR4.4.1、FR4.4.3）。
+  2. 前回の結果があるまま次の実行（評価中）が始まると、結果の枠には「Results of the previous run」の表だけがあり、進み具合はクエリの枠の中にある（FR4.4.2）。
+  3. 取得中から Done、さらに Cancelled に替わると、進み具合はどこにもない（FR4.4.4）。
+  4. 前回の結果がないまま実行中なら、結果の枠には見出し「Results」だけがあり、表・`log-analytics-initial`・`log-analytics-no-match` はなく、進み具合はクエリの枠の中にある（FR4.4.2、A9）。
+- 足したテストが置き場所を確かめていることは、変更前の `LogAnalyticsPage.tsx` に一時的に戻して流して確かめた：1・2・4 の 3 件が落ちた（3 は前後で振る舞いが変わらない確かめのため通る）。その後、変更を戻した。
+
+### 流したコマンドと結果
+
+| コマンド | 結果 |
+|---|---|
+| `npx vitest run src/components/LogAnalyticsPage.test.tsx`（実装のあと、テストを足す前） | 27 件通過 |
+| `npx vitest run src/components/LogAnalyticsPage.test.tsx`（テストを足したあと） | 31 件通過 |
+| 同じテストを変更前の `LogAnalyticsPage.tsx` で | 3 件失敗・28 件通過（上のとおり） |
+| `npx vitest run src/components/LogAnalyticsPage.test.tsx src/App.test.tsx` | 2 ファイル 72 件通過 |
+| `npx tsc --noEmit`、`npx eslint .` | 合格 |
+| `npx prettier --check .` | 最初は足したテストの 1 か所（`toHaveTextContent("ERROR 1")` の折り返し）で指摘があり、手で直して合格 |
+| `npm run test:coverage` | 42 ファイル 500 件通過。行カバレッジ 90%（1603／1781、閾値 80%、変えていない） |
+
+Rust のコードは変えていないため、`cargo test` は今回は流していない（前の試みの結果と PR #36 の CI のとおり）。
+
+### 残っていること
+
+- 置き場所の見た目（［Run query］の並びの下の間隔など）は jsdom では測れないため、macOS の目視（Build and Test）で確かめる。
 
 ## Assumptions & Open Questions
 

@@ -49,8 +49,8 @@ Test Strategy は Standard。
 | T-NFR7 | requirements.md NFR7、team.md Code Style | 書式・検査・依存関係のチェックが通る。テスト以外で `unwrap`／`expect` を足さない | fmt・clippy（警告 0）・tsc・ESLint・Prettier・npm audit・cargo-deny が成功 | test-results.md「ビルド」、CI の cargo-deny（13bc6a9） | build-and-test | Met |
 | T-FR1.3 | requirements.md FR1.3 | 直したテストが 200 回続けて通る | 200/200 | test-results.md「テスト」 | build-and-test | Met |
 | T-A2-macos-region | requirements.md A2（FR5） | macOS の GUI でリージョンの選択欄を目で確かめる | 開発者の報告：日本語の画面で問題なし（2026-10-21） | 開発者の Mac での目視（会話での報告） | build-and-test | Met |
-| T-A2-macos-plural | requirements.md A2（FR4.1） | macOS の GUI で英語の単数形「1 stream」を目で確かめる | 見ていない（英語に切り替える手間のため） | 自動のテスト（`src/i18n/messages.test.ts`、`StatusLine.test.tsx`）は通過 | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |
-| T-A2-macos-cancel | requirements.md A2（FR4.2） | macOS の GUI で中断の知らせと空のときの余白を目で確かめる | 見ていない | 自動のテスト（`CancelNotice.test.tsx`、`App.test.tsx`）は通過。余白は jsdom では確かめられない | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |
+| T-A2-macos-plural | requirements.md A2（FR4.1） | macOS の GUI で英語の単数形「1 stream」を目で確かめる | 英語の画面で「Fetch cancelled. 1 stream was not finished …」と出た（2026-10-21、開発者のスクリーンショット） | 開発者の Mac での目視（`npx tauri dev -- -- -AppleLanguages "(en)"` で起動） | build-and-test | Met |
+| T-A2-macos-cancel | requirements.md A2（FR4.2） | macOS の GUI で中断の知らせと空のときの余白を目で確かめる | 中断の知らせが警告の色で、条件の欄とログの一覧のあいだに出た（同じスクリーンショット） | 開発者の Mac での目視 | build-and-test | Met |
 | T-FR4.4 | requirements.md FR4.4（Build and Test の目視から足した依頼） | 進み具合がクエリの枠の中、［Run query］の並びの下に出て、結果の枠には出ない | 置き場所のテスト 4 件を含め 31/31 件が通過。CI（ec0aa5b）も成功 | `src/components/LogAnalyticsPage.test.tsx`、run 39606616095 | build-and-test | Met |
 | T-A2-macos-fr44 | requirements.md A2（FR4.4） | macOS の GUI で、進み具合の置き場所を目で確かめる | Pending | 開発者の Mac での目視 | build-and-test | Pending |
 | T-A2-macos-query | requirements.md A2（FR2） | macOS の GUI でロググループを変えてクエリを実行し直す | 見ていない | 自動のテスト（`query::runner`、`query::store`）は通過 | build-and-test（次の版を配る前の両 OS の手元の確認で拾う） | Unverified |

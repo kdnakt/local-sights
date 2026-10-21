@@ -3687,3 +3687,12 @@
 **Context**: construction > build-and-test > cross-unit-traceability.md
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-21T04:13:18Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/test-results.md
+**Context**: construction > build-and-test > test-results.md
+
+---

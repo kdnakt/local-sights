@@ -2,7 +2,7 @@
 
 ## 判定
 
-**合格（PASS）**。`inception/requirements-analysis/requirements.md` の FR と NFR、49 項目のうち 48 項目は、`construction/code-generation/traceability.json` で `OK` になっていて、指す先のファイルもある。
+**合格（PASS）**。`inception/requirements-analysis/requirements.md` の FR と NFR、53 項目のうち 52 項目は、`construction/code-generation/traceability.json` で `OK` になっていて、指す先のファイルもある。
 
 残りの 1 項目（FR4.1.3）は、要件そのものが「今回の対象外とする」と決めた項目のため `N/A` とした（A8）。作業単位はなく（bugfix のスコープ）、記録は段の単位の `construction/code-generation/traceability.json` だけ。User Stories の段は通っていないため、AC はない。
 
@@ -41,6 +41,10 @@
 | FR4.2.2 | OK | code-generation | `src/components/CancelNotice.tsx` |
 | FR4.3.1 | OK | code-generation | `src-tauri/src/lib.rs` |
 | FR4.3.2 | OK | code-generation | `src-tauri/src/lib.rs` |
+| FR4.4.1 | OK | code-generation | `src/components/LogAnalyticsPage.tsx` |
+| FR4.4.2 | OK | code-generation | `src/components/LogAnalyticsPage.tsx` |
+| FR4.4.3 | OK | code-generation | `src/components/LogAnalyticsPage.tsx` |
+| FR4.4.4 | OK | code-generation | `src/components/LogAnalyticsPage.test.tsx` |
 | FR5.1 | OK | code-generation | `src/i18n/regions.ts` |
 | FR5.1.1 | OK | code-generation | `src/i18n/regions.ts` |
 | FR5.2 | OK | code-generation | `src/components/TopBar.tsx` |

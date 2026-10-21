@@ -68,6 +68,24 @@
 
 13bc6a9 は e6c53b4 に記録の文書だけを足したコミットで、コードと `Cargo.lock` は e6c53b4 と同じ。
 
+### その後の実行
+
+- **bd05b15（記録だけのコミット）**：`Tauri app (windows-latest)` が `sso_cli::windows_tests` の 3 件（「the fake CLI did not start」）で落ちた。
+  - コードは前の緑のコミットと同じで、`src-tauri/src/sso_cli/` にもこの作業で触れていない。Windows のランナーの遅さと判断した。
+  - 失敗したジョブを 1 回だけ流し直すと通った。PR にもコメントで残した。
+- **ec0aa5b（FR4.4：進み具合を［Run query］の下に移した）、run 39606616095**：7 つのジョブがすべて成功した。
+  - Rust library、Front end、cargo-deny、Tauri app（ubuntu／macos／windows）、GitGuardian。
+
+### FR4.4 を足したあとの画面のテスト
+
+| コマンド | 結果 |
+|---|---|
+| `npx vitest run src/components/LogAnalyticsPage.test.tsx` | 31 件通過（置き場所のテスト 4 件を含む） |
+| `npm run test:coverage` | 42 ファイル 500 件通過、行カバレッジ 90%（1603/1781） |
+| `npx tsc --noEmit`、`npx eslint .`、`npx prettier --check .` | 合格 |
+
+FR4.4 は画面だけの変更のため、Rust のテストは流し直していない（Rust のコードは変えていない。CI では 3 つの OS で通過）。
+
 ## 手元の目視（A2、macOS）
 
 2026-10-21、開発者本人の Mac で行った（会話での報告）。

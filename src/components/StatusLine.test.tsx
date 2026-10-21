@@ -202,7 +202,7 @@ describe("StatusLine", () => {
     );
     const line = screen.getByRole("status");
     expect(line).toHaveAttribute("aria-live", "polite");
-    const button = screen.getByRole("button", { name: "Failed in 1 streams" });
+    const button = screen.getByRole("button", { name: "Failed in 1 stream" });
     await userEvent.keyboard("{Tab}");
     expect(button).toHaveFocus();
     await userEvent.keyboard("{Enter}");
@@ -554,7 +554,7 @@ describe("StatusLine after a cancelled fetch (261012-parallel-fetch U5:BR5.12)",
     expect(screen.getByTestId("status-line-cancelled")).toHaveTextContent("Cancelled");
     expect(screen.getByTestId("status-line-count")).toHaveTextContent("120 events");
     expect(screen.getByTestId("status-line-failures-button")).toHaveTextContent(
-      "Failed in 1 streams",
+      "Failed in 1 stream",
     );
     expect(screen.getByTestId("status-line-elapsed")).toHaveTextContent("Elapsed 00:12");
     const parts = [...screen.getByTestId("status-line").querySelectorAll("[data-testid]")].map(

@@ -68,8 +68,8 @@ const results = () => screen.getByTestId("log-analytics-results");
 describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-7)", () => {
   beforeEach(() => {
     vi.mocked(api.getQueryRows).mockReset();
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, epoch),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId),
     );
     vi.mocked(api.getCompletionCandidates).mockReset();
     vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
@@ -214,7 +214,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
     );
-    expect(api.getQueryRows).toHaveBeenCalledWith(1, 2, 0, 2);
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 0, 2);
   });
 
   it("warns that a partial result is based on part of the logs and lists the failures (U1:BR2.5)", async () => {
@@ -234,7 +234,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
       }),
     );
     expect(screen.getByTestId("log-analytics-partial")).toHaveTextContent(
-      "Results are based on part of the logs. 1 streams could not be fetched.",
+      "Results are based on part of the logs. 1 stream could not be fetched.",
     );
     await user.click(screen.getByTestId("log-analytics-show-failures-button"));
     // U3:BR2.6: "log group / stream".
@@ -400,14 +400,8 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
   });
 
   it("shows the columns of fields with their cells (U2:BR7.1)", async () => {
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, epoch, offset, limit) =>
-      queryRowWindow(
-        [queryRow(0, "ERROR 0", ["core time 0", "500", null])],
-        offset,
-        limit,
-        runId,
-        epoch,
-      ),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow([queryRow(0, "ERROR 0", ["core time 0", "500", null])], offset, limit, runId),
     );
     renderPage(
       view({
@@ -490,7 +484,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     );
   });
 
-  it("keeps the previous result shown under the progress while the next run goes (U3:BR3.4)", async () => {
+  it("keeps the previous result shown while the next run goes (U3:BR3.4)", async () => {
     const { rerender } = renderPage(
       view({
         phase: "Fetching",
@@ -507,7 +501,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
     );
-    expect(api.getQueryRows).toHaveBeenCalledWith(1, 2, 0, 2);
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 0, 2);
     rerender(
       view({
         phase: "Evaluating",
@@ -566,5 +560,104 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
       "ログを取得中（ロググループ 2 / 4）：ストリーム 3 / 8、120 件",
     );
+  });
+});
+
+describe("LogAnalyticsPage progress placement (261020-carryover-fixes FR4.4)", () => {
+  const form = () => screen.getByTestId("log-analytics-form");
+  const progressStatus = () => screen.getByTestId("log-analytics-progress");
+
+  /** The progress is in the query container, after the run row, and not in the results. */
+  function expectProgressBelowRunBar() {
+    const runRow = within(form()).getByTestId("log-analytics-run");
+    const shown = within(form()).getByTestId("log-analytics-progress");
+    expect(runRow.compareDocumentPosition(shown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(results()).queryByTestId("log-analytics-progress")).not.toBeInTheDocument();
+  }
+
+  beforeEach(() => {
+    vi.mocked(api.getQueryRows).mockReset();
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId),
+    );
+    vi.mocked(api.getCompletionCandidates).mockReset();
+    vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
+  });
+
+  it("shows a fetch's progress in the query container below the run row, not in the results (FR4.4.1, FR4.4.3)", () => {
+    renderPage(
+      view({
+        phase: "Fetching",
+        canRun: false,
+        cancelAvailable: true,
+        progress: progress({
+          plannedStreamCount: 744,
+          selectedStreamCount: 744,
+          finishedStreamCount: 37,
+          eventCount: 719,
+          failedGroupCount: 1,
+          groupCount: 2,
+        }),
+      }),
+    );
+    expectProgressBelowRunBar();
+    expect(progressStatus()).toHaveAttribute("role", "status");
+    expect(progressStatus()).toHaveTextContent(
+      "Fetching logs (log group 1 / 2): 37 / 744 streams, 719 events",
+    );
+    expect(within(form()).getByTestId("log-analytics-failed-groups")).toBeInTheDocument();
+  });
+
+  it("keeps only the previous result in the results while the next run goes (FR4.4.2)", async () => {
+    renderPage(
+      view({
+        phase: "Evaluating",
+        runId: 2,
+        canRun: false,
+        progress: progress({ evaluatedCount: 3, totalCount: 9 }),
+        result: resultSummary({ runId: 1 }),
+      }),
+    );
+    expectProgressBelowRunBar();
+    expect(progressStatus()).toHaveTextContent("Running query: 3 / 9 events");
+    expect(within(results()).getByTestId("query-result-previous")).toHaveTextContent(
+      "Results of the previous run",
+    );
+    await waitFor(() =>
+      expect(within(results()).getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
+    );
+    expect(within(results()).queryByTestId("log-analytics-initial")).not.toBeInTheDocument();
+  });
+
+  it("shows no progress anywhere once the run is done (FR4.4.4)", async () => {
+    const { rerender } = renderPage(
+      view({ phase: "Fetching", runId: 2, canRun: false, progress: progress() }),
+    );
+    expect(progressStatus()).toBeInTheDocument();
+    rerender(view({ phase: "Done", runId: 2, result: resultSummary({ runId: 2 }) }));
+    expect(screen.queryByTestId("log-analytics-progress")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
+    );
+    rerender(view({ phase: "Cancelled", runId: 3 }));
+    expect(screen.queryByTestId("log-analytics-progress")).not.toBeInTheDocument();
+  });
+
+  it("leaves the results container with its heading only while a first run goes (FR4.4.2, A9)", () => {
+    renderPage(
+      view({
+        phase: "Fetching",
+        canRun: false,
+        progress: progress({ groupNumber: null }),
+        result: null,
+      }),
+    );
+    expectProgressBelowRunBar();
+    expect(progressStatus()).toHaveTextContent("Fetching logs: finding what is missing");
+    expect(within(results()).getByRole("heading", { name: "Results" })).toBeInTheDocument();
+    expect(within(results()).queryByTestId("query-result-table")).not.toBeInTheDocument();
+    expect(within(results()).queryByTestId("log-analytics-initial")).not.toBeInTheDocument();
+    expect(within(results()).queryByTestId("log-analytics-no-match")).not.toBeInTheDocument();
+    expect(results()).not.toHaveTextContent("No results yet.");
   });
 });

@@ -1,18 +1,36 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { createTranslator, type Locale } from "../i18n/messages";
 import { connectedView, sessionView, ssoLoginView, t } from "../test/fixtures";
 import { TopBar } from "./TopBar";
 
-function renderBar(view = connectedView()) {
+function renderBar(view = connectedView(), locale: Locale = "en") {
   const handlers = {
     onSelectProfile: vi.fn(),
     onSelectRegion: vi.fn(),
     onSelectTimeZone: vi.fn(),
     onOpenSettings: vi.fn(),
   };
-  render(<TopBar session={view} t={t} {...handlers} />);
+  render(
+    <TopBar
+      session={view}
+      t={locale === "en" ? t : createTranslator("ja")}
+      locale={locale}
+      {...handlers}
+    />,
+  );
   return handlers;
+}
+
+/** The texts of the region options now listed. */
+function regionOptions(): (string | null)[] {
+  return screen.queryAllByRole("option").map((option) => option.textContent);
+}
+
+/** Waits until the region options are `expected`: the Select filters after a short delay. */
+async function expectRegionOptions(expected: string[]): Promise<void> {
+  await waitFor(() => expect(regionOptions()).toEqual(expected));
 }
 
 /** The trigger button of the dropdown with `testId`. */
@@ -62,7 +80,119 @@ describe("TopBar (mockups screen 1, R-05)", () => {
     const user = userEvent.setup();
     const { onSelectRegion } = renderBar();
     await user.click(trigger("top-bar-region"));
-    await user.click(screen.getByRole("menuitem", { name: "us-east-1" }));
+    await user.click(screen.getByRole("option", { name: /^us-east-1/ }));
+    expect(onSelectRegion).toHaveBeenCalledWith("us-east-1");
+  });
+
+  // ---- 261020-carryover-fixes FR5: region names and filter ------------
+
+  it("lists the regions in their order with the code and the Japanese name, the current one selected", async () => {
+    const user = userEvent.setup();
+    renderBar(connectedView(), "ja");
+    await user.click(trigger("top-bar-region"));
+    expect(regionOptions()).toEqual([
+      "ap-northeast-1 アジアパシフィック (東京)",
+      "eu-west-1 欧州 (アイルランド)",
+      "us-east-1 米国東部 (バージニア北部)",
+    ]);
+    expect(screen.getByRole("option", { name: /^ap-northeast-1/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: /^eu-west-1/ })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
+
+  it("writes the English names on the English screen", async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await user.click(trigger("top-bar-region"));
+    expect(regionOptions()).toEqual([
+      "ap-northeast-1 Asia Pacific (Tokyo)",
+      "eu-west-1 Europe (Ireland)",
+      "us-east-1 US East (N. Virginia)",
+    ]);
+  });
+
+  it("filters the regions by what is typed, by either language's name", async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await user.click(trigger("top-bar-region"));
+    const filter = screen.getByRole("combobox", { name: "Region" });
+    await user.type(filter, "tokyo");
+    await expectRegionOptions(["ap-northeast-1 Asia Pacific (Tokyo)"]);
+    await user.clear(filter);
+    await user.type(filter, "Europe");
+    await expectRegionOptions(["eu-west-1 Europe (Ireland)"]);
+    await user.clear(filter);
+    await user.type(filter, "東京");
+    await expectRegionOptions(["ap-northeast-1 Asia Pacific (Tokyo)"]);
+  });
+
+  it("says in the screen's language that no region matches", async () => {
+    const user = userEvent.setup();
+    renderBar(connectedView(), "ja");
+    await user.click(trigger("top-bar-region"));
+    await user.type(screen.getByRole("combobox", { name: "リージョン" }), "zzz");
+    await expectRegionOptions([]);
+    expect(screen.getByText("一致するリージョンはありません")).toBeInTheDocument();
+  });
+
+  it("shows the chosen region with its name while closed", () => {
+    renderBar(connectedView(), "ja");
+    expect(trigger("top-bar-region")).toHaveTextContent("ap-northeast-1 アジアパシフィック (東京)");
+  });
+
+  it("writes a region the table does not name by its code and finds it by its code", async () => {
+    const user = userEvent.setup();
+    renderBar(
+      connectedView({
+        regions: ["ap-northeast-1", "xx-test-1"],
+        connection: { profile: { kind: "Named", profileName: "dev" }, region: "xx-test-1" },
+      }),
+    );
+    expect(trigger("top-bar-region")).toHaveTextContent("xx-test-1");
+    await user.click(trigger("top-bar-region"));
+    expect(regionOptions()).toEqual(["ap-northeast-1 Asia Pacific (Tokyo)", "xx-test-1"]);
+    await user.type(screen.getByRole("combobox", { name: "Region" }), "XX-");
+    await expectRegionOptions(["xx-test-1"]);
+  });
+
+  it("does not open while the connection cannot change or a sign-in runs (FR5.8)", async () => {
+    const user = userEvent.setup();
+    for (const view of [
+      connectedView({ canChangeConnection: false }),
+      connectedView({ ssoLogin: ssoLoginView({ state: "Waiting" }) }),
+    ]) {
+      const { onSelectRegion } = renderBar(view);
+      expect(trigger("top-bar-region")).toBeDisabled();
+      await user.click(trigger("top-bar-region"));
+      expect(regionOptions()).toEqual([]);
+      expect(screen.queryByRole("combobox", { name: "Region" })).toBeNull();
+      expect(onSelectRegion).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
+  it("is named Region for screen readers and opens with the keyboard only", async () => {
+    const user = userEvent.setup();
+    const { onSelectRegion } = renderBar();
+    expect(trigger("top-bar-region")).toHaveAccessibleName(/^Region/);
+    await user.tab();
+    await user.tab();
+    expect(trigger("top-bar-region")).toHaveFocus();
+    // Cloudscape reads `keyCode`, which user-event's keys do not carry.
+    const press = (key: string, keyCode: number) =>
+      fireEvent.keyDown(document.activeElement as Element, { key, keyCode });
+    press("ArrowDown", 40);
+    await waitFor(() => expect(regionOptions()).toHaveLength(3));
+    press("ArrowDown", 40);
+    press("ArrowDown", 40);
+    press("Enter", 13);
+    expect(onSelectRegion).toHaveBeenCalledTimes(1);
+    // From the selected ap-northeast-1, two steps down.
     expect(onSelectRegion).toHaveBeenCalledWith("us-east-1");
   });
 
@@ -99,6 +229,7 @@ describe("TopBar (mockups screen 1, R-05)", () => {
           canOpenSettings: false,
         })}
         t={t}
+        locale="en"
         onSelectProfile={vi.fn()}
         onSelectRegion={vi.fn()}
         onSelectTimeZone={vi.fn()}
@@ -122,6 +253,7 @@ describe("TopBar (mockups screen 1, R-05)", () => {
           // Even if the flags lagged behind, a running login disables them.
           session={connectedView({ ssoLogin: ssoLoginView({ state }) })}
           t={t}
+          locale="en"
           onSelectProfile={vi.fn()}
           onSelectRegion={vi.fn()}
           onSelectTimeZone={vi.fn()}

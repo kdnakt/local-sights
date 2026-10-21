@@ -53,6 +53,13 @@
  * (`insights.error.supportedList`, the refined mockups' wording) and the
  * examples and completion of the query field (`insights.examples*`,
  * `insights.completion.*`, Should).
+ * Since 261020-carryover-fixes FR4.1 the English texts that count streams
+ * have a singular form too (`englishSingular`): `messages` keeps the plural
+ * form, and `translate` alone picks the singular when the text's deciding
+ * count is exactly 1 (0 stays plural). The Japanese texts have one form.
+ * Since 261020-carryover-fixes FR5 the region picker's texts
+ * (`connection.region.noMatch`, `connection.region.filterPlaceholder`); the
+ * region names themselves are in `regions.ts`.
  */
 
 import type { TimeZoneChoice } from "../api";
@@ -156,6 +163,14 @@ export const messages = {
   "connection.profile.sdkDefault": { en: "Default", ja: "デフォルト" },
   "connection.region.label": { en: "Region", ja: "リージョン" },
   "connection.region.placeholder": { en: "Choose a region", ja: "リージョンを選択" },
+  "connection.region.noMatch": {
+    en: "No matching regions",
+    ja: "一致するリージョンはありません",
+  },
+  "connection.region.filterPlaceholder": {
+    en: "Find a region",
+    ja: "リージョンを検索",
+  },
   "timeZone.label": { en: "Time zone", ja: "タイムゾーン" },
   "timeZone.local": { en: "Local", ja: "ローカル" },
   "timeZone.utc": { en: "UTC", ja: "UTC" },
@@ -816,6 +831,54 @@ export type MessageKey = keyof typeof messages;
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
+/** The singular form of an English text and the name of the count that decides it. */
+export interface SingularForm {
+  /** The placeholder whose value decides the form: the singular when it is exactly 1. */
+  count: string;
+  /** The text with that count being 1, with the same placeholders as the plural. */
+  text: string;
+}
+
+/**
+ * 261020-carryover-fixes FR4.1: the English singular of every text whose
+ * nouns (and verbs) follow a number of streams. The plural is the text of
+ * `messages`; only the stream counts are covered (A8).
+ */
+export const englishSingular: Partial<Record<MessageKey, SingularForm>> = {
+  "status.listing": {
+    count: "count",
+    text: "Listing streams… {count} stream selected so far",
+  },
+  "status.fetching": {
+    count: "planned",
+    text: "Fetching… {finished}/{planned} stream, {count} events so far",
+  },
+  "status.failedStreams": { count: "count", text: "Failed in {count} stream" },
+  "cancel.notice.afterListing": {
+    count: "n",
+    text: "Fetch cancelled. {n} stream was not finished, so some logs are missing.",
+  },
+  "insights.status.fetching": {
+    count: "total",
+    text: "Fetching logs (log group {number} / {groups}): {done} / {total} stream, {events} events",
+  },
+  "insights.partial": {
+    count: "count",
+    text: "Results are based on part of the logs. {count} stream could not be fetched.",
+  },
+};
+
+/** The template of `key` in `locale`: the English singular when its count is exactly 1. */
+function templateOf(locale: Locale, key: MessageKey, params: Record<string, string | number>) {
+  const singular = locale === "en" ? englishSingular[key] : undefined;
+  if (singular !== undefined && singular.count in params) {
+    if (Number(params[singular.count]) === 1) {
+      return singular.text;
+    }
+  }
+  return messages[key][locale];
+}
+
 /** The message key naming a time zone choice (U4:BR3.2). */
 export function timeZoneLabelKey(timeZone: TimeZoneChoice): MessageKey {
   return timeZone === "Local" ? "timeZone.local" : "timeZone.utc";
@@ -834,14 +897,15 @@ export function detectLocale(languages: readonly string[]): Locale {
 
 /**
  * Looks up `key` and fills `{name}` placeholders. An unknown key is returned
- * as is, so a missing entry is visible instead of hidden.
+ * as is, so a missing entry is visible instead of hidden. An English text
+ * with a singular form uses it when its deciding count is 1 (FR4.1.5).
  */
 export function translate(
   locale: Locale,
   key: string,
   params: Record<string, string | number> = {},
 ): string {
-  const template = isMessageKey(key) ? messages[key][locale] : key;
+  const template = isMessageKey(key) ? templateOf(locale, key, params) : key;
   return template.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
     name in params ? String(params[name]) : placeholder,
   );

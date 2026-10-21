@@ -1,9 +1,10 @@
-import type { Ref } from "react";
+import { useState, type Ref } from "react";
 import Alert from "@cloudscape-design/components/alert";
 import Button, { type ButtonProps } from "@cloudscape-design/components/button";
 import ButtonDropdown, {
   type ButtonDropdownProps,
 } from "@cloudscape-design/components/button-dropdown";
+import Select, { type SelectProps } from "@cloudscape-design/components/select";
 import TopNavigation from "@cloudscape-design/components/top-navigation";
 import {
   isSsoLoginRunning,
@@ -12,7 +13,8 @@ import {
   type SessionView,
   type TimeZoneChoice,
 } from "../api";
-import { timeZoneLabelKey, type Translate } from "../i18n/messages";
+import { timeZoneLabelKey, type Locale, type Translate } from "../i18n/messages";
+import { filterRegionOptions, regionLabel } from "../i18n/regions";
 
 const SDK_DEFAULT_VALUE = "sdk-default";
 const NAMED_PREFIX = "named:";
@@ -36,6 +38,8 @@ function decodeSelector(value: string): ProfileSelector | null {
 export interface TopBarProps {
   session: SessionView;
   t: Translate;
+  /** The screen's language, for the region names (261020-carryover-fixes FR5.3). */
+  locale: Locale;
   onSelectProfile: (profile: ProfileSelector) => void;
   onSelectRegion: (region: string) => void;
   onSelectTimeZone: (timeZone: TimeZoneChoice) => void;
@@ -60,13 +64,27 @@ export interface TopBarProps {
  * profile, the region and the settings button are disabled and the time
  * zone stays usable (261011-sso-login BR3.4). The notices for config files
  * that could not be read (file kind only, U2:BR1.3) are warning alerts right
- * below the bar. The dropdowns are Cloudscape ButtonDropdowns inside the
- * TopNavigation's custom content, because its structured utilities cannot be
- * disabled (recorded in code-summary.md).
+ * below the bar. The profile and time zone dropdowns are Cloudscape
+ * ButtonDropdowns inside the TopNavigation's custom content, because its
+ * structured utilities cannot be disabled (recorded in code-summary.md).
+ *
+ * Since 261020-carryover-fixes FR5 the region is a Cloudscape Select with a
+ * filter, since a ButtonDropdown takes no typing: every region is written
+ * with its code and its name in the screen's language
+ * (`ap-northeast-1 アジアパシフィック (東京)`, `regions.ts`; a region the
+ * table does not name by its code alone), in the core's order, the current
+ * one marked as the Select's selected option and shown the same way while
+ * closed (FR5.3, FR5.5, FR5.7). Typing filters by the code and by either
+ * language's name with `filterRegionOptions` (`filteringType="manual"`: the
+ * built-in filter would tell full-width and half-width parentheses apart,
+ * A7); no match is said in the screen's language (FR5.6). It is disabled on
+ * the same conditions as before (FR5.8) and a choice goes to
+ * `onSelectRegion` as before, the confirmation included (FR5.9).
  */
 export function TopBar({
   session,
   t,
+  locale,
   onSelectProfile,
   onSelectRegion,
   onSelectTimeZone,
@@ -94,11 +112,14 @@ export function TopBar({
       iconName: id === currentProfile ? "check" : undefined,
     };
   });
-  const regionItems: ButtonDropdownProps.Items = session.regions.map((region) => ({
-    id: region,
-    text: region,
-    iconName: region === session.connection.region ? "check" : undefined,
-  }));
+  const [regionFilter, setRegionFilter] = useState("");
+  const regionOption = (code: string): SelectProps.Option => ({
+    value: code,
+    label: regionLabel(code, locale),
+  });
+  const regionOptions = filterRegionOptions(session.regions, regionFilter).map(regionOption);
+  const currentRegion = session.connection.region;
+  const selectedRegion = currentRegion === null ? null : regionOption(currentRegion);
   const timeZoneItems: ButtonDropdownProps.Items = TIME_ZONES.map((zone) => ({
     id: zone,
     text: t(timeZoneLabelKey(zone)),
@@ -111,7 +132,6 @@ export function TopBar({
   const profileText = selectedProfile
     ? `${t("connection.profile.label")}: ${profileName(selectedProfile)}`
     : t("connection.profile.placeholder");
-  const regionText = session.connection.region ?? t("connection.region.placeholder");
   const timeZoneText = `${t("timeZone.label")}: ${t(timeZoneLabelKey(session.timeZone))}`;
 
   return (
@@ -134,15 +154,29 @@ export function TopBar({
             >
               {profileText}
             </ButtonDropdown>
-            <ButtonDropdown
-              items={regionItems}
-              disabled={connectionDisabled}
-              ariaLabel={t("connection.region.label")}
-              onItemClick={({ detail }) => onSelectRegion(detail.id)}
-              data-testid="top-bar-region"
-            >
-              {regionText}
-            </ButtonDropdown>
+            <div className="top-bar-region" data-testid="top-bar-region">
+              <Select
+                options={regionOptions}
+                selectedOption={selectedRegion}
+                placeholder={t("connection.region.placeholder")}
+                disabled={connectionDisabled}
+                ariaLabel={t("connection.region.label")}
+                filteringType="manual"
+                filteringAriaLabel={t("connection.region.label")}
+                filteringPlaceholder={t("connection.region.filterPlaceholder")}
+                empty={t("connection.region.noMatch")}
+                noMatch={t("connection.region.noMatch")}
+                expandToViewport
+                onLoadItems={({ detail }) => setRegionFilter(detail.filteringText)}
+                onChange={({ detail }) => {
+                  setRegionFilter("");
+                  const code = detail.selectedOption.value;
+                  if (code !== undefined) {
+                    onSelectRegion(code);
+                  }
+                }}
+              />
+            </div>
             <ButtonDropdown
               items={timeZoneItems}
               disabled={dialogOpen}

@@ -508,6 +508,12 @@ fn visible_sort_keys(plan: &QueryPlan) -> Vec<String> {
 
 /// The row cap of `plan`: its last `limit` from 1, or 10,000 (U2:BR5.1,
 /// BR5.2; `limit 0` keeps every row up to 10,000).
+///
+/// The app itself now gives no row for `limit 0` (261017-insights-query
+/// Loop-back 3, p08; `QueryPlan::has_row_limit`). This check keeps the
+/// earlier reading on purpose: with `limit 0` both sides have no row and
+/// nothing is cut, so the cap is never reached and the comparison comes out
+/// the same (261020-carryover-fixes FR3.2).
 fn row_cap(plan: &QueryPlan) -> usize {
     plan.commands
         .iter()

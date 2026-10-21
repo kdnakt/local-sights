@@ -773,11 +773,10 @@ pub struct ResultRow {
 /// discards its staging events does not change it (U3:BR3.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryResult {
-    /// The run that made it.
+    /// The run that made it; the screen tells a result apart by it alone
+    /// (the rows are copies and depend on no holdings, U3:BR3.2,
+    /// 261020-carryover-fixes FR2.3.1).
     pub run_id: u64,
-    /// The holdings epoch the run evaluated; the screen keeps it with the
-    /// run number, but the rows no longer depend on it (U3:BR3.2).
-    pub holdings_epoch: u64,
     /// Events evaluated.
     pub evaluated_count: usize,
     rows: Vec<ResultRow>,
@@ -787,17 +786,11 @@ pub struct QueryResult {
 }
 
 impl QueryResult {
-    /// The result of run `run_id` over the holdings of `holdings_epoch`
-    /// with the two default columns, nothing cut.
-    pub fn new(
-        run_id: u64,
-        holdings_epoch: u64,
-        evaluated_count: usize,
-        rows: Vec<ResultRow>,
-    ) -> Self {
+    /// The result of run `run_id` with the two default columns, nothing
+    /// cut.
+    pub fn new(run_id: u64, evaluated_count: usize, rows: Vec<ResultRow>) -> Self {
         Self {
             run_id,
-            holdings_epoch,
             evaluated_count,
             matched_count: rows.len(),
             rows,
@@ -806,17 +799,11 @@ impl QueryResult {
         }
     }
 
-    /// The result `output` of run `run_id` over `holdings_epoch`, with
-    /// `rows`, the copies of the events at `output.rows`, in that order.
-    pub fn from_output(
-        run_id: u64,
-        holdings_epoch: u64,
-        output: EvalOutput,
-        rows: Vec<ResultRow>,
-    ) -> Self {
+    /// The result `output` of run `run_id`, with `rows`, the copies of the
+    /// events at `output.rows`, in that order.
+    pub fn from_output(run_id: u64, output: EvalOutput, rows: Vec<ResultRow>) -> Self {
         Self {
             run_id,
-            holdings_epoch,
             evaluated_count: output.evaluated_count,
             rows,
             columns: output.columns,
@@ -1735,7 +1722,7 @@ mod tests {
     }
 
     fn result() -> QueryResult {
-        QueryResult::new(3, 7, 10, copied(&[1, 4, 5, 8, 9]))
+        QueryResult::new(3, 10, copied(&[1, 4, 5, 8, 9]))
     }
 
     #[test]
@@ -1772,7 +1759,7 @@ mod tests {
 
     #[test]
     fn a_result_without_matches_has_no_rows() {
-        let empty = QueryResult::new(1, 1, 50, Vec::new());
+        let empty = QueryResult::new(1, 50, Vec::new());
         assert_eq!(empty.row_count(), 0);
         assert!(empty.window(1, 0, 100).is_empty());
     }
@@ -1781,7 +1768,6 @@ mod tests {
     fn a_result_keeps_the_columns_the_cut_and_the_copies_of_its_output() {
         let result = QueryResult::from_output(
             2,
-            5,
             EvalOutput {
                 rows: vec![3, 1],
                 columns: vec![FieldRef::Log],
@@ -1797,9 +1783,8 @@ mod tests {
                 result.matched_count(),
                 result.truncated_at(),
                 result.evaluated_count,
-                result.holdings_epoch
             ),
-            (9, Some(2), 20, 5)
+            (9, Some(2), 20)
         );
         assert_eq!(times(result.window(2, 0, 9)), vec![30, 10]);
     }

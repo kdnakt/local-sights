@@ -107,7 +107,6 @@ export function resultSummary(overrides: Partial<ResultSummary> = {}): ResultSum
   const rowCount = overrides.rowCount ?? 2;
   return {
     runId: 1,
-    holdingsEpoch: 2,
     rowCount,
     evaluatedCount: 40,
     columns: ["@timestamp", "@message"],
@@ -140,11 +139,9 @@ export function queryRowWindow(
   offset: number,
   limit: number,
   runId = 1,
-  holdingsEpoch = 2,
 ): QueryRowWindow {
   return {
     runId,
-    holdingsEpoch,
     offset,
     rows: rows.slice(offset, offset + limit),
     totalCount: rows.length,

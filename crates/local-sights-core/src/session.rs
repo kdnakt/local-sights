@@ -2566,15 +2566,9 @@ impl AppSession {
 
     /// The fields of one opened result row of the shown result, its time in
     /// the chosen zone (U2:BR7.3, U3:BR3.2).
-    pub fn display_query_row_detail(
-        &self,
-        run_id: u64,
-        holdings_epoch: u64,
-        index: usize,
-    ) -> QueryRowDetail {
+    pub fn display_query_row_detail(&self, run_id: u64, index: usize) -> QueryRowDetail {
         let zone = self.time_zones.zone(self.time_zone);
-        self.insights
-            .display_row_detail(run_id, holdings_epoch, index, zone)
+        self.insights.display_row_detail(run_id, index, zone)
     }
 
     /// [Cancel] of the query screen (UC4, R-01, R-02): the run number whose
@@ -2595,16 +2589,9 @@ impl AppSession {
     /// At most `limit` rows from `offset` of the shown result, read from
     /// its own copies when `run_id` is its run (U1:BR6.3, U3:BR3.2), with
     /// their times written in the chosen zone.
-    pub fn display_query_rows(
-        &self,
-        run_id: u64,
-        holdings_epoch: u64,
-        offset: usize,
-        limit: usize,
-    ) -> QueryRowWindow {
+    pub fn display_query_rows(&self, run_id: u64, offset: usize, limit: usize) -> QueryRowWindow {
         let zone = self.time_zones.zone(self.time_zone);
-        self.insights
-            .display_rows(run_id, holdings_epoch, (offset, limit), zone)
+        self.insights.display_rows(run_id, (offset, limit), zone)
     }
 }
 
@@ -5855,7 +5842,7 @@ mod tests {
     fn query_done(session: &mut AppSession, rows: Vec<usize>) -> u64 {
         let run_id = query_started(session).run_id;
         assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
-        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, query_rows_at(rows)));
+        session.finish_query_evaluation(QueryResult::new(run_id, 4, query_rows_at(rows)));
         run_id
     }
 
@@ -6045,7 +6032,7 @@ mod tests {
             ["/aws/lambda/orders", "/aws/lambda/MyFunction"]
         );
         assert!(session.finish_query_fetch(started.run_id, &query_ended(JobStatus::Completed)));
-        session.finish_query_evaluation(QueryResult::new(started.run_id, 2, 0, Vec::new()));
+        session.finish_query_evaluation(QueryResult::new(started.run_id, 0, Vec::new()));
         assert_eq!(
             session.update_analytics_input(
                 AnalyticsField::LogGroup,
@@ -6086,18 +6073,15 @@ mod tests {
         let times = |window: QueryRowWindow| -> Vec<i64> {
             window.rows.iter().map(|row| row.event.timestamp).collect()
         };
-        assert_eq!(
-            times(session.display_query_rows(run_id, 2, 0, 10)),
-            vec![1, 3]
-        );
-        assert_eq!(times(session.display_query_rows(run_id, 2, 1, 10)), vec![3]);
-        assert!(times(session.display_query_rows(run_id + 1, 2, 0, 10)).is_empty());
+        assert_eq!(times(session.display_query_rows(run_id, 0, 10)), vec![1, 3]);
+        assert_eq!(times(session.display_query_rows(run_id, 1, 10)), vec![3]);
+        assert!(times(session.display_query_rows(run_id + 1, 0, 10)).is_empty());
         let next = query_started(&mut session).run_id;
         assert!(!session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
-        session.finish_query_evaluation(QueryResult::new(run_id, 2, 4, query_rows_at(vec![0])));
+        session.finish_query_evaluation(QueryResult::new(run_id, 4, query_rows_at(vec![0])));
         assert_eq!(session.insights().phase(), AnalyticsPhase::Fetching);
         assert_eq!(
-            times(session.display_query_rows(run_id, 2, 0, 10)),
+            times(session.display_query_rows(run_id, 0, 10)),
             vec![1, 3],
             "the previous result is read while the next run fetches"
         );

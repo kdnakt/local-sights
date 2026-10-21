@@ -398,6 +398,21 @@ pub fn overlap_ranges(wanted: &[CoveredRange], available: &[CoveredRange]) -> Ve
     overlaps
 }
 
+/// 261020-carryover-fixes FR2.1.1: the latest range of `available` (the
+/// covered ranges of a cache header, well formed, earliest first) that
+/// shares at least one millisecond with a range of `wanted`; `None` when no
+/// range does. A file is read up to the end of this range and no further.
+pub fn last_overlapping_range(
+    wanted: &[CoveredRange],
+    available: &[CoveredRange],
+) -> Option<CoveredRange> {
+    available.iter().rev().copied().find(|range| {
+        wanted
+            .iter()
+            .any(|part| part.start_ms <= range.end_ms && range.start_ms <= part.end_ms)
+    })
+}
+
 /// `ranges` earliest first with every overlapping or adjacent pair joined;
 /// reversed ranges are dropped.
 fn joined(ranges: &[CoveredRange]) -> Vec<CoveredRange> {
@@ -599,6 +614,22 @@ impl EventCounter {
         let index = self.ranges.iter().position(|covered| *covered == range);
         let counted = index.and_then(|index| self.by_range.get(index));
         let expected = index.and_then(|index| self.expected_by_range.get(index));
+        match (counted, expected) {
+            (Some(counted), Some(expected)) if counted == expected => Ok(()),
+            _ => Err(Corruption::CountMismatch),
+        }
+    }
+
+    /// After reading every event up to the end of `last` (a covered range of
+    /// the header), 261020-carryover-fixes FR2.1.2: as many events in `last`
+    /// and in every range before it as the header says. The ranges after
+    /// `last` were not read and are not checked.
+    pub fn verify_through(&self, last: CoveredRange) -> Result<(), Corruption> {
+        let Some(index) = self.ranges.iter().position(|covered| *covered == last) else {
+            return Err(Corruption::CountMismatch);
+        };
+        let counted = self.by_range.get(..=index);
+        let expected = self.expected_by_range.get(..=index);
         match (counted, expected) {
             (Some(counted), Some(expected)) if counted == expected => Ok(()),
             _ => Err(Corruption::CountMismatch),
@@ -1351,6 +1382,101 @@ mod tests {
                 range(390, 390)
             ],
             "several ranges on both sides, one millisecond included"
+        );
+    }
+
+    // ---- 261020-carryover-fixes FR2.1: where reading the overlaps stops ----
+
+    #[test]
+    fn no_overlapping_range_means_nothing_to_read() {
+        let covered = [range(100, 199), range(300, 399)];
+        assert_eq!(last_overlapping_range(&[range(200, 299)], &covered), None);
+        assert_eq!(last_overlapping_range(&[], &covered), None);
+        assert_eq!(last_overlapping_range(&[range(0, 999)], &[]), None);
+    }
+
+    #[test]
+    fn reading_stops_after_the_first_range_when_only_it_overlaps() {
+        let covered = [range(100, 199), range(300, 399), range(500, 599)];
+        assert_eq!(
+            last_overlapping_range(&[range(0, 150)], &covered),
+            Some(range(100, 199))
+        );
+    }
+
+    #[test]
+    fn reading_stops_after_the_last_of_several_overlapping_ranges() {
+        let covered = [range(100, 199), range(300, 399), range(500, 599)];
+        assert_eq!(
+            last_overlapping_range(&[range(350, 550)], &covered),
+            Some(range(500, 599)),
+            "the second and the third"
+        );
+        assert_eq!(
+            last_overlapping_range(&[range(500, 510), range(120, 130)], &covered),
+            Some(range(500, 599)),
+            "wanted parts in any order"
+        );
+    }
+
+    #[test]
+    fn one_shared_millisecond_at_the_border_is_an_overlap() {
+        let covered = [range(100, 199), range(300, 399)];
+        assert_eq!(
+            last_overlapping_range(&[range(199, 299)], &covered),
+            Some(range(100, 199))
+        );
+        assert_eq!(
+            last_overlapping_range(&[range(200, 300)], &covered),
+            Some(range(300, 399))
+        );
+    }
+
+    #[test]
+    fn the_counts_up_to_the_last_range_read_match_the_header() {
+        let header = counted_header(
+            vec![range(100, 199), range(300, 399), range(500, 599)],
+            vec![2, 1, 1],
+        );
+        let mut counter = EventCounter::new(&header);
+        [
+            cached(100, "a", 0),
+            cached(150, "b", 0),
+            cached(300, "a", 1),
+        ]
+        .iter()
+        .for_each(|event| counter.count(event));
+        assert_eq!(counter.verify_through(range(100, 199)), Ok(()));
+        assert_eq!(
+            counter.verify_through(range(300, 399)),
+            Ok(()),
+            "the first two ranges were read whole"
+        );
+    }
+
+    #[test]
+    fn a_range_before_the_last_one_read_that_falls_short_is_broken() {
+        let header = counted_header(vec![range(100, 199), range(300, 399)], vec![2, 1]);
+        let mut counter = EventCounter::new(&header);
+        // One event of the first range is missing.
+        [cached(100, "a", 0), cached(300, "a", 1)]
+            .iter()
+            .for_each(|event| counter.count(event));
+        assert_eq!(
+            counter.verify_through(range(300, 399)),
+            Err(Corruption::CountMismatch),
+            "the last range is whole but the first is not"
+        );
+    }
+
+    #[test]
+    fn a_last_range_that_is_not_in_the_header_is_broken() {
+        let header = counted_header(vec![range(100, 199)], vec![0]);
+        let counter = EventCounter::new(&header);
+        assert_eq!(counter.verify_through(range(100, 199)), Ok(()));
+        assert_eq!(
+            counter.verify_through(range(100, 150)),
+            Err(Corruption::CountMismatch)
         );
     }
 

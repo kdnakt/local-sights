@@ -150,8 +150,8 @@ describe("App", () => {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
     }
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, holdingsEpoch, offset, limit) =>
-      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, holdingsEpoch),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId),
     );
   });
 
@@ -399,7 +399,8 @@ describe("App", () => {
     await user.click(screen.getByRole("menuitem", { name: "prod" }));
     expect(api.selectProfile).toHaveBeenCalledWith({ kind: "Named", profileName: "prod" });
     await user.click(dropdown("top-bar-region"));
-    await user.click(screen.getByRole("menuitem", { name: "us-east-1" }));
+    // 261020-carryover-fixes FR5: a filterable Select, each region with its name.
+    await user.click(screen.getByRole("option", { name: "us-east-1 US East (N. Virginia)" }));
     expect(api.selectRegion).toHaveBeenCalledWith("us-east-1");
     await user.type(screen.getByRole("searchbox", { name: "Find log groups" }), "w");
     expect(api.updateLogGroupFilter).toHaveBeenCalledWith("w");
@@ -1066,13 +1067,30 @@ describe("App", () => {
     ).toBeTruthy();
 
     push(cancelledView({ cancelNotice: null, phase: "Idle", lastJob: null }));
-    expect(screen.queryByTestId("cancel-notice")).not.toBeInTheDocument();
+    // 261020-carryover-fixes FR4.2: the status region stays, emptied.
+    expect(screen.getByTestId("cancel-notice")).toBe(notice);
+    expect(notice).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("cancel-notice-text")).not.toBeInTheDocument();
+  });
+
+  it("has the cancel notice's status region before the cancel and fills that same region (261020-carryover-fixes FR4.2)", async () => {
+    render(<App locale="en" />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
+    const region = screen.getByTestId("cancel-notice");
+    expect(region).toHaveAttribute("role", "status");
+    expect(region).toBeEmptyDOMElement();
+    push(cancelledView());
+    expect(screen.getByTestId("cancel-notice")).toBe(region);
+    expect(within(region).getByTestId("cancel-notice-text")).toHaveTextContent(
+      "Fetch cancelled. 13 streams were not finished, so some logs are missing.",
+    );
   });
 
   it("keeps the fetched rows filterable after a cancel (NFR5.5)", async () => {
     vi.mocked(api.getSession).mockResolvedValue(cancelledView());
     render(<App locale="en" />);
-    await screen.findByTestId("cancel-notice");
+    await screen.findByTestId("cancel-notice-text");
     const input = logFilter();
     expect(input).toBeEnabled();
     vi.useFakeTimers();

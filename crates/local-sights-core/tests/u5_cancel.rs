@@ -142,6 +142,40 @@ async fn fetch_and_stop(
     }
 }
 
+/// Runs one fetch whose stop (`reason`) was sent before it started
+/// (261020-carryover-fixes FR1.1, OQ1). `run_fetch_with_cache` does not look
+/// at the stop before the cache lookup answers, so a stop sent beforehand
+/// is, for the fetch, a stop that arrived while the cache was looked up and
+/// before it answered. The order is then fixed by the test itself, not by
+/// the clock or by how fast the lookup's blocking thread runs.
+async fn fetch_already_stopped(
+    gateway: &FakeGateway,
+    timeline: &Arc<Mutex<EventTimeline>>,
+    cache: Option<&LogCache>,
+    reason: StopReason,
+) -> (FetchJob, RecordingSink) {
+    let (handle, signal) = stop_pair();
+    handle.stop(reason);
+    let policy = RetryPolicy::default();
+    let jitter = FixedJitter(0.0);
+    let retrier = Retrier::new(&policy, &jitter, &signal);
+    let mut sink = RecordingSink::default();
+    let fetch = validated();
+    let fetching = run_fetch_with_cache(
+        gateway,
+        &fetch,
+        timeline,
+        &retrier,
+        cache,
+        A_DAY_LATER,
+        &mut sink,
+    );
+    let job = tokio::time::timeout(NEVER, fetching)
+        .await
+        .expect("a fetch stopped beforehand ends");
+    (job, sink)
+}
+
 fn ending(run: &Run) -> Ending {
     run.sink.ending.expect("the fetch finished")
 }
@@ -514,6 +548,13 @@ fn cached(timestamp: i64) -> CachedEvent {
 /// NFR6.19: a cancel that is already there when the cache answers: a hit
 /// is shown whole and Completed; a miss is cancelled before listing,
 /// without any call.
+///
+/// The cancel is sent before the fetch starts (`fetch_already_stopped`,
+/// 261020-carryover-fixes FR1.1). The lookup runs on a real blocking
+/// thread, so a cancel sent from the paused clock (even after
+/// `Duration::ZERO`) could come after the lookup had answered; a miss then
+/// went on to the listing and the unscripted fake failed the test. Sent
+/// beforehand, the cancel is always there before the lookup answers.
 #[tokio::test(start_paused = true)]
 async fn a_cancel_during_the_cache_lookup_completes_a_hit_and_cancels_a_miss() {
     let dir = tempfile::tempdir().unwrap();
@@ -529,31 +570,20 @@ async fn a_cancel_during_the_cache_lookup_completes_a_hit_and_cancels_a_miss() {
         .unwrap();
     let gateway = FakeGateway::default();
     let timeline = Arc::new(Mutex::new(EventTimeline::new()));
-    let hit = fetch_and_stop(
-        &gateway,
-        &timeline,
-        Some(&cache),
-        Duration::ZERO,
-        &[StopReason::Cancel],
-    )
-    .await;
-    assert_eq!(hit.job.status, JobStatus::Completed);
-    assert!(hit.job.served_from_cache);
-    assert_eq!(hit.job.event_count, 2);
+    let (hit, _) =
+        fetch_already_stopped(&gateway, &timeline, Some(&cache), StopReason::Cancel).await;
+    assert_eq!(hit.status, JobStatus::Completed);
+    assert!(hit.served_from_cache);
+    assert_eq!(hit.event_count, 2);
     assert_eq!(held(&timeline), 2);
 
     let empty = tempfile::tempdir().unwrap();
     let no_cache = LogCache::new(empty.path().join("cache"));
-    let miss = fetch_and_stop(
-        &gateway,
-        &timeline,
-        Some(&no_cache),
-        Duration::ZERO,
-        &[StopReason::Cancel],
-    )
-    .await;
-    assert_eq!(miss.job.status, JobStatus::Cancelled);
-    assert!(miss.job.cancelled_before_listing);
+    let (miss, _) =
+        fetch_already_stopped(&gateway, &timeline, Some(&no_cache), StopReason::Cancel).await;
+    assert_eq!(miss.status, JobStatus::Cancelled);
+    assert!(miss.cancelled_before_listing);
+    assert_eq!(miss.event_count, 0);
     assert!(gateway.api_log().is_empty(), "no AWS API was called");
     assert_eq!(held(&timeline), 0);
 }

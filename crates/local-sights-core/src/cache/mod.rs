@@ -40,7 +40,7 @@ use std::sync::{Arc, Mutex};
 use plan::{
     CacheHeader, CacheKey, CachedEvent, Corruption, CoveredRange, EventCheck, EventCounter,
     FORMAT_VERSION, FileNameKind, classify_file_name, count_events_by_range, find_covering_range,
-    merge_ranges, overlap_ranges, replace_events_in_range, validate_header,
+    last_overlapping_range, merge_ranges, overlap_ranges, replace_events_in_range, validate_header,
 };
 
 /// Permission bits of the cache and settings folders: owner only (BR3.6).
@@ -271,6 +271,10 @@ enum EventSelection {
         end_ms: i64,
         covering: CoveredRange,
     },
+    /// Every event up to the end of the covered range `last`; reading stops
+    /// after `last`, and the counts of `last` and of every range before it
+    /// are compared with the header (261020-carryover-fixes FR2.1).
+    Through { last: CoveredRange },
 }
 
 impl LogCache {
@@ -352,19 +356,24 @@ impl LogCache {
     /// part of a covered range is used, and the parts may lie in several
     /// covered ranges.
     ///
-    /// When some part overlaps, the whole file is read with the checks of a
-    /// write (the header's shape, the order and place of every event, the
-    /// counts of every range and of the file, R-06) and only then the events
-    /// of the parts are kept; when nothing overlaps only the header is read.
-    /// A broken file is removed and an unreadable one kept, as by
+    /// When some part overlaps, the file is read up to the end of the latest
+    /// covered range that overlaps (261020-carryover-fixes FR2.1.1) and no
+    /// further. What is read gets the checks of a write: the header's shape,
+    /// the order and place of every event read, and the counts of that range
+    /// and of every range before it (R-06, FR2.1.2); the ranges after it are
+    /// neither read nor checked. Only then the events of the parts are kept,
+    /// so the result is the same as reading the whole file (FR2.1.5). When
+    /// nothing overlaps only the header is read (FR2.1.3). A broken file (in
+    /// the part read) is removed and an unreadable one kept, as by
     /// [`LogCache::lookup`]; either way the caller fetches those parts from
-    /// AWS. Removes nothing else and writes nothing.
+    /// AWS (FR2.1.4). Removes nothing else and writes nothing.
     pub fn read_overlaps(&self, key: &CacheKey, wanted: &[CoveredRange]) -> CacheOverlap {
         let path = self.entry_path(key);
         let mut overlaps = Vec::new();
         let read = read_entry(&path, key, |header| {
             overlaps = overlap_ranges(wanted, &header.covered_ranges);
-            (!overlaps.is_empty()).then_some(EventSelection::All)
+            last_overlapping_range(wanted, &header.covered_ranges)
+                .map(|last| EventSelection::Through { last })
         });
         match read {
             ReadOutcome::Entry(EntryRead::Missing) => CacheOverlap::Missing,
@@ -678,11 +687,19 @@ fn read_events(
                     events.push(event);
                 }
             }
+            EventSelection::Through { last } => {
+                if event.timestamp > last.end_ms {
+                    break;
+                }
+                counter.count(&event);
+                events.push(event);
+            }
         }
     }
     let counted = match selection {
         EventSelection::All => counter.verify_all(),
         EventSelection::Range { covering, .. } => counter.verify_range(covering),
+        EventSelection::Through { last } => counter.verify_through(last),
     };
     counted.map_err(LineError::Corrupt)?;
     Ok(events)
@@ -1300,8 +1317,9 @@ mod tests {
 
     #[test]
     fn a_broken_file_is_removed_by_an_overlap_read() {
-        // R-06: the whole file is checked, so a file cut at a line boundary
-        // is broken even when the wanted part lies before the cut.
+        // R-06: the whole overlapping covered range is checked, so a file cut
+        // at a line boundary inside it is broken even when the wanted part
+        // lies before the cut (261020-carryover-fixes FR2.1.2).
         let (_dir, cache) = written();
         let path = cache.entry_path(&key());
         let text = fs::read_to_string(&path).unwrap();
@@ -1344,6 +1362,131 @@ mod tests {
             CacheOverlap::Corrupt(Corruption::UnknownVersion)
         );
         assert!(!path.exists());
+    }
+
+    // ---- 261020-carryover-fixes FR2.1: an overlap read stops early ------
+
+    /// A cache with three covered ranges: `[100, 199]` holding 100 and 150,
+    /// `[300, 399]` holding 300 and 350, `[500, 599]` holding 500.
+    fn three_ranges() -> (tempfile::TempDir, LogCache) {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = LogCache::new(dir.path().join("cache"));
+        let writes = [
+            (
+                range(100, 199),
+                vec![cached(100, "a", 0), cached(150, "a", 1)],
+            ),
+            (
+                range(300, 399),
+                vec![cached(300, "b", 0), cached(350, "b", 1)],
+            ),
+            (range(500, 599), vec![cached(500, "c", 0)]),
+        ];
+        for (covered, events) in writes {
+            cache.write(&key(), covered, events).unwrap();
+        }
+        (dir, cache)
+    }
+
+    /// Replaces the event line of `timestamp` in the cache file of `key()`
+    /// with `replacement` (`None`: removes it).
+    fn replace_event_line(cache: &LogCache, timestamp: i64, replacement: Option<&str>) {
+        let path = cache.entry_path(&key());
+        let text = fs::read_to_string(&path).unwrap();
+        let needle = format!("\"timestamp\":{timestamp},");
+        let mut found = false;
+        let lines: Vec<&str> = text
+            .lines()
+            .filter_map(|line| {
+                if line.contains(&needle) {
+                    found = true;
+                    replacement
+                } else {
+                    Some(line)
+                }
+            })
+            .collect();
+        assert!(found, "the file holds an event at {timestamp}");
+        fs::write(&path, lines.join("\n") + "\n").unwrap();
+    }
+
+    #[test]
+    fn an_overlap_with_the_first_range_only_gives_its_events_only() {
+        let (_dir, cache) = three_ranges();
+        assert_eq!(
+            overlap(&cache.read_overlaps(&key(), &[range(50, 150)])),
+            (vec![range(100, 150)], vec![100, 150])
+        );
+    }
+
+    #[test]
+    fn lines_after_the_last_overlapping_range_are_not_read() {
+        // A broken line of the second range and a missing last line (the
+        // third range falls short of its count) go unnoticed: neither is
+        // read (FR2.1.1, FR2.1.2).
+        let (_dir, cache) = three_ranges();
+        replace_event_line(&cache, 350, Some("not a cached event"));
+        replace_event_line(&cache, 500, None);
+        assert_eq!(
+            overlap(&cache.read_overlaps(&key(), &[range(100, 199)])),
+            (vec![range(100, 199)], vec![100, 150])
+        );
+        assert!(cache.entry_path(&key()).exists(), "not taken as broken");
+        // Reading on into the second range finds the broken line.
+        assert_eq!(
+            cache.read_overlaps(&key(), &[range(100, 300)]),
+            CacheOverlap::Corrupt(Corruption::Unparsable)
+        );
+        assert!(!cache.entry_path(&key()).exists(), "removed");
+    }
+
+    #[test]
+    fn a_broken_line_in_the_part_read_still_removes_the_file() {
+        let (_dir, cache) = three_ranges();
+        replace_event_line(&cache, 150, Some("{\"timestamp\":"));
+        assert_eq!(
+            cache.read_overlaps(&key(), &[range(100, 120)]),
+            CacheOverlap::Corrupt(Corruption::Unparsable)
+        );
+        assert!(!cache.entry_path(&key()).exists(), "removed (FR2.1.4)");
+
+        let (_dir, cache) = three_ranges();
+        replace_event_line(&cache, 100, None);
+        assert_eq!(
+            cache.read_overlaps(&key(), &[range(300, 310)]),
+            CacheOverlap::Corrupt(Corruption::CountMismatch),
+            "a range before the last one read falls short of its count"
+        );
+        assert!(!cache.entry_path(&key()).exists());
+    }
+
+    #[test]
+    fn an_overlap_across_two_ranges_is_the_same_as_reading_the_whole_file() {
+        let (_dir, cache) = three_ranges();
+        let wanted = [range(350, 550)];
+        let read = cache.read_overlaps(&key(), &wanted);
+        assert_eq!(
+            overlap(&read),
+            (vec![range(350, 399), range(500, 550)], vec![350, 500])
+        );
+        // FR2.1.5: the events of a full read, kept the same way.
+        let whole = match read_entry(&cache.entry_path(&key()), &key(), |_| {
+            Some(EventSelection::All)
+        }) {
+            ReadOutcome::Entry(EntryRead::Found(header, events)) => {
+                let parts = overlap_ranges(&wanted, &header.covered_ranges);
+                let kept: Vec<CachedEvent> = events
+                    .into_iter()
+                    .filter(|event| within(&parts, event.timestamp))
+                    .collect();
+                CacheOverlap::Found {
+                    ranges: parts,
+                    events: kept,
+                }
+            }
+            _ => panic!("the whole file reads back"),
+        };
+        assert_eq!(read, whole);
     }
 
     #[test]

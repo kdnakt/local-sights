@@ -88,10 +88,10 @@ function synced(insights: InsightsView, drafts: Record<Side, DateTimeParts>, que
  * reason why not is shown beside it, except while running. A short time is
  * completed before a run, as on Log Management, and the run starts once the
  * core holds what the fields show. While running, the fields cannot be
- * changed and the query can only be read (U1:BR2.4). The results container
- * shows each state in words (U1:BR2.4-BR2.7, BR6.1): no results yet, the
- * fetch's and the evaluation's progress, no matching events, the rows, a
- * warning with the failed streams, the fetch's error, the cancel. A reading
+ * changed and the query can only be read (U1:BR2.4). The page shows each
+ * state in words (U1:BR2.4-BR2.7, BR6.1): no results yet, the fetch's and
+ * the evaluation's progress, no matching events, the rows, a warning with
+ * the failed streams, the fetch's error, the cancel. A reading
  * problem is written under the query field with its line and column, and
  * the field takes the focus with the cursor there (U1:BR3.9); the previous
  * result stays meanwhile.
@@ -111,10 +111,15 @@ function synced(insights: InsightsView, drafts: Record<Side, DateTimeParts>, que
  * Since 261017-insights-query U3 up to 50 log groups are chosen (U3:BR4.1).
  * While a run fetches, the progress says which log group of how many is
  * fetched, its streams and events, how many log groups failed, and when the
- * cache is read (U3:BR2.7). The previous result stays shown, under the
- * progress, until the new one replaces it (U3:BR3.4). A failed fetch names
- * every log group that failed, and the failed streams are named "log group
- * / stream" (U3:BR2.6).
+ * cache is read (U3:BR2.7). The previous result stays shown until the new
+ * one replaces it (U3:BR3.4). A failed fetch names every log group that
+ * failed, and the failed streams are named "log group / stream" (U3:BR2.6).
+ *
+ * Since 261020-carryover-fixes FR4.4 the run's progress sits in the query
+ * container just below the run row, since it comes from [Run query], and the
+ * results container holds only the heading, the result (the previous one
+ * while a run goes) and the words for no result; while a run goes with no
+ * previous result the results container is empty (A9).
  */
 export function LogAnalyticsPage({
   session,
@@ -371,6 +376,10 @@ export function LogAnalyticsPage({
               onCancel={onCancel}
               onExample={chooseExample}
             />
+            {/* 261020-carryover-fixes FR4.4.1, FR4.4.4: the run's progress belongs
+                to the run, so it sits just below the run row, and only while
+                the run fetches or evaluates. */}
+            {running && <RunProgress insights={insights} t={t} />}
           </SpaceBetween>
         </Container>
         <ResultArea
@@ -520,7 +529,12 @@ function resultCount(result: ResultSummary, t: Translate): string {
     : t("insights.results.count", { shown: result.rowCount, matched: result.matchedCount });
 }
 
-/** The notices above the results and the results container (U1:BR2.4-BR2.7, BR6.1). */
+/**
+ * The notices above the results and the results container (U1:BR2.4-BR2.7,
+ * BR6.1). Since 261020-carryover-fixes FR4.4.2 the container holds only the
+ * heading with its count, the result (the previous one while a run goes) and
+ * the words for no result; the run's progress is in the query container.
+ */
 function ResultArea({ session, t, onError, onShowFailures }: ResultAreaProps) {
   const insights = session.insights;
   const result = insights.result;
@@ -617,18 +631,14 @@ function ResultBody({
         />
       )
     ) : null;
-  if (running) {
-    return (
-      <SpaceBetween size="s">
-        <RunProgress insights={insights} t={t} />
-        {rows}
-      </SpaceBetween>
-    );
-  }
   if (rows !== null) {
     return rows;
   }
+  // 261020-carryover-fixes FR4.4.2 (A9): while a run goes with no previous
+  // result the body is empty; "No results yet." would not fit a run, and the
+  // progress is in the query container.
   if (
+    running ||
     insights.phase === "Cancelled" ||
     insights.phase === "FetchFailed" ||
     insights.phase === "EvaluationFailed"
@@ -641,7 +651,9 @@ function ResultBody({
 /**
  * The progress of a run (U1:BR2.4, U3:BR2.7): the cache being read, which log
  * group of how many is fetched with its streams and events, how many log groups
- * failed so far, then the evaluation's progress.
+ * failed so far, then the evaluation's progress. Shown in the query container
+ * just below the run row, never in the results container (261020-carryover-fixes
+ * FR4.4.1, FR4.4.3: only its place changed, not its words, role or test id).
  */
 function RunProgress({ insights, t }: { insights: InsightsView; t: Translate }) {
   const progress = insights.progress;

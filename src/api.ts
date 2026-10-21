@@ -298,13 +298,12 @@ export interface InsightsProgress {
 }
 
 /**
- * The shown result; its rows are read with `runId` (U3:BR3.2: the core keeps copies of
- * them, so they stay readable while the next run fetches, U3:BR3.4). `holdingsEpoch`
- * is sent with the requests and comes back unchanged.
+ * The shown result; its rows are read with `runId` alone (U3:BR3.2: the core keeps
+ * copies of them, so they stay readable while the next run fetches, U3:BR3.4;
+ * 261020-carryover-fixes FR2.3.3).
  */
 export interface ResultSummary {
   runId: number;
-  holdingsEpoch: number;
   /** Result rows shown (U2:BR7.2). */
   rowCount: number;
   evaluatedCount: number;
@@ -371,7 +370,6 @@ export interface QueryDetailField {
 /** The fields of one opened result row (U2:BR7.3). */
 export interface QueryRowDetail {
   runId: number;
-  holdingsEpoch: number;
   index: number;
   /** `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; empty when stale. */
   fields: QueryDetailField[];
@@ -389,9 +387,8 @@ export interface CompletionCandidate {
 /** The result rows of one viewport request (U1:BR6.4). */
 export interface QueryRowWindow {
   runId: number;
-  holdingsEpoch: number;
   offset: number;
-  /** Empty when the run or the epoch is not the shown result's. */
+  /** Empty when the run is not the shown result's. */
   rows: QueryRow[];
   totalCount: number;
 }
@@ -844,20 +841,15 @@ export function cancelQuery(): Promise<void> {
 /** At most `limit` result rows from `offset` of the shown result (U1:BR6.4). */
 export function getQueryRows(
   runId: number,
-  holdingsEpoch: number,
   offset: number,
   limit: number,
 ): Promise<QueryRowWindow> {
-  return invoke<QueryRowWindow>("get_query_rows", { runId, holdingsEpoch, offset, limit });
+  return invoke<QueryRowWindow>("get_query_rows", { runId, offset, limit });
 }
 
 /** The fields of result row `index` of the shown result (U2:BR7.3). */
-export function getQueryRowDetail(
-  runId: number,
-  holdingsEpoch: number,
-  index: number,
-): Promise<QueryRowDetail> {
-  return invoke<QueryRowDetail>("get_query_row_detail", { runId, holdingsEpoch, index });
+export function getQueryRowDetail(runId: number, index: number): Promise<QueryRowDetail> {
+  return invoke<QueryRowDetail>("get_query_row_detail", { runId, index });
 }
 
 /** The words and field names the query field completes (U2:BR9.1, Should). */

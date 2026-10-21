@@ -27,6 +27,8 @@
 
 - クエリの速さの合否の数値は、利用者の答え（作る段階で決める）に従って要件では決めなかった（NFR1） (learned 2026-10-17) <!-- cid:261017-insights-query:requirements-analysis:179cee86658388289375b911f1f578f4a35afddd4c4e72233a29597869858202 -->
 
+- 依頼 (4) の権限のテストの固定値は依頼文の 26 ではなく今は 32 だったため、数の固定そのものをやめて 3 か所の一覧の一致だけを確かめることにした（Q8 A）。 (learned 2026-10-20) <!-- cid:261020-carryover-fixes:requirements-analysis:9250f691f870af3ed67b8591162fc45d99ac9c4b955ce0ea7010e62c2d5b62bd -->
+
 ## Guard Policy
 
 <!-- Project-specific. Mode: strict, relaxed, or off. Strict here holds for every intent and cannot be changed from chat. A section under the retired Change Control heading, written by an earlier release, is still read. -->
@@ -79,6 +81,8 @@ None. (affirmed 2026-10-11)
 None. (affirmed 2026-10-12)
 
 None. (affirmed 2026-10-15)
+
+None. (affirmed 2026-10-20)
 
 ## Corrections
 

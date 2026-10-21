@@ -47,6 +47,7 @@
 1. `useElapsed` の戻り値は「表示するミリ秒か null」ではなく `{ ms, running } | null` にした。終わりの後に遅れて届いた running を無視したときは、受け取った `elapsed.running` が true でも時計は止まっているため、`aria-hidden` は実際に止まっているかどうかで決める
 2. App のテストで getSession から時計が始まることは実時間で確かめる（5,999 ms を受け取り 00:06 になるのを待つ）。描画の遅さで 00:07 まで進むことがあるため、「合成の後も秒が減らない」という比べ方にした
 3. 「合成では合わせ直さない」は、同じ elapsed で合わせ直しても `max` で値が変わらず画面からは区別できないため、`withProgress`・`withFilter`・`mergeSessionView` が `elapsed` を同じオブジェクトのまま引き継ぐことと、表示が戻らないことの 2 つで確かめた
+4. （261020-carryover-fixes FR3.3 で追記）`nextAnchor`（`src/elapsed.ts`）は取得の番号を「等しいかどうか」だけで比べ、どちらが新しいかは見ない。そのため起動直後に古い `getSession` の応答が新しい表示より遅れて届くと、別の番号として新しい取得と受け取られ、経過時間が一度だけ戻ることがある。遅れた応答にだけ起きることで、振る舞いは変えず、関数の説明に書いた
 
 ## Assumptions & Open Questions
 

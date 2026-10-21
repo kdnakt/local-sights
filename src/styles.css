@@ -55,6 +55,16 @@ body {
   gap: var(--ls-space-xs);
 }
 
+/*
+ * 261020-carryover-fixes FR5.2, A6: the region Select, wide enough for a
+ * code and its name ("ap-southeast-6 アジアパシフィック (ニュージーランド)"
+ * wraps nothing at this width), close to the dropdown buttons beside it.
+ */
+.top-bar-region {
+  width: 20rem;
+  max-width: 40vw;
+}
+
 .app-notices {
   padding: var(--ls-space-xs) var(--ls-space-m) 0;
 }
@@ -244,6 +254,16 @@ body {
   display: flex;
   align-items: center;
   gap: var(--ls-space-xxs);
+}
+
+/*
+ * 261020-carryover-fixes FR4.2: the cancel notice's status region stays on
+ * the screen while empty, so a notice put into it later is read out. Empty,
+ * it is taken out of the column's flex layout, so the column's gap does not
+ * leave a blank line above the log list.
+ */
+.cancel-notice:empty {
+  position: absolute;
 }
 
 /*

@@ -6,7 +6,7 @@
 
 | 部品 | ファイル | 内容 |
 |------|----------|------|
-| QueryPlan | `crates/local-sights-core/src/query/plan.rs` | 命令の並び（`Command`：Filter・Fields・Sort・Limit）。条件の木のどの部分にも `Span`（行・列・長さ）を持たせた（BR10.3）。JSON の項目 `FieldRef::Json(JsonPath)`。`columns()`（BR3.2、BR3.3）、`has_row_limit()`（`limit 0` は絞りなし、R-04）。`MAX_LIMIT`＝100,000、`DEFAULT_RESULT_LIMIT`＝10,000 |
+| QueryPlan | `crates/local-sights-core/src/query/plan.rs` | 命令の並び（`Command`：Filter・Fields・Sort・Limit）。条件の木のどの部分にも `Span`（行・列・長さ）を持たせた（BR10.3）。JSON の項目 `FieldRef::Json(JsonPath)`。`columns()`（BR3.2、BR3.3）、`has_row_limit()`（`limit 0` は 0 行、Loop-back 3 の p08）。`MAX_LIMIT`＝100,000、`DEFAULT_RESULT_LIMIT`＝10,000 |
 | QueryParser | `crates/local-sights-core/src/query/parser.rs` | fields・filter・sort・limit の 4 つ（BR2.1）。`not` は `(` の前だけ、項目の直後の `not like`・`not in` は演算子（BR2.4、R-07）。and > or（BR2.5）。`a.b`・バッククォート（BR1.3）、`a.0` は Unsupported（R-06）。limit の 0〜100,000、それ以外は Syntax（BR5.1）。`limit any`・`fields … as`・`display` などは Unsupported。メッセージの鍵は 31 → 41 個（BR2.2） |
 | EventFieldReader | `crates/local-sights-core/src/query/fields.rs` | JSON のオブジェクトとして読めるメッセージから道筋で値を取り出す（BR1.1〜BR1.4）。`EventFields` は 1 つのイベントの JSON を 1 回の当てはめの中で 1 回だけ読む（R-02）。名前の収集は先頭 10,000 件から最大 500 個、名前の順、`.` などを含むキーはバッククォートつき（BR1.7、R-09） |
 | 自然順 | `crates/local-sights-core/src/query/natural.rs`（新規） | AWS の資料の自然順（BR4.2）。数の側・数でない側は R-05 のとおり。ない値はいちばん小さい（BR4.3） |

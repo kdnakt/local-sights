@@ -60,8 +60,10 @@ function cellText(row: QueryRow | null, index: number, name: string): string {
  * chosen zone with the zone in its heading, `@message` by its first line,
  * other values as they are, a cell without a value empty. Only the rows that
  * cover the viewport are read, with `get_query_rows` and the result's run
- * number and holdings epoch; an answer for another result or an older
- * request is dropped, and the screen waits for the newer state. The row
+ * number, which alone tells one result from another (261020-carryover-fixes
+ * FR2.3.3: a connection change clears the result, so one run number never
+ * names two holdings); an answer for another run or an older request is
+ * dropped, and the screen waits for the newer state. The row
  * positions come from the Log Management list's layout (`rowLayout.ts`).
  * ▶ or Enter / Space on the selected row opens it below its line with every
  * field and value, read with `get_query_row_detail`: the four fixed fields,
@@ -108,17 +110,16 @@ export function QueryResultTable({
     return () => observer.disconnect();
   }, []);
 
-  const { runId, holdingsEpoch } = result;
+  const { runId } = result;
   useEffect(() => {
     latestRequest.current += 1;
     const request = latestRequest.current;
     if (range.count <= 0) {
       return;
     }
-    getQueryRows(runId, holdingsEpoch, range.first, range.count).then(
+    getQueryRows(runId, range.first, range.count).then(
       (window) => {
-        const current = window.runId === runId && window.holdingsEpoch === holdingsEpoch;
-        if (request === latestRequest.current && current) {
+        if (request === latestRequest.current && window.runId === runId) {
           setAnswer(window);
         }
       },
@@ -128,10 +129,10 @@ export function QueryResultTable({
         }
       },
     );
-  }, [runId, holdingsEpoch, range.first, range.count, timeZone, onError]);
+  }, [runId, range.first, range.count, timeZone, onError]);
 
   // U2:BR7.3: an opened row's fields, read once per result, row and zone.
-  const detailKey = (position: number) => `${runId}:${holdingsEpoch}:${timeZone}:${position}`;
+  const detailKey = (position: number) => `${runId}:${timeZone}:${position}`;
   const requested = useRef(new Set<string>());
   const mounted = useRef(true);
   useEffect(() => {
@@ -142,15 +143,14 @@ export function QueryResultTable({
   }, []);
   useEffect(() => {
     for (const position of opened) {
-      const key = `${runId}:${holdingsEpoch}:${timeZone}:${position}`;
+      const key = `${runId}:${timeZone}:${position}`;
       if (requested.current.has(key)) {
         continue;
       }
       requested.current.add(key);
-      getQueryRowDetail(runId, holdingsEpoch, position).then(
+      getQueryRowDetail(runId, position).then(
         (detail) => {
-          const current = detail.runId === runId && detail.holdingsEpoch === holdingsEpoch;
-          if (mounted.current && current) {
+          if (mounted.current && detail.runId === runId) {
             setDetails((previous) => new Map(previous).set(key, detail));
           }
         },
@@ -162,10 +162,10 @@ export function QueryResultTable({
         },
       );
     }
-  }, [opened, runId, holdingsEpoch, timeZone, onError]);
+  }, [opened, runId, timeZone, onError]);
 
   const rowAt = (position: number): QueryRow | null => {
-    if (answer === null || answer.runId !== runId || answer.holdingsEpoch !== holdingsEpoch) {
+    if (answer === null || answer.runId !== runId) {
       return null;
     }
     return answer.rows[position - answer.offset] ?? null;

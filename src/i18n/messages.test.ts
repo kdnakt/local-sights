@@ -10,6 +10,7 @@ import type { ApiFailure, FailureKind } from "../api";
 import { connectedView, sessionView } from "../test/fixtures";
 import {
   detectLocale,
+  englishSingular,
   isMessageKey,
   messages,
   timeZoneLabelKey,
@@ -651,6 +652,139 @@ describe("message catalog", () => {
       }
       expect(rest.trim(), container.innerHTML).toBe("");
       unmount();
+    }
+  });
+});
+
+describe("English singular and plural of stream counts (261020-carryover-fixes FR4.1)", () => {
+  type Params = Record<string, string | number>;
+  /** Each key with its deciding count's name and the table's examples. */
+  const cases: {
+    key: string;
+    count: string;
+    params: Params;
+    singular: string;
+    plural: string;
+    zero: string;
+  }[] = [
+    {
+      key: "status.listing",
+      count: "count",
+      params: {},
+      singular: "Listing streams… 1 stream selected so far",
+      plural: "Listing streams… 3 streams selected so far",
+      zero: "Listing streams… 0 streams selected so far",
+    },
+    {
+      key: "status.fetching",
+      count: "planned",
+      params: { count: 5 },
+      singular: "Fetching… 0/1 stream, 5 events so far",
+      plural: "Fetching… 1/3 streams, 5 events so far",
+      zero: "Fetching… 0/0 streams, 5 events so far",
+    },
+    {
+      key: "status.failedStreams",
+      count: "count",
+      params: {},
+      singular: "Failed in 1 stream",
+      plural: "Failed in 2 streams",
+      zero: "Failed in 0 streams",
+    },
+    {
+      key: "cancel.notice.afterListing",
+      count: "n",
+      params: {},
+      singular: "Fetch cancelled. 1 stream was not finished, so some logs are missing.",
+      plural: "Fetch cancelled. 2 streams were not finished, so some logs are missing.",
+      zero: "Fetch cancelled. 0 streams were not finished, so some logs are missing.",
+    },
+    {
+      key: "insights.status.fetching",
+      count: "total",
+      params: { number: 1, groups: 2, events: 5 },
+      singular: "Fetching logs (log group 1 / 2): 0 / 1 stream, 5 events",
+      plural: "Fetching logs (log group 1 / 2): 1 / 3 streams, 5 events",
+      zero: "Fetching logs (log group 1 / 2): 0 / 0 streams, 5 events",
+    },
+    {
+      key: "insights.partial",
+      count: "count",
+      params: {},
+      singular: "Results are based on part of the logs. 1 stream could not be fetched.",
+      plural: "Results are based on part of the logs. 2 streams could not be fetched.",
+      zero: "Results are based on part of the logs. 0 streams could not be fetched.",
+    },
+  ];
+
+  /** The params of a case with the deciding count set (and the done count next to it). */
+  function withCount(
+    { key, count, params }: (typeof cases)[number],
+    value: number | string,
+  ): Params {
+    const numeric = Number(value);
+    const done: Params =
+      key === "status.fetching"
+        ? { finished: numeric === 3 ? 1 : 0 }
+        : key === "insights.status.fetching"
+          ? { done: numeric === 3 ? 1 : 0 }
+          : {};
+    return { ...params, ...done, [count]: value };
+  }
+
+  /** Fills `{name}` with `params`, as `translate` does. */
+  function fill(template: string, params: Params): string {
+    return template.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
+      name in params ? String(params[name]) : placeholder,
+    );
+  }
+
+  it("uses the singular when the deciding count is exactly 1", () => {
+    for (const entry of cases) {
+      expect(translate("en", entry.key, withCount(entry, 1)), entry.key).toBe(entry.singular);
+    }
+  });
+
+  it("uses the plural for 0 and for 2 or more", () => {
+    for (const entry of cases) {
+      const many = entry.key === "status.listing" || entry.key.endsWith("fetching") ? 3 : 2;
+      expect(translate("en", entry.key, withCount(entry, many)), entry.key).toBe(entry.plural);
+      expect(translate("en", entry.key, withCount(entry, 0)), entry.key).toBe(entry.zero);
+    }
+  });
+
+  it("takes a count given as the text 1 as one", () => {
+    expect(translate("en", "status.failedStreams", { count: "1" })).toBe("Failed in 1 stream");
+    expect(translate("en", "status.failedStreams", { count: "12" })).toBe("Failed in 12 streams");
+  });
+
+  it("keeps the texts whose streams are not counted as they are (FR4.1.2)", () => {
+    expect(translate("en", "status.listing", { count: 1 })).toMatch(/^Listing streams… /);
+    expect(translate("en", "insights.status.listing", { number: 1, groups: 1, count: 1 })).toBe(
+      "Fetching logs (log group 1 / 1): listing streams, 1 selected so far",
+    );
+  });
+
+  it("has a well-formed singular table: known keys, a deciding count in the text, the same placeholders (FR4.1.5, NFR6)", () => {
+    const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+    const keys = Object.keys(englishSingular);
+    expect(keys.sort()).toEqual(cases.map((entry) => entry.key).sort());
+    for (const [key, form] of Object.entries(englishSingular)) {
+      expect(isMessageKey(key), key).toBe(true);
+      const plural = messages[key as keyof typeof messages].en;
+      expect(placeholders(plural), key).toContain(form!.count);
+      expect(placeholders(form!.text), key).toEqual(placeholders(plural));
+      expect(form!.text, key).not.toBe(plural);
+    }
+  });
+
+  it("keeps every Japanese text as it is (FR4.1.4)", () => {
+    for (const entry of cases) {
+      for (const value of [0, 1, 2]) {
+        const params = withCount(entry, value);
+        const ja = messages[entry.key as keyof typeof messages].ja;
+        expect(translate("ja", entry.key, params), entry.key).toBe(fill(ja, params));
+      }
     }
   });
 });

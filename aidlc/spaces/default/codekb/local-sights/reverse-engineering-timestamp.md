@@ -2,25 +2,52 @@
 
 ## Run Record
 
-- Date: 2026-10-17
-- Commit: 2760b13b8bc5b6daba36a6c283b3958c974a5a2d
-
-この回は、intent 261017-insights-query（IB-11「Logs Insights 互換のクエリ」）のためのリポジトリ全体の走査し直し（全面走査）である。前回の知識ベース（2026-10-12、コミット `9d08cbf`、intent 261012-parallel-fetch 向け）は古くなっていたため、向きをつかむためだけに読み、9 つの成果物はすべてこの回に読んだコードから書き直した。前回からの主な変化は、取得の高速化（PR #22：同時取得・呼び出しの速さの調整・あきらめの決まりの移動・経過時間・[Cancel]）、Windows 11（x64）対応（PR #23・#24：AWS CLI のジョブオブジェクト、`ShellExecuteW`、NSIS のインストーラ、版 `0.2.0`）、SSO ログインの再試行（PR #21）、行カバレッジ 80% の CI（PR #20）である。
-
-特に詳しく読んだのは、今の絞り込み（`filter.rs`、`log_view.rs`）、タイムライン（`timeline.rs`、`event.rs`）、取得条件とその流れ（`request.rs`、`time_range.rs`、`session.rs` の取得と絞り込みの部分、`coordinator.rs`）、キャッシュ（`cache/`）、Tauri のコマンドとイベントの境界（`src-tauri/src/lib.rs`、`capabilities/default.json`）、画面の絞り込みの欄と一覧（`api.ts`、`App.tsx`、`LogFilterInput.tsx`、`LogTable.tsx`、`useRowWindow.ts`）、OS ごとのコード（`cfg(unix)`／`cfg(windows)`）の位置、テストとカバレッジの設定（`ci.yml`、`vitest.config.ts`）である。それ以外は、モジュールの説明・公開項目の一覧・設定ファイルの単位で全体を押さえた。テスト・ビルド・lint は実行しておらず、AWS にもつないでいない。ビルド出力（`target/`、`dist/`、`node_modules/`、`src-tauri/gen/`）はこの作業場に無く、開いていない。AI-DLC 自身の導入物は対象外とした。
-
-`shallow.paths` は、`./` の中でも説明と公開項目の一覧だけを見た場所の記録である（人が読むためのもので、道具は比べない）。
+- Date: 2026-10-20
+- Commit: 3208713208aaecd256146304c857771017cd7097
+- 走査時の HEAD は `8bb3759`（本作業の AI-DLC 記録を加えただけのコミット）で、コードは `3208713` と同じ。
+- 種類：全面の読み直し（`kind: full`）。既存の codekb（2026-10-17、コミット `2760b13`）は見出しの確認だけに使い、内容は今回のコードから書き直した。
+- 実行したもの：フィンガープリントの mint と check だけ。テスト・ビルド・lint は実行せず、AWS にはつないでいない。
+- 深く読んだ場所と流し読みの場所は `developer-scan.md`（`inception/reverse-engineering/`）の Scan Coverage にある。
 
 ## Scope of Analysis
 
 ```yaml
 scope_version: 1
 kind: full
-intent: insights-query
-fingerprint: 841cd2625f68ca3209ceb262a864c4ba656df9f3
+intent: carryover-fixes
+fingerprint: 849d25c46e5b74b31c5fb96b42a5cc9a3af357d5
 analyzed:
   paths:
     - ./
+    - Cargo.toml
+    - deny.toml
+    - package.json
+    - vitest.config.ts
+    - vite.config.ts
+    - tsconfig.json
+    - eslint.config.js
+    - .gitattributes
+    - .github/workflows/
+    - .github/dependabot.yml
+    - crates/local-sights-core/Cargo.toml
+    - crates/local-sights-core/src/
+    - crates/local-sights-core/tests/u5_cancel.rs
+    - crates/local-sights-core/tests/support/
+    - src-tauri/Cargo.toml
+    - src-tauri/tauri.conf.json
+    - src-tauri/build.rs
+    - src-tauri/capabilities/default.json
+    - src-tauri/src/
+    - src/api.ts
+    - src/App.tsx
+    - src/main.tsx
+    - src/elapsed.ts
+    - src/i18n/messages.ts
+    - src/components/CancelNotice.tsx
+    - src/components/TopBar.tsx
+    - src/commandRegistration.test.ts
+    - README.md
+    - docs/
   components:
     - FetchCoordinator
     - EventFetcher
@@ -45,66 +72,73 @@ analyzed:
     - AppSession
     - ConnectionState
     - ConnectionCatalog
+    - RegionCatalog
     - LogGroupBrowser
     - FetchRequest
     - TimeRangeModel
     - TimeZoneContext
     - DateTimeInput
     - SsoLoginPlanner
+    - InsightsSession
+    - QueryParser
+    - QueryPlan
+    - QueryEvaluator
+    - EventFieldReader
+    - NaturalSort
+    - DateTextResolver
+    - QueryStore
+    - QueryRunner
     - FetchCheck
+    - CompatCheck
     - TauriApp
     - TauriSink
     - SsoCliRunner
     - BrowserOpener
     - ApiBridge
     - AppShell
+    - AppNavigation
+    - TopBar
     - ConditionArea
+    - LogGroupPane
+    - PaneResizer
     - LogFilterInput
+    - LogTable
+    - LogTableCloudscape
+    - ExpandedMessage
     - StatusLine
     - ElapsedTime
     - CancelNotice
     - FetchErrorBanner
+    - ErrorMessage
     - FailureList
-    - LogTable
-    - LogTableCloudscape
-    - ExpandedMessage
-    - TopBar
-    - LogGroupPane
-    - PaneResizer
     - SettingsDialog
     - CloseConfirmDialog
     - ConfirmDialog
+    - SsoLoginButton
     - SsoLoginModal
+    - LogAnalyticsPage
+    - QueryEditor
+    - QueryResultTable
+    - LogGroupMultiselect
+    - AnalyticsHelpers
+    - DateTimeHelpers
     - ScreenHooks
     - MessageCatalog
     - PerfRowsHarness
     - FakeGateway
     - RecordingSink
     - ReleaseScripts
+    - InsightsExportScript
     - CiWorkflows
 shallow:
   paths:
-    - crates/local-sights-core/src/fetcher.rs
-    - crates/local-sights-core/src/streams/
-    - crates/local-sights-core/src/retry.rs
-    - crates/local-sights-core/src/pacing.rs
-    - crates/local-sights-core/src/schedule.rs
-    - crates/local-sights-core/src/gateway/aws.rs
-    - crates/local-sights-core/src/catalog/
-    - crates/local-sights-core/src/connection.rs
-    - crates/local-sights-core/src/log_groups/
-    - crates/local-sights-core/src/sso_login.rs
-    - crates/local-sights-core/src/time_zone.rs
-    - crates/local-sights-core/src/date_input.rs
-    - crates/local-sights-core/src/cache/settings.rs
+    - crates/local-sights-core/examples/
     - crates/local-sights-core/tests/
-    - src-tauri/src/sso_cli/
-    - src-tauri/src/browser.rs
+    - src/components/
+    - src/hooks/
+    - src/dev/
+    - src/test/
+    - scripts/
     - src-tauri/permissions/
     - src-tauri/icons/
-    - src/hooks/
-    - src/i18n/
-    - src/dev/
-    - scripts/
-    - docs/
 ```

@@ -3602,3 +3602,48 @@
 **Stage**: code-generation
 
 ---
+
+## Artifact Created
+**Timestamp**: 2026-10-21T03:55:31Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/build-instructions.md
+**Context**: construction > build-and-test > build-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-21T03:55:43Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/integration-test-instructions.md
+**Context**: construction > build-and-test > integration-test-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-21T03:55:48Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/performance-test-instructions.md
+**Context**: construction > build-and-test > performance-test-instructions.md
+
+---
+
+## Artifact Created
+**Timestamp**: 2026-10-21T03:55:56Z
+**Event**: ARTIFACT_CREATED
+**Tool**: Write
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/security-test-instructions.md
+**Context**: construction > build-and-test > security-test-instructions.md
+
+---
+
+## Artifact Updated
+**Timestamp**: 2026-10-21T03:56:11Z
+**Event**: ARTIFACT_UPDATED
+**Tool**: Edit
+**File**: <project-dir>/aidlc/spaces/default/intents/261020-carryover-fixes/construction/build-and-test/build-instructions.md
+**Context**: construction > build-and-test > build-instructions.md
+
+---

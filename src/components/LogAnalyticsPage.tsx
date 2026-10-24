@@ -16,6 +16,8 @@ import {
   getCompletionCandidates,
   type AnalyticsField,
   type CompletionCandidate,
+  type ExportFormat,
+  type ExportTarget,
   type InsightsView,
   type ResultSummary,
   type SessionView,
@@ -35,6 +37,7 @@ import {
 import { errorLines } from "../errorText";
 import { timeZoneLabelKey, type Locale, type Translate } from "../i18n/messages";
 import { ElapsedTime } from "./ElapsedTime";
+import { ExportMenu } from "./ExportMenu";
 import { FailureList } from "./FailureList";
 import { LogGroupMultiselect } from "./LogGroupMultiselect";
 import { QueryEditor } from "./QueryEditor";
@@ -51,6 +54,8 @@ export interface LogAnalyticsPageProps {
   onRun: () => void;
   onCancel: () => void;
   onError: (error: unknown) => void;
+  /** One of the four exports was chosen in the results' [Export] menu (U2:BR4.1). */
+  onExport: (format: ExportFormat, target: ExportTarget) => void;
 }
 
 const SIDES: Record<Side, { field: AnalyticsField; label: string; date: string; time: string }> = {
@@ -120,6 +125,11 @@ function synced(insights: InsightsView, drafts: Record<Side, DateTimeParts>, que
  * results container holds only the heading, the result (the previous one
  * while a run goes) and the words for no result; while a run goes with no
  * previous result the results container is empty (A9).
+ *
+ * Since 261022-small-features U2 the results heading carries the [Export]
+ * menu (U2:BR4.1), disabled while the core says the result cannot be
+ * exported (`insights.canExport`, U2:BR3.2) and busy while an export runs
+ * (`session.export.status`, U2:BR4.8); a chosen item goes to `onExport`.
  */
 export function LogAnalyticsPage({
   session,
@@ -130,6 +140,7 @@ export function LogAnalyticsPage({
   onRun,
   onCancel,
   onError,
+  onExport,
 }: LogAnalyticsPageProps) {
   const insights = session.insights;
   const [drafts, setDrafts] = useState<Record<Side, DateTimeParts>>(() => ({
@@ -387,6 +398,7 @@ export function LogAnalyticsPage({
           t={t}
           onError={onError}
           onShowFailures={() => setFailuresOpen(true)}
+          onExport={onExport}
         />
         <Box variant="small" data-testid="log-analytics-status">
           <ElapsedTime elapsed={insights.elapsed} t={t} />
@@ -517,6 +529,7 @@ interface ResultAreaProps {
   t: Translate;
   onError: (error: unknown) => void;
   onShowFailures: () => void;
+  onExport: (format: ExportFormat, target: ExportTarget) => void;
 }
 
 /**
@@ -535,7 +548,7 @@ function resultCount(result: ResultSummary, t: Translate): string {
  * heading with its count, the result (the previous one while a run goes) and
  * the words for no result; the run's progress is in the query container.
  */
-function ResultArea({ session, t, onError, onShowFailures }: ResultAreaProps) {
+function ResultArea({ session, t, onError, onShowFailures, onExport }: ResultAreaProps) {
   const insights = session.insights;
   const result = insights.result;
   const failedCount = insights.failedStreams.length;
@@ -585,11 +598,20 @@ function ResultArea({ session, t, onError, onShowFailures }: ResultAreaProps) {
             variant="h2"
             counter={showsRows && result !== null ? `(${resultCount(result, t)})` : undefined}
             actions={
-              showsRows && result !== null && result.truncatedAt !== null ? (
-                <Box data-testid="log-analytics-truncated">
-                  {t("insights.results.truncated", { shown: result.truncatedAt })}
-                </Box>
-              ) : undefined
+              <SpaceBetween direction="horizontal" size="s" alignItems="center">
+                {showsRows && result !== null && result.truncatedAt !== null && (
+                  <Box data-testid="log-analytics-truncated">
+                    {t("insights.results.truncated", { shown: result.truncatedAt })}
+                  </Box>
+                )}
+                {/* 261022-small-features U2:BR4.1: [Export] of the result. */}
+                <ExportMenu
+                  disabled={!insights.canExport}
+                  loading={session.export.status === "Running"}
+                  onSelect={onExport}
+                  t={t}
+                />
+              </SpaceBetween>
             }
           >
             {t("insights.results.title")}

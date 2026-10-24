@@ -67,6 +67,9 @@ const CORE_KEYS = [
   "insights.blocked.queryRunning",
   "insights.blocked.logManagementFetching",
   "insights.blocked.otherOperation",
+  // 261022-small-features U2 (session.rs).
+  "session.exportUnavailable",
+  "session.exportBusy",
 ];
 
 /** The reading problems of the core's QueryParser (`query::parser::keys::ALL`). */
@@ -250,6 +253,47 @@ describe("message catalog", () => {
     });
     expect(messages["settings.language.ja"]).toEqual({ en: "日本語", ja: "日本語" });
     expect(messages["settings.language.en"]).toEqual({ en: "English", ja: "English" });
+  });
+
+  // ---- 261022-small-features U2: the export and the formatted JSON ----
+
+  it("has the export menu, notice and failure texts and the JSON switch in both languages (U2:BR4.1, BR4.9, BR5.3)", () => {
+    for (const key of [
+      "export.menu",
+      "export.exporting",
+      "export.item.csvFile",
+      "export.item.markdownFile",
+      "export.item.csvClipboard",
+      "export.item.markdownClipboard",
+      "export.notice.saved",
+      "export.notice.copied",
+      "export.notice.saveFailed",
+      "export.notice.copyFailed",
+      "export.notice.success",
+      "export.notice.failure",
+      "export.notice.dismiss",
+      "export.failure.PermissionDenied",
+      "export.failure.NoSpace",
+      "export.failure.NotFound",
+      "export.failure.Other",
+      "export.failure.Clipboard",
+      "export.failure.Dialog",
+      "expanded.mode",
+      "expanded.mode.pretty",
+      "expanded.mode.raw",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(messages["export.menu"]).toEqual({ en: "Export", ja: "エクスポート" });
+    expect(translate("ja", "export.notice.saved", { count: 3, path: "/a/b.csv" })).toBe(
+      "3 行を /a/b.csv に保存しました。",
+    );
+    expect(translate("en", "export.failure.NotFound", { path: "/a/b.csv" })).toBe(
+      "The folder of /a/b.csv was not found.",
+    );
+    expect(messages["expanded.mode.pretty"]).toEqual({ en: "Formatted", ja: "整形" });
+    expect(messages["expanded.mode.raw"]).toEqual({ en: "Original", ja: "元のまま" });
+    expect(translate("ja", "session.exportBusy")).toBe("エクスポートが進行中です。");
   });
 
   it("fills placeholders in the chosen language", () => {

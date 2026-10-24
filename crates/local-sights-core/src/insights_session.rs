@@ -34,6 +34,14 @@
 //! evaluation fails (U3:BR3.4); its rows are copies, read here without the
 //! QueryStore (U3:BR3.2). The completion names go when a run starts and are
 //! gathered again from what it fetched (U3:BR5.2).
+//!
+//! Since 261022-small-features U2 the shown result can be exported
+//! (U2:BR3.1, BR3.2): [`InsightsSession::can_export`] says when, and
+//! [`InsightsSession::export_source`] copies the result's columns and rows
+//! for the export, whose text is made outside the session lock
+//! (functional-design review R-01). The run remembers the log groups chosen
+//! when it started, so the default file name is made from the first of them
+//! (review R-06).
 
 use std::time::Instant;
 
@@ -44,6 +52,7 @@ use crate::catalog::ProfileSelector;
 use crate::coordinator::{BatchProgress, FetchJob};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
+use crate::export::exporter::{ExportAvailability, ExportBlocker, ExportSnapshotSource};
 use crate::failure::ApiFailure;
 use crate::log_groups::ListingStatus;
 use crate::query::evaluator::{QueryResult, row_cells, row_detail};
@@ -232,6 +241,8 @@ pub struct RunContext {
     pub other_operation: bool,
     /// Closing awaits an answer (no [Cancel] then, as on Log Management).
     pub close_pending: bool,
+    /// An export is under way (261022-small-features U2:BR3.2, BR4.8).
+    pub exporting: bool,
 }
 
 /// The query text as it was when [Run query] was pressed, read outside the
@@ -380,6 +391,9 @@ pub struct InsightsView {
     /// Whether [Cancel] can be pressed now (as on Log Management: not while
     /// the cache is written, not while closing awaits an answer, R-02).
     pub cancel_available: bool,
+    /// Whether the shown result can be exported now (261022-small-features
+    /// U2:BR3.2).
+    pub can_export: bool,
 }
 
 /// One result row as the screen shows it (U1:BR6.3, U2:BR7.1).
@@ -454,6 +468,10 @@ struct InsightsRun {
     cache_saving: bool,
     started_at: Option<Instant>,
     final_ms: Option<u64>,
+    /// The log groups chosen when the run started, in the order chosen: the
+    /// default export file name is made from the first (261022-small-features
+    /// U2:BR4.5, functional-design review R-06).
+    log_group_names: Vec<String>,
 }
 
 /// The Log Analytics screen's input and last run.
@@ -749,6 +767,7 @@ impl InsightsSession {
             }),
             result: self.run.result.take(),
             started_at: Some(now),
+            log_group_names: self.selected_log_groups.clone(),
             ..InsightsRun::default()
         };
         self.field_names.clear();
@@ -1200,7 +1219,47 @@ impl InsightsSession {
             }),
             cancelling: self.is_running() && run.cancel_requested,
             cancel_available: self.cancel_available(context.close_pending),
+            can_export: self.can_export(context.exporting).is_available(),
         }
+    }
+
+    /// 261022-small-features U2:BR3.2: whether the shown result can be
+    /// exported, with the first reason why not: no result, a result with no
+    /// row, a run fetching or evaluating (also while the previous result is
+    /// shown), or an export under way (`exporting`, the app's one job).
+    pub fn can_export(&self, exporting: bool) -> ExportAvailability {
+        match self.result() {
+            None => ExportAvailability::blocked(ExportBlocker::NoResult),
+            Some(result) if result.row_count() == 0 => {
+                ExportAvailability::blocked(ExportBlocker::NoRows)
+            }
+            Some(_) if self.is_running() => ExportAvailability::blocked(ExportBlocker::Running),
+            Some(_) if exporting => ExportAvailability::blocked(ExportBlocker::Exporting),
+            Some(_) => ExportAvailability::AVAILABLE,
+        }
+    }
+
+    /// U2:BR3.1: the shown result's columns and every row, copied for an
+    /// export; their text is made outside the lock (review R-01). `None`
+    /// without a result.
+    pub fn export_source(&self, zone: Tz) -> Option<ExportSnapshotSource> {
+        let result = self.result()?;
+        Some(ExportSnapshotSource::LogAnalytics {
+            columns: result.columns().to_vec(),
+            rows: result.window(result.run_id, 0, result.row_count()).to_vec(),
+            zone,
+        })
+    }
+
+    /// The log group the default export file name is made from (U2:BR4.5,
+    /// review R-06): the first chosen when the run that made the result
+    /// started; the first of the current choice when the run holds none.
+    pub fn export_log_group_name(&self) -> Option<&str> {
+        self.run
+            .log_group_names
+            .first()
+            .or_else(|| self.selected_log_groups.first())
+            .map(String::as_str)
     }
 }
 
@@ -2185,5 +2244,128 @@ mod tests {
         let plan = parse_query(DEFAULT_QUERY).unwrap();
         assert_eq!(plan.commands.len(), 4);
         assert!(plan.has_fields() && plan.has_sort() && plan.has_row_limit());
+    }
+
+    // ---- 261022-small-features U2: the export (BR3.1, BR3.2, R-06) ----
+
+    #[test]
+    fn export_is_unavailable_without_a_result_with_zero_rows_while_running_and_while_exporting() {
+        let now = Instant::now();
+        let mut session = ready();
+        assert_eq!(
+            session.can_export(false).blocker,
+            Some(ExportBlocker::NoResult)
+        );
+        assert!(session.export_source(UTC).is_none());
+        assert!(!session.view(&connected(), now).can_export);
+
+        done(&mut session, now, Vec::new());
+        assert_eq!(
+            session.can_export(false).blocker,
+            Some(ExportBlocker::NoRows)
+        );
+
+        done(&mut session, now, vec![3, 1]);
+        assert!(session.can_export(false).is_available());
+        assert!(session.view(&connected(), now).can_export);
+        assert_eq!(
+            session.can_export(true).blocker,
+            Some(ExportBlocker::Exporting)
+        );
+        let exporting = RunContext {
+            exporting: true,
+            ..connected()
+        };
+        assert!(!session.view(&exporting, now).can_export);
+
+        // The previous result stays shown while the next run goes, but it
+        // cannot be exported then (BR3.2).
+        let run_id = start(&mut session, now).run_id;
+        assert!(session.result().is_some());
+        assert_eq!(
+            session.can_export(false).blocker,
+            Some(ExportBlocker::Running)
+        );
+        assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, 10), now));
+        assert_eq!(
+            session.can_export(false).blocker,
+            Some(ExportBlocker::Running)
+        );
+    }
+
+    #[test]
+    fn the_query_export_snapshot_has_the_result_columns_full_messages_and_empty_cells() {
+        let now = Instant::now();
+        let mut session = ready();
+        let run_id = start(&mut session, now).run_id;
+        assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, 10), now));
+        let plan = parse_query("fields @timestamp, level, @message | limit 10").unwrap();
+        let output = crate::query::evaluator::EvalOutput {
+            columns: plan.columns(),
+            rows: vec![0, 1],
+            evaluated_count: 2,
+            matched_count: 2,
+            truncated_at: None,
+        };
+        let rows = vec![
+            ResultRow {
+                event: LogEvent {
+                    timestamp: 1_704_164_645_123,
+                    ingestion_time: None,
+                    message: "{\"level\":\"ERROR\",\"msg\":\"a\\nb\"}".to_string(),
+                    log_stream_name: "s".to_string(),
+                    sequence: 0,
+                },
+                log_group_name: GROUP.to_string(),
+            },
+            ResultRow {
+                event: LogEvent {
+                    timestamp: 1_704_164_646_000,
+                    ingestion_time: None,
+                    message: "not json\nsecond line".to_string(),
+                    log_stream_name: "s".to_string(),
+                    sequence: 1,
+                },
+                log_group_name: GROUP.to_string(),
+            },
+        ];
+        session.finish_evaluation(QueryResult::from_output(run_id, output, rows), now);
+        let source = session.export_source(UTC).unwrap();
+        assert_eq!(source.row_count(), 2);
+        let snapshot = source.into_snapshot();
+        assert_eq!(snapshot.columns, ["@timestamp", "level", "@message"]);
+        assert_eq!(
+            snapshot.rows,
+            vec![
+                vec![
+                    "2024/01/02 03:04:05.123".to_string(),
+                    "ERROR".to_string(),
+                    "{\"level\":\"ERROR\",\"msg\":\"a\\nb\"}".to_string(),
+                ],
+                vec![
+                    "2024/01/02 03:04:06.000".to_string(),
+                    String::new(),
+                    "not json\nsecond line".to_string(),
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn the_export_default_name_uses_the_first_log_group_of_the_run() {
+        let now = Instant::now();
+        let mut session = ready();
+        assert_eq!(session.export_log_group_name(), Some(GROUP));
+        done(&mut session, now, vec![1]);
+        assert_eq!(session.export_log_group_name(), Some(GROUP));
+        // Changing the choice after the run keeps the run's own log group.
+        session
+            .update(AnalyticsField::LogGroup, String::new(), UTC, listed)
+            .unwrap();
+        assert_eq!(session.selected_log_groups(), &[] as &[String]);
+        assert_eq!(session.export_log_group_name(), Some(GROUP));
+        // No run yet and nothing chosen: no name (the file name falls back).
+        let fresh = InsightsSession::new();
+        assert_eq!(fresh.export_log_group_name(), None);
     }
 }

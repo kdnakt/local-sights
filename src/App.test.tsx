@@ -63,6 +63,8 @@ vi.mock("./api", async (importOriginal) => {
     getQueryRows: vi.fn(),
     getQueryRowDetail: vi.fn(),
     getCompletionCandidates: vi.fn(async () => []),
+    startExport: vi.fn(),
+    dismissExportNotice: vi.fn(),
     onSessionChanged: vi.fn(async (handler: (view: SessionView) => void) => {
       handlers.session = handler;
       return () => undefined;
@@ -146,6 +148,8 @@ describe("App", () => {
       api.updateAnalyticsInput,
       api.runQuery,
       api.cancelQuery,
+      api.startExport,
+      api.dismissExportNotice,
     ]) {
       vi.mocked(command).mockReset();
       vi.mocked(command).mockResolvedValue(undefined);
@@ -1326,6 +1330,98 @@ describe("App", () => {
       const dialog = await screen.findByTestId("confirm-dialog-message");
       expect(dialog).toHaveTextContent(BOTH);
       expect(screen.getByRole("dialog", { name: "Change the connection?" })).toBeInTheDocument();
+    });
+  });
+
+  // ---- 261022-small-features U2: the export (BR4.1, BR4.9) ----------------
+
+  describe("export", () => {
+    const exportMenu = () => within(screen.getByTestId("export-menu")).getByRole("button");
+    const isInert = (button: HTMLElement) =>
+      button.hasAttribute("disabled") || button.getAttribute("aria-disabled") === "true";
+
+    it("mirrors canExportLogs and the running job on the Log Management menu", async () => {
+      render(<App languages={["en-US"]} />);
+      await screen.findByTestId("fetch-form");
+      expect(isInert(exportMenu())).toBe(true);
+      push(connectedView({ phase: "Done", eventCount: 3, canExportLogs: true }));
+      expect(isInert(exportMenu())).toBe(false);
+      push(
+        connectedView({
+          phase: "Done",
+          eventCount: 3,
+          canExportLogs: false,
+          export: {
+            exportNumber: 1,
+            status: "Running",
+            request: { screen: "logManagement", format: "csv", target: "file" },
+            rowCount: 3,
+          },
+        }),
+      );
+      expect(isInert(exportMenu())).toBe(true);
+      expect(screen.getByText("Exporting…")).toBeInTheDocument();
+    });
+
+    it("starts the chosen export of the Log Management list", async () => {
+      const user = userEvent.setup();
+      render(<App languages={["en-US"]} />);
+      await screen.findByTestId("fetch-form");
+      push(connectedView({ phase: "Done", eventCount: 3, canExportLogs: true }));
+      await user.click(exportMenu());
+      await user.click(screen.getByRole("menuitem", { name: "Save as CSV" }));
+      expect(api.startExport).toHaveBeenCalledWith("logManagement", "csv", "file");
+      // A refused request is shown like any other refused command.
+      vi.mocked(api.startExport).mockRejectedValueOnce({ key: "session.exportBusy" });
+      await user.click(exportMenu());
+      await user.click(screen.getByRole("menuitem", { name: "Copy as Markdown" }));
+      expect(api.startExport).toHaveBeenLastCalledWith("logManagement", "markdown", "clipboard");
+      expect(await screen.findByTestId("command-error")).toHaveTextContent(
+        "An export is already in progress.",
+      );
+    });
+
+    it("shows the notice of the last export and puts it away", async () => {
+      const user = userEvent.setup();
+      render(<App languages={["en-US"]} />);
+      await screen.findByTestId("fetch-form");
+      expect(screen.queryByTestId("export-notice")).toBeNull();
+      push(
+        connectedView({
+          exportNotice: { kind: "Saved", path: "/Users/me/orders.csv", rowCount: 1234 },
+        }),
+      );
+      const notice = screen.getByTestId("export-notice");
+      expect(notice).toHaveAttribute("role", "status");
+      expect(notice).toHaveTextContent("Saved 1234 rows to /Users/me/orders.csv.");
+      await user.click(within(notice).getByRole("button", { name: "Close" }));
+      expect(api.dismissExportNotice).toHaveBeenCalledTimes(1);
+      push(connectedView({ exportNotice: null }));
+      expect(screen.queryByTestId("export-notice")).toBeNull();
+      push(
+        connectedView({
+          exportNotice: { kind: "SaveFailed", failure: "NoSpace", path: "/Volumes/x/a.csv" },
+        }),
+      );
+      expect(screen.getByTestId("export-notice")).toHaveAttribute("role", "alert");
+      expect(screen.getByTestId("export-notice")).toHaveTextContent(
+        "There is no space left to write /Volumes/x/a.csv.",
+      );
+    });
+
+    it("rewrites the notice when the language changes (BR4.9)", async () => {
+      render(<App languages={["en-US"]} />);
+      await screen.findByTestId("fetch-form");
+      const notice = { kind: "Copied", rowCount: 5 } as const;
+      push(connectedView({ exportNotice: notice }));
+      expect(screen.getByTestId("export-notice")).toHaveTextContent(
+        "Copied 5 rows to the clipboard.",
+      );
+      push(connectedView({ exportNotice: notice, language: "ja" }));
+      expect(screen.getByTestId("export-notice")).toHaveTextContent(
+        "5 行をクリップボードにコピーしました。",
+      );
+      expect(exportMenu()).toHaveAccessibleName("エクスポート");
     });
   });
 });

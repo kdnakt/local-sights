@@ -511,6 +511,7 @@ export function LogTable({
                       message={event.message}
                       focusable={isSelected && rowLayout.scrolls(key)}
                       label={t("table.expanded")}
+                      t={t}
                       onMeasure={(height, scrolls) => rowLayout.measure(key, height, scrolls)}
                       onLeave={focusGrid}
                     />

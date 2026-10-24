@@ -142,11 +142,26 @@
 //! of its rows, checked by the run number, so they no longer lock the
 //! QueryStore (U3:BR3.2).
 //!
+//! Since 261022-small-features U2 the shown rows of either screen can be
+//! exported as CSV or Markdown to a file or the clipboard (U2 FR2-FR4).
+//! `start_export` is an async command that waits for the end like
+//! `save_settings` (functional-design review R-07): under the session lock
+//! (and, for Log Management, the LogView lock taken second) the core accepts
+//! the request and the shown rows are copied; the view with the Running job
+//! is pushed and the locks are released; then, on a blocking thread with no
+//! lock held, the save dialog is shown, the rows are turned into text and
+//! written through a temporary file ([`export_boundary`], U2:BR4.6) or put on
+//! the clipboard (U2:BR4.7); the end is applied under the lock again and the
+//! view is pushed (review R-01, NFR2). `dismiss_export_notice` puts the
+//! notice away. The dialog and the clipboard are the official plugins
+//! registered in `run()` and called from Rust only (ADR-002, review R-04).
+//!
 //! Diagnostics go to standard error only and contain only safe details:
 //! no secret credential and no access key ID is ever logged or shown. No
 //! log file is ever written (U7:BR4.5, NFR16).
 
 mod browser;
+mod export_boundary;
 mod sso_cli;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -157,6 +172,10 @@ use local_sights_core::cache::LogCache;
 use local_sights_core::catalog::ProfileSelector;
 use local_sights_core::catalog::files::load_catalog;
 use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch_with_cache};
+use local_sights_core::export::exporter::{
+    ExportBegun, ExportFailure, ExportOutcome, ExportRequest, ExportScreen, ExportTarget, render_to,
+};
+use local_sights_core::export::formatter::ExportFormat;
 use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
@@ -192,6 +211,7 @@ use serde::Serialize;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
 
+use crate::export_boundary::{ask_save_path, copy_to_clipboard, write_file_atomically};
 use crate::sso_cli::{LoginControl, LoginTimes, STOP_GRACE, cli_candidates, locate_cli, run_login};
 
 /// Event carrying the latest [`SessionView`].
@@ -1252,6 +1272,137 @@ async fn run_settings_work(
     Ok(())
 }
 
+/// 261022-small-features U2: [Export] of either screen (functional-spec
+/// W1-W5). Waits for the end like `save_settings` (review R-07): a refused
+/// request (no rows, fetching, filtering, no result, or another export under
+/// way) comes back as an error the screen shows; the Running job, and then
+/// the end with its notice, arrive through `session-changed`.
+///
+/// Under the session lock the core checks the request and turns the job
+/// Running; for Log Management the LogView is locked second and the shown
+/// rows are copied with `rows(0, total)` (U2:BR2.1). Only the copy happens
+/// under the locks (review R-01): the save dialog, the text and the file or
+/// clipboard are done on a blocking thread with no lock held.
+#[tauri::command]
+async fn start_export(
+    screen: ExportScreen,
+    format: ExportFormat,
+    target: ExportTarget,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    let request = ExportRequest {
+        screen,
+        format,
+        target,
+    };
+    let (begun, view) = {
+        let mut session = lock(&state.session);
+        let mut begun = session.begin_export(request, chrono::Utc::now())?;
+        if screen == ExportScreen::LogManagement {
+            let log_view = lock(&state.log_view);
+            let total = if log_view.filter().is_active() {
+                log_view.filter().matched_count()
+            } else {
+                log_view.timeline().len()
+            };
+            begun.source = begun.source.with_events(log_view.rows(0, total).rows);
+        }
+        (begun, session.view())
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+    let export_number = begun.export_number;
+    let outcome = run_export(&app, request, begun).await;
+    let view = {
+        let mut session = lock(&state.session);
+        if !session.finish_export(export_number, outcome) {
+            return Ok(());
+        }
+        session.view()
+    };
+    emit_or_log(&app, SESSION_CHANGED, view);
+    Ok(())
+}
+
+/// The export's work on a blocking thread, no lock held (review R-01,
+/// U2:BR4.8): the save dialog first (a cancel costs no text, functional-spec
+/// W2), then the rows turned into text and written to the file (U2:BR4.6) or
+/// the clipboard (U2:BR4.7). A thread that ends abnormally is a failure of
+/// kind Other.
+async fn run_export(app: &AppHandle, request: ExportRequest, begun: ExportBegun) -> ExportOutcome {
+    let app = app.clone();
+    let work = move || match request.target {
+        ExportTarget::File => {
+            let default_name = begun.default_file_name.unwrap_or_default();
+            let path = match ask_save_path(&app, &default_name, request.format) {
+                Ok(Some(path)) => path,
+                Ok(None) => return ExportOutcome::Cancelled,
+                Err(failure) => {
+                    return ExportOutcome::Failed {
+                        failure,
+                        path: None,
+                    };
+                }
+            };
+            let shown = path.display().to_string();
+            let snapshot = begun.source.into_snapshot();
+            match write_file_atomically(&path, |out| {
+                render_to(out, snapshot, request.format, request.writes_bom())
+            }) {
+                Ok(()) => ExportOutcome::Saved { path: shown },
+                Err(failure) => ExportOutcome::Failed {
+                    failure,
+                    path: Some(shown),
+                },
+            }
+        }
+        ExportTarget::Clipboard => {
+            let snapshot = begun.source.into_snapshot();
+            let mut buffer = Vec::new();
+            let text = match render_to(&mut buffer, snapshot, request.format, false)
+                .map_err(|error| error.to_string())
+                .and_then(|()| String::from_utf8(buffer).map_err(|error| error.to_string()))
+            {
+                Ok(text) => text,
+                Err(error) => {
+                    eprintln!("local-sights: export: the text could not be made: {error}");
+                    return ExportOutcome::Failed {
+                        failure: ExportFailure::Other,
+                        path: None,
+                    };
+                }
+            };
+            match copy_to_clipboard(&app, text) {
+                Ok(()) => ExportOutcome::Copied,
+                Err(failure) => ExportOutcome::Failed {
+                    failure,
+                    path: None,
+                },
+            }
+        }
+    };
+    match tauri::async_runtime::spawn_blocking(work).await {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            eprintln!("local-sights: export: the export work ended abnormally");
+            ExportOutcome::Failed {
+                failure: ExportFailure::Other,
+                path: None,
+            }
+        }
+    }
+}
+
+/// The user closed the export notice (U2:BR4.9); the view without it is
+/// pushed.
+#[tauri::command]
+fn dismiss_export_notice(app: AppHandle, state: State<'_, AppState>) -> Result<(), CommandError> {
+    change_settings(&app, &state, |session| {
+        session.dismiss_export_notice();
+        Ok(())
+    })
+}
+
 /// Runs after the fetch task ends. If it ended (normally or not) without
 /// reporting a result, the session would stay in Fetching forever; move it
 /// to Failed (kind Other) and tell the screen. Only the fetch numbered
@@ -1932,7 +2083,11 @@ impl QuerySink for TauriQuerySink {
 /// # Errors
 /// Returns the Tauri error when the app cannot be built.
 pub fn run() -> Result<(), tauri::Error> {
-    let builder = tauri::Builder::default();
+    // 261022-small-features U2 (ADR-002): the save dialog and the clipboard of
+    // the export, used from the Rust side only (review R-04).
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
     // Review R-01: Quit (Cmd+Q) of the macOS app menu is this app's own item.
     #[cfg(target_os = "macos")]
     let builder = builder.menu(app_menu);
@@ -2005,7 +2160,9 @@ pub fn run() -> Result<(), tauri::Error> {
             cancel_query,
             get_query_rows,
             get_query_row_detail,
-            get_completion_candidates
+            get_completion_candidates,
+            start_export,
+            dismiss_export_notice
         ])
         .build(tauri::generate_context!())?;
     app.run(|app, event| match event {

@@ -40,4 +40,9 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 uuid = { version = "1", features = ["v4"] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+# 261022-small-features U2 (ADR-002): the OS save dialog and the clipboard
+# of the export, called from the Rust side only (functional-design review
+# R-04: no WebView permission is granted for them). Both MIT OR Apache-2.0.
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
 tempfile = "3"

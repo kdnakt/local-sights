@@ -8,7 +8,7 @@ import Header from "@cloudscape-design/components/header";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import type { TextFilterProps } from "@cloudscape-design/components/text-filter";
 import TimeInput from "@cloudscape-design/components/time-input";
-import type { InputField, SessionView } from "../api";
+import type { ExportFormat, ExportTarget, InputField, SessionView } from "../api";
 import {
   completeTime,
   completionWouldEnableFetch,
@@ -25,6 +25,7 @@ import {
   type Side,
 } from "../dateTime";
 import { timeZoneLabelKey, type Locale, type MessageKey, type Translate } from "../i18n/messages";
+import { ExportMenu } from "./ExportMenu";
 import { LogFilterInput } from "./LogFilterInput";
 
 interface SideSpec {
@@ -70,6 +71,8 @@ export interface ConditionAreaProps {
   onLogFilterChange: (text: string) => void;
   /** Failed log filter hand-overs so far (U5 review R-02). */
   filterFailureCount?: number;
+  /** One of the four exports was chosen in the [Export] menu (261022-small-features U2:BR4.1). */
+  onExport: (format: ExportFormat, target: ExportTarget) => void;
   /** The error area, the log list and the status line, inside the same container. */
   children?: ReactNode;
 }
@@ -137,6 +140,11 @@ function synced(session: SessionView, drafts: Record<Side, DateTimeParts>): bool
  * closing awaits an answer). R-06 now moves the focus only when the button
  * itself is disabled: [Fetch] that cannot be pressed, or that disabled
  * [Cancel] (NFR10.1). Enter in a date or time field never cancels.
+ *
+ * Since 261022-small-features U2 the [Export] menu sits at the right end of
+ * the filter row (U2:BR4.1): disabled while the core says the list cannot
+ * be exported (`canExportLogs`, U2:BR2.3) and busy while an export runs
+ * (`export.status`, U2:BR4.8); a chosen item goes to `onExport`.
  */
 export function ConditionArea({
   session,
@@ -149,6 +157,7 @@ export function ConditionArea({
   onFilterTextChange,
   onLogFilterChange,
   filterFailureCount = 0,
+  onExport,
   children,
 }: ConditionAreaProps) {
   // Local drafts keep typing responsive; every change is forwarded to the
@@ -386,6 +395,16 @@ export function ConditionArea({
                   </div>
                 );
               })}
+            </div>
+            <div className="condition-row-export" data-testid="fetch-form-export">
+              {/* The same label row as the fields, so the menu shares their top edge. */}
+              <Box variant="awsui-key-label">{" "}</Box>
+              <ExportMenu
+                disabled={!session.canExportLogs}
+                loading={session.export.status === "Running"}
+                onSelect={onExport}
+                t={t}
+              />
             </div>
           </div>
           {children}

@@ -226,6 +226,12 @@ body {
   gap: var(--ls-space-s) var(--ls-space-m);
 }
 
+/* 261022-small-features U2:BR4.1: the [Export] menu at the right end of the
+   filter row, under the same kind of label row as the fields beside it. */
+.condition-row-export {
+  margin-left: auto;
+}
+
 .condition-date-time {
   display: flex;
   align-items: flex-start;
@@ -364,6 +370,14 @@ body {
  * long word), 18 px lines with 6 px padding, at most 20 lines (372 px),
  * scrolling inside beyond that; selectable for copying.
  */
+/* 261022-small-features U2:BR5.3: the "Formatted / Original" switch above the
+   text of an opened row whose message holds JSON; measured with the text. */
+.log-expanded-mode {
+  padding: 4px 6px 0;
+  background: var(--ls-color-background);
+  box-shadow: inset 0 1px 0 var(--ls-color-border);
+}
+
 .log-expanded-text {
   box-sizing: border-box;
   max-height: 372px;

@@ -22,6 +22,7 @@ import {
   clearCache,
   confirmClose,
   confirmConnectionChange,
+  dismissExportNotice,
   dismissSsoLogin,
   getSession,
   isCommandError,
@@ -42,6 +43,7 @@ import {
   selectTimeZone,
   setFailureListOpen,
   setLogFilter,
+  startExport,
   startFetch,
   startSsoLogin,
   updateAnalyticsInput,
@@ -50,6 +52,9 @@ import {
   withFilter,
   withProgress,
   type AnalyticsField,
+  type ExportFormat,
+  type ExportScreen,
+  type ExportTarget,
   type InputField,
   type ProfileSelector,
   type SessionView,
@@ -61,6 +66,7 @@ import { CancelNotice } from "./components/CancelNotice";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
 import { ConditionArea } from "./components/ConditionArea";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { ExportNoticeAlert } from "./components/ExportNoticeAlert";
 import { FailureList } from "./components/FailureList";
 import { FetchErrorBanner } from "./components/FetchErrorBanner";
 import { LogAnalyticsPage } from "./components/LogAnalyticsPage";
@@ -188,6 +194,12 @@ const FIRST_FIELD: Record<AppPage, readonly string[]> = {
  * connection and the filters stay (U1:BR1.3, FR1.5). The settings dialog
  * hands both settings to `saveSettings`; a failed save leaves the view, and
  * so the language, as it was (U1:BR1.6).
+ * Since 261022-small-features U2 both screens have an [Export] menu whose
+ * choice goes to `startExport` (U2:BR4.1); a refused request is shown like
+ * any other refused command. The notice of the last export is shown in the
+ * alert area of the page shown, built from its kind and arguments so a
+ * language switch rewrites it, and closing it calls `dismissExportNotice`
+ * (U2:BR4.9).
  */
 export function App({ languages, platform }: AppProps) {
   const [session, setSession] = useState<SessionView | null>(null);
@@ -386,6 +398,23 @@ export function App({ languages, platform }: AppProps) {
   }, [reportError]);
   const handleCancelQuery = useCallback(() => run(cancelQuery), [run]);
 
+  // 261022-small-features U2:BR4.1: [Export] of either screen; the Running
+  // job, the end and the notice arrive as `session-changed` (BR4.8, BR4.9).
+  const handleExport = useCallback(
+    (screen: ExportScreen, format: ExportFormat, target: ExportTarget) =>
+      run(() => startExport(screen, format, target)),
+    [run],
+  );
+  const handleExportLogs = useCallback(
+    (format: ExportFormat, target: ExportTarget) => handleExport("logManagement", format, target),
+    [handleExport],
+  );
+  const handleExportResult = useCallback(
+    (format: ExportFormat, target: ExportTarget) => handleExport("logAnalytics", format, target),
+    [handleExport],
+  );
+  const handleDismissExportNotice = useCallback(() => run(dismissExportNotice), [run]);
+
   // U1:BR1.1: switching pages; the page shown takes the focus.
   const navigate = useCallback(
     (target: AppPage) => {
@@ -436,6 +465,11 @@ export function App({ languages, platform }: AppProps) {
         {t(commandError.key, commandError.params)}
       </Alert>
     </div>
+  );
+
+  // U2:BR4.9: the same notice on whichever page is shown.
+  const exportNoticeAlert = session && (
+    <ExportNoticeAlert notice={session.exportNotice} t={t} onDismiss={handleDismissExportNotice} />
   );
 
   // The list: the core's rows, or the measurement harness's (dev only).
@@ -530,6 +564,7 @@ export function App({ languages, platform }: AppProps) {
                     onFilterTextChange={setFilterDraft}
                     onLogFilterChange={handleLogFilter}
                     filterFailureCount={filterFailures}
+                    onExport={handleExportLogs}
                   >
                     {session.ssoLogin.state === "Succeeded" && (
                       <div role="status" data-testid="sso-login-success">
@@ -544,6 +579,7 @@ export function App({ languages, platform }: AppProps) {
                         </Alert>
                       </div>
                     )}
+                    {page === "logManagement" && exportNoticeAlert}
                     {page === "logManagement" && commandErrorAlert}
                     <FetchErrorBanner session={session} t={t} onSsoLogin={handleSsoLogin} />
                     {/* U5:BR5.11: in the error area's place; a cancelled fetch is
@@ -576,6 +612,7 @@ export function App({ languages, platform }: AppProps) {
               hidden={page !== "logAnalytics"}
               data-testid="app-page-logAnalytics"
             >
+              {page === "logAnalytics" && exportNoticeAlert}
               {page === "logAnalytics" && commandErrorAlert}
               <LogAnalyticsPage
                 key={`${session.sessionId}:${session.timeZone}`}
@@ -587,6 +624,7 @@ export function App({ languages, platform }: AppProps) {
                 onRun={handleRunQuery}
                 onCancel={handleCancelQuery}
                 onError={reportError}
+                onExport={handleExportResult}
               />
             </div>
           )}

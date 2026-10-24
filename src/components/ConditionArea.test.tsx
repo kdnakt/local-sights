@@ -24,6 +24,7 @@ function renderArea(overrides: Overrides = {}, translate = t) {
       filterText=""
       onFilterTextChange={vi.fn()}
       onLogFilterChange={vi.fn()}
+      onExport={vi.fn()}
     >
       <div data-testid="children" />
     </ConditionArea>
@@ -588,6 +589,34 @@ describe("ConditionArea [Cancel] (261012-parallel-fetch U5:BR5.10, review R-09)"
     expect(fetchButton()).toHaveTextContent("中断");
     rerender(fetching({ cancelling: true }));
     expect(fetchButton()).toHaveTextContent("中断中…");
+  });
+
+  // ---- 261022-small-features U2:BR4.1: the [Export] menu of the filter row ----
+
+  it("puts the export menu in the filter row, following canExportLogs and the running job", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderArea({ canExportLogs: false });
+    const menu = () =>
+      within(within(screen.getByTestId("fetch-form-export")).getByTestId("export-menu")).getByRole(
+        "button",
+      );
+    const isInert = (button: HTMLElement) =>
+      button.hasAttribute("disabled") || button.getAttribute("aria-disabled") === "true";
+    expect(isInert(menu())).toBe(true);
+    rerender({ canExportLogs: true });
+    expect(isInert(menu())).toBe(false);
+    await user.click(menu());
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    rerender({
+      canExportLogs: false,
+      export: {
+        exportNumber: 1,
+        status: "Running",
+        request: { screen: "logManagement", format: "csv", target: "file" },
+        rowCount: 3,
+      },
+    });
+    expect(isInert(menu())).toBe(true);
   });
 });
 

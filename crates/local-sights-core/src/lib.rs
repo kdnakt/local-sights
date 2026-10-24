@@ -15,6 +15,7 @@ pub mod connection;
 pub mod coordinator;
 pub mod date_input;
 pub mod event;
+pub mod export;
 pub mod failure;
 pub mod fetch_stats;
 pub mod fetch_status;

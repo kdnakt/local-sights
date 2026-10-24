@@ -50,6 +50,7 @@ export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
     filterSummary: null,
     filterResultVersion: 0,
     cacheEnabled: false,
+    language: "system",
     cacheDirectory: "/Users/me/Library/Caches/dev.local-sights.app/log-cache",
     settingsDialog: "Closed",
     settingsNotice: null,

@@ -37,12 +37,16 @@
  * columns (U2:BR7.1), `getQueryRowDetail` gives the fields of one opened row
  * (U2:BR7.3), `getCompletionCandidates` the words the query field completes
  * (U2:BR9.1), and a run can end `EvaluationFailed` (U2:BR10.2).
+ * Since 261022-small-features U1 the session view carries the language
+ * preference (`language`, U1:BR1.3) and `saveSettings` saves it with the
+ * cache setting in one call (U1:BR1.1).
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { perfRows } from "./dev/perfRows";
+import type { LanguagePreference } from "./i18n/messages";
 
 export type Phase = "Idle" | "Fetching" | "Done" | "Failed";
 
@@ -433,6 +437,11 @@ export interface SessionView {
   filterResultVersion: number;
   /** Whether the disk cache is enabled (U6:BR1.1). */
   cacheEnabled: boolean;
+  /**
+   * The saved language preference (261022-small-features U1:BR1.3, BR1.4);
+   * the screen decides the shown locale from it and the OS languages.
+   */
+  language: LanguagePreference;
   /** The cache folder shown in the settings dialog (FR7.3). */
   cacheDirectory: string | null;
   settingsDialog: SettingsDialog;
@@ -734,11 +743,13 @@ export function cancelSettings(): Promise<void> {
 }
 
 /**
- * Saves the cache setting; switching it off removes the cached files
- * (U6:BR1.3). A failure is told in the dialog through `session-changed`.
+ * Saves the cache setting and the language preference in one file (U6:BR1.3;
+ * 261022-small-features U1:BR1.1, BR1.3); switching the cache off removes the
+ * cached files. A failure is told in the dialog through `session-changed`
+ * and changes neither (U1:BR1.6).
  */
-export function saveSettings(enabled: boolean): Promise<void> {
-  return invoke<void>("save_settings", { enabled });
+export function saveSettings(enabled: boolean, language: LanguagePreference): Promise<void> {
+  return invoke<void>("save_settings", { enabled, language });
 }
 
 /** Removes every cached file at once ([Clear cache], U6:BR1.4). */

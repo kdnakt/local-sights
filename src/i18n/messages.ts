@@ -60,11 +60,23 @@
  * Since 261020-carryover-fixes FR5 the region picker's texts
  * (`connection.region.noMatch`, `connection.region.filterPlaceholder`); the
  * region names themselves are in `regions.ts`.
+ * Since 261022-small-features U1 the language choice of the settings dialog
+ * (`settings.language*`, U1:BR1.1: "日本語" and "English" are fixed in their
+ * own language, only the OS choice is translated) and `resolveLocale`, which
+ * turns the saved preference and the OS languages into the one locale every
+ * text follows (U1:BR1.2).
  */
 
 import type { TimeZoneChoice } from "../api";
 
 export type Locale = "en" | "ja";
+
+/**
+ * The user's language preference as saved in the settings file and carried
+ * by the session view (261022-small-features U1, ADR-005): how the locale is
+ * decided, not the locale itself. Spelled as the Rust core spells it.
+ */
+export type LanguagePreference = "system" | "ja" | "en";
 
 /** Every screen text by message key, in English and Japanese (NFR12). */
 export const messages = {
@@ -326,6 +338,12 @@ export const messages = {
     en: "Keep fetched logs in a disk cache",
     ja: "取得したログをディスクにキャッシュする",
   },
+  // 261022-small-features U1:BR1.1: the two languages are named in their own
+  // language, whatever the screen's, so the way back stays readable.
+  "settings.language": { en: "Language", ja: "言語" },
+  "settings.language.system": { en: "Follow the OS setting", ja: "OS の設定に合わせる" },
+  "settings.language.ja": { en: "日本語", ja: "日本語" },
+  "settings.language.en": { en: "English", ja: "English" },
   "settings.location": { en: "Cache location: {path}", ja: "保存場所：{path}" },
   "settings.locationUnknown": { en: "not available", ja: "なし" },
   "settings.warning": {
@@ -893,6 +911,18 @@ export function isMessageKey(key: string): key is MessageKey {
 export function detectLocale(languages: readonly string[]): Locale {
   const first = languages[0]?.toLowerCase() ?? "";
   return first === "ja" || first.startsWith("ja-") ? "ja" : "en";
+}
+
+/**
+ * The locale the whole screen shows (261022-small-features U1:BR1.2): the
+ * saved preference when it names a language, else the OS language as
+ * `detectLocale` reads it. Pure; `languages` is the OS/browser list.
+ */
+export function resolveLocale(
+  preference: LanguagePreference,
+  languages: readonly string[],
+): Locale {
+  return preference === "system" ? detectLocale(languages) : preference;
 }
 
 /**

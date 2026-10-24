@@ -183,7 +183,7 @@ use local_sights_core::retry::{
 };
 use local_sights_core::session::{
     AppSession, CacheLocation, CloseDecision, ConnectionEffect, DisplayRowWindow, FetchOwner,
-    InputField, SessionError, SessionView, SettingsWork, SsoLoginStart,
+    InputField, LanguagePreference, SessionError, SessionView, SettingsWork, SsoLoginStart,
 };
 use local_sights_core::sso_login::{SsoLoginOutcome, is_allowed_login_url};
 use local_sights_core::streams::planner::ListingProgress;
@@ -1177,17 +1177,22 @@ fn cancel_settings(app: AppHandle, state: State<'_, AppState>) -> Result<(), Com
     })
 }
 
-/// Saves the cache setting; switching it off removes the cached files
-/// (U6:BR1.1, BR1.3). A failure is told in the dialog, which stays open.
-/// The file work runs on a blocking thread without the session lock (U6
-/// review R-01).
+/// Saves the cache setting and the language preference in one file
+/// (U6:BR1.1, BR1.3; 261022-small-features U1:BR1.3); switching the cache
+/// off removes the cached files. A failure is told in the dialog, which
+/// stays open, and changes neither setting (U1:BR1.6). The file work runs
+/// on a blocking thread without the session lock (U6 review R-01).
 #[tauri::command]
 async fn save_settings(
     enabled: bool,
+    language: LanguagePreference,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
-    run_settings_work(&app, &state, |session| session.begin_save_settings(enabled)).await
+    run_settings_work(&app, &state, |session| {
+        session.begin_save_settings(enabled, language)
+    })
+    .await
 }
 
 /// Removes every cached file at once ([Clear cache], U6:BR1.4), on a

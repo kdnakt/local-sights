@@ -9,6 +9,9 @@ import {
 } from "react";
 import Alert from "@cloudscape-design/components/alert";
 import Button, { type ButtonProps } from "@cloudscape-design/components/button";
+import { I18nProvider, type I18nProviderProps } from "@cloudscape-design/components/i18n";
+import enMessages from "@cloudscape-design/components/i18n/messages/all.en";
+import jaMessages from "@cloudscape-design/components/i18n/messages/all.ja";
 import {
   cancelClose,
   cancelConnectionChange,
@@ -73,13 +76,49 @@ import { LOG_TABLE_VARIANT, usePerfRows } from "./dev/perfRows";
 import { useColorScheme } from "./hooks/useColorScheme";
 import { useEscapeKey } from "./hooks/useEscapeKey";
 import { usePaneWidth } from "./hooks/usePaneWidth";
-import { createTranslator, type Locale } from "./i18n/messages";
+import {
+  createTranslator,
+  resolveLocale,
+  type LanguagePreference,
+  type Locale,
+} from "./i18n/messages";
 import { currentPlatform, isMacPlatform, isShortcutModifier } from "./platform";
 
 export interface AppProps {
-  locale: Locale;
+  /**
+   * The OS/browser languages in order of preference, read when the saved
+   * language preference is "system" (261022-small-features U1:BR1.2); this
+   * browser's when absent.
+   */
+  languages?: readonly string[];
   /** The platform string the shortcuts follow; this browser's when absent. */
   platform?: string;
+}
+
+/** The OS/browser languages, `navigator.language` alone when the list is empty. */
+function browserLanguages(): readonly string[] {
+  return navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+}
+
+// FR4.6: Cloudscape's own texts (calendar month names, "Close modal", ...)
+// follow the same locale as the app's catalog.
+const cloudscapeMessages: Record<Locale, I18nProviderProps.Messages> = {
+  en: enMessages,
+  ja: jaMessages,
+};
+
+/** The language preference to show before the session view arrived (U1 W1). */
+const PREFERENCE_BEFORE_SESSION: LanguagePreference = "system";
+
+/**
+ * A refused command, kept as its message key and placeholders so the text
+ * follows a language switch and the error handler never changes with the
+ * locale (261022-small-features U1:BR1.2; a changing handler would make the
+ * subscription effect run again).
+ */
+interface CommandErrorText {
+  key: string;
+  params?: Record<string, string>;
 }
 
 /** Where the focus goes when a page is shown (interaction-spec SideNavigation). */
@@ -139,17 +178,33 @@ const FIRST_FIELD: Record<AppPage, readonly string[]> = {
  * evaluating go on meanwhile. The focus moves to the first field of the page
  * shown and its name is announced. Whether the navigation is open is kept
  * until the app closes. The top bar and the dialogs are the same for both.
+ * Since 261022-small-features U1 the locale is decided here, not by
+ * `main.tsx`: from the session view's saved language preference and the OS
+ * languages (`resolveLocale`, U1:BR1.2), the OS language alone until the
+ * first view arrives (W1). The translator, Cloudscape's `I18nProvider`, the
+ * region names and `document.documentElement.lang` all follow that one
+ * value, so a saved preference switches every text without a restart and
+ * without remounting the pages: fetched logs, opened rows, field texts, the
+ * connection and the filters stay (U1:BR1.3, FR1.5). The settings dialog
+ * hands both settings to `saveSettings`; a failed save leaves the view, and
+ * so the language, as it was (U1:BR1.6).
  */
-export function App({ locale, platform }: AppProps) {
+export function App({ languages, platform }: AppProps) {
+  const [session, setSession] = useState<SessionView | null>(null);
+  const osLanguages = useMemo(() => languages ?? browserLanguages(), [languages]);
+  const preference = session?.language ?? PREFERENCE_BEFORE_SESSION;
+  const locale = useMemo(() => resolveLocale(preference, osLanguages), [preference, osLanguages]);
   const t = useMemo(() => createTranslator(locale), [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   const mac = useMemo(() => isMacPlatform(platform ?? currentPlatform()), [platform]);
   const [page, setPage] = useState<AppPage>("logManagement");
   const [analyticsShown, setAnalyticsShown] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(true);
   const [announcement, setAnnouncement] = useState("");
   const [focusRequest, setFocusRequest] = useState(0);
-  const [session, setSession] = useState<SessionView | null>(null);
-  const [commandError, setCommandError] = useState<string | null>(null);
+  const [commandError, setCommandError] = useState<CommandErrorText | null>(null);
   const [filterDraft, setFilterDraft] = useState<string | null>(null);
   const [filterFailures, setFilterFailures] = useState(0);
   const settingsButtonRef = useRef<ButtonProps.Ref>(null);
@@ -184,14 +239,13 @@ export function App({ locale, platform }: AppProps) {
     }
   }, [pane.collapsed]);
 
-  const reportError = useCallback(
-    (error: unknown) => {
-      setCommandError(
-        isCommandError(error) ? t(error.key) : t("error.command", { detail: String(error) }),
-      );
-    },
-    [t],
-  );
+  const reportError = useCallback((error: unknown) => {
+    setCommandError(
+      isCommandError(error)
+        ? { key: error.key }
+        : { key: "error.command", params: { detail: String(error) } },
+    );
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -278,8 +332,9 @@ export function App({ locale, platform }: AppProps) {
   );
   const handleOpenSettings = useCallback(() => run(openSettings), [run]);
   const handleCancelSettings = useCallback(() => run(cancelSettings), [run]);
+  // 261022-small-features U1:BR1.1: both settings in one save.
   const handleSaveSettings = useCallback(
-    (enabled: boolean) => run(() => saveSettings(enabled)),
+    (enabled: boolean, language: LanguagePreference) => run(() => saveSettings(enabled, language)),
     [run],
   );
   const handleClearCache = useCallback(() => run(clearCache), [run]);
@@ -378,7 +433,7 @@ export function App({ locale, platform }: AppProps) {
         statusIconAriaLabel={t("failure.kind.Other")}
         onDismiss={dismissError}
       >
-        {commandError}
+        {t(commandError.key, commandError.params)}
       </Alert>
     </div>
   );
@@ -399,174 +454,176 @@ export function App({ locale, platform }: AppProps) {
   };
 
   return (
-    <main className="app" data-testid="app">
-      {session && (
-        <TopBar
-          session={session}
-          t={t}
-          locale={locale}
-          onSelectProfile={handleSelectProfile}
-          onSelectRegion={handleSelectRegion}
-          onSelectTimeZone={handleSelectTimeZone}
-          onOpenSettings={handleOpenSettings}
-          settingsButtonRef={settingsButtonRef}
-        />
-      )}
-      <div className="app-shell">
+    <I18nProvider locale={locale} messages={[cloudscapeMessages[locale]]}>
+      <main className="app" data-testid="app">
         {session && (
-          <AppNavigation
-            page={page}
-            open={navigationOpen}
+          <TopBar
+            session={session}
             t={t}
-            onNavigate={navigate}
-            onOpenChange={setNavigationOpen}
+            locale={locale}
+            onSelectProfile={handleSelectProfile}
+            onSelectRegion={handleSelectRegion}
+            onSelectTimeZone={handleSelectTimeZone}
+            onOpenSettings={handleOpenSettings}
+            settingsButtonRef={settingsButtonRef}
           />
         )}
-        <div
-          className="app-page"
-          hidden={page !== "logManagement"}
-          data-testid="app-page-logManagement"
-        >
+        <div className="app-shell">
+          {session && (
+            <AppNavigation
+              page={page}
+              open={navigationOpen}
+              t={t}
+              onNavigate={navigate}
+              onOpenChange={setNavigationOpen}
+            />
+          )}
           <div
-            className="app-body"
-            style={{ "--ls-log-group-pane-width": `${pane.width}%` } as CSSProperties}
+            className="app-page"
+            hidden={page !== "logManagement"}
+            data-testid="app-page-logManagement"
           >
-            {session && pane.collapsed && (
-              <div className="log-group-pane-collapsed" data-testid="log-group-pane-collapsed">
-                <Button
-                  ref={expandButtonRef}
-                  variant="icon"
-                  iconName="angle-right"
-                  ariaLabel={t("pane.expand")}
-                  onClick={expandPane}
-                  data-testid="log-group-pane-expand-button"
-                />
-              </div>
-            )}
-            {session && !pane.collapsed && (
-              <LogGroupPane
-                key={session.sessionId}
-                session={session}
-                t={t}
-                onFilterChange={handleFilter}
-                onReload={handleReload}
-                onSelect={handleSelectLogGroup}
-                onCollapse={collapsePane}
-                collapseButtonRef={collapseButtonRef}
-                reloadButtonRef={reloadButtonRef}
-                onSsoLogin={handleSsoLogin}
-              />
-            )}
-            {session && !pane.collapsed && (
-              <PaneResizer value={pane.width} onChange={pane.setWidth} t={t} />
-            )}
-            <section className="app-main">
-              {session && (
-                <ConditionArea
-                  key={`${session.sessionId}:${session.timeZone}`}
+            <div
+              className="app-body"
+              style={{ "--ls-log-group-pane-width": `${pane.width}%` } as CSSProperties}
+            >
+              {session && pane.collapsed && (
+                <div className="log-group-pane-collapsed" data-testid="log-group-pane-collapsed">
+                  <Button
+                    ref={expandButtonRef}
+                    variant="icon"
+                    iconName="angle-right"
+                    ariaLabel={t("pane.expand")}
+                    onClick={expandPane}
+                    data-testid="log-group-pane-expand-button"
+                  />
+                </div>
+              )}
+              {session && !pane.collapsed && (
+                <LogGroupPane
+                  key={session.sessionId}
                   session={session}
                   t={t}
-                  locale={locale}
-                  onChange={handleChange}
-                  onFetch={handleFetch}
-                  onCancel={handleCancelFetch}
-                  filterText={filterDraft ?? session.logFilter}
-                  onFilterTextChange={setFilterDraft}
-                  onLogFilterChange={handleLogFilter}
-                  filterFailureCount={filterFailures}
-                >
-                  {session.ssoLogin.state === "Succeeded" && (
-                    <div role="status" data-testid="sso-login-success">
-                      <Alert
-                        type="success"
-                        dismissible
-                        dismissAriaLabel={t("ssoLogin.close")}
-                        statusIconAriaLabel={t("ssoLogin.succeeded")}
-                        onDismiss={handleDismissSsoLogin}
-                      >
-                        {t("ssoLogin.succeeded")}
-                      </Alert>
-                    </div>
-                  )}
-                  {page === "logManagement" && commandErrorAlert}
-                  <FetchErrorBanner session={session} t={t} onSsoLogin={handleSsoLogin} />
-                  {/* U5:BR5.11: in the error area's place; a cancelled fetch is
+                  onFilterChange={handleFilter}
+                  onReload={handleReload}
+                  onSelect={handleSelectLogGroup}
+                  onCollapse={collapsePane}
+                  collapseButtonRef={collapseButtonRef}
+                  reloadButtonRef={reloadButtonRef}
+                  onSsoLogin={handleSsoLogin}
+                />
+              )}
+              {session && !pane.collapsed && (
+                <PaneResizer value={pane.width} onChange={pane.setWidth} t={t} />
+              )}
+              <section className="app-main">
+                {session && (
+                  <ConditionArea
+                    key={`${session.sessionId}:${session.timeZone}`}
+                    session={session}
+                    t={t}
+                    locale={locale}
+                    onChange={handleChange}
+                    onFetch={handleFetch}
+                    onCancel={handleCancelFetch}
+                    filterText={filterDraft ?? session.logFilter}
+                    onFilterTextChange={setFilterDraft}
+                    onLogFilterChange={handleLogFilter}
+                    filterFailureCount={filterFailures}
+                  >
+                    {session.ssoLogin.state === "Succeeded" && (
+                      <div role="status" data-testid="sso-login-success">
+                        <Alert
+                          type="success"
+                          dismissible
+                          dismissAriaLabel={t("ssoLogin.close")}
+                          statusIconAriaLabel={t("ssoLogin.succeeded")}
+                          onDismiss={handleDismissSsoLogin}
+                        >
+                          {t("ssoLogin.succeeded")}
+                        </Alert>
+                      </div>
+                    )}
+                    {page === "logManagement" && commandErrorAlert}
+                    <FetchErrorBanner session={session} t={t} onSsoLogin={handleSsoLogin} />
+                    {/* U5:BR5.11: in the error area's place; a cancelled fetch is
                   not a failure, so the two never show together. Its status
                   region is always there, empty without a notice
                   (261020-carryover-fixes FR4.2.1). */}
-                  <CancelNotice notice={session.cancelNotice} t={t} />
-                  {LOG_TABLE_VARIANT === "cloudscape" ? (
-                    <LogTableCloudscape {...tableProps} />
-                  ) : (
-                    <LogTable {...tableProps} />
-                  )}
-                  <StatusLine session={session} t={t} onOpenFailures={handleOpenFailures} />
-                </ConditionArea>
-              )}
-              {session?.failureListOpen && (
-                <FailureList
-                  failedStreams={session.failedStreams}
-                  listingFailure={session.listingFailure}
-                  t={t}
-                  onClose={handleCloseFailures}
-                />
-              )}
-            </section>
+                    <CancelNotice notice={session.cancelNotice} t={t} />
+                    {LOG_TABLE_VARIANT === "cloudscape" ? (
+                      <LogTableCloudscape {...tableProps} />
+                    ) : (
+                      <LogTable {...tableProps} />
+                    )}
+                    <StatusLine session={session} t={t} onOpenFailures={handleOpenFailures} />
+                  </ConditionArea>
+                )}
+                {session?.failureListOpen && (
+                  <FailureList
+                    failedStreams={session.failedStreams}
+                    listingFailure={session.listingFailure}
+                    t={t}
+                    onClose={handleCloseFailures}
+                  />
+                )}
+              </section>
+            </div>
           </div>
+          {session && analyticsShown && (
+            <div
+              className="app-page app-page-analytics"
+              hidden={page !== "logAnalytics"}
+              data-testid="app-page-logAnalytics"
+            >
+              {page === "logAnalytics" && commandErrorAlert}
+              <LogAnalyticsPage
+                key={`${session.sessionId}:${session.timeZone}`}
+                session={session}
+                t={t}
+                locale={locale}
+                mac={mac}
+                onChange={handleAnalyticsChange}
+                onRun={handleRunQuery}
+                onCancel={handleCancelQuery}
+                onError={reportError}
+              />
+            </div>
+          )}
         </div>
-        {session && analyticsShown && (
-          <div
-            className="app-page app-page-analytics"
-            hidden={page !== "logAnalytics"}
-            data-testid="app-page-logAnalytics"
-          >
-            {page === "logAnalytics" && commandErrorAlert}
-            <LogAnalyticsPage
-              key={`${session.sessionId}:${session.timeZone}`}
-              session={session}
-              t={t}
-              locale={locale}
-              mac={mac}
-              onChange={handleAnalyticsChange}
-              onRun={handleRunQuery}
-              onCancel={handleCancelQuery}
-              onError={reportError}
-            />
-          </div>
+        <div className="visually-hidden" aria-live="polite" data-testid="app-page-announcement">
+          {announcement}
+        </div>
+        {session?.pendingChange && (
+          <ConfirmDialog t={t} onConfirm={handleConfirm} onCancel={handleCancel} />
         )}
-      </div>
-      <div className="visually-hidden" aria-live="polite" data-testid="app-page-announcement">
-        {announcement}
-      </div>
-      {session?.pendingChange && (
-        <ConfirmDialog t={t} onConfirm={handleConfirm} onCancel={handleCancel} />
-      )}
-      {session?.settingsDialog === "Open" && (
-        <SettingsDialog
-          session={session}
-          t={t}
-          returnFocusRef={settingsButtonRef}
-          onSave={handleSaveSettings}
-          onCancel={handleCancelSettings}
-          onClear={handleClearCache}
-        />
-      )}
-      {session?.closeConfirmation === "Pending" && (
-        <CloseConfirmDialog t={t} onKeep={handleKeepFetching} onClose={handleCloseApp} />
-      )}
-      {session && ssoModalShown && (
-        <SsoLoginModal
-          // A new attempt, or waiting turning into a result, starts the
-          // dialog afresh so its footer button takes the focus.
-          key={`${session.ssoLogin.attemptId}:${isSsoLoginRunning(session.ssoLogin)}`}
-          login={session.ssoLogin}
-          t={t}
-          onCancel={handleCancelSsoLogin}
-          onClose={handleDismissSsoLogin}
-          onRetry={handleRetrySsoLogin}
-          onOpenUrl={handleOpenSsoUrl}
-        />
-      )}
-    </main>
+        {session?.settingsDialog === "Open" && (
+          <SettingsDialog
+            session={session}
+            t={t}
+            returnFocusRef={settingsButtonRef}
+            onSave={handleSaveSettings}
+            onCancel={handleCancelSettings}
+            onClear={handleClearCache}
+          />
+        )}
+        {session?.closeConfirmation === "Pending" && (
+          <CloseConfirmDialog t={t} onKeep={handleKeepFetching} onClose={handleCloseApp} />
+        )}
+        {session && ssoModalShown && (
+          <SsoLoginModal
+            // A new attempt, or waiting turning into a result, starts the
+            // dialog afresh so its footer button takes the focus.
+            key={`${session.ssoLogin.attemptId}:${isSsoLoginRunning(session.ssoLogin)}`}
+            login={session.ssoLogin}
+            t={t}
+            onCancel={handleCancelSsoLogin}
+            onClose={handleDismissSsoLogin}
+            onRetry={handleRetrySsoLogin}
+            onOpenUrl={handleOpenSsoUrl}
+          />
+        )}
+      </main>
+    </I18nProvider>
   );
 }

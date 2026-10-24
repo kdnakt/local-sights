@@ -86,19 +86,19 @@
 
 ### Step 1: 構成の確認（骨組み）
 
-- [ ] Step 1.1 変更する既存ファイルの位置と今の形を確かめる：`crates/local-sights-core/src/cache/settings.rs`（`SettingsFile`・`SettingsLoad`・`load_settings`・`save_settings`）、`crates/local-sights-core/src/session.rs`（`SettingsWork`・`SettingsWorkResult`・`SessionView`・`with_cache_location`・`begin_save_settings`・`finish_settings_work`・`view()`）、`src-tauri/src/lib.rs`（`save_settings` コマンド）、`src/api.ts`（`SessionView`・`saveSettings`）、`src/i18n/messages.ts`（`Locale`・`detectLocale`・文言）、`src/components/SettingsDialog.tsx`、`src/App.tsx`・`src/main.tsx`、`src/test/fixtures.ts`。新しいファイルや設定ファイルは要らない（新しい依存もなし）。
+- [x] Step 1.1 変更する既存ファイルの位置と今の形を確かめる：`crates/local-sights-core/src/cache/settings.rs`（`SettingsFile`・`SettingsLoad`・`load_settings`・`save_settings`）、`crates/local-sights-core/src/session.rs`（`SettingsWork`・`SettingsWorkResult`・`SessionView`・`with_cache_location`・`begin_save_settings`・`finish_settings_work`・`view()`）、`src-tauri/src/lib.rs`（`save_settings` コマンド）、`src/api.ts`（`SessionView`・`saveSettings`）、`src/i18n/messages.ts`（`Locale`・`detectLocale`・文言）、`src/components/SettingsDialog.tsx`、`src/App.tsx`・`src/main.tsx`、`src/test/fixtures.ts`。新しいファイルや設定ファイルは要らない（新しい依存もなし）。
   - 対応：全 FR（準備）
 
 ### Step 2: テストランナーの確認と作業単位に絞ったコマンドの記録
 
-- [ ] Step 2.1 Rust のランナーを確かめる：`cargo test -p local-sights-core cache::settings` が今のテスト 5 本（Windows では 4 本）を通すことを確かめる。
-- [ ] Step 2.2 画面のランナーを確かめる：`npx vitest run src/i18n/messages.test.ts src/components/SettingsDialog.test.tsx` が今のテストを通すことを確かめる。
-- [ ] Step 2.3 作業単位に絞ったコマンドを `unit-test-instructions.md` のとおりに使う（この計画と同時に書いてある）。
+- [x] Step 2.1 Rust のランナーを確かめる：`cargo test -p local-sights-core cache::settings` が今のテスト 5 本（Windows では 4 本）を通すことを確かめる。
+- [x] Step 2.2 画面のランナーを確かめる：`npx vitest run src/i18n/messages.test.ts src/components/SettingsDialog.test.tsx` が今のテストを通すことを確かめる。
+- [x] Step 2.3 作業単位に絞ったコマンドを `unit-test-instructions.md` のとおりに使う（この計画と同時に書いてある）。
   - 対応：Testing Contract の runner_step
 
 ### Step 3: 純粋なロジック — テストを先に書いてから実装する
 
-- [ ] Step 3.1 **[Red]** `cache/settings.rs` のテストを先に書く（コンパイルが通らない・失敗することを確かめる）：
+- [x] Step 3.1 **[Red]** `cache/settings.rs` のテストを先に書く（コンパイルが通らない・失敗することを確かめる）：
   - `language_is_read_back_and_defaults_to_system`：`save_settings(path, true, LanguagePreference::Ja)` → `load_settings` が `Loaded { cache_enabled: true, language: Ja }`。`En`・`System` も同じ。ファイルの中身が `{"formatVersion":1,"cacheEnabled":true,"language":"ja"}\n` の 3 項目だけ（NFR5）。
   - `an_old_settings_file_without_language_means_system`：`{"formatVersion":1,"cacheEnabled":true}` → `Loaded { cache_enabled: true, language: System }`（BR1.4、BR1.5）。
   - `an_unknown_language_means_system_and_keeps_the_cache_setting`：`"language":"fr"`、`"language":""`、`"language":1` → `cache_enabled` は書かれた値、`language` は `System`（BR1.4）。
@@ -107,39 +107,39 @@
   - `language_preference_round_trips_its_spelling`：`LanguagePreference` の `as_str()` と `parse` が `system` / `ja` / `en` を往復し、ほかは `None`。
   - 既存の 5 本を新しい型（`Loaded { cache_enabled, language }`・`save_settings` の 3 引数）に合わせて直す。
   - 対応：FR1.4、BR1.4、BR1.5、NFR5
-- [ ] Step 3.2 **[Green]** `cache/settings.rs` を実装する：`pub enum LanguagePreference { System, Ja, En }`（`Default` = `System`、`as_str()`、`FromStr` または `parse(&str) -> Option<Self>`、`serde` は `rename_all = "lowercase"` で `Serialize`/`Deserialize`）。`SettingsFile.language: Option<String>`（`#[serde(default, skip_serializing_if = "Option::is_none")]` は使わず、常に書く：読みは `Option<String>` で受け、知らない綴りは `System` に落として標準エラーに 1 行出す。書きは `Some(as_str())`）。`SettingsLoad::Loaded { cache_enabled, language }`、`SettingsLoad::language(self) -> LanguagePreference`。`save_settings(path, cache_enabled, language)`。`formatVersion` は 1 のまま。モジュールの doc コメントを更新する。
+- [x] Step 3.2 **[Green]** `cache/settings.rs` を実装する：`pub enum LanguagePreference { System, Ja, En }`（`Default` = `System`、`as_str()`、`FromStr` または `parse(&str) -> Option<Self>`、`serde` は `rename_all = "lowercase"` で `Serialize`/`Deserialize`）。`SettingsFile.language: Option<String>`（`#[serde(default, skip_serializing_if = "Option::is_none")]` は使わず、常に書く：読みは `Option<String>` で受け、知らない綴りは `System` に落として標準エラーに 1 行出す。書きは `Some(as_str())`）。`SettingsLoad::Loaded { cache_enabled, language }`、`SettingsLoad::language(self) -> LanguagePreference`。`save_settings(path, cache_enabled, language)`。`formatVersion` は 1 のまま。モジュールの doc コメントを更新する。
   - 対応：FR1.4、BR1.4、BR1.5
-- [ ] Step 3.3 **[Refactor]** Step 3.1 のテストが緑であることを確かめ、`cargo fmt` と clippy を通す。
-- [ ] Step 3.4 **[Red]** `src/i18n/messages.test.ts` に `resolveLocale` のテストを先に書く（失敗することを確かめる）：
+- [x] Step 3.3 **[Refactor]** Step 3.1 のテストが緑であることを確かめ、`cargo fmt` と clippy を通す。
+- [x] Step 3.4 **[Red]** `src/i18n/messages.test.ts` に `resolveLocale` のテストを先に書く（失敗することを確かめる）：
   - `resolveLocale("ja", ["en-US"])` → `"ja"`、`resolveLocale("en", ["ja-JP"])` → `"en"`（設定が勝つ）。
   - `resolveLocale("system", ["ja-JP","en-US"])` → `"ja"`、`resolveLocale("system", ["en-US"])` → `"en"`、`resolveLocale("system", [])` → `"en"`（`detectLocale` と同じ）。
   - 新しい文言の鍵 `settings.language`・`settings.language.system`・`settings.language.ja`・`settings.language.en` が両方の言語にあり、`settings.language.ja` は両言語で「日本語」、`settings.language.en` は両言語で「English」（BR1.1 の固定表示名）、`settings.language.system` は en が "Follow the OS setting"、ja が「OS の設定に合わせる」。
   - 既存の「鍵の一覧」のテスト（`settings.cacheEnabled` を含む一覧）に新しい鍵を足す。
   - 対応：FR1.1、FR1.2、BR1.1、BR1.2
-- [ ] Step 3.5 **[Green]** `src/i18n/messages.ts` を実装する：`export type LanguagePreference = "system" | "ja" | "en"`、`export function resolveLocale(preference: LanguagePreference, languages: readonly string[]): Locale`（純粋。`system` は `detectLocale(languages)`）。4 つの文言を足す。
+- [x] Step 3.5 **[Green]** `src/i18n/messages.ts` を実装する：`export type LanguagePreference = "system" | "ja" | "en"`、`export function resolveLocale(preference: LanguagePreference, languages: readonly string[]): Locale`（純粋。`system` は `detectLocale(languages)`）。4 つの文言を足す。
   - 対応：FR1.2、BR1.2
-- [ ] Step 3.6 **[Refactor]** Step 3.4 のテストが緑であることを確かめる。
+- [x] Step 3.6 **[Refactor]** Step 3.4 のテストが緑であることを確かめる。
 
 ### Step 4: 境界の層 — 実装してからテストを書く
 
-- [ ] Step 4.1 **[実装]** `session.rs`：`AppSession` に `language: LanguagePreference` を足す（初期値 `System`）。`with_cache_location` で `load_settings` の結果から `cache_enabled` と `language` の両方を取る（1 回だけ読む）。`SettingsWork::Save` に `language` を足し、`run()` で `save_settings(path, enabled, language)` を呼ぶ。`SettingsWorkResult::Saved` に `language` を足す。`begin_save_settings(enabled, language)`、`save_settings(enabled, language)`、`finish_settings_work` の `Saved` で `self.language = language`（失敗時は変えない：BR1.6）。`SessionView` に `pub language: LanguagePreference` を足し、`view()` で写す。`LanguagePreference` を `local-sights-core` の公開 API として re-export する（`lib.rs` の `pub use`、今の `SettingsNotice` と同じ流儀）。doc コメントを更新する。
+- [x] Step 4.1 **[実装]** `session.rs`：`AppSession` に `language: LanguagePreference` を足す（初期値 `System`）。`with_cache_location` で `load_settings` の結果から `cache_enabled` と `language` の両方を取る（1 回だけ読む）。`SettingsWork::Save` に `language` を足し、`run()` で `save_settings(path, enabled, language)` を呼ぶ。`SettingsWorkResult::Saved` に `language` を足す。`begin_save_settings(enabled, language)`、`save_settings(enabled, language)`、`finish_settings_work` の `Saved` で `self.language = language`（失敗時は変えない：BR1.6）。`SessionView` に `pub language: LanguagePreference` を足し、`view()` で写す。`LanguagePreference` を `local-sights-core` の公開 API として re-export する（`lib.rs` の `pub use`、今の `SettingsNotice` と同じ流儀）。doc コメントを更新する。
   - 対応：FR1.2、FR1.3、FR1.5、FR1.6、BR1.3、BR1.4、BR1.6
-- [ ] Step 4.2 **[テスト]** `session.rs` のテストを書く・直す（実装後）：
+- [x] Step 4.2 **[テスト]** `session.rs` のテストを書く・直す（実装後）：
   - `the_language_is_read_at_startup_and_shown_in_the_view`：`save_settings(path, false, En)` した場所で `with_cache_location` → `view().language == En`、ファイルなしは `System`。
   - `saving_the_language_changes_the_view_only_after_the_work_succeeded`：`begin_save_settings(true, Ja)` の `SettingsWork::Save { language: Ja, .. }`、`run()` → `Saved { language: Ja, .. }`、`finish_settings_work` 後に `view().language == Ja` で、ファイルも `Loaded { language: Ja, .. }`（BR1.3）。
   - `a_failed_save_keeps_the_language`：書けない場所で `save_settings(true, Ja)` → `SaveFailed`、`view().language` は前のまま（BR1.6）。
   - `the_language_is_saved_with_the_cache_setting_in_one_file`：キャッシュを無効にしつつ言語を変えても、1 つのファイルに両方が書かれ、消去は書いたあと（今の順序を保つ）。
   - 既存の `save_settings(true)` / `begin_save_settings(false)` を呼ぶテストを新しい引数（`LanguagePreference::System`）に合わせて直す。
   - 対応：BR1.3、BR1.4、BR1.6
-- [ ] Step 4.3 **[実装]** `src-tauri/src/lib.rs`：`save_settings(enabled: bool, language: LanguagePreference, ...)` に広げ、`begin_save_settings(enabled, language)` を渡す。コマンド名は変えない。doc コメントを更新する。
+- [x] Step 4.3 **[実装]** `src-tauri/src/lib.rs`：`save_settings(enabled: bool, language: LanguagePreference, ...)` に広げ、`begin_save_settings(enabled, language)` を渡す。コマンド名は変えない。doc コメントを更新する。
   - 対応：FR1.2、FR1.3
-- [ ] Step 4.4 **[テスト]** `cargo test -p local-sights` と `src/commandRegistration.test.ts` で、コマンドの集合が 3 か所で一致したままであることを確かめる（コマンドは増えないので既存のテストが緑なら足りる）。
+- [x] Step 4.4 **[テスト]** `cargo test -p local-sights` と `src/commandRegistration.test.ts` で、コマンドの集合が 3 か所で一致したままであることを確かめる（コマンドは増えないので既存のテストが緑なら足りる）。
   - 対応：制約（3 か所の一致）
-- [ ] Step 4.5 **[実装]** `src/api.ts`：`SessionView.language: LanguagePreference`（`messages.ts` の型を import）、`saveSettings(enabled: boolean, language: LanguagePreference)` → `invoke("save_settings", { enabled, language })`。`src/test/fixtures.ts` の `sessionView` に `language: "system"` を足す。
+- [x] Step 4.5 **[実装]** `src/api.ts`：`SessionView.language: LanguagePreference`（`messages.ts` の型を import）、`saveSettings(enabled: boolean, language: LanguagePreference)` → `invoke("save_settings", { enabled, language })`。`src/test/fixtures.ts` の `sessionView` に `language: "system"` を足す。
   - 対応：FR1.2
-- [ ] Step 4.6 **[実装]** `src/components/SettingsDialog.tsx`：チェックボックスの下に `FormField`（ラベル `t("settings.language")`）と Cloudscape `Select`（`data-testid="settings-dialog-language-select"`、選択肢は `system`／`ja`／`en` の順、表示名は `t("settings.language.<value>")`）を足す。状態 `language` の初期値は `session.language`。`onSave: (enabled: boolean, language: LanguagePreference) => void`。初回フォーカスはチェックボックスのまま（BR1.7）。
+- [x] Step 4.6 **[実装]** `src/components/SettingsDialog.tsx`：チェックボックスの下に `FormField`（ラベル `t("settings.language")`）と Cloudscape `Select`（`data-testid="settings-dialog-language-select"`、選択肢は `system`／`ja`／`en` の順、表示名は `t("settings.language.<value>")`）を足す。状態 `language` の初期値は `session.language`。`onSave: (enabled: boolean, language: LanguagePreference) => void`。初回フォーカスはチェックボックスのまま（BR1.7）。
   - 対応：FR1.1、BR1.1、BR1.7
-- [ ] Step 4.7 **[テスト]** `src/components/SettingsDialog.test.tsx` を書く・直す（実装後）：
+- [x] Step 4.7 **[テスト]** `src/components/SettingsDialog.test.tsx` を書く・直す（実装後）：
   - 開いたときの初期値が `session.language` の表示名（`"ja"` → 「日本語」）。
   - 3 つの選択肢が表示名のとおりに出る（英語の画面で "Follow the OS setting"・「日本語」・"English"、日本語の画面で「OS の設定に合わせる」・「日本語」・"English"）。
   - 選んだだけでは `onSave` が呼ばれず、［保存］で `(enabled, language)` の両方が渡る。
@@ -147,9 +147,9 @@
   - Select がラベル「言語」で見つかり、Tab で届く（キーボード）。既存の「Tab が中に留まる」テストの回数を 1 つ増やす。
   - 既存の `onSave` の呼び出しの assert を 2 引数に直す。
   - 対応：BR1.1、BR1.7
-- [ ] Step 4.8 **[実装]** `src/App.tsx`・`src/main.tsx`：`AppProps` を `{ languages?: readonly string[]; platform?: string }` に変える（`locale` を受けるのをやめる。`languages` は OS の言語の並び。省略時は `navigator.languages`、テストは明示する）。`App` の中で `locale = resolveLocale(session?.language ?? "system", languages)` を `useMemo` で決め、`t = createTranslator(locale)`。`I18nProvider`（`locale` と `messages`）を `App` の返す木の最上位に移し、`useEffect` で `document.documentElement.lang = locale` を更新する。Cloudscape の文言の辞書（`all.en`/`all.ja`）の import は `main.tsx` から `App.tsx` に移す。`main.tsx` は `languages` を渡すだけにする。SessionView が届くまでは `system`（OS の言語）で描く（W1）。`handleSaveSettings` は `(enabled, language)` を `saveSettings` に渡す。`regionLabel` に渡す `locale` も同じ値。
+- [x] Step 4.8 **[実装]** `src/App.tsx`・`src/main.tsx`：`AppProps` を `{ languages?: readonly string[]; platform?: string }` に変える（`locale` を受けるのをやめる。`languages` は OS の言語の並び。省略時は `navigator.languages`、テストは明示する）。`App` の中で `locale = resolveLocale(session?.language ?? "system", languages)` を `useMemo` で決め、`t = createTranslator(locale)`。`I18nProvider`（`locale` と `messages`）を `App` の返す木の最上位に移し、`useEffect` で `document.documentElement.lang = locale` を更新する。Cloudscape の文言の辞書（`all.en`/`all.ja`）の import は `main.tsx` から `App.tsx` に移す。`main.tsx` は `languages` を渡すだけにする。SessionView が届くまでは `system`（OS の言語）で描く（W1）。`handleSaveSettings` は `(enabled, language)` を `saveSettings` に渡す。`regionLabel` に渡す `locale` も同じ値。
   - 対応：FR1.2、FR1.3、FR1.5、BR1.2、BR1.3
-- [ ] Step 4.9 **[テスト]** `src/App.test.tsx`・`src/App.title.test.tsx` を書く・直す（実装後）：
+- [x] Step 4.9 **[テスト]** `src/App.test.tsx`・`src/App.title.test.tsx` を書く・直す（実装後）：
   - 既存の `render(<App locale="en" />)` を `render(<App languages={["en-US"]} />)`、`locale="ja"` を `languages={["ja-JP"]}` に置き換える（文言の期待は変わらない）。
   - `switches the texts to Japanese when the session says ja, without losing the state`：英語の OS で開始 → ［設定］→ 「日本語」を選んで［保存］→ `saveSettings` が `(false, "ja")` で呼ばれる → `session-changed` で `language: "ja"` が届くと、見出し・ボタンが日本語になり `document.documentElement.lang === "ja"`、入力欄に入れた文字と取得済みの行の表示は残る（FR1.5）。
   - `starts in the saved language`：最初の `getSession` が `language: "en"` を返す日本語の OS で、画面が英語で描かれる（W1、W4）。
@@ -158,12 +158,12 @@
 
 ### Step 5: 環境とビルドの設定
 
-- [ ] Step 5.1 新しい依存・設定の変更がないことを確かめる（`package.json`・`Cargo.toml`・`tauri.conf.json`・`capabilities/default.json` は触らない）。`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx tsc --noEmit`、`npx eslint .`、`npx prettier --check .` を通す。
+- [x] Step 5.1 新しい依存・設定の変更がないことを確かめる（`package.json`・`Cargo.toml`・`tauri.conf.json`・`capabilities/default.json` は触らない）。`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx tsc --noEmit`、`npx eslint .`、`npx prettier --check .` を通す。
 
 ### Step 6: 文書とトレーサビリティ
 
-- [ ] Step 6.1 変えた関数・型・部品の doc コメントを更新する（`settings.rs` のモジュール説明に `language` の項目、`SettingsDialog` と `App` の説明に言語の切り替え）。`docs/` の利用者向け文書はこの作業単位では変えない（U2 の書き出しと合わせて Build and Test で見直す）。
-- [ ] Step 6.2 `cargo test -p local-sights-core`・`cargo test -p local-sights`・`npx vitest run` を全体で走らせ、既存のテストが緑のままであることを確かめる。
+- [x] Step 6.1 変えた関数・型・部品の doc コメントを更新する（`settings.rs` のモジュール説明に `language` の項目、`SettingsDialog` と `App` の説明に言語の切り替え）。`docs/` の利用者向け文書はこの作業単位では変えない（U2 の書き出しと合わせて Build and Test で見直す）。
+- [x] Step 6.2 `cargo test -p local-sights-core`・`cargo test -p local-sights`・`npx vitest run` を全体で走らせ、既存のテストが緑のままであることを確かめる。
 
 ## ストーリー（FR）と手順の対応
 

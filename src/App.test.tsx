@@ -156,7 +156,7 @@ describe("App", () => {
   });
 
   it("shows the rows the core holds and follows the timeline version", async () => {
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", eventCount: 3, timelineVersion: 1 }));
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
@@ -172,7 +172,7 @@ describe("App", () => {
   });
 
   it("applies the light progress messages of the running job only", async () => {
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", currentJobId: 7, timelineVersion: 1 }));
     const update = (jobId: number, eventCount: number, timelineVersion: number) =>
@@ -212,7 +212,7 @@ describe("App", () => {
     vi.mocked(api.getSession).mockResolvedValue(
       sessionView({ phase: "Fetching", currentJobId: 7, elapsed }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     const part = await screen.findByTestId("status-line-elapsed");
     expect(part).toHaveAttribute("aria-hidden", "true");
     // The screen's own clock moves it on without any message from the core.
@@ -299,7 +299,7 @@ describe("App", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await user.click(await screen.findByTestId("fetch-form-submit-button"));
     expect(api.startFetch).toHaveBeenCalledWith(4);
     await user.click(screen.getByTestId("log-group-pane-reload-button"));
@@ -322,7 +322,7 @@ describe("App", () => {
     });
     vi.mocked(api.getSession).mockResolvedValue(done);
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await user.click(await screen.findByTestId("status-line-failures-button"));
     expect(api.setFailureListOpen).toHaveBeenCalledWith(true);
 
@@ -346,7 +346,7 @@ describe("App", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await user.click(await screen.findByTestId("fetch-form-submit-button"));
     expect(await screen.findByTestId("command-error")).toHaveTextContent("A fetch is in progress.");
     expect(screen.getByTestId("command-error")).toHaveAttribute("role", "alert");
@@ -362,7 +362,7 @@ describe("App", () => {
   });
 
   it("renders the screen in Japanese for the ja locale", async () => {
-    render(<App locale="ja" />);
+    render(<App languages={["ja-JP"]} />);
     expect(await screen.findByTestId("fetch-form-submit-button")).toHaveTextContent("取得");
     expect(screen.getByRole("columnheader", { name: "時刻（ローカル）" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "ストリーム名" })).toBeInTheDocument();
@@ -372,7 +372,7 @@ describe("App", () => {
 
   it("asks before a connection change and forwards the answer", async () => {
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(
       connectedView({
@@ -392,7 +392,7 @@ describe("App", () => {
   it("forwards profile, region and log group search choices from the top bar and the pane", async () => {
     vi.mocked(api.getSession).mockResolvedValue(connectedView());
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await user.click(
       await screen.findByTestId("top-bar-profile").then(() => dropdown("top-bar-profile")),
     );
@@ -420,7 +420,7 @@ describe("App", () => {
         },
       }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     expect(await screen.findByTestId("top-bar-profile")).toHaveTextContent("Profile: Default");
     expect(screen.getByTestId("top-bar-region")).toHaveTextContent("us-east-1");
     expect(screen.getByRole("table", { name: "Log groups" })).toHaveTextContent("Loading…");
@@ -441,7 +441,7 @@ describe("App", () => {
         canFetch: false,
       }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     expect(dateInput("start")).toHaveValue("2024/02/29");
     expect(timeInput("start")).toHaveValue("00:00:00");
@@ -460,7 +460,7 @@ describe("App", () => {
     vi.mocked(api.getSession).mockResolvedValue(
       connectedView({ phase: "Done", eventCount: 3, timelineVersion: 1, startInput }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
     expect(screen.getAllByRole("gridcell")[0]).toHaveTextContent("core time 0");
     expect(dateInput("start")).toHaveValue("2024/03/01");
@@ -543,7 +543,7 @@ describe("App", () => {
         filterResultVersion: 5,
       }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(2));
     expect(screen.getByTestId("status-line-filter")).toHaveTextContent("Filtered: 2 of 3 events");
     expect(logFilter()).toHaveValue("error");
@@ -566,7 +566,7 @@ describe("App", () => {
         filterResultVersion: 7,
       }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     await waitFor(() => expect(api.getRows).toHaveBeenCalled());
     await act(async () => undefined);
@@ -592,7 +592,7 @@ describe("App", () => {
         filterResultVersion: 2,
       }),
     );
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     expect(await screen.findByTestId("log-table-empty")).toHaveTextContent(
       "No events match the filter.",
     );
@@ -600,7 +600,7 @@ describe("App", () => {
 
   it("hands the log filter text to the core after the typing pause", async () => {
     vi.mocked(api.getSession).mockResolvedValue(sessionView({ phase: "Fetching" }));
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     const input = logFilter();
     expect(input).toBeEnabled();
@@ -625,7 +625,7 @@ describe("App", () => {
 
   it("opens the settings dialog from the gear button, saves through the core and returns the focus", async () => {
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     const settingsButton = screen.getByTestId("top-bar-settings-button");
     await user.click(settingsButton);
@@ -638,7 +638,7 @@ describe("App", () => {
     expect(logFilter()).toBeDisabled();
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByTestId("settings-dialog-save-button"));
-    expect(api.saveSettings).toHaveBeenCalledWith(true);
+    expect(api.saveSettings).toHaveBeenCalledWith(true, "system");
 
     push(sessionView({ settingsDialog: "Closed", cacheEnabled: true }));
     expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
@@ -647,7 +647,7 @@ describe("App", () => {
 
   it("forwards Escape and [Clear cache] of the settings dialog", async () => {
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ settingsDialog: "Open" }));
     await user.click(screen.getByTestId("settings-dialog-clear-button"));
@@ -657,11 +657,83 @@ describe("App", () => {
     expect(api.saveSettings).not.toHaveBeenCalled();
   });
 
+  // ---- 261022-small-features U1: the language switch (BR1.2, BR1.3, BR1.6) ----
+
+  /** The trigger button of the language select in the settings dialog. */
+  const languageTrigger = () =>
+    within(screen.getByTestId("settings-dialog-language-select")).getByRole("button");
+
+  it("switches the texts to Japanese when the session says ja, without losing the state (FR1.3, FR1.5)", async () => {
+    const user = userEvent.setup();
+    render(<App languages={["en-US"]} />);
+    await screen.findByTestId("fetch-form");
+    expect(document.documentElement.lang).toBe("en");
+    // Some state to keep: fetched rows and a filter text being typed.
+    push(sessionView({ phase: "Done", eventCount: 3, timelineVersion: 1 }));
+    await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
+    await user.type(logFilter(), "middle");
+    expect(logFilter()).toHaveValue("middle");
+
+    await user.click(screen.getByTestId("top-bar-settings-button"));
+    push(sessionView({ phase: "Done", eventCount: 3, timelineVersion: 1, settingsDialog: "Open" }));
+    await user.click(languageTrigger());
+    await user.click(screen.getByRole("option", { name: "日本語" }));
+    await user.click(screen.getByTestId("settings-dialog-save-button"));
+    expect(api.saveSettings).toHaveBeenCalledWith(false, "ja");
+    // Nothing changed yet: the core has not answered (BR1.3).
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("Fetch");
+
+    push(sessionView({ phase: "Done", eventCount: 3, timelineVersion: 1, language: "ja" }));
+    expect(screen.queryByTestId("settings-dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("取得");
+    expect(screen.getByRole("heading", { level: 2, name: "ロググループ" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "ストリーム名" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "設定" })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("ja");
+    // The state stayed: the rows, the opened filter text (FR1.5).
+    expect(screen.getAllByTestId("log-table-row")).toHaveLength(3);
+    expect(screen.getByText("middle")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "メッセージを絞り込み" })).toHaveValue("middle");
+    expect(api.getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts in the saved language, not the OS language (W1, W4)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(sessionView({ language: "en" }));
+    render(<App languages={["ja-JP"]} />);
+    expect(await screen.findByTestId("fetch-form-submit-button")).toHaveTextContent("Fetch");
+    expect(screen.getByRole("heading", { level: 2, name: "Log groups" })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("en");
+
+    // And a saved "system" follows the OS language.
+    push(sessionView({ language: "system" }));
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("取得");
+    expect(document.documentElement.lang).toBe("ja");
+  });
+
+  it("leaves the language as it was when the save failed (BR1.6)", async () => {
+    const user = userEvent.setup();
+    render(<App languages={["en-US"]} />);
+    await screen.findByTestId("fetch-form");
+    push(sessionView({ settingsDialog: "Open" }));
+    await user.click(languageTrigger());
+    await user.click(screen.getByRole("option", { name: "日本語" }));
+    await user.click(screen.getByTestId("settings-dialog-save-button"));
+    expect(api.saveSettings).toHaveBeenCalledWith(false, "ja");
+
+    push(sessionView({ settingsDialog: "Open", settingsNotice: "SaveFailed" }));
+    expect(screen.getByTestId("settings-dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-dialog-notice")).toHaveTextContent(
+      "The setting could not be saved.",
+    );
+    expect(screen.getByTestId("fetch-form-submit-button")).toHaveTextContent("Fetch");
+    expect(document.documentElement.lang).toBe("en");
+  });
+
   it("sends the log filter text again after the core refused it", async () => {
     vi.mocked(api.setLogFilter)
       .mockRejectedValueOnce({ key: "session.confirmationPending" })
       .mockResolvedValue(undefined);
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     const input = logFilter();
     fireEvent.change(input, { target: { value: "error" } });
@@ -684,7 +756,7 @@ describe("App", () => {
       ssoLogin: ssoLoginView({ available: true, canStart: true, profileOption: "--profile dev" }),
     });
     vi.mocked(api.getSession).mockResolvedValue(authError);
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     const button = await screen.findByTestId("log-group-pane-sso-login-button");
     await user.click(button);
     expect(api.startSsoLogin).toHaveBeenCalledTimes(1);
@@ -727,7 +799,7 @@ describe("App", () => {
 
   it("shows a success notice at the top of the right pane and puts it away (261011-sso-login FR3.1)", async () => {
     const user = userEvent.setup();
-    render(<App locale="ja" />);
+    render(<App languages={["ja-JP"]} />);
     await screen.findByTestId("fetch-form");
     push(
       connectedView({
@@ -754,7 +826,7 @@ describe("App", () => {
 
   it("asks before closing while fetching and forwards [Keep fetching], Escape and [Close]", async () => {
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", currentJobId: 3, closeConfirmation: "Pending" }));
     const dialog = screen.getByTestId("close-confirm-dialog");
@@ -778,7 +850,7 @@ describe("App", () => {
   });
 
   it("shows a failed fetch as an error alert above the list and only what happened in the status line", async () => {
-    render(<App locale="ja" />);
+    render(<App languages={["ja-JP"]} />);
     await screen.findByTestId("fetch-form");
     push(
       sessionView({
@@ -818,7 +890,7 @@ describe("App", () => {
   });
 
   it("keeps the status line the last part of the list's column, with or without the error alert (gate fix 18a)", async () => {
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", eventCount: 3, timelineVersion: 1 }));
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
@@ -858,7 +930,7 @@ describe("App", () => {
 
   it("closes every expanded row when the session says the logs were discarded", async () => {
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Done", eventCount: 3, timelineVersion: 1 }));
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
@@ -879,7 +951,7 @@ describe("App", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("log-group-pane-table");
     await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
     // Tab until the start date (the masked date and time inputs swallow
@@ -923,7 +995,7 @@ describe("App", () => {
   it("closes the log group pane to a strip, then opens it again at the same width (15b)", async () => {
     vi.mocked(api.getSession).mockResolvedValue(connectedView());
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("log-group-pane");
     const body = screen.getByTestId("app").querySelector<HTMLElement>(".app-body")!;
     const widthVar = () => body.style.getPropertyValue("--ls-log-group-pane-width");
@@ -962,7 +1034,7 @@ describe("App", () => {
     window.localStorage.setItem("local-sights.logGroupPaneWidthPercent", "40");
     vi.mocked(api.getSession).mockResolvedValue(connectedView());
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("log-group-pane-collapsed");
     expect(screen.queryByTestId("log-group-pane")).not.toBeInTheDocument();
     expect(screen.queryByRole("separator")).not.toBeInTheDocument();
@@ -1014,7 +1086,7 @@ describe("App", () => {
 
   it("sends [Cancel] to the core and shows [Cancelling…] once the core says so (BR5.1)", async () => {
     const user = userEvent.setup();
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
     await user.click(screen.getByTestId("fetch-form-submit-button"));
@@ -1025,7 +1097,7 @@ describe("App", () => {
   });
 
   it("makes [Cancel] unavailable when the progress message says the cache is written (BR5.2)", async () => {
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
     expect(screen.getByTestId("fetch-form-submit-button")).toBeEnabled();
@@ -1051,7 +1123,7 @@ describe("App", () => {
   });
 
   it("shows the cancel notice above the list, in the error area's place, never with the error (BR5.11)", async () => {
-    render(<App locale="ja" />);
+    render(<App languages={["ja-JP"]} />);
     await screen.findByTestId("fetch-form");
     push(cancelledView());
     const notice = screen.getByTestId("cancel-notice");
@@ -1074,7 +1146,7 @@ describe("App", () => {
   });
 
   it("has the cancel notice's status region before the cancel and fills that same region (261020-carryover-fixes FR4.2)", async () => {
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("fetch-form");
     push(sessionView({ phase: "Fetching", currentJobId: 7, fetchCancelAvailable: true }));
     const region = screen.getByTestId("cancel-notice");
@@ -1089,7 +1161,7 @@ describe("App", () => {
 
   it("keeps the fetched rows filterable after a cancel (NFR5.5)", async () => {
     vi.mocked(api.getSession).mockResolvedValue(cancelledView());
-    render(<App locale="en" />);
+    render(<App languages={["en-US"]} />);
     await screen.findByTestId("cancel-notice-text");
     const input = logFilter();
     expect(input).toBeEnabled();
@@ -1118,7 +1190,7 @@ describe("App", () => {
     it("opens on Log Management and switches with the navigation, keeping Log Management", async () => {
       vi.mocked(api.getSession).mockResolvedValue(shownView());
       const user = userEvent.setup();
-      render(<App locale="en" />);
+      render(<App languages={["en-US"]} />);
       await waitFor(() => expect(screen.getAllByTestId("log-table-row")).toHaveLength(3));
       expect(screen.getByTestId("app-page-logManagement")).toBeVisible();
       expect(screen.queryByTestId("log-analytics-page")).not.toBeInTheDocument();
@@ -1138,7 +1210,7 @@ describe("App", () => {
 
     it("switches with Ctrl+1 and Ctrl+2 outside macOS and Cmd+1 and Cmd+2 on macOS", async () => {
       vi.mocked(api.getSession).mockResolvedValue(shownView());
-      const { unmount } = render(<App locale="en" platform="Win32" />);
+      const { unmount } = render(<App languages={["en-US"]} platform="Win32" />);
       await screen.findByTestId("fetch-form");
       fireEvent.keyDown(window, { key: "2", ctrlKey: true });
       expect(screen.getByTestId("log-analytics-page")).toBeVisible();
@@ -1148,7 +1220,7 @@ describe("App", () => {
       expect(screen.getByTestId("app-page-logManagement")).toBeVisible();
       unmount();
 
-      render(<App locale="en" platform="MacIntel" />);
+      render(<App languages={["en-US"]} platform="MacIntel" />);
       await screen.findByTestId("fetch-form");
       fireEvent.keyDown(window, { key: "2", ctrlKey: true });
       expect(screen.queryByTestId("log-analytics-page")).not.toBeInTheDocument();
@@ -1162,7 +1234,7 @@ describe("App", () => {
     it("moves the focus to the first field of the screen shown", async () => {
       vi.mocked(api.getSession).mockResolvedValue(shownView());
       const user = userEvent.setup();
-      render(<App locale="en" />);
+      render(<App languages={["en-US"]} />);
       await screen.findByTestId("fetch-form");
       await user.click(screen.getByRole("link", { name: "Log Analytics" }));
       // The trigger, the first of the select's buttons (the token's × follows).
@@ -1182,7 +1254,7 @@ describe("App", () => {
     it("keeps the navigation closed or open across switches until the app closes", async () => {
       vi.mocked(api.getSession).mockResolvedValue(shownView());
       const user = userEvent.setup();
-      render(<App locale="en" platform="Win32" />);
+      render(<App languages={["en-US"]} platform="Win32" />);
       await screen.findByTestId("fetch-form");
       await user.click(screen.getByTestId("app-navigation-close-button"));
       expect(screen.getByTestId("app-navigation-open-button")).toHaveFocus();
@@ -1203,7 +1275,7 @@ describe("App", () => {
       );
       vi.mocked(api.runQuery).mockRejectedValue({ key: "session.busy" });
       const user = userEvent.setup();
-      render(<App locale="en" />);
+      render(<App languages={["en-US"]} />);
       await screen.findByTestId("fetch-form");
       await user.click(screen.getByRole("link", { name: "Log Analytics" }));
       await user.click(screen.getByTestId("log-analytics-run-button"));
@@ -1241,7 +1313,7 @@ describe("App", () => {
           }),
         }),
       );
-      render(<App locale="en" />);
+      render(<App languages={["en-US"]} />);
       const dialog = await screen.findByTestId("confirm-dialog-message");
       expect(dialog).toHaveTextContent(BOTH);
     });
@@ -1250,7 +1322,7 @@ describe("App", () => {
       vi.mocked(api.getSession).mockResolvedValue(
         connectedView({ eventCount: 3, phase: "Done", pendingChange: pending }),
       );
-      render(<App locale="en" />);
+      render(<App languages={["en-US"]} />);
       const dialog = await screen.findByTestId("confirm-dialog-message");
       expect(dialog).toHaveTextContent(BOTH);
       expect(screen.getByRole("dialog", { name: "Change the connection?" })).toBeInTheDocument();

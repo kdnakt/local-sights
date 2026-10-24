@@ -25,8 +25,8 @@ vi.mock("./api", async (importOriginal) => {
 });
 
 describe("display name", () => {
-  it.each(["en", "ja"] as const)("shows Local Sights as the heading (%s)", async (locale) => {
-    render(<App locale={locale} />);
+  it.each(["en-US", "ja-JP"])("shows Local Sights as the heading (%s)", async (language) => {
+    render(<App languages={[language]} />);
     await screen.findByTestId("fetch-form");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Local Sights$/);
   });

@@ -13,6 +13,7 @@ import {
   englishSingular,
   isMessageKey,
   messages,
+  resolveLocale,
   timeZoneLabelKey,
   translate,
   type Translate,
@@ -218,6 +219,37 @@ describe("message catalog", () => {
     expect(detectLocale(["fr-FR"])).toBe("en");
     expect(detectLocale(["jam"])).toBe("en");
     expect(detectLocale([])).toBe("en");
+  });
+
+  // ---- 261022-small-features U1: the language preference (BR1.1, BR1.2) ----
+
+  it("resolves the shown language from the preference first (BR1.2)", () => {
+    expect(resolveLocale("ja", ["en-US"])).toBe("ja");
+    expect(resolveLocale("ja", [])).toBe("ja");
+    expect(resolveLocale("en", ["ja-JP"])).toBe("en");
+    expect(resolveLocale("en", ["ja"])).toBe("en");
+  });
+
+  it("follows the OS language like detectLocale when the preference is system (BR1.2)", () => {
+    expect(resolveLocale("system", ["ja-JP", "en-US"])).toBe("ja");
+    expect(resolveLocale("system", ["ja"])).toBe("ja");
+    expect(resolveLocale("system", ["en-US"])).toBe("en");
+    expect(resolveLocale("system", ["en-US", "ja-JP"])).toBe("en");
+    expect(resolveLocale("system", ["fr-FR"])).toBe("en");
+    expect(resolveLocale("system", [])).toBe("en");
+    for (const languages of [["ja-JP"], ["en-GB"], [], ["jam"]]) {
+      expect(resolveLocale("system", languages)).toBe(detectLocale(languages));
+    }
+  });
+
+  it("names the language choices in their own language, except the OS one (BR1.1)", () => {
+    expect(messages["settings.language"]).toEqual({ en: "Language", ja: "言語" });
+    expect(messages["settings.language.system"]).toEqual({
+      en: "Follow the OS setting",
+      ja: "OS の設定に合わせる",
+    });
+    expect(messages["settings.language.ja"]).toEqual({ en: "日本語", ja: "日本語" });
+    expect(messages["settings.language.en"]).toEqual({ en: "English", ja: "English" });
   });
 
   it("fills placeholders in the chosen language", () => {
@@ -435,6 +467,10 @@ describe("message catalog", () => {
       "settings.open",
       "settings.title",
       "settings.cacheEnabled",
+      "settings.language",
+      "settings.language.system",
+      "settings.language.ja",
+      "settings.language.en",
       "settings.location",
       "settings.warning",
       "settings.clear",

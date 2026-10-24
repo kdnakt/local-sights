@@ -1,0 +1,20 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-language-switch",
+  "version": 1,
+  "writes": [
+    { "path": "crates/local-sights-core/src/cache/settings.rs" },
+    { "path": "crates/local-sights-core/src/session.rs" },
+    { "path": "src-tauri/src/lib.rs" },
+    { "path": "src/App.tsx" },
+    { "path": "src/App.test.tsx" },
+    { "path": "src/App.title.test.tsx" },
+    { "path": "src/api.ts" },
+    { "path": "src/main.tsx" },
+    { "path": "src/i18n/messages.ts" },
+    { "path": "src/i18n/messages.test.ts" },
+    { "path": "src/components/SettingsDialog.tsx" },
+    { "path": "src/components/SettingsDialog.test.tsx" },
+    { "path": "src/test/fixtures.ts" }
+  ]
+}

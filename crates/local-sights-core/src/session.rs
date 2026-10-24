@@ -76,6 +76,13 @@
 //! the query screen's selection and result, keeping its query text and
 //! range (U1:BR7.2). A query run starts in one call that checks the reasons
 //! again and moves to Fetching (R-04).
+//! Since 261022-small-features U1 it holds the language preference
+//! ([`LanguagePreference`]): read from the settings file at startup together
+//! with the cache setting (U1:BR1.4), saved with it from the settings dialog
+//! in the same file work, and taken only when that work succeeded (U1:BR1.3,
+//! BR1.6). The view carries it so the screen can switch its texts without a
+//! restart; the screen decides the shown language from it and the OS
+//! language (U1:BR1.2).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -85,6 +92,7 @@ use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::plan::{CacheNotice, cache_notices};
+pub use crate::cache::settings::LanguagePreference;
 use crate::cache::settings::{load_settings, save_settings};
 use crate::cache::{LogCache, WriteTracker};
 use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileSelector};
@@ -396,15 +404,18 @@ pub struct SsoLoginFinish {
 /// system, then [`AppSession::finish_settings_work`] applies its result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsWork {
-    /// [Save]: write the setting; when it switched the cache off, then
+    /// [Save]: write the settings; when it switched the cache off, then
     /// remove every cached file (U6:BR1.3, review R-10).
     Save {
-        /// Where the setting and the cache live.
+        /// Where the settings and the cache live.
         location: CacheLocation,
-        /// The new setting.
+        /// The new cache setting.
         enabled: bool,
         /// Whether the cached files must be removed after writing.
         clear_after: bool,
+        /// The new language preference, written in the same file
+        /// (261022-small-features U1:BR1.3).
+        language: LanguagePreference,
     },
     /// [Clear cache]: remove every cached file (U6:BR1.4).
     Clear {
@@ -416,15 +427,17 @@ pub enum SettingsWork {
 /// Result of [`SettingsWork::run`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsWorkResult {
-    /// The setting was written; `cleared` says whether the cached files were
-    /// removed after it (`None`: nothing had to be removed).
+    /// The settings were written; `cleared` says whether the cached files
+    /// were removed after it (`None`: nothing had to be removed).
     Saved {
-        /// The setting written.
+        /// The cache setting written.
         enabled: bool,
         /// Whether the removal after it worked, when one was needed.
         cleared: Option<bool>,
+        /// The language preference written (261022-small-features U1).
+        language: LanguagePreference,
     },
-    /// The setting could not be written; it is unchanged.
+    /// The settings could not be written; they are unchanged.
     SaveFailed,
     /// [Clear cache] ran; whether every cached file was removed.
     Cleared(bool),
@@ -440,14 +453,16 @@ impl SettingsWork {
                 location,
                 enabled,
                 clear_after,
+                language,
             } => {
-                if let Err(error) = save_settings(&location.settings_path, *enabled) {
-                    eprintln!("local-sights: settings: the setting could not be saved: {error}");
+                if let Err(error) = save_settings(&location.settings_path, *enabled, *language) {
+                    eprintln!("local-sights: settings: the settings could not be saved: {error}");
                     return SettingsWorkResult::SaveFailed;
                 }
                 SettingsWorkResult::Saved {
                     enabled: *enabled,
                     cleared: clear_after.then(|| clear_cache_files(location)),
+                    language: *language,
                 }
             }
             Self::Clear { location } => SettingsWorkResult::Cleared(clear_cache_files(location)),
@@ -723,6 +738,10 @@ pub struct SessionView {
     pub filter_result_version: u64,
     /// Whether the disk cache is enabled (U6:BR1.1).
     pub cache_enabled: bool,
+    /// The language preference read from the settings file and taken from a
+    /// successful save (261022-small-features U1:BR1.3, BR1.4); the screen
+    /// decides the shown language from it and the OS language (U1:BR1.2).
+    pub language: LanguagePreference,
     /// The cache folder shown in the settings dialog (FR7.3); `None` when
     /// the app gave no location.
     pub cache_directory: Option<String>,
@@ -833,6 +852,8 @@ pub struct AppSession {
     cache_location: Option<CacheLocation>,
     /// Whether the disk cache is enabled (U6:BR1.1).
     cache_enabled: bool,
+    /// The language preference (261022-small-features U1:BR1.3, BR1.4).
+    language: LanguagePreference,
     settings_dialog: SettingsDialog,
     settings_notice: Option<SettingsNotice>,
     /// From `on_saving` to the end of the fetch (U6:BR3.7).
@@ -948,6 +969,7 @@ impl AppSession {
             filter: FilterState::default(),
             cache_location: None,
             cache_enabled: false,
+            language: LanguagePreference::System,
             settings_dialog: SettingsDialog::Closed,
             settings_notice: None,
             cache_saving: false,
@@ -1024,10 +1046,14 @@ impl AppSession {
     }
 
     /// The same session with the settings file and the cache folder the app
-    /// decided at startup (U6:BR1.6). Reads the setting: enabled only when
-    /// the file says so (U6:BR1.1, BR1.2).
+    /// decided at startup (U6:BR1.6). Reads the settings once: the cache is
+    /// enabled only when the file says so (U6:BR1.1, BR1.2), and the
+    /// language is the file's known preference, else `System`
+    /// (261022-small-features U1:BR1.4).
     pub fn with_cache_location(mut self, location: CacheLocation) -> Self {
-        self.cache_enabled = load_settings(&location.settings_path).cache_enabled();
+        let settings = load_settings(&location.settings_path);
+        self.cache_enabled = settings.cache_enabled();
+        self.language = settings.language();
         self.cache_location = Some(location);
         self
     }
@@ -1156,13 +1182,17 @@ impl AppSession {
         self.settings_notice = None;
     }
 
-    /// [Save] (U6:BR1.1, BR1.3, review R-10) in one step: the decision, the
-    /// file work and its result. The app does the file work without the
-    /// session lock with [`AppSession::begin_save_settings`],
-    /// [`SettingsWork::run`] and [`AppSession::finish_settings_work`] (U6
-    /// review R-01).
-    pub fn save_settings(&mut self, enabled: bool) -> Result<(), SessionError> {
-        let work = self.begin_save_settings(enabled)?;
+    /// [Save] (U6:BR1.1, BR1.3, review R-10; 261022-small-features U1:BR1.3)
+    /// in one step: the decision, the file work and its result. The app does
+    /// the file work without the session lock with
+    /// [`AppSession::begin_save_settings`], [`SettingsWork::run`] and
+    /// [`AppSession::finish_settings_work`] (U6 review R-01).
+    pub fn save_settings(
+        &mut self,
+        enabled: bool,
+        language: LanguagePreference,
+    ) -> Result<(), SessionError> {
+        let work = self.begin_save_settings(enabled, language)?;
         self.run_settings_work(work);
         Ok(())
     }
@@ -1181,14 +1211,16 @@ impl AppSession {
         }
     }
 
-    /// Decides [Save] (U6:BR1.1, BR1.3): refused unless the dialog is open
-    /// and no other settings work runs. Without a location nothing can be
-    /// saved: the dialog tells so and there is no work. Otherwise returns
-    /// the work: write the setting, then remove the cached files when it
+    /// Decides [Save] (U6:BR1.1, BR1.3; 261022-small-features U1:BR1.3):
+    /// refused unless the dialog is open and no other settings work runs.
+    /// Without a location nothing can be saved: the dialog tells so and
+    /// there is no work. Otherwise returns the work: write the cache setting
+    /// and the language in one file, then remove the cached files when it
     /// switches an enabled cache off (U6 review R-10).
     pub fn begin_save_settings(
         &mut self,
         enabled: bool,
+        language: LanguagePreference,
     ) -> Result<Option<SettingsWork>, SessionError> {
         self.ensure_settings_work_allowed()?;
         let Some(location) = self.cache_location.clone() else {
@@ -1200,6 +1232,7 @@ impl AppSession {
             location,
             enabled,
             clear_after: self.cache_enabled && !enabled,
+            language,
         }))
     }
 
@@ -1216,17 +1249,22 @@ impl AppSession {
     }
 
     /// Applies the result of the file work (U6:BR1.1, BR1.3, BR1.4, review
-    /// R-10): a setting that could not be written is unchanged and the
-    /// dialog says so; a written setting is taken, and the dialog closes
-    /// only when the removal after it (if any) worked too; [Clear cache]
-    /// tells its result. A dialog cancelled meanwhile stays closed and
-    /// shows nothing.
+    /// R-10; 261022-small-features U1:BR1.3, BR1.6): settings that could not
+    /// be written are unchanged, the language included, and the dialog says
+    /// so; written settings are taken, and the dialog closes only when the
+    /// removal after it (if any) worked too; [Clear cache] tells its result.
+    /// A dialog cancelled meanwhile stays closed and shows nothing.
     pub fn finish_settings_work(&mut self, result: SettingsWorkResult) {
         self.settings_busy = false;
         let notice = match result {
             SettingsWorkResult::SaveFailed => Some(SettingsNotice::SaveFailed),
-            SettingsWorkResult::Saved { enabled, cleared } => {
+            SettingsWorkResult::Saved {
+                enabled,
+                cleared,
+                language,
+            } => {
                 self.cache_enabled = enabled;
+                self.language = language;
                 (cleared == Some(false)).then_some(SettingsNotice::ClearFailed)
             }
             SettingsWorkResult::Cleared(true) => Some(SettingsNotice::Cleared),
@@ -1998,6 +2036,7 @@ impl AppSession {
             filter_summary: self.filter.summary.clone(),
             filter_result_version: self.filter.result_version,
             cache_enabled: self.cache_enabled,
+            language: self.language,
             cache_directory: self
                 .cache_location
                 .as_ref()
@@ -4092,7 +4131,12 @@ mod tests {
 
     fn enabled_session(dir: &tempfile::TempDir) -> AppSession {
         let location = location(dir);
-        crate::cache::settings::save_settings(&location.settings_path, true).unwrap();
+        crate::cache::settings::save_settings(
+            &location.settings_path,
+            true,
+            LanguagePreference::System,
+        )
+        .unwrap();
         AppSession::with_catalog(catalog()).with_cache_location(location)
     }
 
@@ -4124,7 +4168,9 @@ mod tests {
         assert_eq!(view.settings_dialog, SettingsDialog::Closed);
         assert!(view.can_open_settings);
         session.open_settings().unwrap();
-        session.save_settings(true).unwrap();
+        session
+            .save_settings(true, LanguagePreference::System)
+            .unwrap();
         assert!(!session.cache_enabled(), "nowhere to save it");
         assert_eq!(
             session.view().settings_notice,
@@ -4216,18 +4262,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
         session.open_settings().unwrap();
-        session.save_settings(true).unwrap();
+        session
+            .save_settings(true, LanguagePreference::System)
+            .unwrap();
         assert!(session.cache_enabled());
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
         assert_eq!(session.view().settings_notice, None);
         assert_eq!(
             crate::cache::settings::load_settings(&location(&dir).settings_path),
             SettingsLoad::Loaded {
-                cache_enabled: true
+                cache_enabled: true,
+                language: LanguagePreference::System,
             }
         );
         assert_eq!(
-            session.save_settings(false),
+            session.save_settings(false, LanguagePreference::System),
             Err(SessionError::SettingsClosed)
         );
     }
@@ -4238,7 +4287,9 @@ mod tests {
         let mut session = enabled_session(&dir);
         let cached = some_cache_file(&dir);
         session.open_settings().unwrap();
-        session.save_settings(false).unwrap();
+        session
+            .save_settings(false, LanguagePreference::System)
+            .unwrap();
         assert!(!session.cache_enabled());
         assert_eq!(session.fetch_cache(), None);
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
@@ -4255,7 +4306,9 @@ mod tests {
         // A regular file where the cache folder should be cannot be listed.
         std::fs::write(location(&dir).cache_directory, b"not a folder").unwrap();
         session.open_settings().unwrap();
-        session.save_settings(false).unwrap();
+        session
+            .save_settings(false, LanguagePreference::System)
+            .unwrap();
         assert!(!session.cache_enabled(), "the setting was written");
         assert_eq!(session.settings_dialog(), SettingsDialog::Open);
         assert_eq!(
@@ -4275,7 +4328,9 @@ mod tests {
         std::fs::remove_dir_all(&config).unwrap();
         std::fs::write(&config, b"not a folder").unwrap();
         session.open_settings().unwrap();
-        session.save_settings(false).unwrap();
+        session
+            .save_settings(false, LanguagePreference::System)
+            .unwrap();
         assert!(session.cache_enabled(), "unchanged");
         assert_eq!(session.settings_dialog(), SettingsDialog::Open);
         assert_eq!(
@@ -4513,13 +4568,17 @@ mod tests {
         let mut session = enabled_session(&dir);
         let cached = some_cache_file(&dir);
         session.open_settings().unwrap();
-        let work = session.begin_save_settings(false).unwrap().unwrap();
+        let work = session
+            .begin_save_settings(false, LanguagePreference::System)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             work,
             SettingsWork::Save {
                 location: location(&dir),
                 enabled: false,
                 clear_after: true,
+                language: LanguagePreference::System,
             }
         );
         // Decided under the lock; nothing on disk changed yet.
@@ -4532,6 +4591,7 @@ mod tests {
             SettingsWorkResult::Saved {
                 enabled: false,
                 cleared: Some(true),
+                language: LanguagePreference::System,
             }
         );
         assert!(!cached.exists());
@@ -4549,7 +4609,10 @@ mod tests {
         std::fs::remove_dir_all(&config).unwrap();
         std::fs::write(&config, b"not a folder").unwrap();
         session.open_settings().unwrap();
-        let work = session.begin_save_settings(false).unwrap().unwrap();
+        let work = session
+            .begin_save_settings(false, LanguagePreference::System)
+            .unwrap()
+            .unwrap();
         assert_eq!(work.run(), SettingsWorkResult::SaveFailed);
         assert_eq!(work.failed(), SettingsWorkResult::SaveFailed);
         assert!(
@@ -4584,6 +4647,146 @@ mod tests {
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
         assert_eq!(session.view().settings_notice, None);
         assert!(session.begin_fetch(session.connection_generation()).is_ok());
+    }
+
+    // ---- 261022-small-features U1: the language preference (BR1.3, BR1.4,
+    // BR1.6) ----
+
+    #[test]
+    fn the_language_is_read_at_startup_and_shown_in_the_view() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::cache::settings::save_settings(
+            &location(&dir).settings_path,
+            false,
+            LanguagePreference::En,
+        )
+        .unwrap();
+        let session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        assert_eq!(session.view().language, LanguagePreference::En);
+        assert!(!session.cache_enabled(), "read in the same pass");
+
+        let fresh = tempfile::tempdir().unwrap();
+        let first_launch =
+            AppSession::with_catalog(catalog()).with_cache_location(location(&fresh));
+        assert_eq!(first_launch.view().language, LanguagePreference::System);
+        let no_disk = AppSession::with_catalog(catalog());
+        assert_eq!(no_disk.view().language, LanguagePreference::System);
+    }
+
+    #[test]
+    fn saving_the_language_changes_the_view_only_after_the_work_succeeded() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        session.open_settings().unwrap();
+        let work = session
+            .begin_save_settings(true, LanguagePreference::Ja)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            work,
+            SettingsWork::Save {
+                location: location(&dir),
+                enabled: true,
+                clear_after: false,
+                language: LanguagePreference::Ja,
+            }
+        );
+        // Decided under the lock; the view still shows the old language (BR1.3).
+        assert_eq!(session.view().language, LanguagePreference::System);
+        let result = work.run();
+        assert_eq!(
+            result,
+            SettingsWorkResult::Saved {
+                enabled: true,
+                cleared: None,
+                language: LanguagePreference::Ja,
+            }
+        );
+        assert_eq!(session.view().language, LanguagePreference::System);
+        session.finish_settings_work(result);
+        let view = session.view();
+        assert_eq!(view.language, LanguagePreference::Ja);
+        assert!(view.cache_enabled);
+        assert_eq!(view.settings_dialog, SettingsDialog::Closed);
+        assert_eq!(
+            crate::cache::settings::load_settings(&location(&dir).settings_path),
+            SettingsLoad::Loaded {
+                cache_enabled: true,
+                language: LanguagePreference::Ja,
+            }
+        );
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_language() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::cache::settings::save_settings(
+            &location(&dir).settings_path,
+            true,
+            LanguagePreference::En,
+        )
+        .unwrap();
+        let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        assert_eq!(session.view().language, LanguagePreference::En);
+        let config = location(&dir).settings_path.parent().unwrap().to_path_buf();
+        std::fs::remove_dir_all(&config).unwrap();
+        std::fs::write(&config, b"not a folder").unwrap();
+        session.open_settings().unwrap();
+        session.save_settings(true, LanguagePreference::Ja).unwrap();
+        let view = session.view();
+        assert_eq!(view.language, LanguagePreference::En, "unchanged (BR1.6)");
+        assert!(view.cache_enabled, "unchanged");
+        assert_eq!(view.settings_notice, Some(SettingsNotice::SaveFailed));
+        assert_eq!(view.settings_dialog, SettingsDialog::Open);
+
+        // The work's thread ending abnormally is a failure too.
+        let mut no_disk = AppSession::with_catalog(catalog());
+        no_disk.open_settings().unwrap();
+        no_disk.save_settings(true, LanguagePreference::Ja).unwrap();
+        assert_eq!(no_disk.view().language, LanguagePreference::System);
+        assert_eq!(
+            no_disk.view().settings_notice,
+            Some(SettingsNotice::SaveFailed)
+        );
+    }
+
+    #[test]
+    fn the_language_is_saved_with_the_cache_setting_in_one_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let cached = some_cache_file(&dir);
+        session.open_settings().unwrap();
+        let work = session
+            .begin_save_settings(false, LanguagePreference::En)
+            .unwrap()
+            .unwrap();
+        assert!(cached.exists(), "nothing on disk changed yet");
+        let result = work.run();
+        assert_eq!(
+            result,
+            SettingsWorkResult::Saved {
+                enabled: false,
+                cleared: Some(true),
+                language: LanguagePreference::En,
+            }
+        );
+        assert!(!cached.exists(), "removed after the file was written");
+        let names: Vec<_> = std::fs::read_dir(location(&dir).settings_path.parent().unwrap())
+            .unwrap()
+            .collect();
+        assert_eq!(names.len(), 1, "one settings file, no temporary file");
+        assert_eq!(
+            crate::cache::settings::load_settings(&location(&dir).settings_path),
+            SettingsLoad::Loaded {
+                cache_enabled: false,
+                language: LanguagePreference::En,
+            }
+        );
+        session.finish_settings_work(result);
+        let view = session.view();
+        assert!(!view.cache_enabled);
+        assert_eq!(view.language, LanguagePreference::En);
+        assert_eq!(view.settings_dialog, SettingsDialog::Closed);
     }
 
     // ---- Gate fix 16a: the default time range at startup ----

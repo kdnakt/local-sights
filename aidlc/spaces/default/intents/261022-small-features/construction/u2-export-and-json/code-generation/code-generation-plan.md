@@ -98,20 +98,20 @@
 
 ### Step 1: 構成の確認（骨組み）
 
-- [ ] Step 1.1 変更するファイルの今の形を確かめる：`crates/local-sights-core/src/lib.rs`（モジュールの公開）、`session.rs`（`SessionView`・`view()`・`SettingsWork` の流儀・`phase`・`filter_state`）、`insights_session.rs`（`ResultSummary`・`QueryRow`・`display_rows`・`row_cells`・`InsightsRun`・`selected_log_groups`）、`log_view.rs`（`rows`）、`query/evaluator.rs`（`QueryResult`・`ResultRow`・`row_cells`）、`src-tauri/src/lib.rs`（`run_settings_work`・`lock`・`emit_or_log`・`run()` の builder・`generate_handler!`）、`src-tauri/build.rs`、`src-tauri/capabilities/default.json`、`src-tauri/Cargo.toml`、`Cargo.toml`（workspace.dependencies）、`src/api.ts`、`src/App.tsx`（警告の領域、`reportError`）、`src/components/ConditionArea.tsx`（絞り込みの欄の行）、`src/components/LogAnalyticsPage.tsx`（結果の Header の actions）、`src/components/ExpandedMessage.tsx`、`src/components/LogTable.tsx`（ExpandedMessage の使われ方と高さの計測）、`src/i18n/messages.ts`、`src/test/fixtures.ts`。
-- [ ] Step 1.2 新しいモジュールの空の骨組みを置く：`crates/local-sights-core/src/export/mod.rs`（`pub mod formatter; pub mod exporter;` と型の再公開）、`formatter.rs`、`exporter.rs`、`src-tauri/src/export_boundary.rs`、`src/jsonPretty.ts`。`lib.rs` に `pub mod export;` を足す。
+- [x] Step 1.1 変更するファイルの今の形を確かめる：`crates/local-sights-core/src/lib.rs`（モジュールの公開）、`session.rs`（`SessionView`・`view()`・`SettingsWork` の流儀・`phase`・`filter_state`）、`insights_session.rs`（`ResultSummary`・`QueryRow`・`display_rows`・`row_cells`・`InsightsRun`・`selected_log_groups`）、`log_view.rs`（`rows`）、`query/evaluator.rs`（`QueryResult`・`ResultRow`・`row_cells`）、`src-tauri/src/lib.rs`（`run_settings_work`・`lock`・`emit_or_log`・`run()` の builder・`generate_handler!`）、`src-tauri/build.rs`、`src-tauri/capabilities/default.json`、`src-tauri/Cargo.toml`、`Cargo.toml`（workspace.dependencies）、`src/api.ts`、`src/App.tsx`（警告の領域、`reportError`）、`src/components/ConditionArea.tsx`（絞り込みの欄の行）、`src/components/LogAnalyticsPage.tsx`（結果の Header の actions）、`src/components/ExpandedMessage.tsx`、`src/components/LogTable.tsx`（ExpandedMessage の使われ方と高さの計測）、`src/i18n/messages.ts`、`src/test/fixtures.ts`。
+- [x] Step 1.2 新しいモジュールの空の骨組みを置く：`crates/local-sights-core/src/export/mod.rs`（`pub mod formatter; pub mod exporter;` と型の再公開）、`formatter.rs`、`exporter.rs`、`src-tauri/src/export_boundary.rs`、`src/jsonPretty.ts`。`lib.rs` に `pub mod export;` を足す。
   - 対応：全 FR（準備）
 
 ### Step 2: テストランナーの確認と作業単位に絞ったコマンドの記録
 
-- [ ] Step 2.1 Rust のランナーを確かめる：`cargo test -p local-sights-core export::` が（空の骨組みで）0 本で通ることを確かめる。
-- [ ] Step 2.2 画面のランナーを確かめる：`npx vitest run src/components/ExpandedMessage.test.tsx` が存在しなければ `npx vitest run src/components/LogTable.test.tsx` が今のテストを通すことを確かめる。
-- [ ] Step 2.3 作業単位に絞ったコマンドは `unit-test-instructions.md` のとおり。
+- [x] Step 2.1 Rust のランナーを確かめる：`cargo test -p local-sights-core export::` が（空の骨組みで）0 本で通ることを確かめる。
+- [x] Step 2.2 画面のランナーを確かめる：`npx vitest run src/components/ExpandedMessage.test.tsx` が存在しなければ `npx vitest run src/components/LogTable.test.tsx` が今のテストを通すことを確かめる。
+- [x] Step 2.3 作業単位に絞ったコマンドは `unit-test-instructions.md` のとおり。
   - 対応：Testing Contract の runner_step
 
 ### Step 3: 純粋なロジック — テストを先に書いてから実装する
 
-- [ ] Step 3.1 **[Red]** `export/formatter.rs` のテストを先に書く（コンパイルが通らない・失敗することを確かめる）：
+- [x] Step 3.1 **[Red]** `export/formatter.rs` のテストを先に書く（コンパイルが通らない・失敗することを確かめる）：
   - `csv_writes_a_header_then_rows_with_crlf`（見出し 1 行＋2 行、各行 CRLF、最後も CRLF）
   - `csv_quotes_cells_with_comma_quote_or_newline_and_doubles_quotes`（`a,b` → `"a,b"`、`"q"` → `"""q"""`、改行を含むセルは括りの中にそのまま）
   - `csv_leaves_plain_cells_and_formula_like_values_untouched`（`=SUM(1)`・`+1` はそのまま、AS3）
@@ -121,8 +121,8 @@
   - `markdown_empty_cell_is_a_single_space`
   - `formatter_writes_row_by_row_to_the_writer`（writer への逐次書き込み。全体を 1 つの文字に持たない）
   - 対応：FR4.2、FR4.3、FR4.1.4、BR4.2、BR4.4
-- [ ] Step 3.2 **[Green]** `export/formatter.rs` を実装する：`pub enum ExportFormat { Csv, Markdown }`、`pub fn write_csv(out: &mut impl Write, columns: &[String], rows: impl Iterator<Item = Vec<String>>) -> io::Result<()>`、`pub fn write_markdown(...)`、`pub fn write(out, format, columns, rows)`。セルの逃がしは小さな純粋関数（`csv_cell`、`markdown_cell`）に分ける。
-- [ ] Step 3.3 **[Red]** `export/exporter.rs` のファイル名のテストを先に書く：
+- [x] Step 3.2 **[Green]** `export/formatter.rs` を実装する：`pub enum ExportFormat { Csv, Markdown }`、`pub fn write_csv(out: &mut impl Write, columns: &[String], rows: impl Iterator<Item = Vec<String>>) -> io::Result<()>`、`pub fn write_markdown(...)`、`pub fn write(out, format, columns, rows)`。セルの逃がしは小さな純粋関数（`csv_cell`、`markdown_cell`）に分ける。
+- [x] Step 3.3 **[Red]** `export/exporter.rs` のファイル名のテストを先に書く：
   - `sanitize_file_stem_replaces_unsafe_characters_with_underscore`（`/aws/lambda/x:y*z?` → `_aws_lambda_x_y_z_`、制御文字も `_`）
   - `sanitize_file_stem_trims_dots_and_spaces_and_falls_back_to_export`（` .name. ` → `name`、`` → `export`、`...` → `export`）
   - `sanitize_file_stem_cuts_at_100_characters`（文字数で切る。マルチバイトの途中で切らない）
@@ -130,9 +130,9 @@
   - `default_file_name_writes_the_time_in_the_chosen_zone`（同じ瞬間が Local（Asia/Tokyo）と UTC で違う文字になる）
   - `default_file_name_without_a_log_group_uses_export`
   - 対応：FR4.4.1、FR4.2.4、FR4.3.3、BR4.5
-- [ ] Step 3.4 **[Green]** `export/exporter.rs` にファイル名の関数を実装する：`pub fn sanitize_file_stem(name: &str) -> String`、`pub fn default_file_name(log_group_name: Option<&str>, taken_at: DateTime<Utc>, zone: Tz, format: ExportFormat) -> String`（既存の `time_zone.rs` のゾーンの型と `format_display_in_zone` の流儀に合わせる）。
-- [ ] Step 3.5 **[Refactor]** Step 3.1〜3.4 のテストが緑であることを確かめ、`cargo fmt` と clippy を通す。
-- [ ] Step 3.6 **[Red]** `src/jsonPretty.test.ts` を先に書く（失敗することを確かめる）：
+- [x] Step 3.4 **[Green]** `export/exporter.rs` にファイル名の関数を実装する：`pub fn sanitize_file_stem(name: &str) -> String`、`pub fn default_file_name(log_group_name: Option<&str>, taken_at: DateTime<Utc>, zone: Tz, format: ExportFormat) -> String`（既存の `time_zone.rs` のゾーンの型と `format_display_in_zone` の流儀に合わせる）。
+- [x] Step 3.5 **[Refactor]** Step 3.1〜3.4 のテストが緑であることを確かめ、`cargo fmt` と clippy を通す。
+- [x] Step 3.6 **[Red]** `src/jsonPretty.test.ts` を先に書く（失敗することを確かめる）：
   - `findJson` が全体が JSON のオブジェクト・配列を見つける（prefix と suffix が空）
   - 前置き（`2026-10-24T01:51:32Z abc-123 INFO {"a":1}`）の prefix を末尾の空白まで保つ
   - 後ろに文字が続く（`{"a":1} tail`）とき suffix に残し、後ろは走査しない
@@ -147,39 +147,39 @@
   - `prettyPrint` は元の空白と改行を捨てる（`{ "a" : 1 }` → 整形後は規則どおり）
   - prefix + 元の JSON + suffix が元のメッセージと等しい（`findJson` の返り値に元の JSON の範囲 `start`/`end` を含める）
   - 対応：FR5.1〜FR5.4、BR5.1、BR5.2、R-03
-- [ ] Step 3.7 **[Green]** `src/jsonPretty.ts` を実装する：`export interface JsonSegments { prefix: string; json: string; pretty: string; suffix: string }`、`export function findJson(message: string): JsonSegments | null`、`export function prettyPrint(json: string): string`。再帰を使わない字句の走査器（明示的なスタック）。定数 `MAX_DEPTH = 256`、`MAX_CANDIDATES = 64`、`MAX_MESSAGE_LENGTH = 1_048_576`。`JSON.parse` は使わない。
-- [ ] Step 3.8 **[Refactor]** Step 3.6 のテストが緑であることを確かめる。
+- [x] Step 3.7 **[Green]** `src/jsonPretty.ts` を実装する：`export interface JsonSegments { prefix: string; json: string; pretty: string; suffix: string }`、`export function findJson(message: string): JsonSegments | null`、`export function prettyPrint(json: string): string`。再帰を使わない字句の走査器（明示的なスタック）。定数 `MAX_DEPTH = 256`、`MAX_CANDIDATES = 64`、`MAX_MESSAGE_LENGTH = 1_048_576`。`JSON.parse` は使わない。
+- [x] Step 3.8 **[Refactor]** Step 3.6 のテストが緑であることを確かめる。
 
 ### Step 4: 境界の層 — 実装してからテストを書く
 
-- [ ] Step 4.1 **[実装]** `export/exporter.rs` に書き出しの型と流れを実装する：`ExportScreen`・`ExportTarget`・`ExportRequest`、`ExportSnapshotSource`（錠の中で複製した元の行：ログの画面は `Vec<LogEvent>`、クエリの画面は `Vec<ResultRow>`＋列＋ゾーン）、`ExportSnapshot { columns, rows, log_group_name, taken_at }`、`ExportJob { export_number, status: ExportStatus, request, row_count }`、`ExportFailure`（R-02 の enum）、`ExportNotice`（`Saved { path, row_count }`・`Copied { row_count }`・`SaveFailed { failure, path }`・`CopyFailed { failure }`）、`ExportOutcome`（`Saved { path, row_count }`・`Copied { row_count }`・`Cancelled`・`Failed { failure, path }`）。`ExportSnapshotSource::into_snapshot(self) -> ExportSnapshot`（錠の外で文字に変える：`format_display_in_zone`、`row_cells`、3 列への写し。R-01）。`render_to(out, snapshot, format, with_bom)`。`SessionView` 向けの `ExportJobView`。
+- [x] Step 4.1 **[実装]** `export/exporter.rs` に書き出しの型と流れを実装する：`ExportScreen`・`ExportTarget`・`ExportRequest`、`ExportSnapshotSource`（錠の中で複製した元の行：ログの画面は `Vec<LogEvent>`、クエリの画面は `Vec<ResultRow>`＋列＋ゾーン）、`ExportSnapshot { columns, rows, log_group_name, taken_at }`、`ExportJob { export_number, status: ExportStatus, request, row_count }`、`ExportFailure`（R-02 の enum）、`ExportNotice`（`Saved { path, row_count }`・`Copied { row_count }`・`SaveFailed { failure, path }`・`CopyFailed { failure }`）、`ExportOutcome`（`Saved { path, row_count }`・`Copied { row_count }`・`Cancelled`・`Failed { failure, path }`）。`ExportSnapshotSource::into_snapshot(self) -> ExportSnapshot`（錠の外で文字に変える：`format_display_in_zone`、`row_cells`、3 列への写し。R-01）。`render_to(out, snapshot, format, with_bom)`。`SessionView` 向けの `ExportJobView`。
   - 対応：FR2.2、FR2.3、FR3.2、FR3.3、FR4.2.3、BR2.2、BR3.1、BR4.3、BR4.8、R-01、R-02
-- [ ] Step 4.2 **[実装]** `session.rs`：`export: ExportJob` を持つ（初期値 Idle）。`can_export_logs(&self) -> ExportAvailability`（BR2.3：行数は `filter_state` の一致数か全件数、`phase`、絞り込みの状態、`export.status`）。`begin_export(&mut self, request, rows_source) -> Result<ExportBegun, SessionError>`：画面に応じて可否を確かめ（クエリの画面は `insights.can_export(exporting)`）、無効なら `SessionError::ExportUnavailable`、Running なら `SessionError::ExportBusy`。有効なら Running・exportNumber+1・知らせの消去。`ExportBegun { export_number, source, default_name_parts }` を返す。`finish_export(&mut self, export_number, outcome)`（番号が違えば捨てる。Cancelled → Idle、Saved/Copied → Done と知らせ、Failed → Failed と知らせ）。`dismiss_export_notice()`。`SessionView` に `export: ExportJobView`・`export_notice: Option<ExportNotice>`・`can_export_logs: bool` を足し、`InsightsView` を作るときに `exporting` を渡す。クエリの画面の既定名のロググループは R-06 のとおり。
+- [x] Step 4.2 **[実装]** `session.rs`：`export: ExportJob` を持つ（初期値 Idle）。`can_export_logs(&self) -> ExportAvailability`（BR2.3：行数は `filter_state` の一致数か全件数、`phase`、絞り込みの状態、`export.status`）。`begin_export(&mut self, request, rows_source) -> Result<ExportBegun, SessionError>`：画面に応じて可否を確かめ（クエリの画面は `insights.can_export(exporting)`）、無効なら `SessionError::ExportUnavailable`、Running なら `SessionError::ExportBusy`。有効なら Running・exportNumber+1・知らせの消去。`ExportBegun { export_number, source, default_name_parts }` を返す。`finish_export(&mut self, export_number, outcome)`（番号が違えば捨てる。Cancelled → Idle、Saved/Copied → Done と知らせ、Failed → Failed と知らせ）。`dismiss_export_notice()`。`SessionView` に `export: ExportJobView`・`export_notice: Option<ExportNotice>`・`can_export_logs: bool` を足し、`InsightsView` を作るときに `exporting` を渡す。クエリの画面の既定名のロググループは R-06 のとおり。
   - 対応：FR2.5、FR2.6、FR4.6、BR2.3、BR4.8、BR4.9
-- [ ] Step 4.3 **[実装]** `insights_session.rs`：`InsightsRun` に `log_group_names: Vec<String>` を足し、実行の開始時に選択を写す（R-06）。`can_export(&self, exporting: bool) -> ExportAvailability`（BR3.2）。`export_source(&self) -> Option<ExportSnapshotSource>`（結果の列と `ResultRow` の複製、ロググループ名）。`InsightsView.can_export`。`row_cells` を錠の外で呼べるように、必要なら `EventFields` と `row_cells` の可視性を `pub(crate)` に広げる。
+- [x] Step 4.3 **[実装]** `insights_session.rs`：`InsightsRun` に `log_group_names: Vec<String>` を足し、実行の開始時に選択を写す（R-06）。`can_export(&self, exporting: bool) -> ExportAvailability`（BR3.2）。`export_source(&self) -> Option<ExportSnapshotSource>`（結果の列と `ResultRow` の複製、ロググループ名）。`InsightsView.can_export`。`row_cells` を錠の外で呼べるように、必要なら `EventFields` と `row_cells` の可視性を `pub(crate)` に広げる。
   - 対応：FR3.1〜FR3.5、BR3.1、BR3.2、R-06
-- [ ] Step 4.4 **[テスト]** 中核の境界のテストを書く（実装後）：
+- [x] Step 4.4 **[テスト]** 中核の境界のテストを書く（実装後）：
   - `session.rs`：`export_is_unavailable_without_rows_while_fetching_while_filtering_and_while_exporting`、`begin_export_takes_a_snapshot_source_and_marks_running`、`a_second_export_while_running_is_refused_and_changes_nothing`、`finish_export_cancelled_returns_to_idle_without_a_notice`、`finish_export_saved_and_copied_make_done_with_their_notices`、`finish_export_failed_keeps_the_failure_kind_and_path`、`a_result_for_another_export_number_is_dropped`、`dismiss_export_notice_clears_it_and_a_new_export_clears_it_too`、`the_log_screen_snapshot_has_three_columns_display_times_and_full_messages`（`into_snapshot` で 3 列、絞り込み後の行だけ）。
   - `insights_session.rs`：`export_is_unavailable_without_a_result_with_zero_rows_while_running_and_while_exporting`、`the_query_snapshot_has_the_result_columns_full_messages_and_empty_cells`、`the_default_name_uses_the_first_log_group_of_the_run`。
   - `export/exporter.rs`：`render_prepends_a_bom_only_for_csv_files`。
   - 対応：BR2.1、BR2.3、BR3.1、BR3.2、BR4.3、BR4.8、BR4.9
-- [ ] Step 4.5 **[実装]** 依存とプラグイン：`Cargo.toml` の `[workspace.dependencies]` に `tauri-plugin-dialog = "2"` と `tauri-plugin-clipboard-manager = "2"` を足し、`src-tauri/Cargo.toml` の `[dependencies]` から参照する。`lib.rs` の `run()` の builder に `.plugin(tauri_plugin_dialog::init())` と `.plugin(tauri_plugin_clipboard_manager::init())` を足す。`Cargo.lock` を更新する（`cargo build -p local-sights` か `cargo test -p local-sights`）。`capabilities/default.json` にプラグインの権限は足さない（R-04）。
+- [x] Step 4.5 **[実装]** 依存とプラグイン：`Cargo.toml` の `[workspace.dependencies]` に `tauri-plugin-dialog = "2"` と `tauri-plugin-clipboard-manager = "2"` を足し、`src-tauri/Cargo.toml` の `[dependencies]` から参照する。`lib.rs` の `run()` の builder に `.plugin(tauri_plugin_dialog::init())` と `.plugin(tauri_plugin_clipboard_manager::init())` を足す。`Cargo.lock` を更新する（`cargo build -p local-sights` か `cargo test -p local-sights`）。`capabilities/default.json` にプラグインの権限は足さない（R-04）。
   - 対応：ADR-002、NFR3
-- [ ] Step 4.6 **[実装]** `src-tauri/src/export_boundary.rs`：`write_file_atomically(path, |out| render…) -> Result<(), ExportFailure>`（同じフォルダに `<名前>.tmp-<乱数 16 桁>`、書いて閉じて rename、失敗時は一時ファイルを消す。`io::ErrorKind` から `ExportFailure` へ：`PermissionDenied`→PermissionDenied、`StorageFull`/`QuotaExceeded`→NoSpace、`NotFound`→NotFound、ほかは Other。OS の文は `eprintln!` にだけ）、`ask_save_path(app, default_name, format) -> Result<Option<PathBuf>, ExportFailure>`（`tauri_plugin_dialog` の保存ダイアログ：既定名、拡張子のフィルタ `CSV`/`Markdown`。取り消しは `None`、失敗は `Dialog`）、`copy_to_clipboard(app, text) -> Result<(), ExportFailure>`（`tauri_plugin_clipboard_manager` の `write_text`、失敗は `Clipboard`）。`cfg` の分岐なし。
+- [x] Step 4.6 **[実装]** `src-tauri/src/export_boundary.rs`：`write_file_atomically(path, |out| render…) -> Result<(), ExportFailure>`（同じフォルダに `<名前>.tmp-<乱数 16 桁>`、書いて閉じて rename、失敗時は一時ファイルを消す。`io::ErrorKind` から `ExportFailure` へ：`PermissionDenied`→PermissionDenied、`StorageFull`/`QuotaExceeded`→NoSpace、`NotFound`→NotFound、ほかは Other。OS の文は `eprintln!` にだけ）、`ask_save_path(app, default_name, format) -> Result<Option<PathBuf>, ExportFailure>`（`tauri_plugin_dialog` の保存ダイアログ：既定名、拡張子のフィルタ `CSV`/`Markdown`。取り消しは `None`、失敗は `Dialog`）、`copy_to_clipboard(app, text) -> Result<(), ExportFailure>`（`tauri_plugin_clipboard_manager` の `write_text`、失敗は `Clipboard`）。`cfg` の分岐なし。
   - 対応：FR4.4、FR4.5、BR4.6、BR4.7
-- [ ] Step 4.7 **[実装]** `lib.rs` のコマンド：`start_export(screen, format, target, app, state) -> Result<(), CommandError>`（非同期、終わりまで待つ。R-07）：session の錠を取り、画面に応じて source を作る（ログの画面は LogView の錠も取って `rows(0, total)` の `LogEvent` を複製）、`begin_export`、`view()` を送って錠を離す。target が file なら `ask_save_path`；`None` なら `finish_export(Cancelled)`。それ以外は `spawn_blocking` で `into_snapshot` → `render_to`（ファイルは `write_file_atomically`、クリップボードは文字にして `copy_to_clipboard`）。スレッドが落ちたら `Failed { failure: Other }`（Interrupted 相当）。結果を `finish_export` に渡し、`view()` を送る。`dismiss_export_notice(app, state)`（同期、`change_settings` と同じ形）。`generate_handler!`・`build.rs`・`capabilities/default.json` の 3 か所に `start_export`・`dismiss_export_notice` を足す。`SessionError` の新しい値を `CommandError` の鍵（`error.exportUnavailable`・`error.exportBusy`）に対応させる。
+- [x] Step 4.7 **[実装]** `lib.rs` のコマンド：`start_export(screen, format, target, app, state) -> Result<(), CommandError>`（非同期、終わりまで待つ。R-07）：session の錠を取り、画面に応じて source を作る（ログの画面は LogView の錠も取って `rows(0, total)` の `LogEvent` を複製）、`begin_export`、`view()` を送って錠を離す。target が file なら `ask_save_path`；`None` なら `finish_export(Cancelled)`。それ以外は `spawn_blocking` で `into_snapshot` → `render_to`（ファイルは `write_file_atomically`、クリップボードは文字にして `copy_to_clipboard`）。スレッドが落ちたら `Failed { failure: Other }`（Interrupted 相当）。結果を `finish_export` に渡し、`view()` を送る。`dismiss_export_notice(app, state)`（同期、`change_settings` と同じ形）。`generate_handler!`・`build.rs`・`capabilities/default.json` の 3 か所に `start_export`・`dismiss_export_notice` を足す。`SessionError` の新しい値を `CommandError` の鍵（`error.exportUnavailable`・`error.exportBusy`）に対応させる。
   - 対応：FR4.4、FR4.5、FR4.6、BR4.6、BR4.7、BR4.8、R-01、R-07
-- [ ] Step 4.8 **[テスト]** アプリ側のテストを書く（実装後）：`export_boundary.rs` に一時フォルダでの `write_file_atomically` のテスト 4 本（書けて rename される・一時ファイルが残らない、フォルダのはずの位置に通常のファイルがあると失敗して一時ファイルが残らない、`ExportFailure` への対応、`NotFound`）。`cargo test -p local-sights` と `src/commandRegistration.test.ts` で 3 か所の一致を確かめる。
+- [x] Step 4.8 **[テスト]** アプリ側のテストを書く（実装後）：`export_boundary.rs` に一時フォルダでの `write_file_atomically` のテスト 4 本（書けて rename される・一時ファイルが残らない、フォルダのはずの位置に通常のファイルがあると失敗して一時ファイルが残らない、`ExportFailure` への対応、`NotFound`）。`cargo test -p local-sights` と `src/commandRegistration.test.ts` で 3 か所の一致を確かめる。
   - 対応：BR4.6、制約（3 か所の一致）
-- [ ] Step 4.9 **[実装]** `src/api.ts`：型 `ExportScreen`・`ExportFormat`・`ExportTarget`・`ExportStatus`・`ExportJobView`・`ExportFailure`・`ExportNotice`、`SessionView.export`・`exportNotice`・`canExportLogs`、`InsightsView.canExport`、`startExport(screen, format, target)`、`dismissExportNotice()`。`src/test/fixtures.ts` の `sessionView` と `insightsView` に新しい項目の既定値（Idle、null、false）。`src/i18n/messages.ts` に文言：`export.menu`（エクスポート／Export）、`export.item.csvFile`・`markdownFile`・`csvClipboard`・`markdownClipboard`、`export.notice.saved {path, count}`・`copied {count}`・`saveFailed {detail}`・`copyFailed {detail}`、`export.failure.PermissionDenied`・`NoSpace`・`NotFound`・`Other`・`Clipboard`・`Dialog`（`{path}` つき）、`export.notice.dismiss`、`error.exportUnavailable`・`error.exportBusy`、`expanded.mode`・`expanded.mode.pretty`・`expanded.mode.raw`。
+- [x] Step 4.9 **[実装]** `src/api.ts`：型 `ExportScreen`・`ExportFormat`・`ExportTarget`・`ExportStatus`・`ExportJobView`・`ExportFailure`・`ExportNotice`、`SessionView.export`・`exportNotice`・`canExportLogs`、`InsightsView.canExport`、`startExport(screen, format, target)`、`dismissExportNotice()`。`src/test/fixtures.ts` の `sessionView` と `insightsView` に新しい項目の既定値（Idle、null、false）。`src/i18n/messages.ts` に文言：`export.menu`（エクスポート／Export）、`export.item.csvFile`・`markdownFile`・`csvClipboard`・`markdownClipboard`、`export.notice.saved {path, count}`・`copied {count}`・`saveFailed {detail}`・`copyFailed {detail}`、`export.failure.PermissionDenied`・`NoSpace`・`NotFound`・`Other`・`Clipboard`・`Dialog`（`{path}` つき）、`export.notice.dismiss`、`error.exportUnavailable`・`error.exportBusy`、`expanded.mode`・`expanded.mode.pretty`・`expanded.mode.raw`。
   - 対応：FR4.1、FR4.4.4、FR4.5、BR4.9
-- [ ] Step 4.10 **[実装]** `src/components/ExportMenu.tsx`：`ButtonDropdown`（`data-testid="export-menu"`、`ariaLabel` = `export.menu`、項目 4 つの id は `csv-file`・`markdown-file`・`csv-clipboard`・`markdown-clipboard`）。props `disabled`・`loading`・`onSelect(format, target)`・`t`。`loading` のときも `disabled`。
-- [ ] Step 4.11 **[実装]** `src/components/ExportNoticeAlert.tsx`：`notice: ExportNotice | null`、`t`、`onDismiss`。Saved/Copied は `Alert type="success"` を `role="status"` の容れ物に、SaveFailed/CopyFailed は `type="error"` を `role="alert"` に。文は鍵と引数で組み立てる（R-02）。`data-testid="export-notice"`、閉じるボタンの名前 `export.notice.dismiss`。
-- [ ] Step 4.12 **[実装]** 配置と配線：`ConditionArea` の絞り込みの欄の行の右端に ExportMenu（`session.canExportLogs`、`session.export.status === "Running"`、`onExport`）。`LogAnalyticsPage` の結果の Header の `actions` に ExportMenu（`insights.canExport`、同じ Running、truncated の表示と `SpaceBetween` で並べる）。`App.tsx`：`handleExport(screen, format, target)` → `run(() => startExport(...))`、`handleDismissExportNotice`、両画面の警告の領域（SSO 成功の知らせの隣）に `ExportNoticeAlert`。
+- [x] Step 4.10 **[実装]** `src/components/ExportMenu.tsx`：`ButtonDropdown`（`data-testid="export-menu"`、`ariaLabel` = `export.menu`、項目 4 つの id は `csv-file`・`markdown-file`・`csv-clipboard`・`markdown-clipboard`）。props `disabled`・`loading`・`onSelect(format, target)`・`t`。`loading` のときも `disabled`。
+- [x] Step 4.11 **[実装]** `src/components/ExportNoticeAlert.tsx`：`notice: ExportNotice | null`、`t`、`onDismiss`。Saved/Copied は `Alert type="success"` を `role="status"` の容れ物に、SaveFailed/CopyFailed は `type="error"` を `role="alert"` に。文は鍵と引数で組み立てる（R-02）。`data-testid="export-notice"`、閉じるボタンの名前 `export.notice.dismiss`。
+- [x] Step 4.12 **[実装]** 配置と配線：`ConditionArea` の絞り込みの欄の行の右端に ExportMenu（`session.canExportLogs`、`session.export.status === "Running"`、`onExport`）。`LogAnalyticsPage` の結果の Header の `actions` に ExportMenu（`insights.canExport`、同じ Running、truncated の表示と `SpaceBetween` で並べる）。`App.tsx`：`handleExport(screen, format, target)` → `run(() => startExport(...))`、`handleDismissExportNotice`、両画面の警告の領域（SSO 成功の知らせの隣）に `ExportNoticeAlert`。
   - 対応：FR4.1.3、BR4.1、BR4.9
-- [ ] Step 4.13 **[実装]** `src/components/ExpandedMessage.tsx`：`findJson(message)` を `useMemo` で求め、見つかれば `SegmentedControl`（`data-testid="log-table-expanded-mode"`、`label` = `expanded.mode`、選択肢 `pretty`/`raw`、初期値 `pretty`）を本文の上に出し、`pretty` なら `prefix + pretty + suffix`、`raw` なら元のメッセージを 1 つの文字ノードで描く。切替の容れ物で `onKeyDown`・`onClick` の伝播を止める（R-05）。高さの計測は内側の容れ物全体（切替＋本文）で行い、20 行の上限（372 px）は本文の要素だけにかける。`LogTable.tsx` 側で ExpandedMessage に `t` を渡す（props の追加）。SegmentedControl が使えなければ R-05 の代替。
+- [x] Step 4.13 **[実装]** `src/components/ExpandedMessage.tsx`：`findJson(message)` を `useMemo` で求め、見つかれば `SegmentedControl`（`data-testid="log-table-expanded-mode"`、`label` = `expanded.mode`、選択肢 `pretty`/`raw`、初期値 `pretty`）を本文の上に出し、`pretty` なら `prefix + pretty + suffix`、`raw` なら元のメッセージを 1 つの文字ノードで描く。切替の容れ物で `onKeyDown`・`onClick` の伝播を止める（R-05）。高さの計測は内側の容れ物全体（切替＋本文）で行い、20 行の上限（372 px）は本文の要素だけにかける。`LogTable.tsx` 側で ExpandedMessage に `t` を渡す（props の追加）。SegmentedControl が使えなければ R-05 の代替。
   - 対応：FR5.5〜FR5.8、BR5.3、BR5.4、BR5.5、R-05
-- [ ] Step 4.14 **[テスト]** 画面のテストを書く（実装後）：
+- [x] Step 4.14 **[テスト]** 画面のテストを書く（実装後）：
   - `ExportMenu.test.tsx`（6 本）：4 項目がこの順で出る、選ぶと `(format, target)` が渡る、`disabled` で開けない、`loading` で無効と処理中、キーボードで開いて選べる、日本語の文言。
   - `ExportNoticeAlert.test.tsx`（4 本）：Saved の文にパスと行数、Copied の文に行数、SaveFailed が `role="alert"` で原因の文（鍵から）、閉じると `onDismiss`。
   - `ExpandedMessage.test.tsx`（新規、6 本）：JSON なしは切替なしで元の文字、JSON ありは初期値「整形」で整形後の文字、「元のまま」で元の文字、文字ノードだけ、切替のキー操作が行に伝わらない（`stopPropagation`）、Escape で `onLeave`（今の振る舞い）。`LogTable.test.tsx` の既存の期待（開いた行の文字）を JSON を含まないメッセージのまま緑に保つ。
@@ -188,12 +188,12 @@
 
 ### Step 5: 環境とビルドの設定
 
-- [ ] Step 5.1 `cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx tsc --noEmit`、`npx eslint .`、`npx prettier --check .` を通す。`cargo deny check` が入っていれば通す（新しい 2 つのクレートのライセンスは MIT OR Apache-2.0）。`npm audit --audit-level=high` は依存が変わらないため変化なし（`package.json` は触らない）。`Cargo.lock` の差分が 2 つのプラグインとその依存だけであることを確かめる。
+- [x] Step 5.1 `cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx tsc --noEmit`、`npx eslint .`、`npx prettier --check .` を通す。`cargo deny check` が入っていれば通す（新しい 2 つのクレートのライセンスは MIT OR Apache-2.0）。`npm audit --audit-level=high` は依存が変わらないため変化なし（`package.json` は触らない）。`Cargo.lock` の差分が 2 つのプラグインとその依存だけであることを確かめる。
 
 ### Step 6: 文書とトレーサビリティ
 
-- [ ] Step 6.1 変えた関数・型・部品の doc コメントを更新する（`export/` のモジュール説明に錠の中と外の分担（R-01）、`ExpandedMessage` に整形と切替、`lib.rs` のモジュール説明にコマンドの追加とプラグイン）。`docs/` の利用者向け文書はこの作業単位では変えず、Build and Test で U1 と合わせて見直す。
-- [ ] Step 6.2 `cargo test -p local-sights-core`・`cargo test -p local-sights`・`npx vitest run` を全体で走らせ、既存のテストが緑のままであることを確かめる。
+- [x] Step 6.1 変えた関数・型・部品の doc コメントを更新する（`export/` のモジュール説明に錠の中と外の分担（R-01）、`ExpandedMessage` に整形と切替、`lib.rs` のモジュール説明にコマンドの追加とプラグイン）。`docs/` の利用者向け文書はこの作業単位では変えず、Build and Test で U1 と合わせて見直す。
+- [x] Step 6.2 `cargo test -p local-sights-core`・`cargo test -p local-sights`・`npx vitest run` を全体で走らせ、既存のテストが緑のままであることを確かめる。
 
 ## ストーリー（FR）と手順の対応
 

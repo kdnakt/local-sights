@@ -58,6 +58,12 @@
 
 
 
+- **Active Unit**: u2-export-and-json
+
+- **Unit Stage**: code-generation
+
+- **Unit State**: in-progress
+
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
@@ -119,7 +125,7 @@ Per unit: [TBD]
 - **Current Stage**: functional-design
 - **Next Stage**: code-generation
 - **Status**: Running
-- **Last Updated**: 2026-10-24T15:20:41Z
+- **Last Updated**: 2026-10-24T16:42:54Z
 
 - **Construction Autonomy Mode**: autonomous
 

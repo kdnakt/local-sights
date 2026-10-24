@@ -8,6 +8,9 @@
 ## Deviations
 - 2026-10-24T11:56:43Z [unit u1-language-switch] — 計画の手順を局所的に入れ替えた。`save_settings` の引数が 3 つになると `session.rs` が旧シグネチャで呼んでいてクレートがコンパイルできないため、`session.rs` の実装（Step 4.1）を Step 3.3 の前に行った。純粋なロジックはテスト先行、境界は実装後にテストという順序は保った。
 - 2026-10-24T11:56:43Z [unit u1-language-switch] — `App.tsx` の `reportError` を「鍵と引数で持ち、描くときに翻訳する」形に直した（計画に明記なし）。`t` に依存したままだと言語の切り替えでイベント購読の `useEffect` が再実行され `getSession` が 2 回呼ばれていたため。表示中のエラー文も言語に追従するようになった。
+- 2026-10-24T17:30:00Z [unit u2-export-and-json] — JSON の走査で深さ 256 を超えたときは、その候補を飛ばさず探索全体を「見つからなかった」で終えることにした。`[` を 300 個並べた入力で後ろの候補が読み切れてしまい、計画の期待と食い違ったため、資源の守りとして保守的な側に寄せた。
+- 2026-10-24T17:30:00Z [unit u2-export-and-json] — コマンドエラーの鍵は計画の `error.*` ではなく、`SessionError::message_key` の既存の慣習に合わせて `session.exportUnavailable` / `session.exportBusy` にした。
+- 2026-10-24T17:30:00Z [unit u2-export-and-json] — `npm audit --audit-level=high` が既存の依存（undici、zod）で high 2 件を報告する。この作業単位では `package.json` を触っておらず、Build and Test で扱う。
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 
 ## Tradeoffs

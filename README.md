@@ -29,7 +29,15 @@ no telemetry or crash reports anywhere.
 > what happened and what to do next; closing the window while fetching asks
 > first. A second screen, **Log Analytics** (the navigation on the left),
 > runs CloudWatch Logs Insights-style queries on logs it fetches for itself;
-> see [Log Analytics queries](#log-analytics-queries).
+> see [Log Analytics queries](#log-analytics-queries). The settings dialog
+> (the gear button) also chooses the language of the screen: follow the OS,
+> 日本語 or English, applied at once and kept for the next launch. Both
+> screens have an **Export** menu that saves the shown rows (after the log
+> filter, or the query result) as CSV or Markdown to a file, or copies them
+> to the clipboard; values are written as they are, so open a CSV with a
+> formula-like value (`=`, `+`, `-`, `@` first) with care in a spreadsheet.
+> An opened row pretty-prints the first complete JSON object or array in its
+> message (every token kept as received) with a pretty / raw toggle.
 
 Required IAM permissions: `logs:DescribeLogGroups`, `logs:DescribeLogStreams`
 and `logs:GetLogEvents`.
@@ -328,7 +336,7 @@ Disk cache (U6):
 
 Screen polish (U7):
 
-- [ ] Clicking a row's line opens its whole message right below it; clicking it again closes it; several rows can be open at once. The text keeps its line breaks, is not reformatted (JSON stays as received), wraps at the edge (also a long word without spaces), and a message such as `<b>bold</b>` shows the tags as text. More than 20 lines scroll inside the expansion. The text can be selected and copied with Cmd+C; clicking inside it does not close the row.
+- [ ] Clicking a row's line opens its whole message right below it; clicking it again closes it; several rows can be open at once. The text keeps its line breaks, is not reformatted unless it holds JSON (261022-small-features: the first complete JSON object or array is pretty-printed with a pretty / raw toggle, see below), wraps at the edge (also a long word without spaces), and a message such as `<b>bold</b>` shows the tags as text. More than 20 lines scroll inside the expansion. The text can be selected and copied with Cmd+C; clicking inside it does not close the row.
 - [ ] In the list, ↑ / ↓ move the selected row (shown in the selection color), Page Up / Page Down by a screenful, Home / End to the first / last row (also with close to a million events); Enter or Space opens or closes the selected row. With the selected row's long expansion open, Tab enters it (↑ ↓ and Space then scroll it), Escape or Shift+Tab goes back to the list. A screen reader announces the list as a grid with the selected row.
 - [ ] Opening, closing and changing the size of the window keep the row at the top in place; the rows above an opened row do not move. Expanded rows stay open when the log filter changes (a hidden row opens again when shown), when the time zone is switched and while a fetch adds rows; they all close when a new fetch starts or the connection changes.
 - [ ] With close to a million events and some rows open, scrolling and opening rows stay responsive.
@@ -353,6 +361,12 @@ Console-style screen (261010-console-ui-polish):
 - [ ] Switching the OS between light and dark mode recolors the whole window at once, the log list included; the top navigation stays dark.
 - [ ] With the OS language set to Japanese, the calendar's month and weekday names and the modal close buttons are Japanese too.
 - [ ] At 1024×640 the two panes and the condition row (filter left, start and end right) fit without overlap; if the date and time fields wrap below the filter, that is the intended fallback.
+
+Language, export and JSON (261022-small-features):
+
+- [ ] In the settings dialog, **Language** offers "Follow the OS setting" (translated), 日本語 and English (each fixed in its own language). Saving English on a Japanese OS switches every text at once, without a restart, and keeps the fetched rows, opened rows, inputs and connection; the next launch starts in English; a `settings.json` from an earlier version (no `language` field) still loads and follows the OS. A save that fails leaves the language as it was.
+- [ ] On both screens the **Export** menu offers "Save as CSV", "Save as Markdown", "Copy as CSV", "Copy as Markdown" in this order; it is disabled with no rows, while fetching or filtering (Log Management), while a run goes or without a result (Log Analytics), and while another export runs. Save opens the OS save dialog with the default name `<log group, unsafe characters replaced by _>_<yyyyMMdd-HHmmss>.csv|.md` in the chosen time zone; cancelling writes nothing and shows nothing. The saved CSV opens in Excel with Japanese and multi-line cells intact (UTF-8 with BOM, CRLF), the copied Markdown pastes as a table (`|` escaped, line breaks as `<br>`); a folder without write permission shows a failure notice naming the cause and leaves no `*.tmp-*` file. With a million rows the screen keeps scrolling and the other operations work while the export runs; switching the language switches the notice and menu texts.
+- [ ] An opened row whose message holds JSON (`{"a":1}`, or `2026-10-24T01:51:32Z abc-123 INFO {"a":1}`) shows it pretty-printed with the prefix kept and a pretty / raw toggle set to pretty; raw shows the text as received; closing and reopening the row resets the toggle; a message without complete JSON (or `[1234]` alone) shows no toggle; the toggle's arrow keys and Enter do not open, close or select rows; a long pretty-printed message scrolls inside the expansion and the next row does not overlap.
 - [ ] The calendar of a date field opens with all seven weekday columns and both month buttons (previous, next) visible; nothing is cut at its right edge.
 - [ ] Started from a terminal (`npm run tauri dev`) with the WebView inspector open, no Content-Security-Policy violation is reported at startup or when a calendar, a dropdown or a dialog opens (the CSP allows the embedded fonts of Cloudscape with `font-src 'self' data:`).
 - [ ] The Dock, the window title and the window switcher (Cmd+Tab) say "Local Sights", and the Dock and the Finder show the new icon (a dark blue tile with log lines and a magnifying glass); the first launch after the change may need the Dock to refresh its icon cache.

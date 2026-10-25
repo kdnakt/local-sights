@@ -51,10 +51,10 @@ Test Strategy は `Standard`、scope は `refactor`（新しいテストの下�
 | T-NFR6 | NFR6 | 足した部品がキーボードで操作でき読み上げの名前を持つ | `ExportMenu.test.tsx`（キーボードで開いて選べる、ariaLabel）、`ExpandedMessage.test.tsx`（切替のキー操作が行に伝わらない）、`SettingsDialog.test.tsx` が通過 | test-results 3.2 | build-and-test | Met |
 | T-PERMS | U2 レビュー R-04 / Forbidden | WebView の権限は 2 つのコマンドだけ増える | `capabilities/default.json` の追加は `allow-start-export`・`allow-dismiss-export-notice` のみ。`commandRegistration.test.ts` 通過 | `security-test-instructions.md` 1 | build-and-test | Met |
 | T-OS-CI | team.md Testing Posture / NFR3 | Rust のテストと clippy・ビルドが CI の macOS・Windows のランナーでも通る | 通った（承認後に pull request #46 を作り、CI run 167 が 4 ジョブすべて成功。2026-10-24T23:50Z） | https://github.com/kdnakt/local-sights/actions/runs/40143537037 | build-and-test（承認後の追記） | Met |
-| T-OS-MAC | team.md Walking Skeleton 3 / NFR3 | macOS の手元で GUI を起動し、README のチェックリストを目で確かめる | 未実施（開発者の手元の作業。この環境は Linux で GUI がない） | test-results 6 | 人（開発者） | Unverified |
-| T-OS-WIN | team.md Walking Skeleton 3 / NFR3 | Windows 11 の手元で、CI で作ったインストーラで入れたアプリで同じく確かめる | 未実施（同上） | test-results 6 | 人（開発者） | Unverified |
+| T-OS-MAC | team.md Walking Skeleton 3 / NFR3 | macOS の手元で GUI を起動し、README のチェックリストを目で確かめる | 良好（開発者が 2026-10-25 に手元で確認） | test-results 6 | 人（開発者） | Met |
+| T-OS-WIN | team.md Walking Skeleton 3 / NFR3 | Windows 11 の手元で、CI で作ったインストーラで入れたアプリで同じく確かめる | 良好（開発者が 2026-10-25 に手元で確認） | test-results 6 | 人（開発者） | Met |
 
-`Pending` は残っていない。承認時は `Met` 18、`Not Met` 0、`Unverified` 3。承認後に pull request #46 の CI が緑になり T-OS-CI を `Met` に更新した（`Met` 19、`Unverified` 2：両 OS の手元の目視）。
+`Pending` は残っていない。承認時は `Met` 18、`Not Met` 0、`Unverified` 3。承認後に pull request #46 の CI が緑になり T-OS-CI を `Met` に、開発者の手元の確認で T-OS-MAC・T-OS-WIN を `Met` に更新した（`Met` 21、`Unverified` 0）。
 
 ## 4. 準備の状態（readiness）
 

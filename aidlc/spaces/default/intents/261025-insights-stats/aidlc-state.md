@@ -17,13 +17,13 @@
 ## Scope Configuration
 - **Stages to Execute**: 0.1, 0.2, 0.3, 2.1, 2.3, 2.6, 2.7, 3.1, 3.5, 3.6
 - **Stages to Skip**: 1.1 (intent-capture), 1.2 (market-research), 1.3 (feasibility), 1.4 (scope-definition), 1.5 (team-formation), 1.6 (rough-mockups), 1.7 (approval-handoff), 2.2 (practices-discovery), 2.4 (user-stories), 2.5 (refined-mockups), 2.8 (contract-design), 2.9 (delivery-planning), 3.2 (nfr-requirements), 3.3 (nfr-design), 3.4 (infrastructure-design), 3.7 (ci-pipeline), 4.2 (environment-provisioning), 4.4 (observability-setup), 4.5 (incident-response), 4.6 (performance-validation), 4.7 (feedback-optimization), 4.1 (deployment-pipeline), 4.3 (deployment-execution)
-- **Depth**: Minimal
-- **Test Strategy**: Minimal
-- **Review Override**: 
+- **Depth**: Standard
+- **Test Strategy**: Standard
+- **Review Override**: advisory
 - **Guard Policy**: off (from scope refactor)
 - **Sensors**: on (from scope refactor)
 - **Learnings**: on (from scope refactor)
-- **Summary Confirmation**: on (from scope refactor)
+- **Summary Confirmation**: off (set by you)
 - **Plan Approval**: on (from scope refactor)
 - **Collaborators**: off (from scope refactor)
 
@@ -102,7 +102,7 @@ Per unit: [TBD]
 - **Current Stage**: reverse-engineering
 - **Next Stage**: requirements-analysis
 - **Status**: Running
-- **Last Updated**: 2026-10-25T14:58:48Z
+- **Last Updated**: 2026-10-25T16:17:34Z
 
 ## Session Resume Point
 - **Last Completed Stage**: state-init

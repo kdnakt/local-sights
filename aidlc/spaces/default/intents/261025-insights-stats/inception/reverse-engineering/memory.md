@@ -2,6 +2,7 @@
 > This file is kept up to date automatically while the stage runs. Add observations at the review step, not by editing here directly.
 
 ## Interpretations
+- 2026-10-25T11:40:00Z — 既存の知識ベース（2026-10-20、全面）は言語切替・書き出し・JSON 整形の 3 コミットで STALE になった。利用者は焦点を絞った読み直しを選び、深く読む範囲は中核 src・Tauri src・画面 src・マニフェスト・docs に限った（tests/examples/scripts/.github は流し読み）。
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 ## Deviations

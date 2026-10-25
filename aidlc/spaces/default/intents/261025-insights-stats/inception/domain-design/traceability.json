@@ -135,7 +135,7 @@
     {
       "id": "FR2.3",
       "status": "OK",
-      "target": "StatsAggregator, QueryResultTable"
+      "target": "StatsAggregator, InsightsSession, ExportJob, QueryResultTable"
     },
     {
       "id": "FR3.1",
@@ -155,7 +155,7 @@
     {
       "id": "FR3.4",
       "status": "OK",
-      "target": "ExportJob, TauriApp, LogAnalyticsPage"
+      "target": "InsightsSession, ExportJob, TauriApp, LogAnalyticsPage"
     },
     {
       "id": "FR3.5",

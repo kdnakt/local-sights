@@ -77,6 +77,8 @@ components:
     interaction: 計画の読み出し
   - component: StatsAggregator
     interaction: 集計の指定と鍵の指定
+  - component: InsightsSession
+    interaction: 結果の列の名前と形の導出
   external_dependencies: []
   entities:
   - name: QueryPlan
@@ -92,12 +94,12 @@ components:
     - groupKeys
 - name: StatsAggregator
   summary: stats の集計（新規）
-  behaviour: filter で残ったイベントを受け取り、by の鍵の値の組ごとにグループを作り、集計の指定ごとの累積（count(*)・count(項目)・count_distinct・sum・avg・min・max・pct・stddev・earliest・latest・sortsFirst・sortsLast など。確定は OQ1）を進め、最後にグループごとの集計の行（鍵の値と集計値のセルの列）を返す純粋な部品（Q2、ADR-002）。bin(<間隔>) の区切りの計算（UTC のエポック基準、A8。間隔の書き方と揃え方は OQ2）と、イベントのない区切りの行を出さない決まり（FR2.2）もここに置く。鍵の項目を持たないイベント、集計する項目を持たないイベント、数値でない値の扱い（FR1.6）と、イベントが 0 件のときの by なしの stats の行数（R-04）は、コンソールと同じにするための決まりを機能設計で確かめてここに実装する。集計値の型と表示の文字（小数の桁、丸め。A7）はここで 1 回だけ決め、表と書き出しは同じ文字を使う。イベントを塊ごとに受け取れる形にし、QueryEvaluator が 10,000 行ずつ進める今の流れに乗る（NFR2）。実際の AWS もファイルも触らず、テストを先に書く（NFR7）。
+  behaviour: filter で残ったイベントを受け取り、by の鍵の値の組ごとにグループを作り、集計の指定ごとの累積（count(*)・count(項目)・count_distinct・sum・avg・min・max・pct・stddev・earliest・latest・sortsFirst・sortsLast など。確定は OQ1）を進め、最後にグループごとの集計の行（鍵の値と集計値のセルの列）を返す純粋な部品（Q2、ADR-002）。bin(<間隔>) の区切りの計算（UTC のエポック基準、A8。間隔の書き方と揃え方は OQ2）と、イベントのない区切りの行を出さない決まり（FR2.2）もここに置く。鍵の項目を持たないイベント、集計する項目を持たないイベント、数値でない値の扱い（FR1.6）と、イベントが 0 件のときの by なしの stats の行数（R-04）は、コンソールと同じにするための決まりを機能設計で確かめてここに実装する。集計値は型つきのセル（整数・小数・文字列・時刻）として返し、数値の桁と丸め（A7）はここで 1 回だけ決める。時刻のセル（bin() の区切り、earliest / latest など）はミリ秒のまま持ち、表示の文字は InsightsSession の display_rows と export_source が画面のタイムゾーンで整形する（FR2.3：タイムゾーンの切り替えで文字だけが変わる）。表と書き出しは同じ整形を使い、同じ文字になる。イベントを塊ごとに受け取れる形にし、QueryEvaluator が 10,000 行ずつ進める今の流れに乗る（NFR2）。実際の AWS もファイルも触らず、テストを先に書く（NFR7）。
   responsibilities:
   - by の鍵によるグループ化
   - 集計の関数ごとの累積と集計値
   - bin() の区切りの計算
-  - 集計値の表示の文字
+  - 型つきの集計値と数値の桁・丸め
   depends_on:
   - component: QueryPlan
     interaction: 集計の指定と鍵の指定
@@ -114,7 +116,7 @@ components:
     - accumulators
 - name: QueryEvaluator
   summary: クエリの評価（変更：集計の行を含む 2 つの形の結果を作る）
-  behaviour: 今の流れ（Ordering → 命令を書いた順に Command → Columns → Done、filter と JSON 項目の sort は 10,000 行ずつ）はイベントの行の結果のために変えない。計画に Stats があるときは、filter で残ったイベントを StatsAggregator に塊ごとに渡し、できた集計の行に対して stats のあとの sort・limit を行う（FR1.4、Q2）。結果の件数の上限（limit を書かないとき）はコンソールと同じにし、打ち切ったことを示す（FR1.7、OQ2）。結果は 1 つの QueryResult にまとめ、形（イベントの行か集計の行か）・列の名前の一覧・行の列挙型（イベントの行＝保持の位置とロググループ名、集計の行＝セルの値の列）を持つ（Q1、ADR-001、A2）。評価の入力は QueryStore の view（最終結果は確定済みの分、途中結果は途中の view）で、どちらも同じ評価の道を通る（A5、Q3）。
+  behaviour: 今の流れ（Ordering → 命令を書いた順に Command → Columns → Done、filter と JSON 項目の sort は 10,000 行ずつ）はイベントの行の結果のために変えない。計画に Stats があるときは、filter で残ったイベントを StatsAggregator に塊ごとに渡し、できた集計の行に対して stats のあとの sort・limit を行う（FR1.4、Q2）。結果の件数の上限（limit を書かないとき）はコンソールと同じにし、打ち切ったことを示す（FR1.7、OQ2）。結果は 1 つの QueryResult にまとめ、形（イベントの行か集計の行か）・列の名前の一覧・行の列挙型（イベントの行＝今と同じイベントの写しとロググループ名、集計の行＝型つきのセルの値の列）を持つ（Q1、ADR-001、A2）。行は今の copy_rows と同じく写しで、版を差し替えても前の版の行が別のイベントを指すことはない。評価の入力は QueryStore の view（最終結果は確定済みの分、途中結果は途中の view）で、どちらも同じ評価の道を通る（A5、Q3）。
   responsibilities:
   - filter・fields・sort・limit の評価
   - stats を含む計画の評価と集計の行への sort・limit
@@ -128,6 +130,9 @@ components:
     style: sync
   - component: StatsAggregator
     interaction: 残ったイベントの集計
+    style: sync
+  - component: QueryStore
+    interaction: 評価の入力になる view（最終の view と途中の view）
     style: sync
   dependents:
   - component: QueryRunner
@@ -152,14 +157,11 @@ components:
     - truncated
     references:
     - entity: QueryPlan
-      owner: QueryParser
-      note: 1 つの結果は 1 つの読み取ったクエリから作られる
-    - entity: GroupHoldings
-      owner: QueryStore
-      note: イベントの行は QueryStore が持つイベントを位置で指す。集計の行は何も指さない
+      owner: QueryPlan
+      note: 1 つの結果は 1 つの読み取ったクエリから作られる。行はイベントの行も集計の行も写し（copy_rows で複製したもの）で、保持（GroupHoldings）を位置で指さない
 - name: QueryStore
   summary: クエリの画面の取得済みのログ（変更：途中の view を作る入口を足す）
-  behaviour: 今の持ち方（HoldingKey ごとの committed / staging、StreamSequences、epoch、begin_run、discard_all、missing_ranges、add_cached、settle_range、build_view、evaluate_step、copy_rows）と確定の決まりは変えない。足すのは「確定済みの分と、取得中の範囲ごとの保持の写しを合わせた、途中の view を作る」入口だけである（Q3、ADR-003）。途中の view は世代（epoch）を固定した時刻順の一覧で、評価器には最終の view と同じ形に見える。写しの中のイベントは確定していないため、取得済みの範囲の記録には加えず、最終結果は今までどおり確定済みの分だけから作る（FR4.8、FR5.3）。範囲の途中までの取得は確定しない（FR5.3）。
+  behaviour: 今の持ち方（HoldingKey ごとの committed / staging、StreamSequences、epoch、begin_run、discard_all、missing_ranges、add_cached、settle_range、build_view、evaluate_step、copy_rows）と確定の決まりは変えない。足すのは「確定済みの分（settle_range を通った分。committed と staging の両方で、直近 5 分の staging も含む）と、取得中の範囲ごとの保持の写しを合わせた、途中の view を作る」入口だけである（Q3、ADR-003）。途中の view は epoch とは別に版の番号を持ち、evaluate_step と copy_rows はその版で食い違いを検出する（R-03：途中の view・次の途中の view・最終の view が同じ epoch を共有するため）。途中の view は世代（epoch）を固定した時刻順の一覧で、評価器には最終の view と同じ形に見える。写しの中のイベントは確定していないため、取得済みの範囲の記録には加えず、最終結果は今までどおり確定済みの分だけから作る（FR4.8、FR5.3）。範囲の途中までの取得は確定しない（FR5.3）。
   responsibilities:
   - ロググループごとのイベントと取得済みの範囲
   - 最終結果のための view
@@ -168,6 +170,8 @@ components:
   dependents:
   - component: QueryRunner
     interaction: 最終の view と途中の view
+  - component: QueryEvaluator
+    interaction: 評価の入力になる view（最終の view と途中の view）
   external_dependencies: []
   entities:
   - name: GroupHoldings
@@ -204,11 +208,12 @@ components:
   entities: []
 - name: InsightsSession
   summary: クエリの画面の状態機械（変更：版つきの結果と途中・中断の印、補完の候補）
-  behaviour: 結果の持ち方を「最終結果だけ」から「最新の版の結果（途中か最終か）」に変える。begin で前回の結果を「前回の結果」の印つきで持ち越し、最初の途中結果が届いた時点で差し替える（FR4.7、A3、Q7、ADR-006：形が違っても、画面は受け取った結果の形に従うだけなので、見出し・行の詳細・件数・書き出しの列は同時に切り替わる）。古い版や別の runId の結果が後から届いても捨てる（A4、R-07）。結果のそばに示す状態（途中であること、ロググループ・範囲のうちどこまで終わったか、最終になったこと、中断で一部のログだけであること、失敗したストリーム）を状態として持つ（FR4.5、FR4.6、FR5.1、FR5.4）。行と詳細の表示（display_rows / display_row_detail）は結果の形で分かれ、集計の行の詳細は鍵と集計値だけを出す（FR3.3）。補完の候補（命令・関数・by）は QueryCatalog から作る（FR6.2）。書き出しは実行中は不可、最終結果（中断後を含む）で可とする（FR4.10、FR5.2）。
+  behaviour: 結果の持ち方を「最終結果だけ」から「最新の版の結果（途中か最終か）」に変える。begin で前回の結果を「前回の結果」の印つきで持ち越し、最初の途中結果が届いた時点で差し替える（FR4.7、A3、Q7、ADR-006：形が違っても、画面は受け取った結果の形に従うだけなので、見出し・行の詳細・件数・書き出しの列は同時に切り替わる）。古い版や別の runId の結果が後から届いても捨てる（A4、R-07）。結果のそばに示す状態（途中であること、ロググループ・範囲のうちどこまで終わったか、最終になったこと、中断で一部のログだけであること、失敗したストリーム）を状態として持つ（FR4.5、FR4.6、FR5.1、FR5.4）。行と詳細の表示（display_rows / display_row_detail）は結果の形で分かれ、集計の行の詳細は鍵と集計値だけを出す（FR3.3）。時刻のセルは画面のタイムゾーンでここで整形する（FR2.3）。書き出しの元（export_source、ExportSnapshotSource::LogAnalytics）もここで結果の形と同じ整形から作る（FR3.4。R-07：ExportJob は型と可否だけを持つ）。補完の候補（命令・関数・by）は QueryCatalog から作る（FR6.2）。書き出しは実行中は不可、最終結果（中断後を含む）で可とする（FR4.10、FR5.2）。
   responsibilities:
   - クエリの画面の状態と相
   - 最新の版の結果と印
-  - 行と詳細の表示の形
+  - 行と詳細の表示の形と時刻の整形
+  - 書き出しの元の組み立て
   - 補完の候補
   depends_on:
   - component: QueryParser
@@ -219,6 +224,12 @@ components:
     style: sync
   - component: QueryCatalog
     interaction: 補完の候補
+    style: sync
+  - component: QueryPlan
+    interaction: 結果の列の名前と形の導出
+    style: sync
+  - component: ExportJob
+    interaction: 書き出しの元の型
     style: sync
   dependents:
   - component: TauriApp
@@ -250,10 +261,10 @@ components:
       note: エラーのときに 1 つの問題を指す
 - name: ExportJob
   summary: 書き出しの仕事とその型（変更：集計の行の結果も書き出す）
-  behaviour: ExportSnapshotSource の LogAnalytics を、列の名前の一覧と形つきの行（QueryResult の形）を受け取る形に変える（FR3.4、Q1）。集計の行は表と同じ文字のセルをそのまま書き、イベントの行は今と同じ（@message は全文）。中断の印は表のそばだけに出し、ファイルには含めない（FR5.2、R-08 の理由は機能設計で書く）。可否の決まり（実行中は Running、結果がなければ NoResult）は変えず、中断後の最終結果は書き出せる（FR4.10、FR5.2）。ExportFormatter は変えない。
+  behaviour: ExportSnapshotSource の LogAnalytics を、列の名前の一覧と形つきの行（QueryResult の形）を受け取る形に変える（FR3.4、Q1）。この元を作るのは今と同じく InsightsSession（export_source）で、ExportJob は型と可否と仕事の進みだけを持つ。集計の行は表と同じ文字のセルをそのまま書き、イベントの行は今と同じ（@message は全文）。中断の印は表のそばだけに出し、ファイルには含めない（FR5.2、R-08 の理由は機能設計で書く）。可否の決まり（実行中は Running、結果がなければ NoResult）は変えず、中断後の最終結果は書き出せる（FR4.10、FR5.2）。ExportFormatter は変えない。
   responsibilities:
   - 書き出しの可否と仕事の進み
-  - 2 つの形の結果からの書き出しの元の組み立て
+  - 2 つの形の結果を受け取れる書き出しの元の型
   depends_on:
   - component: QueryEvaluator
     interaction: 書き出しの元になる結果の型
@@ -261,6 +272,8 @@ components:
   dependents:
   - component: TauriApp
     interaction: 書き出しの開始
+  - component: InsightsSession
+    interaction: 書き出しの元の型
   external_dependencies: []
   entities: []
 - name: CompatCheck
@@ -473,6 +486,9 @@ flowchart LR
   QueryEvaluator -->|"読み取ったクエリの形"| QueryParser
   QueryEvaluator -->|"計画の読み出し"| QueryPlan
   QueryEvaluator -->|"残ったイベントの集計"| StatsAggregator
+  QueryEvaluator -->|"評価の入力の view"| QueryStore
+  InsightsSession -->|"列の名前と形"| QueryPlan
+  InsightsSession -->|"書き出しの元の型"| ExportJob
   QueryRunner -->|"文の読み取り"| QueryParser
   QueryRunner -->|"評価"| QueryEvaluator
   QueryRunner -->|"最終の view と途中の view"| QueryStore
@@ -510,13 +526,13 @@ flowchart LR
 |---|---|---|---|---|
 | QueryCatalog | 命令・関数・キーワードの一覧（新規） | — | QueryParser, InsightsSession, TauriApp | QueryVocabulary |
 | QueryParser | 文の読み取り（変更：stats・by・bin()） | QueryCatalog, QueryPlan | QueryEvaluator, QueryRunner, InsightsSession | QueryProblem |
-| QueryPlan | 計画の型（変更：Stats と列の名前・形） | — | QueryParser, QueryEvaluator, StatsAggregator | QueryPlan |
+| QueryPlan | 計画の型（変更：Stats と列の名前・形） | — | QueryParser, QueryEvaluator, StatsAggregator, InsightsSession | QueryPlan |
 | StatsAggregator | stats の集計（新規） | QueryPlan | QueryEvaluator | AggregateGroup |
-| QueryEvaluator | 評価（変更：2 つの形の結果） | QueryParser, QueryPlan, StatsAggregator | QueryRunner, InsightsSession, ExportJob, CompatCheck | QueryResult |
-| QueryStore | 取得済みのログ（変更：途中の view） | — | QueryRunner | GroupHoldings |
+| QueryEvaluator | 評価（変更：2 つの形の結果） | QueryParser, QueryPlan, StatsAggregator, QueryStore | QueryRunner, InsightsSession, ExportJob, CompatCheck | QueryResult |
+| QueryStore | 取得済みのログ（変更：途中の view） | — | QueryRunner, QueryEvaluator | GroupHoldings |
 | QueryRunner | 実行の流れ（変更：途中結果・版・中断後の結果） | QueryParser, QueryEvaluator, QueryStore | TauriApp, TauriSink | — |
-| InsightsSession | 画面の状態（変更：版つきの結果と印、補完） | QueryParser, QueryEvaluator, QueryCatalog | TauriApp, TauriSink | InsightsRun |
-| ExportJob | 書き出し（変更：集計の行も） | QueryEvaluator | TauriApp | — |
+| InsightsSession | 画面の状態（変更：版つきの結果と印、補完、書き出しの元） | QueryParser, QueryEvaluator, QueryCatalog, QueryPlan, ExportJob | TauriApp, TauriSink | InsightsRun |
+| ExportJob | 書き出し（変更：集計の行も） | QueryEvaluator | TauriApp, InsightsSession | — |
 | CompatCheck | 互換の確かめ（変更：stats の比較） | QueryEvaluator | — | — |
 | TauriApp | アプリ本体（変更：一覧・版つきの結果・更新イベント） | QueryRunner, InsightsSession, QueryCatalog, ExportJob, TauriSink | ApiBridge | — |
 | TauriSink | 通知の受け手（変更：途中結果 → 版の進み） | InsightsSession, QueryRunner | TauriApp | — |
@@ -535,7 +551,7 @@ flowchart LR
 | QueryProblem | QueryParser | position（行, 列） | line, column, kind, word | — |
 | QueryPlan | QueryPlan | queryText（読み取った文そのもの） | queryText, commands, fields, condition, sortKeys, limit, aggregates, groupKeys | — |
 | AggregateGroup | StatsAggregator | groupKey（by の鍵の値の組） | keyValues, accumulators | — |
-| QueryResult | QueryEvaluator | runId | runId, shape, columns, rows, matchedCount, evaluatedCount, truncated | QueryPlan（QueryPlan）：1 つの結果は 1 つの計画から; GroupHoldings（QueryStore）：イベントの行だけが保持のイベントを位置で指す |
+| QueryResult | QueryEvaluator | runId | runId, shape, columns, rows, matchedCount, evaluatedCount, truncated | QueryPlan（QueryPlan）：1 つの結果は 1 つの計画から。行はすべて写しで、保持を指さない |
 | GroupHoldings | QueryStore | holdingKey（プロファイル, リージョン, ロググループ名） | profile, region, logGroupName, coveredRanges, version | — |
 | InsightsRun | InsightsSession | runId | runId, phase, selectedLogGroups, timeRangeInput, queryText, problem, resultVersion, resultStage, coverage, cancelledPartial, failedStreams | QueryResult（QueryEvaluator）：最新の版の結果が 1 つ; QueryProblem（QueryParser）：エラーのときに 1 つ |
 
@@ -583,6 +599,10 @@ AWS SDK への依存は今の FetchCoordinator・AwsCloudWatchLogsGateway のま
 | stats の引き数と by の鍵に書ける式の一覧（R-05）、イベントが 0 件のときの by なしの stats の行数（R-04）、stats のあとの fields・filter と stats を 2 回書くの扱い、結果の件数の上限、bin() の間隔と揃え方（OQ2） | 機能設計（AWS の資料で確かめ、確かめられないものは確認用プログラムで比べる） |
 | 途中結果の評価の間隔の数値と、前の評価が終わらないときの間引き（OQ3）。NFR1 の合否の数値 | 機能設計（方針）・作る段階（数値） |
 | 途中の view のための保持の写しの取り方（鍵を長く持たない形。NFR2）と、途中の view にキャッシュから読んだ分をどう含めるか | 機能設計 |
+| 取得中の保持（今は fetch_range のローカル変数）の登録先の持ち主、取って確定するまでの間の扱い、写しのイベントに付ける順序の番号と ViewEntry が写しを指す形、取得と並行に評価する並行モデル（1 本の流れの中で評価を await すると取得が止まるため、評価は別のタスクに置く）（レビュー R-02） | 機能設計 |
+| 途中の view の版（epoch とは別）と、取得の終了・中断のときに動いている途中の評価を止めてから最終の view を作る順番（レビュー R-03） | 機能設計 |
+| 中断後の評価は中断の合図で止めないこと、その評価の最中にもう一度［Cancel］が押されたときの扱い、途中結果と中断後の結果を受ける相（AnalyticsPhase）の遷移（レビュー R-04） | 機能設計 |
+| pct・count_distinct など値を保持する関数と、by の鍵の種類が多いときのメモリの上限、取得中の全体の再評価の間引き、評価の塊ごとの中断の確認（NFR1・NFR2。レビュー R-10） | 機能設計・作る段階 |
 | FR4.2 の文言（「末尾に足す・動かない」→「最終結果と同じ並びに保ち、行が途中に入ることがある」）の改め方と受け入れ基準の直し（R-01） | 機能設計 |
 | 中断の印をファイルに含めない理由（R-08）と、途中結果の読み上げの扱い（R-06） | 機能設計 |
 | 互換を確かめる集計のクエリの組（OQ4） | 機能設計 |

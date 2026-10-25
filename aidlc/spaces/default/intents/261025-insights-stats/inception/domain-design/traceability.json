@@ -1,0 +1,271 @@
+{
+  "stage": "domain-design",
+  "upstream_ids": [
+    "FR1",
+    "FR2",
+    "FR3",
+    "FR4",
+    "FR5",
+    "FR6",
+    "FR7",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "FR1.7",
+    "FR1.8",
+    "FR2.1",
+    "FR2.2",
+    "FR2.3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR4.1",
+    "FR4.2",
+    "FR4.3",
+    "FR4.4",
+    "FR4.5",
+    "FR4.6",
+    "FR4.7",
+    "FR4.8",
+    "FR4.9",
+    "FR4.10",
+    "FR5.1",
+    "FR5.2",
+    "FR5.3",
+    "FR5.4",
+    "FR6.1",
+    "FR6.2",
+    "FR6.3",
+    "FR7.1",
+    "FR7.2",
+    "FR7.3"
+  ],
+  "coverage": [
+    {
+      "id": "FR1",
+      "status": "OK",
+      "target": "QueryCatalog, QueryParser, QueryPlan, StatsAggregator, QueryEvaluator"
+    },
+    {
+      "id": "FR2",
+      "status": "OK",
+      "target": "StatsAggregator, QueryParser"
+    },
+    {
+      "id": "FR3",
+      "status": "OK",
+      "target": "QueryEvaluator, InsightsSession, QueryResultTable, ExportJob"
+    },
+    {
+      "id": "FR4",
+      "status": "OK",
+      "target": "QueryStore, QueryRunner, TauriSink, InsightsSession, ApiBridge, QueryResultTable, LogAnalyticsPage"
+    },
+    {
+      "id": "FR5",
+      "status": "OK",
+      "target": "QueryRunner, InsightsSession, ExportJob, LogAnalyticsPage"
+    },
+    {
+      "id": "FR6",
+      "status": "OK",
+      "target": "QueryCatalog, QueryParser, InsightsSession, AnalyticsHelpers, QueryEditor, MessageCatalog"
+    },
+    {
+      "id": "FR7",
+      "status": "OK",
+      "target": "CompatCheck"
+    },
+    {
+      "id": "FR1.1",
+      "status": "OK",
+      "target": "QueryParser, QueryPlan"
+    },
+    {
+      "id": "FR1.2",
+      "status": "OK",
+      "target": "QueryCatalog, StatsAggregator"
+    },
+    {
+      "id": "FR1.3",
+      "status": "OK",
+      "target": "QueryParser, QueryPlan, StatsAggregator"
+    },
+    {
+      "id": "FR1.4",
+      "status": "OK",
+      "target": "QueryParser, QueryEvaluator"
+    },
+    {
+      "id": "FR1.5",
+      "status": "OK",
+      "target": "QueryPlan, StatsAggregator, QueryEvaluator"
+    },
+    {
+      "id": "FR1.6",
+      "status": "OK",
+      "target": "StatsAggregator"
+    },
+    {
+      "id": "FR1.7",
+      "status": "OK",
+      "target": "QueryEvaluator, InsightsSession"
+    },
+    {
+      "id": "FR1.8",
+      "status": "OK",
+      "target": "QueryEvaluator, QueryRunner"
+    },
+    {
+      "id": "FR2.1",
+      "status": "OK",
+      "target": "QueryParser, StatsAggregator"
+    },
+    {
+      "id": "FR2.2",
+      "status": "OK",
+      "target": "StatsAggregator"
+    },
+    {
+      "id": "FR2.3",
+      "status": "OK",
+      "target": "StatsAggregator, QueryResultTable"
+    },
+    {
+      "id": "FR3.1",
+      "status": "OK",
+      "target": "QueryPlan, QueryEvaluator, QueryResultTable"
+    },
+    {
+      "id": "FR3.2",
+      "status": "OK",
+      "target": "InsightsSession, QueryResultTable, MessageCatalog"
+    },
+    {
+      "id": "FR3.3",
+      "status": "OK",
+      "target": "InsightsSession, QueryResultTable"
+    },
+    {
+      "id": "FR3.4",
+      "status": "OK",
+      "target": "ExportJob, TauriApp, LogAnalyticsPage"
+    },
+    {
+      "id": "FR3.5",
+      "status": "OK",
+      "target": "QueryResultTable"
+    },
+    {
+      "id": "FR3.6",
+      "status": "OK",
+      "target": "QueryEvaluator, QueryResultTable, LogAnalyticsPage"
+    },
+    {
+      "id": "FR4.1",
+      "status": "OK",
+      "target": "QueryStore, QueryRunner, TauriSink, LogAnalyticsPage"
+    },
+    {
+      "id": "FR4.2",
+      "status": "OK",
+      "target": "QueryRunner, QueryEvaluator, QueryResultTable"
+    },
+    {
+      "id": "FR4.3",
+      "status": "OK",
+      "target": "QueryRunner, QueryEvaluator, QueryResultTable"
+    },
+    {
+      "id": "FR4.4",
+      "status": "OK",
+      "target": "QueryRunner, TauriSink, QueryResultTable"
+    },
+    {
+      "id": "FR4.5",
+      "status": "OK",
+      "target": "InsightsSession, QueryResultTable, MessageCatalog"
+    },
+    {
+      "id": "FR4.6",
+      "status": "OK",
+      "target": "QueryRunner, InsightsSession, QueryResultTable"
+    },
+    {
+      "id": "FR4.7",
+      "status": "OK",
+      "target": "InsightsSession, LogAnalyticsPage, QueryResultTable"
+    },
+    {
+      "id": "FR4.8",
+      "status": "OK",
+      "target": "QueryStore, QueryRunner"
+    },
+    {
+      "id": "FR4.9",
+      "status": "OK",
+      "target": "QueryRunner"
+    },
+    {
+      "id": "FR4.10",
+      "status": "OK",
+      "target": "InsightsSession, ExportJob, LogAnalyticsPage"
+    },
+    {
+      "id": "FR5.1",
+      "status": "OK",
+      "target": "QueryRunner, InsightsSession, QueryResultTable, LogAnalyticsPage"
+    },
+    {
+      "id": "FR5.2",
+      "status": "OK",
+      "target": "ExportJob, InsightsSession, LogAnalyticsPage"
+    },
+    {
+      "id": "FR5.3",
+      "status": "OK",
+      "target": "QueryStore, QueryRunner"
+    },
+    {
+      "id": "FR5.4",
+      "status": "OK",
+      "target": "QueryRunner, InsightsSession, LogAnalyticsPage"
+    },
+    {
+      "id": "FR6.1",
+      "status": "OK",
+      "target": "QueryCatalog"
+    },
+    {
+      "id": "FR6.2",
+      "status": "OK",
+      "target": "QueryCatalog, InsightsSession, TauriApp, ApiBridge, AnalyticsHelpers, QueryEditor, LogAnalyticsPage, MessageCatalog"
+    },
+    {
+      "id": "FR6.3",
+      "status": "OK",
+      "target": "QueryParser, MessageCatalog"
+    },
+    {
+      "id": "FR7.1",
+      "status": "OK",
+      "target": "CompatCheck, StatsAggregator"
+    },
+    {
+      "id": "FR7.2",
+      "status": "OK",
+      "target": "CompatCheck"
+    },
+    {
+      "id": "FR7.3",
+      "status": "OK",
+      "target": "CompatCheck, StatsAggregator"
+    }
+  ]
+}

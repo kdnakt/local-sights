@@ -76,15 +76,36 @@
 //! the query screen's selection and result, keeping its query text and
 //! range (U1:BR7.2). A query run starts in one call that checks the reasons
 //! again and moves to Fetching (R-04).
+//! Since 261022-small-features U1 it holds the language preference
+//! ([`LanguagePreference`]): read from the settings file at startup together
+//! with the cache setting (U1:BR1.4), saved with it from the settings dialog
+//! in the same file work, and taken only when that work succeeded (U1:BR1.3,
+//! BR1.6). The view carries it so the screen can switch its texts without a
+//! restart; the screen decides the shown language from it and the OS
+//! language (U1:BR1.2).
+//! Since 261022-small-features U2 it holds the one export job
+//! ([`ExportJob`], U2:BR4.8): [`AppSession::can_export_logs`] says whether
+//! the Log Management list can be exported (U2:BR2.3) and the query screen
+//! is asked the same with the job's state (U2:BR3.2);
+//! [`AppSession::begin_export`] checks the reason again, turns the job
+//! Running with the next export number, drops the previous notice and hands
+//! back the copied source rows and the default file name (U2:BR4.5), all
+//! under the session lock; [`AppSession::finish_export`] applies the end of
+//! the export numbered in it and makes the notice (U2:BR4.9), and
+//! [`AppSession::dismiss_export_notice`] puts the notice away. Turning the
+//! rows into text happens outside the lock (functional-design review R-01,
+//! see [`crate::export::exporter`]).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::plan::{CacheNotice, cache_notices};
+pub use crate::cache::settings::LanguagePreference;
 use crate::cache::settings::{load_settings, save_settings};
 use crate::cache::{LogCache, WriteTracker};
 use crate::catalog::{ConnectionCatalog, ConnectionProfile, ProfileKind, ProfileSelector};
@@ -94,9 +115,14 @@ use crate::connection::{
 use crate::coordinator::{BatchProgress, FailedStream, FetchJob};
 use crate::date_input::DateTimeInput;
 use crate::event::LogEvent;
+use crate::export::exporter::{
+    ExportAvailability, ExportBegun, ExportBlocker, ExportJob, ExportJobView, ExportNotice,
+    ExportOutcome, ExportRequest, ExportScreen, ExportSnapshotSource, ExportTarget,
+    default_file_name,
+};
 use crate::failure::{ApiFailure, FailureKind};
 use crate::fetch_status::JobStatus;
-use crate::filter::{FilterState, FilterSummary, normalize_filter_text};
+use crate::filter::{FilterState, FilterStatus, FilterSummary, normalize_filter_text};
 use crate::insights_session::{
     AnalyticsField, AnalyticsValue, CompletionCandidate, InsightsSession, InsightsView, QueryBegin,
     QueryRowDetail, QueryRowWindow, QuerySnapshot, RunContext,
@@ -205,6 +231,13 @@ pub enum SessionError {
     /// R-04).
     #[error("the query input changed while it was read")]
     StaleInput,
+    /// The export cannot start: no rows, fetching, filtering or no result
+    /// (261022-small-features U2:BR2.3, BR3.2).
+    #[error("no export is available")]
+    ExportUnavailable,
+    /// Another export is under way (261022-small-features U2:BR4.8).
+    #[error("an export is in progress")]
+    ExportBusy,
 }
 
 impl SessionError {
@@ -225,6 +258,8 @@ impl SessionError {
             SessionError::SsoLoginInProgress => "session.ssoLoginInProgress",
             SessionError::SsoLoginUnavailable => "session.ssoLoginUnavailable",
             SessionError::StaleInput => "session.staleInput",
+            SessionError::ExportUnavailable => "session.exportUnavailable",
+            SessionError::ExportBusy => "session.exportBusy",
         }
     }
 }
@@ -396,15 +431,18 @@ pub struct SsoLoginFinish {
 /// system, then [`AppSession::finish_settings_work`] applies its result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsWork {
-    /// [Save]: write the setting; when it switched the cache off, then
+    /// [Save]: write the settings; when it switched the cache off, then
     /// remove every cached file (U6:BR1.3, review R-10).
     Save {
-        /// Where the setting and the cache live.
+        /// Where the settings and the cache live.
         location: CacheLocation,
-        /// The new setting.
+        /// The new cache setting.
         enabled: bool,
         /// Whether the cached files must be removed after writing.
         clear_after: bool,
+        /// The new language preference, written in the same file
+        /// (261022-small-features U1:BR1.3).
+        language: LanguagePreference,
     },
     /// [Clear cache]: remove every cached file (U6:BR1.4).
     Clear {
@@ -416,15 +454,17 @@ pub enum SettingsWork {
 /// Result of [`SettingsWork::run`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsWorkResult {
-    /// The setting was written; `cleared` says whether the cached files were
-    /// removed after it (`None`: nothing had to be removed).
+    /// The settings were written; `cleared` says whether the cached files
+    /// were removed after it (`None`: nothing had to be removed).
     Saved {
-        /// The setting written.
+        /// The cache setting written.
         enabled: bool,
         /// Whether the removal after it worked, when one was needed.
         cleared: Option<bool>,
+        /// The language preference written (261022-small-features U1).
+        language: LanguagePreference,
     },
-    /// The setting could not be written; it is unchanged.
+    /// The settings could not be written; they are unchanged.
     SaveFailed,
     /// [Clear cache] ran; whether every cached file was removed.
     Cleared(bool),
@@ -440,14 +480,16 @@ impl SettingsWork {
                 location,
                 enabled,
                 clear_after,
+                language,
             } => {
-                if let Err(error) = save_settings(&location.settings_path, *enabled) {
-                    eprintln!("local-sights: settings: the setting could not be saved: {error}");
+                if let Err(error) = save_settings(&location.settings_path, *enabled, *language) {
+                    eprintln!("local-sights: settings: the settings could not be saved: {error}");
                     return SettingsWorkResult::SaveFailed;
                 }
                 SettingsWorkResult::Saved {
                     enabled: *enabled,
                     cleared: clear_after.then(|| clear_cache_files(location)),
+                    language: *language,
                 }
             }
             Self::Clear { location } => SettingsWorkResult::Cleared(clear_cache_files(location)),
@@ -723,6 +765,10 @@ pub struct SessionView {
     pub filter_result_version: u64,
     /// Whether the disk cache is enabled (U6:BR1.1).
     pub cache_enabled: bool,
+    /// The language preference read from the settings file and taken from a
+    /// successful save (261022-small-features U1:BR1.3, BR1.4); the screen
+    /// decides the shown language from it and the OS language (U1:BR1.2).
+    pub language: LanguagePreference,
     /// The cache folder shown in the settings dialog (FR7.3); `None` when
     /// the app gave no location.
     pub cache_directory: Option<String>,
@@ -759,6 +805,13 @@ pub struct SessionView {
     pub fetch_owner: FetchOwner,
     /// The Log Analytics screen (261017-insights-query U1).
     pub insights: InsightsView,
+    /// The one export job (261022-small-features U2:BR4.8).
+    pub export: ExportJobView,
+    /// The notice of the last export, until it is closed or the next export
+    /// is accepted (U2:BR4.9).
+    pub export_notice: Option<ExportNotice>,
+    /// Whether the Log Management list can be exported now (U2:BR2.3).
+    pub can_export_logs: bool,
 }
 
 /// One log row as the screen shows it: the event and its time written in
@@ -833,6 +886,8 @@ pub struct AppSession {
     cache_location: Option<CacheLocation>,
     /// Whether the disk cache is enabled (U6:BR1.1).
     cache_enabled: bool,
+    /// The language preference (261022-small-features U1:BR1.3, BR1.4).
+    language: LanguagePreference,
     settings_dialog: SettingsDialog,
     settings_notice: Option<SettingsNotice>,
     /// From `on_saving` to the end of the fetch (U6:BR3.7).
@@ -870,6 +925,8 @@ pub struct AppSession {
     cancel_notice: Option<CancelNoticeView>,
     /// The Log Analytics screen (261017-insights-query U1).
     insights: InsightsSession,
+    /// The one export job (261022-small-features U2:BR4.8).
+    export: ExportJob,
 }
 
 /// One SSO login attempt (entities.md SsoLoginAttempt). The CLI itself is
@@ -948,6 +1005,7 @@ impl AppSession {
             filter: FilterState::default(),
             cache_location: None,
             cache_enabled: false,
+            language: LanguagePreference::System,
             settings_dialog: SettingsDialog::Closed,
             settings_notice: None,
             cache_saving: false,
@@ -965,6 +1023,7 @@ impl AppSession {
             cancelling: false,
             cancel_notice: None,
             insights: InsightsSession::new(),
+            export: ExportJob::default(),
         };
         session.select_startup_profile();
         session.revalidate();
@@ -1024,10 +1083,14 @@ impl AppSession {
     }
 
     /// The same session with the settings file and the cache folder the app
-    /// decided at startup (U6:BR1.6). Reads the setting: enabled only when
-    /// the file says so (U6:BR1.1, BR1.2).
+    /// decided at startup (U6:BR1.6). Reads the settings once: the cache is
+    /// enabled only when the file says so (U6:BR1.1, BR1.2), and the
+    /// language is the file's known preference, else `System`
+    /// (261022-small-features U1:BR1.4).
     pub fn with_cache_location(mut self, location: CacheLocation) -> Self {
-        self.cache_enabled = load_settings(&location.settings_path).cache_enabled();
+        let settings = load_settings(&location.settings_path);
+        self.cache_enabled = settings.cache_enabled();
+        self.language = settings.language();
         self.cache_location = Some(location);
         self
     }
@@ -1156,13 +1219,17 @@ impl AppSession {
         self.settings_notice = None;
     }
 
-    /// [Save] (U6:BR1.1, BR1.3, review R-10) in one step: the decision, the
-    /// file work and its result. The app does the file work without the
-    /// session lock with [`AppSession::begin_save_settings`],
-    /// [`SettingsWork::run`] and [`AppSession::finish_settings_work`] (U6
-    /// review R-01).
-    pub fn save_settings(&mut self, enabled: bool) -> Result<(), SessionError> {
-        let work = self.begin_save_settings(enabled)?;
+    /// [Save] (U6:BR1.1, BR1.3, review R-10; 261022-small-features U1:BR1.3)
+    /// in one step: the decision, the file work and its result. The app does
+    /// the file work without the session lock with
+    /// [`AppSession::begin_save_settings`], [`SettingsWork::run`] and
+    /// [`AppSession::finish_settings_work`] (U6 review R-01).
+    pub fn save_settings(
+        &mut self,
+        enabled: bool,
+        language: LanguagePreference,
+    ) -> Result<(), SessionError> {
+        let work = self.begin_save_settings(enabled, language)?;
         self.run_settings_work(work);
         Ok(())
     }
@@ -1181,14 +1248,16 @@ impl AppSession {
         }
     }
 
-    /// Decides [Save] (U6:BR1.1, BR1.3): refused unless the dialog is open
-    /// and no other settings work runs. Without a location nothing can be
-    /// saved: the dialog tells so and there is no work. Otherwise returns
-    /// the work: write the setting, then remove the cached files when it
+    /// Decides [Save] (U6:BR1.1, BR1.3; 261022-small-features U1:BR1.3):
+    /// refused unless the dialog is open and no other settings work runs.
+    /// Without a location nothing can be saved: the dialog tells so and
+    /// there is no work. Otherwise returns the work: write the cache setting
+    /// and the language in one file, then remove the cached files when it
     /// switches an enabled cache off (U6 review R-10).
     pub fn begin_save_settings(
         &mut self,
         enabled: bool,
+        language: LanguagePreference,
     ) -> Result<Option<SettingsWork>, SessionError> {
         self.ensure_settings_work_allowed()?;
         let Some(location) = self.cache_location.clone() else {
@@ -1200,6 +1269,7 @@ impl AppSession {
             location,
             enabled,
             clear_after: self.cache_enabled && !enabled,
+            language,
         }))
     }
 
@@ -1216,17 +1286,22 @@ impl AppSession {
     }
 
     /// Applies the result of the file work (U6:BR1.1, BR1.3, BR1.4, review
-    /// R-10): a setting that could not be written is unchanged and the
-    /// dialog says so; a written setting is taken, and the dialog closes
-    /// only when the removal after it (if any) worked too; [Clear cache]
-    /// tells its result. A dialog cancelled meanwhile stays closed and
-    /// shows nothing.
+    /// R-10; 261022-small-features U1:BR1.3, BR1.6): settings that could not
+    /// be written are unchanged, the language included, and the dialog says
+    /// so; written settings are taken, and the dialog closes only when the
+    /// removal after it (if any) worked too; [Clear cache] tells its result.
+    /// A dialog cancelled meanwhile stays closed and shows nothing.
     pub fn finish_settings_work(&mut self, result: SettingsWorkResult) {
         self.settings_busy = false;
         let notice = match result {
             SettingsWorkResult::SaveFailed => Some(SettingsNotice::SaveFailed),
-            SettingsWorkResult::Saved { enabled, cleared } => {
+            SettingsWorkResult::Saved {
+                enabled,
+                cleared,
+                language,
+            } => {
                 self.cache_enabled = enabled;
+                self.language = language;
                 (cleared == Some(false)).then_some(SettingsNotice::ClearFailed)
             }
             SettingsWorkResult::Cleared(true) => Some(SettingsNotice::Cleared),
@@ -1998,6 +2073,7 @@ impl AppSession {
             filter_summary: self.filter.summary.clone(),
             filter_result_version: self.filter.result_version,
             cache_enabled: self.cache_enabled,
+            language: self.language,
             cache_directory: self
                 .cache_location
                 .as_ref()
@@ -2016,6 +2092,9 @@ impl AppSession {
             cancel_notice: self.cancel_notice,
             fetch_owner: self.fetch_owner(),
             insights: self.insights_view(),
+            export: self.export.view(),
+            export_notice: self.export.notice().cloned(),
+            can_export_logs: self.can_export_logs().is_available(),
         }
     }
 
@@ -2411,6 +2490,7 @@ impl AppSession {
                 || self.sso_login_running()
                 || self.settings_busy,
             close_pending: self.close_confirmation == CloseConfirmation::Pending,
+            exporting: self.export.is_running(),
         }
     }
 
@@ -2592,6 +2672,120 @@ impl AppSession {
     pub fn display_query_rows(&self, run_id: u64, offset: usize, limit: usize) -> QueryRowWindow {
         let zone = self.time_zones.zone(self.time_zone);
         self.insights.display_rows(run_id, (offset, limit), zone)
+    }
+}
+
+/// The export (261022-small-features U2, ADR-001, ADR-004). The session
+/// decides whether an export may start and keeps the one job's state; the
+/// app copies the rows, writes the file or the clipboard and reports the end
+/// (see [`crate::export::exporter`] for what happens under the lock).
+impl AppSession {
+    /// The number of rows the Log Management list shows: the matching rows
+    /// while a filter is in force, else every held event (U2:BR2.1).
+    fn shown_log_row_count(&self) -> u64 {
+        self.filter
+            .summary
+            .as_ref()
+            .map_or(self.event_count, |summary| summary.matched_count)
+    }
+
+    /// U2:BR2.3: whether the Log Management list can be exported, with the
+    /// first reason why not: no shown rows, fetching, the filter still
+    /// scanning, or an export under way.
+    pub fn can_export_logs(&self) -> ExportAvailability {
+        if self.shown_log_row_count() == 0 {
+            ExportAvailability::blocked(ExportBlocker::NoRows)
+        } else if self.phase == Phase::Fetching {
+            ExportAvailability::blocked(ExportBlocker::Fetching)
+        } else if self
+            .filter
+            .summary
+            .as_ref()
+            .is_some_and(|summary| summary.status == FilterStatus::Filtering)
+        {
+            ExportAvailability::blocked(ExportBlocker::Filtering)
+        } else if self.export.is_running() {
+            ExportAvailability::blocked(ExportBlocker::Exporting)
+        } else {
+            ExportAvailability::AVAILABLE
+        }
+    }
+
+    /// The one export job's state.
+    pub fn export_job(&self) -> &ExportJob {
+        &self.export
+    }
+
+    /// Accepts `request` at `taken_at` (functional-spec W1 3, W5 3): the
+    /// screen's availability is checked again (U2:BR2.3, BR3.2), the job
+    /// turns Running with the next export number and the previous notice
+    /// goes (U2:BR4.8, BR4.9). The answer holds the copied source rows (for
+    /// the Log Management screen the app adds the events it copies from the
+    /// LogView under the next lock) and the default file name for a file
+    /// (U2:BR4.5): the selected log group on Log Management, on Log
+    /// Analytics the first log group of the run that made the result
+    /// (functional-design review R-06), written in the chosen time zone.
+    ///
+    /// # Errors
+    /// [`SessionError::ExportBusy`] while another export runs,
+    /// [`SessionError::ExportUnavailable`] for every other reason; nothing
+    /// changes then (FR4.6.2).
+    pub fn begin_export(
+        &mut self,
+        request: ExportRequest,
+        taken_at: DateTime<Utc>,
+    ) -> Result<ExportBegun, SessionError> {
+        let zone = self.time_zones.zone(self.time_zone);
+        let availability = match request.screen {
+            ExportScreen::LogManagement => self.can_export_logs(),
+            ExportScreen::LogAnalytics => self.insights.can_export(self.export.is_running()),
+        };
+        match availability.blocker {
+            Some(ExportBlocker::Exporting) => return Err(SessionError::ExportBusy),
+            Some(_) => return Err(SessionError::ExportUnavailable),
+            None => {}
+        }
+        let (source, log_group_name) = match request.screen {
+            ExportScreen::LogManagement => (
+                ExportSnapshotSource::LogManagement {
+                    events: Vec::new(),
+                    zone,
+                },
+                self.selected_log_group.clone(),
+            ),
+            ExportScreen::LogAnalytics => {
+                let Some(source) = self.insights.export_source(zone) else {
+                    return Err(SessionError::ExportUnavailable);
+                };
+                (
+                    source,
+                    self.insights.export_log_group_name().map(str::to_string),
+                )
+            }
+        };
+        let row_count = match request.screen {
+            ExportScreen::LogManagement => self.shown_log_row_count(),
+            ExportScreen::LogAnalytics => u64::try_from(source.row_count()).unwrap_or(u64::MAX),
+        };
+        let export_number = self.export.begin(request, row_count);
+        let default_file_name = (request.target == ExportTarget::File)
+            .then(|| default_file_name(log_group_name.as_deref(), taken_at, zone, request.format));
+        Ok(ExportBegun {
+            export_number,
+            source,
+            default_file_name,
+        })
+    }
+
+    /// The end of export `export_number` (U2:BR4.8, BR4.9); a result of
+    /// another number changes nothing. Returns whether it was applied.
+    pub fn finish_export(&mut self, export_number: u64, outcome: ExportOutcome) -> bool {
+        self.export.finish(export_number, outcome)
+    }
+
+    /// The user closed the export notice (U2:BR4.9).
+    pub fn dismiss_export_notice(&mut self) {
+        self.export.dismiss_notice();
     }
 }
 
@@ -4092,7 +4286,12 @@ mod tests {
 
     fn enabled_session(dir: &tempfile::TempDir) -> AppSession {
         let location = location(dir);
-        crate::cache::settings::save_settings(&location.settings_path, true).unwrap();
+        crate::cache::settings::save_settings(
+            &location.settings_path,
+            true,
+            LanguagePreference::System,
+        )
+        .unwrap();
         AppSession::with_catalog(catalog()).with_cache_location(location)
     }
 
@@ -4124,7 +4323,9 @@ mod tests {
         assert_eq!(view.settings_dialog, SettingsDialog::Closed);
         assert!(view.can_open_settings);
         session.open_settings().unwrap();
-        session.save_settings(true).unwrap();
+        session
+            .save_settings(true, LanguagePreference::System)
+            .unwrap();
         assert!(!session.cache_enabled(), "nowhere to save it");
         assert_eq!(
             session.view().settings_notice,
@@ -4216,18 +4417,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
         session.open_settings().unwrap();
-        session.save_settings(true).unwrap();
+        session
+            .save_settings(true, LanguagePreference::System)
+            .unwrap();
         assert!(session.cache_enabled());
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
         assert_eq!(session.view().settings_notice, None);
         assert_eq!(
             crate::cache::settings::load_settings(&location(&dir).settings_path),
             SettingsLoad::Loaded {
-                cache_enabled: true
+                cache_enabled: true,
+                language: LanguagePreference::System,
             }
         );
         assert_eq!(
-            session.save_settings(false),
+            session.save_settings(false, LanguagePreference::System),
             Err(SessionError::SettingsClosed)
         );
     }
@@ -4238,7 +4442,9 @@ mod tests {
         let mut session = enabled_session(&dir);
         let cached = some_cache_file(&dir);
         session.open_settings().unwrap();
-        session.save_settings(false).unwrap();
+        session
+            .save_settings(false, LanguagePreference::System)
+            .unwrap();
         assert!(!session.cache_enabled());
         assert_eq!(session.fetch_cache(), None);
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
@@ -4255,7 +4461,9 @@ mod tests {
         // A regular file where the cache folder should be cannot be listed.
         std::fs::write(location(&dir).cache_directory, b"not a folder").unwrap();
         session.open_settings().unwrap();
-        session.save_settings(false).unwrap();
+        session
+            .save_settings(false, LanguagePreference::System)
+            .unwrap();
         assert!(!session.cache_enabled(), "the setting was written");
         assert_eq!(session.settings_dialog(), SettingsDialog::Open);
         assert_eq!(
@@ -4275,7 +4483,9 @@ mod tests {
         std::fs::remove_dir_all(&config).unwrap();
         std::fs::write(&config, b"not a folder").unwrap();
         session.open_settings().unwrap();
-        session.save_settings(false).unwrap();
+        session
+            .save_settings(false, LanguagePreference::System)
+            .unwrap();
         assert!(session.cache_enabled(), "unchanged");
         assert_eq!(session.settings_dialog(), SettingsDialog::Open);
         assert_eq!(
@@ -4513,13 +4723,17 @@ mod tests {
         let mut session = enabled_session(&dir);
         let cached = some_cache_file(&dir);
         session.open_settings().unwrap();
-        let work = session.begin_save_settings(false).unwrap().unwrap();
+        let work = session
+            .begin_save_settings(false, LanguagePreference::System)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             work,
             SettingsWork::Save {
                 location: location(&dir),
                 enabled: false,
                 clear_after: true,
+                language: LanguagePreference::System,
             }
         );
         // Decided under the lock; nothing on disk changed yet.
@@ -4532,6 +4746,7 @@ mod tests {
             SettingsWorkResult::Saved {
                 enabled: false,
                 cleared: Some(true),
+                language: LanguagePreference::System,
             }
         );
         assert!(!cached.exists());
@@ -4549,7 +4764,10 @@ mod tests {
         std::fs::remove_dir_all(&config).unwrap();
         std::fs::write(&config, b"not a folder").unwrap();
         session.open_settings().unwrap();
-        let work = session.begin_save_settings(false).unwrap().unwrap();
+        let work = session
+            .begin_save_settings(false, LanguagePreference::System)
+            .unwrap()
+            .unwrap();
         assert_eq!(work.run(), SettingsWorkResult::SaveFailed);
         assert_eq!(work.failed(), SettingsWorkResult::SaveFailed);
         assert!(
@@ -4584,6 +4802,146 @@ mod tests {
         assert_eq!(session.settings_dialog(), SettingsDialog::Closed);
         assert_eq!(session.view().settings_notice, None);
         assert!(session.begin_fetch(session.connection_generation()).is_ok());
+    }
+
+    // ---- 261022-small-features U1: the language preference (BR1.3, BR1.4,
+    // BR1.6) ----
+
+    #[test]
+    fn the_language_is_read_at_startup_and_shown_in_the_view() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::cache::settings::save_settings(
+            &location(&dir).settings_path,
+            false,
+            LanguagePreference::En,
+        )
+        .unwrap();
+        let session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        assert_eq!(session.view().language, LanguagePreference::En);
+        assert!(!session.cache_enabled(), "read in the same pass");
+
+        let fresh = tempfile::tempdir().unwrap();
+        let first_launch =
+            AppSession::with_catalog(catalog()).with_cache_location(location(&fresh));
+        assert_eq!(first_launch.view().language, LanguagePreference::System);
+        let no_disk = AppSession::with_catalog(catalog());
+        assert_eq!(no_disk.view().language, LanguagePreference::System);
+    }
+
+    #[test]
+    fn saving_the_language_changes_the_view_only_after_the_work_succeeded() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        session.open_settings().unwrap();
+        let work = session
+            .begin_save_settings(true, LanguagePreference::Ja)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            work,
+            SettingsWork::Save {
+                location: location(&dir),
+                enabled: true,
+                clear_after: false,
+                language: LanguagePreference::Ja,
+            }
+        );
+        // Decided under the lock; the view still shows the old language (BR1.3).
+        assert_eq!(session.view().language, LanguagePreference::System);
+        let result = work.run();
+        assert_eq!(
+            result,
+            SettingsWorkResult::Saved {
+                enabled: true,
+                cleared: None,
+                language: LanguagePreference::Ja,
+            }
+        );
+        assert_eq!(session.view().language, LanguagePreference::System);
+        session.finish_settings_work(result);
+        let view = session.view();
+        assert_eq!(view.language, LanguagePreference::Ja);
+        assert!(view.cache_enabled);
+        assert_eq!(view.settings_dialog, SettingsDialog::Closed);
+        assert_eq!(
+            crate::cache::settings::load_settings(&location(&dir).settings_path),
+            SettingsLoad::Loaded {
+                cache_enabled: true,
+                language: LanguagePreference::Ja,
+            }
+        );
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_language() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::cache::settings::save_settings(
+            &location(&dir).settings_path,
+            true,
+            LanguagePreference::En,
+        )
+        .unwrap();
+        let mut session = AppSession::with_catalog(catalog()).with_cache_location(location(&dir));
+        assert_eq!(session.view().language, LanguagePreference::En);
+        let config = location(&dir).settings_path.parent().unwrap().to_path_buf();
+        std::fs::remove_dir_all(&config).unwrap();
+        std::fs::write(&config, b"not a folder").unwrap();
+        session.open_settings().unwrap();
+        session.save_settings(true, LanguagePreference::Ja).unwrap();
+        let view = session.view();
+        assert_eq!(view.language, LanguagePreference::En, "unchanged (BR1.6)");
+        assert!(view.cache_enabled, "unchanged");
+        assert_eq!(view.settings_notice, Some(SettingsNotice::SaveFailed));
+        assert_eq!(view.settings_dialog, SettingsDialog::Open);
+
+        // The work's thread ending abnormally is a failure too.
+        let mut no_disk = AppSession::with_catalog(catalog());
+        no_disk.open_settings().unwrap();
+        no_disk.save_settings(true, LanguagePreference::Ja).unwrap();
+        assert_eq!(no_disk.view().language, LanguagePreference::System);
+        assert_eq!(
+            no_disk.view().settings_notice,
+            Some(SettingsNotice::SaveFailed)
+        );
+    }
+
+    #[test]
+    fn the_language_is_saved_with_the_cache_setting_in_one_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = enabled_session(&dir);
+        let cached = some_cache_file(&dir);
+        session.open_settings().unwrap();
+        let work = session
+            .begin_save_settings(false, LanguagePreference::En)
+            .unwrap()
+            .unwrap();
+        assert!(cached.exists(), "nothing on disk changed yet");
+        let result = work.run();
+        assert_eq!(
+            result,
+            SettingsWorkResult::Saved {
+                enabled: false,
+                cleared: Some(true),
+                language: LanguagePreference::En,
+            }
+        );
+        assert!(!cached.exists(), "removed after the file was written");
+        let names: Vec<_> = std::fs::read_dir(location(&dir).settings_path.parent().unwrap())
+            .unwrap()
+            .collect();
+        assert_eq!(names.len(), 1, "one settings file, no temporary file");
+        assert_eq!(
+            crate::cache::settings::load_settings(&location(&dir).settings_path),
+            SettingsLoad::Loaded {
+                cache_enabled: false,
+                language: LanguagePreference::En,
+            }
+        );
+        session.finish_settings_work(result);
+        let view = session.view();
+        assert!(!view.cache_enabled);
+        assert_eq!(view.language, LanguagePreference::En);
+        assert_eq!(view.settings_dialog, SettingsDialog::Closed);
     }
 
     // ---- Gate fix 16a: the default time range at startup ----
@@ -6127,5 +6485,351 @@ mod tests {
                 .validation_errors
                 .contains(&QUERY_RUNNING_KEY.to_string())
         );
+    }
+
+    // ---- 261022-small-features U2: the export (BR2.1, BR2.3, BR4.8, BR4.9) ----
+
+    use crate::export::exporter::{
+        ExportFailure, ExportOutcome, ExportRequest, ExportScreen, ExportSnapshotSource,
+        ExportStatus, ExportTarget,
+    };
+    use crate::export::formatter::ExportFormat as Format;
+
+    fn csv_file() -> ExportRequest {
+        ExportRequest {
+            screen: ExportScreen::LogManagement,
+            format: Format::Csv,
+            target: ExportTarget::File,
+        }
+    }
+
+    fn markdown_clipboard() -> ExportRequest {
+        ExportRequest {
+            screen: ExportScreen::LogManagement,
+            format: Format::Markdown,
+            target: ExportTarget::Clipboard,
+        }
+    }
+
+    fn export_time() -> DateTime<Utc> {
+        chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 10, 24, 12, 30, 45).unwrap()
+    }
+
+    /// A session whose fetch of `/aws/lambda/orders` ended Done with `events`.
+    fn exported_session(events: u64) -> AppSession {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = finished_job(&mut session, events, None);
+        session.on_batch(job.job_id, batch(events, 1));
+        session.finish_fetch(&job, 1);
+        session
+    }
+
+    fn filter_state(matched: u64, status: FilterStatus) -> FilterState {
+        FilterState {
+            result_version: 1,
+            summary: Some(FilterSummary {
+                filter_id: 1,
+                matched_count: matched,
+                all_count: 3,
+                status,
+                result_version: 1,
+            }),
+        }
+    }
+
+    #[test]
+    fn export_is_unavailable_without_rows_while_fetching_while_filtering_and_while_exporting() {
+        let mut session = AppSession::with_catalog(catalog());
+        fill_valid(&mut session);
+        assert_eq!(
+            session.can_export_logs().blocker,
+            Some(ExportBlocker::NoRows)
+        );
+        assert!(!session.view().can_export_logs);
+        assert_eq!(
+            session.begin_export(csv_file(), export_time()),
+            Err(SessionError::ExportUnavailable)
+        );
+        assert_eq!(session.view().export.status, ExportStatus::Idle);
+
+        session
+            .begin_fetch(session.connection_generation())
+            .unwrap();
+        let job = finished_job(&mut session, 3, None);
+        session.on_batch(job.job_id, batch(3, 1));
+        assert_eq!(
+            session.can_export_logs().blocker,
+            Some(ExportBlocker::Fetching)
+        );
+        session.finish_fetch(&job, 1);
+        assert!(session.can_export_logs().is_available());
+        assert!(session.view().can_export_logs);
+
+        // A filter still scanning blocks; a ready filter with matches allows.
+        session.set_filter_state(filter_state(2, FilterStatus::Filtering));
+        assert_eq!(
+            session.can_export_logs().blocker,
+            Some(ExportBlocker::Filtering)
+        );
+        session.set_filter_state(filter_state(2, FilterStatus::Ready));
+        assert!(session.can_export_logs().is_available());
+        // A ready filter with no match: no rows to export (BR2.1).
+        session.set_filter_state(filter_state(0, FilterStatus::Ready));
+        assert_eq!(
+            session.can_export_logs().blocker,
+            Some(ExportBlocker::NoRows)
+        );
+        session.set_filter_state(FilterState::default());
+
+        session.begin_export(csv_file(), export_time()).unwrap();
+        assert_eq!(
+            session.can_export_logs().blocker,
+            Some(ExportBlocker::Exporting)
+        );
+        assert!(!session.view().insights.can_export);
+    }
+
+    #[test]
+    fn begin_export_takes_a_snapshot_source_and_marks_running() {
+        let mut session = exported_session(3);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        assert_eq!(begun.export_number, 1);
+        assert_eq!(
+            begun.default_file_name.as_deref(),
+            Some("_aws_lambda_orders_20261024-123045.csv")
+        );
+        assert!(matches!(
+            begun.source,
+            ExportSnapshotSource::LogManagement { ref events, zone } if events.is_empty() && zone == Tz::UTC
+        ));
+        let view = session.view();
+        assert_eq!(view.export.status, ExportStatus::Running);
+        assert_eq!(view.export.export_number, 1);
+        assert_eq!(view.export.request, Some(csv_file()));
+        assert_eq!(view.export.row_count, Some(3));
+        assert_eq!(view.export_notice, None);
+        assert!(!view.can_export_logs);
+    }
+
+    #[test]
+    fn export_default_name_is_written_in_the_chosen_zone_and_the_clipboard_has_none() {
+        let mut session = exported_session(1);
+        session.select_time_zone(TimeZoneChoice::Utc);
+        let begun = session
+            .begin_export(markdown_clipboard(), export_time())
+            .unwrap();
+        assert_eq!(begun.default_file_name, None);
+        session.finish_export(begun.export_number, ExportOutcome::Copied);
+
+        let mut tokyo = AppSession::with_catalog_and_time_zones(
+            catalog(),
+            TimeZoneContext::new(chrono_tz::Asia::Tokyo),
+        );
+        fill_valid(&mut tokyo);
+        tokyo.begin_fetch(tokyo.connection_generation()).unwrap();
+        let job = finished_job(&mut tokyo, 1, None);
+        tokyo.on_batch(job.job_id, batch(1, 1));
+        tokyo.finish_fetch(&job, 1);
+        let begun = tokyo.begin_export(csv_file(), export_time()).unwrap();
+        assert_eq!(
+            begun.default_file_name.as_deref(),
+            Some("_aws_lambda_orders_20261024-213045.csv")
+        );
+    }
+
+    #[test]
+    fn a_second_export_while_running_is_refused_and_changes_nothing() {
+        let mut session = exported_session(2);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        let before = session.view();
+        assert_eq!(
+            session.begin_export(markdown_clipboard(), export_time()),
+            Err(SessionError::ExportBusy)
+        );
+        assert_eq!(session.view(), before);
+        assert_eq!(session.export_job().export_number(), begun.export_number);
+    }
+
+    #[test]
+    fn finish_export_cancelled_returns_to_idle_without_a_notice() {
+        let mut session = exported_session(2);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        assert!(session.finish_export(begun.export_number, ExportOutcome::Cancelled));
+        let view = session.view();
+        assert_eq!(view.export.status, ExportStatus::Idle);
+        assert_eq!(view.export.request, None);
+        assert_eq!(view.export.row_count, None);
+        assert_eq!(view.export_notice, None);
+        assert!(view.can_export_logs);
+        // The number is kept, so the next export is numbered after it.
+        assert_eq!(
+            session
+                .begin_export(csv_file(), export_time())
+                .unwrap()
+                .export_number,
+            2
+        );
+    }
+
+    #[test]
+    fn finish_export_saved_and_copied_make_done_with_their_notices() {
+        let mut session = exported_session(5);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        assert!(session.finish_export(
+            begun.export_number,
+            ExportOutcome::Saved {
+                path: "/tmp/out.csv".to_string(),
+            },
+        ));
+        let view = session.view();
+        assert_eq!(view.export.status, ExportStatus::Done);
+        assert_eq!(view.export.row_count, Some(5));
+        assert_eq!(
+            view.export_notice,
+            Some(ExportNotice::Saved {
+                path: "/tmp/out.csv".to_string(),
+                row_count: 5,
+            })
+        );
+        assert!(view.can_export_logs);
+
+        let begun = session
+            .begin_export(markdown_clipboard(), export_time())
+            .unwrap();
+        assert_eq!(begun.export_number, 2);
+        assert!(session.finish_export(begun.export_number, ExportOutcome::Copied));
+        assert_eq!(
+            session.view().export_notice,
+            Some(ExportNotice::Copied { row_count: 5 })
+        );
+        assert_eq!(
+            serde_json::to_value(session.view().export_notice).unwrap(),
+            serde_json::json!({ "kind": "Copied", "rowCount": 5 })
+        );
+    }
+
+    #[test]
+    fn finish_export_failed_keeps_the_failure_kind_and_path() {
+        let mut session = exported_session(2);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        assert!(session.finish_export(
+            begun.export_number,
+            ExportOutcome::Failed {
+                failure: ExportFailure::PermissionDenied,
+                path: Some("/root/out.csv".to_string()),
+            },
+        ));
+        let view = session.view();
+        assert_eq!(view.export.status, ExportStatus::Failed);
+        assert_eq!(
+            view.export_notice,
+            Some(ExportNotice::SaveFailed {
+                failure: ExportFailure::PermissionDenied,
+                path: Some("/root/out.csv".to_string()),
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(view.export_notice).unwrap(),
+            serde_json::json!({
+                "kind": "SaveFailed",
+                "failure": "PermissionDenied",
+                "path": "/root/out.csv"
+            })
+        );
+        // A clipboard failure is told as such.
+        let begun = session
+            .begin_export(markdown_clipboard(), export_time())
+            .unwrap();
+        session.finish_export(
+            begun.export_number,
+            ExportOutcome::Failed {
+                failure: ExportFailure::Clipboard,
+                path: None,
+            },
+        );
+        assert_eq!(
+            session.view().export_notice,
+            Some(ExportNotice::CopyFailed {
+                failure: ExportFailure::Clipboard,
+            })
+        );
+    }
+
+    #[test]
+    fn a_result_for_another_export_number_is_dropped() {
+        let mut session = exported_session(2);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        assert!(!session.finish_export(begun.export_number + 1, ExportOutcome::Copied));
+        assert!(!session.finish_export(0, ExportOutcome::Cancelled));
+        assert_eq!(session.view().export.status, ExportStatus::Running);
+        assert!(session.finish_export(begun.export_number, ExportOutcome::Cancelled));
+        // Nothing runs: a late result changes nothing either.
+        assert!(!session.finish_export(begun.export_number, ExportOutcome::Copied));
+        assert_eq!(session.view().export.status, ExportStatus::Idle);
+    }
+
+    #[test]
+    fn dismiss_export_notice_clears_it_and_a_new_export_clears_it_too() {
+        let mut session = exported_session(2);
+        let begun = session
+            .begin_export(markdown_clipboard(), export_time())
+            .unwrap();
+        session.finish_export(begun.export_number, ExportOutcome::Copied);
+        assert!(session.view().export_notice.is_some());
+        session.dismiss_export_notice();
+        assert_eq!(session.view().export_notice, None);
+        assert_eq!(session.view().export.status, ExportStatus::Done);
+
+        let begun = session
+            .begin_export(markdown_clipboard(), export_time())
+            .unwrap();
+        session.finish_export(begun.export_number, ExportOutcome::Copied);
+        assert!(session.view().export_notice.is_some());
+        session.begin_export(csv_file(), export_time()).unwrap();
+        assert_eq!(session.view().export_notice, None);
+    }
+
+    #[test]
+    fn the_log_screen_export_snapshot_has_three_columns_display_times_and_full_messages() {
+        let mut session = exported_session(2);
+        let begun = session.begin_export(csv_file(), export_time()).unwrap();
+        let events = vec![
+            LogEvent {
+                timestamp: 1_704_164_645_123,
+                ingestion_time: None,
+                message: "first line\nsecond, \"quoted\"".to_string(),
+                log_stream_name: "stream-a".to_string(),
+                sequence: 0,
+            },
+            LogEvent {
+                timestamp: 1_704_164_646_000,
+                ingestion_time: None,
+                message: "plain".to_string(),
+                log_stream_name: "stream-b".to_string(),
+                sequence: 1,
+            },
+        ];
+        let snapshot = begun.source.with_events(events).into_snapshot();
+        assert_eq!(snapshot.columns, ["@timestamp", "@logStream", "@message"]);
+        assert_eq!(
+            snapshot.rows,
+            vec![
+                vec![
+                    "2024/01/02 03:04:05.123".to_string(),
+                    "stream-a".to_string(),
+                    "first line\nsecond, \"quoted\"".to_string(),
+                ],
+                vec![
+                    "2024/01/02 03:04:06.000".to_string(),
+                    "stream-b".to_string(),
+                    "plain".to_string(),
+                ],
+            ]
+        );
+        assert_eq!(Format::Csv, csv_file().format);
     }
 }

@@ -205,7 +205,9 @@ describe("LogTable", () => {
   });
 
   it("opens the whole message as text below the row, several at once, and closes it again", async () => {
-    const html = '<b>bold</b> {"a":1,"b":[2]}\nsecond line';
+    // 261022-small-features U2: a message without JSON is shown as it is; the
+    // formatting of JSON is ExpandedMessage.test.tsx's.
+    const html = "<b>bold</b> a=1 b=[2\nsecond line";
     serveRows(10, (row) => logEvent(row, row === 1 ? html : `message ${row}`));
     const user = userEvent.setup();
     renderTable({ totalCount: 10 });
@@ -213,11 +215,12 @@ describe("LogTable", () => {
     const line = within(rows()[1]!).getByTestId("log-table-row-line");
     await user.click(line);
     const expanded = within(rows()[1]!).getByTestId("log-table-expanded");
-    // A text node only: not parsed as HTML, JSON as returned, line break kept.
+    // A text node only: not parsed as HTML, the text as returned, line break kept.
     expect(expanded.textContent).toBe(html);
     expect(expanded.querySelector("b")).toBeNull();
-    expect(expanded.parentElement).toHaveAttribute("role", "gridcell");
-    expect(expanded.parentElement).toHaveAttribute("aria-colspan", "3");
+    const cell = expanded.closest('[role="gridcell"]');
+    expect(cell).toHaveAttribute("aria-colspan", "3");
+    expect(screen.queryByTestId("log-table-expanded-mode")).toBeNull();
     expect(rows()[1]).toHaveAttribute("aria-expanded", "true");
     // The next row sits below the expansion (2 lines: 2 × 18 + 12 = 48 px).
     expect(rows()[2]!.style.top).toBe(`${2 * 22 + 48}px`);
@@ -276,7 +279,8 @@ describe("LogTable", () => {
     await waitFor(() => expect(rows()[1]!.style.top).toBe(`${22 + 372}px`));
     // The selected row's expansion scrolls: Tab can enter it (review R-13).
     expect(screen.getByTestId("log-table-expanded")).toHaveAttribute("tabindex", "0");
-    act(() => FakeResizeObserver.resize(screen.getByTestId("log-table-expanded"), 300));
+    // 261022-small-features U2: the whole expansion (switch and text) is measured.
+    act(() => FakeResizeObserver.resize(screen.getByTestId("log-table-expanded-inner"), 300));
     await waitFor(() => expect(rows()[1]!.style.top).toBe(`${22 + 300}px`));
   });
 

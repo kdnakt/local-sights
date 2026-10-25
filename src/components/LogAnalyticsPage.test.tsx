@@ -32,7 +32,13 @@ function view(insights: Partial<InsightsView> = {}, session: Partial<SessionView
 }
 
 function renderPage(session: SessionView = view(), locale: "en" | "ja" = "en") {
-  const handlers = { onChange: vi.fn(), onRun: vi.fn(), onCancel: vi.fn(), onError: vi.fn() };
+  const handlers = {
+    onChange: vi.fn(),
+    onRun: vi.fn(),
+    onCancel: vi.fn(),
+    onError: vi.fn(),
+    onExport: vi.fn(),
+  };
   const translate = locale === "en" ? t : createTranslator("ja");
   const rendered = render(
     <LogAnalyticsPage session={session} t={translate} locale={locale} mac={false} {...handlers} />,
@@ -659,5 +665,55 @@ describe("LogAnalyticsPage progress placement (261020-carryover-fixes FR4.4)", (
     expect(within(results()).queryByTestId("log-analytics-initial")).not.toBeInTheDocument();
     expect(within(results()).queryByTestId("log-analytics-no-match")).not.toBeInTheDocument();
     expect(results()).not.toHaveTextContent("No results yet.");
+  });
+});
+
+describe("LogAnalyticsPage export menu (261022-small-features U2:BR3.2, BR4.1)", () => {
+  const exportMenu = () => within(within(results()).getByTestId("export-menu")).getByRole("button");
+  const isInert = (button: HTMLElement) =>
+    button.hasAttribute("disabled") || button.getAttribute("aria-disabled") === "true";
+
+  it("sits in the results heading and mirrors canExport and the running job", () => {
+    const { rerender } = renderPage(view({ phase: "Idle", result: null, canExport: false }));
+    expect(exportMenu()).toHaveAccessibleName("Export");
+    expect(isInert(exportMenu())).toBe(true);
+    rerender(view({ phase: "Done", result: resultSummary({ rowCount: 2 }), canExport: true }));
+    expect(isInert(exportMenu())).toBe(false);
+    // The cut and the menu share the heading's actions.
+    rerender(
+      view({
+        phase: "Done",
+        result: resultSummary({ rowCount: 20, matchedCount: 1284, truncatedAt: 20 }),
+        canExport: true,
+      }),
+    );
+    expect(within(results()).getByTestId("log-analytics-truncated")).toHaveTextContent(
+      "Showing 20",
+    );
+    expect(isInert(exportMenu())).toBe(false);
+    rerender(
+      view(
+        { phase: "Done", result: resultSummary({ rowCount: 2 }), canExport: false },
+        {
+          export: {
+            exportNumber: 1,
+            status: "Running",
+            request: { screen: "logAnalytics", format: "csv", target: "file" },
+            rowCount: 2,
+          },
+        },
+      ),
+    );
+    expect(isInert(exportMenu())).toBe(true);
+  });
+
+  it("hands the chosen export to onExport", async () => {
+    const user = userEvent.setup();
+    const { onExport } = renderPage(
+      view({ phase: "Done", result: resultSummary({ rowCount: 2 }), canExport: true }),
+    );
+    await user.click(exportMenu());
+    await user.click(screen.getByRole("menuitem", { name: "Copy as CSV" }));
+    expect(onExport).toHaveBeenCalledWith("csv", "clipboard");
   });
 });

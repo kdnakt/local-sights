@@ -69,5 +69,13 @@
     "scope": "bugfix",
     "status": "complete",
     "request": "762a3707"
+  },
+  {
+    "uuid": "01a1647b-5c72-71ec-a7da-4ac8ca3d6580",
+    "slug": "small-features",
+    "dirName": "261022-small-features",
+    "scope": "refactor",
+    "status": "complete",
+    "request": "f0b493de"
   }
 ]

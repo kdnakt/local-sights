@@ -60,11 +60,29 @@
  * Since 261020-carryover-fixes FR5 the region picker's texts
  * (`connection.region.noMatch`, `connection.region.filterPlaceholder`); the
  * region names themselves are in `regions.ts`.
+ * Since 261022-small-features U1 the language choice of the settings dialog
+ * (`settings.language*`, U1:BR1.1: "日本語" and "English" are fixed in their
+ * own language, only the OS choice is translated) and `resolveLocale`, which
+ * turns the saved preference and the OS languages into the one locale every
+ * text follows (U1:BR1.2).
+ * Since 261022-small-features U2 the export menu and its four items
+ * (`export.menu`, `export.item.*`, U2:BR4.1), the notices of the last export
+ * (`export.notice.*`, `{path}` and `{count}` are the core's, U2:BR4.9), the
+ * failure kinds the core names (`export.failure.*`, review R-02), the core's
+ * `session.exportUnavailable` / `session.exportBusy`, and the "Formatted /
+ * Original" switch of an opened row (`expanded.mode*`, U2:BR5.3).
  */
 
 import type { TimeZoneChoice } from "../api";
 
 export type Locale = "en" | "ja";
+
+/**
+ * The user's language preference as saved in the settings file and carried
+ * by the session view (261022-small-features U1, ADR-005): how the locale is
+ * decided, not the locale itself. Spelled as the Rust core spells it.
+ */
+export type LanguagePreference = "system" | "ja" | "en";
 
 /** Every screen text by message key, in English and Japanese (NFR12). */
 export const messages = {
@@ -326,6 +344,12 @@ export const messages = {
     en: "Keep fetched logs in a disk cache",
     ja: "取得したログをディスクにキャッシュする",
   },
+  // 261022-small-features U1:BR1.1: the two languages are named in their own
+  // language, whatever the screen's, so the way back stays readable.
+  "settings.language": { en: "Language", ja: "言語" },
+  "settings.language.system": { en: "Follow the OS setting", ja: "OS の設定に合わせる" },
+  "settings.language.ja": { en: "日本語", ja: "日本語" },
+  "settings.language.en": { en: "English", ja: "English" },
   "settings.location": { en: "Cache location: {path}", ja: "保存場所：{path}" },
   "settings.locationUnknown": { en: "not available", ja: "なし" },
   "settings.warning": {
@@ -825,6 +849,67 @@ export const messages = {
     en: 'limit "{word}" is not supported in this version.',
     ja: "limit の「{word}」にはこの版では対応していません。",
   },
+  // ---- 261022-small-features U2: the export (BR4.1, BR4.9, review R-02) ----
+  "export.menu": { en: "Export", ja: "エクスポート" },
+  "export.exporting": { en: "Exporting…", ja: "エクスポート中…" },
+  "export.item.csvFile": { en: "Save as CSV", ja: "CSV で保存" },
+  "export.item.markdownFile": { en: "Save as Markdown", ja: "Markdown で保存" },
+  "export.item.csvClipboard": { en: "Copy as CSV", ja: "CSV をコピー" },
+  "export.item.markdownClipboard": { en: "Copy as Markdown", ja: "Markdown をコピー" },
+  "export.notice.saved": {
+    en: "Saved {count} rows to {path}.",
+    ja: "{count} 行を {path} に保存しました。",
+  },
+  "export.notice.copied": {
+    en: "Copied {count} rows to the clipboard.",
+    ja: "{count} 行をクリップボードにコピーしました。",
+  },
+  "export.notice.saveFailed": {
+    en: "The file could not be saved. {detail}",
+    ja: "ファイルを保存できませんでした。{detail}",
+  },
+  "export.notice.copyFailed": {
+    en: "The text could not be copied to the clipboard. {detail}",
+    ja: "クリップボードにコピーできませんでした。{detail}",
+  },
+  "export.notice.success": { en: "Success", ja: "成功" },
+  "export.notice.failure": { en: "Error", ja: "エラー" },
+  "export.notice.dismiss": { en: "Close", ja: "閉じる" },
+  "export.failure.PermissionDenied": {
+    en: "You do not have permission to write {path}.",
+    ja: "{path} に書き込む権限がありません。",
+  },
+  "export.failure.NoSpace": {
+    en: "There is no space left to write {path}.",
+    ja: "{path} を書き込む空き容量がありません。",
+  },
+  "export.failure.NotFound": {
+    en: "The folder of {path} was not found.",
+    ja: "{path} のフォルダが見つかりません。",
+  },
+  "export.failure.Other": {
+    en: "{path} could not be written.",
+    ja: "{path} に書き込めませんでした。",
+  },
+  "export.failure.Clipboard": {
+    en: "The clipboard did not accept the text.",
+    ja: "クリップボードが受け付けませんでした。",
+  },
+  "export.failure.Dialog": {
+    en: "The save dialog could not be used.",
+    ja: "保存ダイアログを使えませんでした。",
+  },
+  "session.exportUnavailable": {
+    en: "Nothing can be exported right now.",
+    ja: "今はエクスポートできません。",
+  },
+  "session.exportBusy": {
+    en: "An export is already in progress.",
+    ja: "エクスポートが進行中です。",
+  },
+  "expanded.mode": { en: "Display", ja: "表示" },
+  "expanded.mode.pretty": { en: "Formatted", ja: "整形" },
+  "expanded.mode.raw": { en: "Original", ja: "元のまま" },
 } as const satisfies Record<string, Record<Locale, string>>;
 
 export type MessageKey = keyof typeof messages;
@@ -893,6 +978,18 @@ export function isMessageKey(key: string): key is MessageKey {
 export function detectLocale(languages: readonly string[]): Locale {
   const first = languages[0]?.toLowerCase() ?? "";
   return first === "ja" || first.startsWith("ja-") ? "ja" : "en";
+}
+
+/**
+ * The locale the whole screen shows (261022-small-features U1:BR1.2): the
+ * saved preference when it names a language, else the OS language as
+ * `detectLocale` reads it. Pure; `languages` is the OS/browser list.
+ */
+export function resolveLocale(
+  preference: LanguagePreference,
+  languages: readonly string[],
+): Locale {
+  return preference === "system" ? detectLocale(languages) : preference;
 }
 
 /**

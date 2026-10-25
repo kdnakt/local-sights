@@ -13,6 +13,7 @@ import {
   englishSingular,
   isMessageKey,
   messages,
+  resolveLocale,
   timeZoneLabelKey,
   translate,
   type Translate,
@@ -66,6 +67,9 @@ const CORE_KEYS = [
   "insights.blocked.queryRunning",
   "insights.blocked.logManagementFetching",
   "insights.blocked.otherOperation",
+  // 261022-small-features U2 (session.rs).
+  "session.exportUnavailable",
+  "session.exportBusy",
 ];
 
 /** The reading problems of the core's QueryParser (`query::parser::keys::ALL`). */
@@ -218,6 +222,78 @@ describe("message catalog", () => {
     expect(detectLocale(["fr-FR"])).toBe("en");
     expect(detectLocale(["jam"])).toBe("en");
     expect(detectLocale([])).toBe("en");
+  });
+
+  // ---- 261022-small-features U1: the language preference (BR1.1, BR1.2) ----
+
+  it("resolves the shown language from the preference first (BR1.2)", () => {
+    expect(resolveLocale("ja", ["en-US"])).toBe("ja");
+    expect(resolveLocale("ja", [])).toBe("ja");
+    expect(resolveLocale("en", ["ja-JP"])).toBe("en");
+    expect(resolveLocale("en", ["ja"])).toBe("en");
+  });
+
+  it("follows the OS language like detectLocale when the preference is system (BR1.2)", () => {
+    expect(resolveLocale("system", ["ja-JP", "en-US"])).toBe("ja");
+    expect(resolveLocale("system", ["ja"])).toBe("ja");
+    expect(resolveLocale("system", ["en-US"])).toBe("en");
+    expect(resolveLocale("system", ["en-US", "ja-JP"])).toBe("en");
+    expect(resolveLocale("system", ["fr-FR"])).toBe("en");
+    expect(resolveLocale("system", [])).toBe("en");
+    for (const languages of [["ja-JP"], ["en-GB"], [], ["jam"]]) {
+      expect(resolveLocale("system", languages)).toBe(detectLocale(languages));
+    }
+  });
+
+  it("names the language choices in their own language, except the OS one (BR1.1)", () => {
+    expect(messages["settings.language"]).toEqual({ en: "Language", ja: "言語" });
+    expect(messages["settings.language.system"]).toEqual({
+      en: "Follow the OS setting",
+      ja: "OS の設定に合わせる",
+    });
+    expect(messages["settings.language.ja"]).toEqual({ en: "日本語", ja: "日本語" });
+    expect(messages["settings.language.en"]).toEqual({ en: "English", ja: "English" });
+  });
+
+  // ---- 261022-small-features U2: the export and the formatted JSON ----
+
+  it("has the export menu, notice and failure texts and the JSON switch in both languages (U2:BR4.1, BR4.9, BR5.3)", () => {
+    for (const key of [
+      "export.menu",
+      "export.exporting",
+      "export.item.csvFile",
+      "export.item.markdownFile",
+      "export.item.csvClipboard",
+      "export.item.markdownClipboard",
+      "export.notice.saved",
+      "export.notice.copied",
+      "export.notice.saveFailed",
+      "export.notice.copyFailed",
+      "export.notice.success",
+      "export.notice.failure",
+      "export.notice.dismiss",
+      "export.failure.PermissionDenied",
+      "export.failure.NoSpace",
+      "export.failure.NotFound",
+      "export.failure.Other",
+      "export.failure.Clipboard",
+      "export.failure.Dialog",
+      "expanded.mode",
+      "expanded.mode.pretty",
+      "expanded.mode.raw",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(messages["export.menu"]).toEqual({ en: "Export", ja: "エクスポート" });
+    expect(translate("ja", "export.notice.saved", { count: 3, path: "/a/b.csv" })).toBe(
+      "3 行を /a/b.csv に保存しました。",
+    );
+    expect(translate("en", "export.failure.NotFound", { path: "/a/b.csv" })).toBe(
+      "The folder of /a/b.csv was not found.",
+    );
+    expect(messages["expanded.mode.pretty"]).toEqual({ en: "Formatted", ja: "整形" });
+    expect(messages["expanded.mode.raw"]).toEqual({ en: "Original", ja: "元のまま" });
+    expect(translate("ja", "session.exportBusy")).toBe("エクスポートが進行中です。");
   });
 
   it("fills placeholders in the chosen language", () => {
@@ -435,6 +511,10 @@ describe("message catalog", () => {
       "settings.open",
       "settings.title",
       "settings.cacheEnabled",
+      "settings.language",
+      "settings.language.system",
+      "settings.language.ja",
+      "settings.language.en",
       "settings.location",
       "settings.warning",
       "settings.clear",

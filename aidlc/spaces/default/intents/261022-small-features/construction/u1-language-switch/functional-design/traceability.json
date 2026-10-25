@@ -1,0 +1,17 @@
+{
+  "stage": "functional-design",
+  "unit": "u1-language-switch",
+  "upstream_ids": ["FR1", "FR1.1", "FR1.2", "FR1.3", "FR1.4", "FR1.5", "FR1.6"],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "BR1.1, BR1.2, BR1.3, BR1.4, BR1.5, BR1.6, BR1.7" },
+    { "id": "FR1.1", "status": "OK", "target": "BR1.1" },
+    { "id": "FR1.2", "status": "OK", "target": "BR1.2, BR1.3" },
+    { "id": "FR1.3", "status": "OK", "target": "BR1.3" },
+    { "id": "FR1.4", "status": "OK", "target": "BR1.4, BR1.5" },
+    { "id": "FR1.5", "status": "OK", "target": "BR1.3" },
+    { "id": "FR1.6", "status": "OK", "target": "BR1.6" }
+  ],
+  "reverse": [
+    { "id": "BR1.7", "status": "N/A", "target": "NFR6（キーボード操作と読み上げ）から導いた制約。FR には対応する項目がない" }
+  ]
+}

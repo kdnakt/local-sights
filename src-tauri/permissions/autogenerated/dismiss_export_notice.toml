@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dismiss-export-notice"
+description = "Enables the dismiss_export_notice command without any pre-configured scope."
+commands.allow = ["dismiss_export_notice"]
+
+[[permission]]
+identifier = "deny-dismiss-export-notice"
+description = "Denies the dismiss_export_notice command without any pre-configured scope."
+commands.deny = ["dismiss_export_notice"]

@@ -39,6 +39,9 @@ fn main() {
             // 261017-insights-query U2: an opened row and completion.
             "get_query_row_detail",
             "get_completion_candidates",
+            // 261022-small-features U2: the export of either screen.
+            "start_export",
+            "dismiss_export_notice",
         ]));
     if let Err(error) = tauri_build::try_build(attributes) {
         eprintln!("tauri-build failed: {error}");

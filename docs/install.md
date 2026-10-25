@@ -148,7 +148,8 @@ behaves oddly with it:
    fetched again from AWS the next time.
 3. If the settings are the problem, also delete
    `~/Library/Application Support/dev.local-sights.app/settings.json`. It holds
-   only the disk cache on/off setting, which you can set again in the app.
+   only the disk cache on/off setting and the language choice, which you can
+   set again in the app.
 
 ## Windows
 
@@ -322,7 +323,8 @@ behaves oddly with it:
    again from AWS the next time.
 3. If the settings are the problem, also delete
    `%APPDATA%\dev.local-sights.app\settings.json`. It holds only the disk
-   cache on/off setting, which you can set again in the app.
+   cache on/off setting and the language choice, which you can set again in
+   the app.
 
 ### Uninstall (Windows)
 

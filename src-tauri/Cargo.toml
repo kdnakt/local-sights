@@ -29,7 +29,16 @@ local-sights-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
+# 261022-small-features U2 (ADR-002): the save dialog and the clipboard of
+# the export, used by `export_boundary` from the Rust side only.
+tauri-plugin-clipboard-manager.workspace = true
+tauri-plugin-dialog.workspace = true
 tokio.workspace = true
+# 261022-small-features U2:BR4.6: the random part of the export's temporary
+# file name (the same crate the core uses for its cache files).
+fastrand.workspace = true
+# 261022-small-features U2:BR4.5: the time the export snapshot was taken.
+chrono.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 # 261011-sso-login: `killpg` stops the whole process group of the AWS CLI

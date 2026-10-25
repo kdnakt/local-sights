@@ -1,0 +1,38 @@
+{
+  "stage": "code-generation",
+  "unit": "u1-language-switch",
+  "upstream_ids": [
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR1.4",
+    "FR1.5",
+    "FR1.6",
+    "BR1.1",
+    "BR1.2",
+    "BR1.3",
+    "BR1.4",
+    "BR1.5",
+    "BR1.6",
+    "BR1.7",
+    "NFR5",
+    "NFR6"
+  ],
+  "coverage": [
+    { "id": "FR1.1", "status": "OK", "target": "src/components/SettingsDialog.tsx" },
+    { "id": "FR1.2", "status": "OK", "target": "src/App.tsx" },
+    { "id": "FR1.3", "status": "OK", "target": "src/App.test.tsx" },
+    { "id": "FR1.4", "status": "OK", "target": "crates/local-sights-core/src/cache/settings.rs" },
+    { "id": "FR1.5", "status": "OK", "target": "src/App.test.tsx" },
+    { "id": "FR1.6", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "BR1.1", "status": "OK", "target": "src/components/SettingsDialog.test.tsx" },
+    { "id": "BR1.2", "status": "OK", "target": "src/i18n/messages.ts" },
+    { "id": "BR1.3", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "BR1.4", "status": "OK", "target": "crates/local-sights-core/src/cache/settings.rs" },
+    { "id": "BR1.5", "status": "OK", "target": "crates/local-sights-core/src/cache/settings.rs" },
+    { "id": "BR1.6", "status": "OK", "target": "crates/local-sights-core/src/session.rs" },
+    { "id": "BR1.7", "status": "OK", "target": "src/components/SettingsDialog.test.tsx" },
+    { "id": "NFR5", "status": "OK", "target": "crates/local-sights-core/src/cache/settings.rs" },
+    { "id": "NFR6", "status": "OK", "target": "src/components/SettingsDialog.tsx" }
+  ]
+}

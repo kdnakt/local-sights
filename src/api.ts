@@ -37,12 +37,23 @@
  * columns (U2:BR7.1), `getQueryRowDetail` gives the fields of one opened row
  * (U2:BR7.3), `getCompletionCandidates` the words the query field completes
  * (U2:BR9.1), and a run can end `EvaluationFailed` (U2:BR10.2).
+ * Since 261022-small-features U1 the session view carries the language
+ * preference (`language`, U1:BR1.3) and `saveSettings` saves it with the
+ * cache setting in one call (U1:BR1.1).
+ * Since 261022-small-features U2 the session view carries the one export job
+ * (`export`, U2:BR4.8), the notice of the last export (`exportNotice`,
+ * U2:BR4.9) and whether each screen's list can be exported (`canExportLogs`,
+ * `insights.canExport`, U2:BR2.3, BR3.2); `startExport` asks for one of the
+ * four exports and waits for its end (a refused request is an error, the
+ * Running job and the end arrive through `session-changed`), and
+ * `dismissExportNotice` puts the notice away.
  * Tests replace this module with `vi.mock`, so Tauri is never started.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { perfRows } from "./dev/perfRows";
+import type { LanguagePreference } from "./i18n/messages";
 
 export type Phase = "Idle" | "Fetching" | "Done" | "Failed";
 
@@ -350,6 +361,8 @@ export interface InsightsView {
   elapsed: ElapsedView | null;
   cancelling: boolean;
   cancelAvailable: boolean;
+  /** Whether the shown result can be exported now (261022-small-features U2:BR3.2). */
+  canExport: boolean;
 }
 
 /** One result row (U1:BR6.3): the event, its time in the chosen zone and `@log`. */
@@ -393,6 +406,50 @@ export interface QueryRowWindow {
   totalCount: number;
 }
 
+/** Which screen's list an export copies (261022-small-features U2 FR2, FR3). */
+export type ExportScreen = "logManagement" | "logAnalytics";
+
+/** The output format of an export (U2 FR4.1.1). */
+export type ExportFormat = "csv" | "markdown";
+
+/** Where an export goes (U2 FR4.1.2). */
+export type ExportTarget = "file" | "clipboard";
+
+/** Status of the one export job (U2:BR4.8). */
+export type ExportStatus = "Idle" | "Running" | "Done" | "Failed";
+
+/** One export as the menu asked for it (entities.md ExportRequest). */
+export interface ExportRequest {
+  screen: ExportScreen;
+  format: ExportFormat;
+  target: ExportTarget;
+}
+
+/** The one export job as the core shows it (entities.md ExportJob). */
+export interface ExportJobView {
+  /** The number of the current or last export; 0 before the first. */
+  exportNumber: number;
+  status: ExportStatus;
+  /** `null` while Idle. */
+  request: ExportRequest | null;
+  /** Rows of the current or last export, the header not counted; `null` while Idle. */
+  rowCount: number | null;
+}
+
+/** Why an export failed, named for `export.failure.<kind>` (U2 review R-02). */
+export type ExportFailure =
+  "PermissionDenied" | "NoSpace" | "NotFound" | "Other" | "Clipboard" | "Dialog";
+
+/**
+ * The notice of the last export (entities.md ExportNotice, U2:BR4.9): a kind
+ * and the arguments of its text, so the text follows a language switch.
+ */
+export type ExportNotice =
+  | { kind: "Saved"; path: string; rowCount: number }
+  | { kind: "Copied"; rowCount: number }
+  | { kind: "SaveFailed"; failure: ExportFailure; path: string | null }
+  | { kind: "CopyFailed"; failure: ExportFailure };
+
 export interface SessionView {
   sessionId: string;
   phase: Phase;
@@ -433,6 +490,11 @@ export interface SessionView {
   filterResultVersion: number;
   /** Whether the disk cache is enabled (U6:BR1.1). */
   cacheEnabled: boolean;
+  /**
+   * The saved language preference (261022-small-features U1:BR1.3, BR1.4);
+   * the screen decides the shown locale from it and the OS languages.
+   */
+  language: LanguagePreference;
   /** The cache folder shown in the settings dialog (FR7.3). */
   cacheDirectory: string | null;
   settingsDialog: SettingsDialog;
@@ -466,6 +528,12 @@ export interface SessionView {
   fetchOwner: FetchOwner;
   /** The Log Analytics screen (261017-insights-query U1). */
   insights: InsightsView;
+  /** The one export job (261022-small-features U2:BR4.8). */
+  export: ExportJobView;
+  /** The notice of the last export, until closed or the next export (U2:BR4.9). */
+  exportNotice: ExportNotice | null;
+  /** Whether the Log Management list can be exported now (U2:BR2.3). */
+  canExportLogs: boolean;
 }
 
 /** Whether an SSO login is under way (Starting or Waiting). */
@@ -734,11 +802,13 @@ export function cancelSettings(): Promise<void> {
 }
 
 /**
- * Saves the cache setting; switching it off removes the cached files
- * (U6:BR1.3). A failure is told in the dialog through `session-changed`.
+ * Saves the cache setting and the language preference in one file (U6:BR1.3;
+ * 261022-small-features U1:BR1.1, BR1.3); switching the cache off removes the
+ * cached files. A failure is told in the dialog through `session-changed`
+ * and changes neither (U1:BR1.6).
  */
-export function saveSettings(enabled: boolean): Promise<void> {
-  return invoke<void>("save_settings", { enabled });
+export function saveSettings(enabled: boolean, language: LanguagePreference): Promise<void> {
+  return invoke<void>("save_settings", { enabled, language });
 }
 
 /** Removes every cached file at once ([Clear cache], U6:BR1.4). */
@@ -855,6 +925,26 @@ export function getQueryRowDetail(runId: number, index: number): Promise<QueryRo
 /** The words and field names the query field completes (U2:BR9.1, Should). */
 export function getCompletionCandidates(): Promise<CompletionCandidate[]> {
   return invoke<CompletionCandidate[]>("get_completion_candidates");
+}
+
+/**
+ * Starts one export of `screen`'s shown rows (261022-small-features U2 FR4.1)
+ * and resolves when it ended: saved, copied, cancelled or failed. A request the
+ * core refuses (no rows, fetching, filtering, no result, another export under
+ * way) rejects with a `CommandError`; the Running job, the end and the notice
+ * arrive through `session-changed` (U2:BR4.8, BR4.9).
+ */
+export function startExport(
+  screen: ExportScreen,
+  format: ExportFormat,
+  target: ExportTarget,
+): Promise<void> {
+  return invoke<void>("start_export", { screen, format, target });
+}
+
+/** Closes the notice of the last export (U2:BR4.9). */
+export function dismissExportNotice(): Promise<void> {
+  return invoke<void>("dismiss_export_notice");
 }
 
 /** The selector that identifies a profile row. */

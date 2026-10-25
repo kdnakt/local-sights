@@ -74,7 +74,7 @@ team.md Walking Skeleton の 3（GUI の目視）と NFR3（両 OS で同じ振�
 | macOS（Apple Silicon） | README「Language, export and JSON (261022-small-features)」のチェックリスト（言語切替、4 通りの書き出し、取り消し、書けないフォルダ、JSON の整形と切替） | 未実施 |
 | Windows 11（x64） | 同上（CI で作ったインストーラで入れたアプリ。SmartScreen の開き方は `docs/install.md`） | 未実施 |
 | 両 OS | 100 万行の CSV 保存の間にスクロールと画面の切り替えができる（時間を記録。合否の数値はない） | 未実施 |
-| CI（macOS・Windows のランナー） | `Tauri app (macos-latest)`・`Tauri app (windows-latest)` の clippy・ビルド・`cargo test`（`cfg(windows)` の `export_boundary` のテストを含む） | 未実行（pull request がないため CI が走っていない） |
+| CI（macOS・Windows のランナー） | `Tauri app (macos-latest)`・`Tauri app (windows-latest)` の clippy・ビルド・`cargo test`（`cfg(windows)` の `export_boundary` のテストを含む） | **成功**（2026-10-24T23:50Z、pull request #46、CI run 167、コミット 6ce1582。4 ジョブすべて緑） |
 
 ## 7. 停止して問うこと（halt-and-ask）
 

@@ -50,11 +50,11 @@ Test Strategy は `Standard`、scope は `refactor`（新しいテストの下�
 | T-NFR5 | NFR5 / Forbidden | 設定ファイルは 3 項目だけ。失敗の知らせに OS の文を出さない。新しい AWS の API・外部送信なし | テスト `language_is_read_back_and_defaults_to_system`・`export_failure_kinds_follow_the_io_error_kind` が通過。`git diff main...HEAD` に AWS 呼び出しと HTTP の送信の追加なし。足した依存は OS のダイアログとクリップボードだけ | `security-test-instructions.md` 1 | build-and-test | Met |
 | T-NFR6 | NFR6 | 足した部品がキーボードで操作でき読み上げの名前を持つ | `ExportMenu.test.tsx`（キーボードで開いて選べる、ariaLabel）、`ExpandedMessage.test.tsx`（切替のキー操作が行に伝わらない）、`SettingsDialog.test.tsx` が通過 | test-results 3.2 | build-and-test | Met |
 | T-PERMS | U2 レビュー R-04 / Forbidden | WebView の権限は 2 つのコマンドだけ増える | `capabilities/default.json` の追加は `allow-start-export`・`allow-dismiss-export-notice` のみ。`commandRegistration.test.ts` 通過 | `security-test-instructions.md` 1 | build-and-test | Met |
-| T-OS-CI | team.md Testing Posture / NFR3 | Rust のテストと clippy・ビルドが CI の macOS・Windows のランナーでも通る | 未実行。CI は pull request と `main` への push でしか走らず、このブランチには pull request がない | （なし） | build-and-test（この段の後に走る CI） | Unverified |
+| T-OS-CI | team.md Testing Posture / NFR3 | Rust のテストと clippy・ビルドが CI の macOS・Windows のランナーでも通る | 通った（承認後に pull request #46 を作り、CI run 167 が 4 ジョブすべて成功。2026-10-24T23:50Z） | https://github.com/kdnakt/local-sights/actions/runs/40143537037 | build-and-test（承認後の追記） | Met |
 | T-OS-MAC | team.md Walking Skeleton 3 / NFR3 | macOS の手元で GUI を起動し、README のチェックリストを目で確かめる | 未実施（開発者の手元の作業。この環境は Linux で GUI がない） | test-results 6 | 人（開発者） | Unverified |
 | T-OS-WIN | team.md Walking Skeleton 3 / NFR3 | Windows 11 の手元で、CI で作ったインストーラで入れたアプリで同じく確かめる | 未実施（同上） | test-results 6 | 人（開発者） | Unverified |
 
-`Pending` は残っていない。`Met` 18、`Not Met` 0、`Unverified` 3。
+`Pending` は残っていない。承認時は `Met` 18、`Not Met` 0、`Unverified` 3。承認後に pull request #46 の CI が緑になり T-OS-CI を `Met` に更新した（`Met` 19、`Unverified` 2：両 OS の手元の目視）。
 
 ## 4. 準備の状態（readiness）
 

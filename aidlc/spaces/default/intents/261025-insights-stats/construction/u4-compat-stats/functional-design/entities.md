@@ -19,8 +19,8 @@ entities:
       - name: mode
         type: enum
         required: true
-        allowed_values: [order, set]
-        constraints: 今のまま。stats のあとに sort を書いたクエリは order（FR7.1）
+        allowed_values: [order, set, keyorder]
+        constraints: stats のあとに sort を書いたクエリは order（FR7.1）。keyorder は sort を書かない stats の鍵の昇順を見る（BR2.8）
       - name: purpose
         type: string
         required: true

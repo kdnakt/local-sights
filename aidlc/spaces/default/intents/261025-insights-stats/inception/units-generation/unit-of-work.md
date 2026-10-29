@@ -13,7 +13,7 @@
 | U1 | u1-stats-skeleton | 薄い一本（`stats` の最小版を画面から AWS まで） | service | アプリに組み込み | L | FR1.1・FR1.3・FR1.5・FR1.8、FR2、FR3.1〜FR3.6、FR6.3、FR1.2 の 6 つの書き方（`count(*)`・`count(項目)`・`sum`・`avg`・`min`・`max`。依頼文の 5 つの関数） |
 | U2 | u2-stats-complete | `stats` をそろえる（関数すべて・`sort`/`limit`・一覧の一元化） | library | ライブラリと画面に組み込み | L | FR1.2・FR1.4・FR1.6・FR1.7、FR6 |
 | U3 | u3-partial-results | 途中結果と中断後の結果 | service | アプリに組み込み | L | FR4、FR5 |
-| U4 | u4-compat-stats | 互換の確かめ（`stats` の比較） | library | 手元で動かす確認用プログラム（配らない） | S | FR7 |
+| U4 | u4-compat-stats | 互換の確かめ（`stats` の比較） | library | 手元で動かす確認用プログラム（配らない） | M | FR7 |
 
 ## U1 薄い一本（u1-stats-skeleton）
 
@@ -86,7 +86,7 @@
 - **責務**：
   - CompatCheck：集計の行の集まり（鍵と集計値）の一致の比較、`sort` を書いたクエリだけ並び順も比べる（FR7.1）。比べる文字は StatsAggregator と InsightsSession の整形と同じ
   - 比べるクエリの組：`count(*) by bin(5m)`、`by` の鍵が JSON の項目、`avg`/`sum`/`max`/`min`、`count_distinct`、`pct`、`stats` のあとの `sort`/`limit`（FR7.2。具体例は機能設計の OQ4）。空のビンを出さないなどコンソールと同じにした決まりを組で確かめ、食い違う拡張は入れない（FR7.3）
-  - U1・U2 で仮の決まりにした点（鍵のないイベント、数値でない値、丸めなど）をコンソールと比べ、食い違いを記録する
+  - U1・U2 で仮の決まりにした点（鍵のないイベント、数値でない値、丸めなど）をコンソールと比べ、食い違いを記録する。食い違った仮の決まりは U4 の中で中核（StatsAggregator など）を直し、大きいもの（結果の型・画面・取得の流れに及ぶもの）は利用者に諮る（U4 の機能設計 Q4 A、BR3.1）
 - **含む部品**：CompatCheck（`examples/compat_check.rs`、`examples/compat/*`、`examples/compat_queries.txt`）
 - **確かめ方**：比較のロジックは見本のデータで自動テストする（AWS には接続しない、NFR4）。手元で実際に比べ、結果を作る段階の記録に残す。コンソールから書き出した結果はリポジトリに置かない。
 - **実装の注意**：U3 には依存しない（最終結果だけを比べる）。U2 に依存する（関数すべてと `sort`/`limit` の後置がそろってから）

@@ -256,7 +256,7 @@
     {
       "id": "FR7.1",
       "status": "OK",
-      "target": "BR1.3, BR2.1, BR2.2, BR2.3, BR2.4, BR2.5"
+      "target": "BR1.3, BR2.1, BR2.2, BR2.3, BR2.4, BR2.5, BR2.6, BR2.7"
     },
     {
       "id": "FR7.2",
@@ -266,7 +266,7 @@
     {
       "id": "FR7.3",
       "status": "OK",
-      "target": "BR1.4, BR3.1, BR3.2"
+      "target": "BR1.4, BR3.1, BR3.2, BR2.8"
     }
   ],
   "reverse": []

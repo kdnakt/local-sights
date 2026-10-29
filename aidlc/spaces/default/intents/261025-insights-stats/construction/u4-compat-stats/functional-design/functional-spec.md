@@ -8,7 +8,7 @@
 
 | 部品 | U4 での中身 |
 |---|---|
-| CompatCheck（`examples/compat/`） | queries（5 つ目の欄）、format（集計の行の Row）、compare（セルの比べ方の緩め、集計の打ち切り）、report（範囲内の違い、仮の決まりのまとめ）（BR1.3・BR2.1〜BR2.5） |
+| CompatCheck（`examples/compat_check.rs`、`examples/compat/`） | compat_check.rs（集計の AppRows、並べ替えの項目、打ち切り、期間の端、BR2.7）、queries（splitn(5) と 5 つ目の欄、keyorder）、format（集計の行の Row）、compare（緩めのない列で対にする、セルの緩め、keyorder、BR2.6・BR2.8）、report（範囲内の違い、仮の決まりのまとめ）（BR1.3・BR2.1〜BR2.8） |
 | `compat_queries.txt` | 集計のクエリ s01〜（BR1.1） |
 | `compat_queries_numeric.txt`（新規） | 数の集計のクエリ n01〜（BR1.2） |
 | `scripts/compat/insights-export.sh` | 変えない（QUERIES= で組のファイルを選べる今のまま） |
@@ -20,7 +20,7 @@
 
 1. 開発者が本人の認証情報で `insights-export.sh` を実行し、組のクエリをコンソールの Logs Insights で実行して書き出す（今のまま。書き出しはリポジトリの外）。
 2. 開発者が `compat_check` を実行する。組を読み（5 つ目の欄を含む、BR1.3）、同じロググループと期間をアプリの中核で取得して評価する（今のまま）。
-3. クエリごとに、アプリの結果の形で Row を作り（BR2.1）、今の 7 段で比べる。セルは列の比べ方で比べる（BR2.2・BR2.3）。sort のない打ち切りは比べない（BR2.4）。
+3. クエリごとに、アプリの結果の形で Row を作り（BR2.1・BR2.7）、今の 7 段で比べる。緩めのある列があれば緩めのない列で行を対にしてから、緩めのある列を比べる（BR2.6・BR2.2・BR2.3）。sort のない打ち切りは比べない（BR2.4）。keyorder なら鍵の並びも比べる（BR2.8）。
 4. 報告を出す：クエリごとの結果、範囲内の違い、仮の決まりごとのまとめ（BR1.4・BR2.5）。終了コードは違いがあれば 1。
 5. 仮の決まりに違いがあれば、BR3.1 のとおり直すか諮る。直したら 1 からやり直して、違いが消えたことを確かめる。
 

@@ -13,7 +13,7 @@
 ```yaml
 entities:
   - name: InflightRegistry
-    description: 取得中の範囲ごとの保持の登録先（新規）。QueryRunner が 1 回の実行の間だけ持つ（DD R-02）
+    description: 取得中の範囲ごとの保持の登録先（新規）。QueryStore が持ち、QueryStore の鍵の中で登録・取り出し・確定・外しを行う（DD R-02、FR レビュー R-01）
     attributes:
       - name: runId
         type: integer
@@ -21,7 +21,7 @@ entities:
       - name: holders
         type: list<InflightHolder>
         required: true
-        constraints: 取得を始めた範囲を足し、settle_range に渡したら外す（BR1.2）
+        constraints: 取得を始めた範囲を足し、settle_inflight（取り出し・確定・外しを 1 回の鍵で）で外す（BR1.2）
     relationships:
       - target: InflightHolder
         cardinality: 1 対 0..n
@@ -52,11 +52,11 @@ entities:
       - name: viewVersion
         type: integer
         required: true
-        constraints: view ごとに 1 つずつ進む番号。最終の view もこの番号を持つ。evaluate_step と copy_rows は (epoch, viewVersion) で食い違いを確かめる（DD R-03、BR1.4）
+        constraints: view を作るとき、および保持が変わるとき（settle_inflight・add_cached・begin_run・discard_all）に進む番号。evaluate_step と copy_rows は (epoch, viewVersion) で食い違いを確かめる（DD R-03、BR1.4、FR レビュー R-02）
       - name: entries
         type: list<ViewEntry>
         required: true
-        constraints: 確定済みの分の ViewEntry と、取得中の分の写しの ViewEntry を、結果の並びの順（時刻, ロググループ, ストリーム, ストリーム内の順番）に並べたもの
+        constraints: ViewEntry の種類は Committed・Staging（今のもの）と Inflight（inflightCopies の位置、新規）。結果の並びの順（時刻, ロググループ, ストリーム, ストリーム内の順番）に並べたもの（BR1.3）
       - name: inflightCopies
         type: list<LogEvent>
         required: true
@@ -105,7 +105,12 @@ entities:
         type: enum
         required: true
         allowed_values: [Idle, Fetching, Evaluating, Done, QueryError, FetchFailed, Cancelling, Cancelled, EvaluationFailed]
-        constraints: Cancelling を足す（中断後の評価の最中、BR3.2・BR3.3）
+        constraints: Cancelling を足す（取得を止めてから中断後の評価が終わるまで。実行中として扱う、BR3.1・BR3.2・BR3.7）
+      - name: abandonRequested
+        type: boolean
+        required: true
+        default: false
+        constraints: Cancelling の間の 2 回目の［Cancel］（BR3.2）
       - name: result
         type: QueryResult
         required: false
@@ -133,7 +138,7 @@ entities:
       - name: eventKey
         type: string
         required: false
-        constraints: event のとき。（ロググループ名, ストリーム名, ストリーム内の順番）をつないだ文字。QueryRow に rowKey として載せる（BR4.2）
+        constraints: event のとき。（ロググループ名, ストリーム名, LogEvent の sequence）をつないだ文字。QueryRow に rowKey として載せる（BR4.2）
       - name: aggregateKey
         type: string
         required: false
@@ -145,5 +150,5 @@ entities:
 - **取得中の分**：QueryRunner が実行の間だけ InflightRegistry を持ち、範囲を取得し始めたら InflightHolder（今の範囲ごとの保持）を登録し、確定したら外す。
 - **途中の view**：QueryStore が確定済みの分と取得中の分の写しを合わせて作る。epoch とは別の viewVersion を持ち、評価と写しは (epoch, viewVersion) で食い違いを見分ける。
 - **結果の版**：InsightsSession が実行ごとに版の番号を進め、partial / final / cancelledPartial と、途中のときの含めた範囲（ロググループの番号と含めた件数）を持つ。古い版と別の実行の答えは捨てる。
-- **段階**：中断後の評価の最中を表す Cancelling を足す。
+- **段階**：取得を止めてから中断後の評価が終わるまでを表す Cancelling を足し、実行中として扱う。2 回目の［Cancel］の印 abandonRequested を持つ。
 - **行の見分け**：画面が開いた行と先頭の行を、イベントの行は（ロググループ, ストリーム, 順番）、集計の行は鍵の文字で覚える。

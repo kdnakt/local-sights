@@ -17,33 +17,33 @@ rules:
     category: policy
     applies_to: QueryRunner
     trigger: 取得の最中（最初のページが届いたあと）
-    logic: 途中の評価は取得の流れとは別のタスク（blocking スレッド）で行い、取得を待たせない（NFR1）。前の途中の評価が終わった時刻から 1 秒（PARTIAL_EVALUATION_INTERVAL。作る段階で測って調整してよい）たち、かつ取得済みの件数がその途中結果のときより増えていれば、次を始める。評価に 1 秒より長くかかったら、終わり次第すぐ次。最初のページが届いたあと、最初の途中の評価はすぐ始める（RA R-06：最初のページのあと、1 回の評価の時間で最初の途中結果が出る）。取得済みがすべて確定済みで AWS を呼ばないとき（FR4.9）は途中の評価をしない
+    logic: 並行の作り方（FR レビュー R-03）：run_query の本流は今のとおり取得の流れを進め、sink（&mut S）は本流だけが持つ。途中の評価は別のタスク（blocking スレッド）で行い、できた QueryResult を本流へのチャンネル（tokio の mpsc）に送る。本流は取得の future とチャンネルの受け取りを select! で待ち、受け取った途中結果を sink.on_partial_result に渡す（sink を別のタスクと共有しない）。取得の進み具合（最初のページが届いたか、取得した件数）は、本流が今の FetchSink::on_batch で数えている値を Arc の原子的な数（AtomicBool・AtomicU64）にも書き、途中のタスクの起動の判断はそれを読む。起動の条件：最初のページが届いた、動いている途中の評価がない、前の途中の評価が終わってから PARTIAL_EVALUATION_INTERVAL（1 秒。作る段階で測って調整してよい）たった、取得した件数が前の途中結果のときより増えた。最初のページのあとの最初の途中の評価はすぐ始める（RA R-06）。評価に 1 秒より長くかかったら、終わり次第すぐ次。取得の終わりや中断で取得の future が終わったら、本流は途中のタスクに止める信号を出し、終わるのを待ってから先へ進む（BR1.4）。足りない範囲がなく AWS を呼ばないとき（今の fetch_missing が取得を 1 つも始めないとき、FR4.9）は途中の評価をしない
     violation: なし
-    source: FR4.1、FR4.4、FR4.9、NFR1・NFR2、Q1 A、RA レビュー R-06
+    source: FR4.1、FR4.4、FR4.9、NFR1・NFR2、Q1 A、RA レビュー R-06、FR レビュー R-03
   - id: BR1.2
-    statement: 取得中の範囲の保持は、実行の間だけの登録先（InflightRegistry）に登録し、確定したら外す
+    statement: 取得中の範囲の保持の登録先は QueryStore が持ち、取り出し・確定・登録外しを QueryStore の鍵 1 回の中で行う
     category: constraint
-    applies_to: QueryRunner、QueryStore
-    trigger: 範囲の取得を始めたとき、settle_range に渡すとき
-    logic: fetch_range が今のように範囲ごとの holder を作るときに、InflightRegistry にも登録する。取得が終わったら、settle_range に渡すのと同じ鍵の中で登録から外す（外す前と後で、同じイベントが途中の view に 2 回入ったり落ちたりしない、FR4.8）。失敗・中断で終わった範囲は確定せず（FR5.3）、登録から外して捨てる（中断後の評価のときは BR3.1 で写しを使ってから捨てる）
+    applies_to: QueryStore、QueryRunner（fetch_range）
+    trigger: 範囲の取得を始めたとき、範囲の取得が終わったとき
+    logic: QueryStore に登録先（InflightRegistry）を持たせる。fetch_range は今のとおり範囲ごとの holder を作り、取得を始める前に store.register_inflight(key, range, holder) で登録する。取得が終わったら、今の「holder から take_events → 別の blocking タスクで settle_range」を、1 つの store.settle_inflight(id, completed, started) にまとめる：QueryStore の鍵を取り、その中で holder の鍵を取って take_events し、settle_range と同じ確定を行い、登録から外す。こうして、イベントが holder にも確定済みにもない瞬間と、両方にある瞬間をなくす（FR4.8、FR レビュー R-01）。鍵の順番は「QueryStore → holder」に固定し、取得の流れは holder の鍵だけを取って QueryStore の鍵は取らない（デッドロックしない）。失敗・中断で終わった範囲も今のとおり settle_range(completed = false) と同じに staging に残し、取得済みの範囲の記録にだけ入れない（FR5.3、FR レビュー R-06）
     violation: なし
-    source: FR4.8、FR5.3、DD レビュー R-02
+    source: FR4.8、FR5.3、DD レビュー R-02、FR レビュー R-01・R-06
   - id: BR1.3
     statement: 途中の view は、確定済みの分と取得中の分の写しを、結果の並びの順に合わせて作る
     category: calculation
-    applies_to: QueryStore
+    applies_to: QueryStore（build_partial_view、ViewEntry）
     trigger: 途中の評価を始めるとき
-    logic: 取得中の各 holder の鍵を 1 つずつ短く取り、中のイベントを写す（鍵を持ったまま評価しない、NFR2）。写しのイベントには、その範囲の StreamSequences の続きの番号を仮に振る（確定のときに振る番号と同じ規則なので、並びが最終結果と食い違わない）。確定済みの分の ViewEntry と写しの ViewEntry を合わせ、（時刻, ロググループ, ストリーム, ストリーム内の順番）の順に並べる。キャッシュから読んだ分は add_cached で確定済みに入るため、確定済みの分として含まれる
+    logic: QueryStore の鍵を取り、その中で登録された各 holder の鍵を 1 つずつ短く取ってイベントを写す（BR1.2 の鍵の順番。評価は鍵の外で行う、NFR2）。写しには、その範囲の StreamSequences を進めずに読み、続きの番号を仮に振る（確定のときに振る番号と同じ規則で、並びが最終結果と食い違わない）。期間の外のイベントは今の build_view と同じく除く（FR レビュー R-07）。ViewEntry に今の Committed・Staging の 2 つに加えて Inflight（view が持つ写しの位置）の種類を足す（FR レビュー R-02）。確定済みの分の ViewEntry と写しの ViewEntry を合わせ、（時刻, ロググループ, ストリーム, ストリーム内の順番）の順に並べる。キャッシュから読んだ分は add_cached で確定済み（staging）に入るため、確定済みの分として含まれる
     violation: なし
-    source: FR4.1、FR4.8、ADR-003、DD レビュー R-02
+    source: FR4.1、FR4.8、ADR-003、DD レビュー R-02、FR レビュー R-02・R-07
   - id: BR1.4
-    statement: view は epoch とは別の viewVersion を持ち、評価と写しは (epoch, viewVersion) が今の view と同じときだけ進める
+    statement: view は epoch とは別の viewVersion を持ち、保持が変わるたびに進める。評価と写しは (epoch, viewVersion) が今と同じときだけ進め、食い違えばその途中結果を捨てる
     category: constraint
-    applies_to: QueryStore（build_view・build_partial_view・evaluate_step・copy_rows）
-    trigger: view を作るとき、評価と写しのとき
-    logic: view を作るたびに viewVersion を 1 つ進める（最終の view も）。evaluate_step と copy_rows は (epoch, viewVersion) が食い違えば何もせず失敗を返す（今の epoch だけの照合を広げる）。取得が終わったとき・中断したときは、動いている途中の評価に止める信号を出して終わるのを待ってから、最終の view を作る（DD R-03）
-    violation: 食い違った評価はその途中結果を捨てる（次の view で作り直す）
-    source: FR4.8、ADR-003、DD レビュー R-03
+    applies_to: QueryStore（build_view・build_partial_view・settle_inflight・add_cached・begin_run・evaluate_step・copy_rows）
+    trigger: view を作るとき、保持が変わるとき、評価と写しのとき
+    logic: ViewEntry は保持の中の位置を指し、EventTimeline の append は時刻順に途中へ差し込むため、確定（settle_inflight）とキャッシュの追加（add_cached）で位置がずれる（FR レビュー R-02）。そこで viewVersion を、view を作るときだけでなく、settle_inflight・add_cached・begin_run・discard_all のたびにも進める。evaluate_step と copy_rows は (epoch, viewVersion) が食い違えば何もせず失敗を返し、途中の評価はその回の結果を捨てる（次の起動で作り直す）。範囲の確定はロググループごとの範囲の終わりにしか起きないため、途中の評価は確定の間の時間で終わる。取得がすべて終わったら、本流は途中のタスクに止める信号を出して終わるのを待ち（BR1.1）、そのあとで最終の view を作る。最終の評価の間は保持が変わらないため、今のとおり食い違わない（DD R-03）
+    violation: 食い違った評価はその途中結果を捨てる
+    source: FR4.8、ADR-003、DD レビュー R-03、FR レビュー R-02
   - id: BR2.1
     statement: 途中の評価は、最終結果と同じ評価器を途中の view に走らせ、できた QueryResult を版つきで知らせる
     category: policy
@@ -105,7 +105,7 @@ rules:
     category: policy
     applies_to: QueryResultTable、ScreenHooks（expansionState）
     trigger: 版が進んで行を読み直したとき
-    logic: 中核は QueryRow に rowKey（イベントの行は ロググループ名・ストリーム名・ストリーム内の順番、集計の行は鍵のセルの文字をつないだもの）を足す。画面は開いた行を rowKey で覚え（今の位置で覚える作りを改める）、新しい版で同じ rowKey の行を開いたままにし、なければ閉じる。スクロールは、差し替えの前に先頭に見えていた行の rowKey を新しい版で探し（中核の新しいコマンド find_query_row(runId, version, rowKey) が位置を返す）、見つかればその行が先頭になるように位置を合わせ、なければ今の位置のまま。選択（範囲の選択の文字）は保たない
+    logic: 中核は QueryRow に rowKey（イベントの行は ロググループ名・ストリーム名・ストリーム内の順番、集計の行は鍵のセルの文字をつないだもの）を足す。画面は開いた行を rowKey で覚え（今の位置で覚える作りを改める）、新しい版で同じ rowKey の行を開いたままにし、なければ閉じる。スクロールは、差し替えの前に先頭に見えていた行の rowKey を新しい版で探し（中核の新しいコマンド find_query_row(runId, version, rowKey) が位置を返す）、見つかればその行が先頭になるように位置を合わせ、なければ今の位置のまま。開いた行の詳細の取得の鍵と、行の取得の効果の依存には version を含める（版が進んだら読み直す。FR レビュー R-09）。選択（範囲の選択の文字）は保たない
     violation: なし
     source: FR4.4、Q4 A
   - id: BR2.9
@@ -117,29 +117,29 @@ rules:
     violation: なし
     source: FR4.10
   - id: BR3.1
-    statement: 取得中に［Cancel］を押したら、取得を止め、止めた時点の確定済みの分と取得中の分の写しで 1 回評価し、「一部のログだけの結果（中断）」の最終結果にする
+    statement: 取得中に［Cancel］を押したら、取得を止め、止めた時点までに取得した分（確定済み。取得の途中で止まった範囲は staging に入った分）で 1 回評価し、「一部のログだけの結果（中断）」の最終結果にする
     category: policy
     applies_to: QueryRunner、InsightsSession、QueryStore
     trigger: Fetching の間に［Cancel］を押したとき
-    logic: 取得に止める合図を出す（今のまま）。動いている途中の評価を止める（BR1.4）。段階を Cancelling にする。取得が止まったら、BR1.3 で途中の view を作り（取得中の範囲の分も含める。確定はしない、FR5.3）、評価する。この評価は最初の中断の合図では止めない（今の is_stopped・on_evaluation_progress・finish_evaluation の「中断なら捨てる」を、中断後の評価では使わない）。評価が終わったら stage = cancelledPartial の最終結果にし、段階を Cancelled にする。取得の一部のストリームが失敗していれば、失敗したストリームも示す（FR5.4）
+    logic: 段階を Cancelling にし、取得に止める合図を出す（今のまま）。取得の future が終わるとき、止まった範囲も BR1.2 のとおり settle_inflight で staging に入るため、取得中の分の写しは要らない（FR レビュー R-06）。本流は途中のタスクを止めて待ち（BR1.1）、今の最終の view（staging を含む）を作って評価する。この評価には中断の合図（StopHandle の cancel）ではなく、2 回目の［Cancel］の合図（abandon、BR3.2）だけを見せる。今の finish_fetch・on_fetch_ended は「中断なら評価しない」を返すが、これを「評価する（中断の結果として）」を返すように変える（戻り値を bool から enum の Evaluate / EvaluateCancelled / Skip に）。今の is_stopped・on_evaluation_progress・finish_evaluation の「中断なら結果を捨てる」は、中断後の評価では使わない。評価が終わったら stage = cancelledPartial の最終結果にし、段階を Cancelled にする。取得の一部のストリームが失敗していれば、失敗したストリームも示す（FR5.4）
     violation: なし
-    source: FR5.1、FR5.3、FR5.4、ADR-006、DD レビュー R-04
+    source: FR5.1、FR5.3、FR5.4、ADR-006、DD レビュー R-04、FR レビュー R-04・R-06
   - id: BR3.2
-    statement: 中断後の評価の最中にもう一度［Cancel］を押したら、その評価も止める。そのとき表に出ていた途中結果があれば中断の印つきで残し、なければ「止めた」とだけ示す
+    statement: Cancelling の間にもう一度［Cancel］を押したら、中断後の評価を止める（まだ始まっていなければ始めない）。表に今の実行の途中結果があればそれを中断の印つきで残し、なければ今の中断と同じ表示にする
     category: policy
-    applies_to: QueryRunner、InsightsSession
+    applies_to: QueryRunner、InsightsSession、StopHandle、LogAnalyticsPage
     trigger: Cancelling の間に［Cancel］を押したとき
-    logic: 2 回目の合図で中断後の評価に止める信号を出し、結果は捨てる。IF そのとき result が今の実行の partial THEN その stage を cancelledPartial に変えて残す（版は進めない）。ELSE result をなくし、今の Cancelled の表示（止めた）にする。段階を Cancelled にする
+    logic: StopHandle に 2 つ目の合図 abandon を足す。cancel_available を「is_running かつ (cancel_requested でない、または段階が Cancelling で abandon_requested でない) かつ（今の cache_saving・close_pending の条件）」に改める（FR レビュー R-04）。2 回目の［Cancel］で abandon を立てる。IF 取得がまだ止まっていない THEN 取得が止まったあとに中断後の評価を始めない。IF 評価中 THEN 次の塊の間で止め、結果を捨てる。どちらでも、IF result が今の実行の partial THEN その stage を cancelledPartial に変えて残す（版は進めない）。ELSE 今の Cancelled の表示（止めた。前回の結果が「前回の結果」の印つきで残っていればそのまま）。段階を Cancelled にする。3 回目の［Cancel］は押せない（cancel_available が偽）
     violation: なし
-    source: FR5.1、Q3 A、DD レビュー R-04
+    source: FR5.1、Q3 A、DD レビュー R-04、FR レビュー R-04
   - id: BR3.3
-    statement: Evaluating の間（取得が終わって最終の評価をしている間）に［Cancel］を押したら、今のとおり評価を止める。表に途中結果があれば中断の印つきで残す
+    statement: Evaluating の間（取得が終わって最終の評価をしている間）に［Cancel］を押したら、今のとおり評価を止める。表に今の実行の途中結果があれば中断の印つきで残し、なければ今の中断と同じ表示にする
     category: policy
     applies_to: QueryRunner、InsightsSession
     trigger: Evaluating の間に［Cancel］を押したとき
-    logic: 取得はもう終わっているため、最終の評価を止める（今のまま）。IF result が今の実行の partial THEN cancelledPartial にして残す。ELSE 今の Cancelled の表示
+    logic: 取得はもう終わっているため、最終の評価を止める（今のまま）。IF result が今の実行の partial THEN cancelledPartial にして残す。ELSE 今の Cancelled の表示（BR3.2 の ELSE と同じ）
     violation: なし
-    source: FR5.1
+    source: FR5.1、FR レビュー R-04
   - id: BR3.4
     statement: 中断の結果の印は「一部のログだけの結果（中断）」。失敗したストリームもあれば、両方を示す
     category: policy
@@ -157,13 +157,21 @@ rules:
     violation: なし
     source: FR5.2、RA レビュー R-08
   - id: BR3.6
-    statement: 止める前に取得し終えた範囲は取得済みとして残し、途中までの範囲は取得済みにしない
+    statement: 止める前に取得し終えた範囲は取得済みとして残し、途中までの範囲は取得済みの範囲の記録に入れない（イベントは staging に残り、その実行の結果には使う）
     category: constraint
     applies_to: QueryRunner、QueryStore
     trigger: 中断のとき
-    logic: 今の決まり（前の FR2.6・FR2.5）のまま。中断後の評価に使った取得中の分の写しは、評価が終わったら捨てる
+    logic: 今の決まり（前の FR2.6・FR2.5、settle_range の completed = false）のまま。次の実行の begin_run で staging は捨てられ、足りない範囲として取り直す
     violation: なし
-    source: FR5.3
+    source: FR5.3、FR レビュー R-06
+  - id: BR3.7
+    statement: Cancelling は実行中として扱い、各判定をそろえる
+    category: constraint
+    applies_to: InsightsSession、TauriApp、ApiBridge、LogAnalyticsPage、StatusLine、MessageCatalog
+    trigger: 段階が Cancelling のとき
+    logic: is_running は Fetching・Evaluating・Cancelling で真（FR レビュー R-05）。そのため［Run query］は押せない、欄は変えられない、［Export］は押せない（Running）、接続は変えられない（今の実行中と同じ）。［Cancel］は BR3.2 の条件で 1 回だけ押せる。進み具合（RunProgress）は「結果を作っています」と評価の件数を出す。api.ts の phase の型、LogAnalyticsPage の running の判定（3 か所）、StatusLine、messages.ts に Cancelling を足す。begin は Cancelling の間は呼ばれない（Run が押せないため）
+    violation: なし
+    source: FR5.1、FR4.10、FR レビュー R-05
   - id: BR4.1
     statement: 結果の見出し（ResultSummary）に版・stage・coverage を足し、行の読み出しに版を足す
     category: policy
@@ -177,9 +185,9 @@ rules:
     category: policy
     applies_to: InsightsSession（display_rows）
     trigger: 行を読み出すとき
-    logic: イベントの行は ロググループ名・ストリーム名・ストリーム内の順番を区切りの文字（U+001F）でつないだもの。集計の行は鍵のセルの文字（U1 の鍵の比べ方の文字）を同じ区切りでつないだもの。by なしの 1 行は空の文字。ResultRow のイベントの写しにはストリーム内の順番がないため、copy_rows で写すときに ViewEntry の番号も写す
+    logic: イベントの行は ロググループ名・ストリーム名・ストリーム内の順番（ResultRow.event の LogEvent が持つ sequence）を区切りの文字（U+001F）でつないだもの。集計の行は鍵のセルの文字（U1 の鍵の比べ方の文字）を同じ区切りでつないだもの。by なしの 1 行は空の文字
     violation: なし
-    source: FR4.4、Q4 A
+    source: FR4.4、Q4 A、FR レビュー R-07
   - id: BR5.1
     statement: ログ管理の画面の取得・表示・中断と、取得の流れの速さは変えない
     category: constraint
@@ -212,7 +220,8 @@ rules:
 | BR3.3 | policy | Evaluating 中の［Cancel］ | FR5.1 |
 | BR3.4 | policy | 中断の印と失敗の両方 | FR5.4 |
 | BR3.5 | policy | 中断の結果の書き出しと通知 | FR5.2 |
-| BR3.6 | constraint | 取得済みの範囲の扱い | FR5.3 |
+| BR3.6 | constraint | 取得済みの範囲の扱い（staging に残す） | FR5.3 |
+| BR3.7 | constraint | Cancelling を実行中として扱う判定の表 | FR5.1 |
 | BR4.1 | policy | 見出しと読み出しに版 | ADR-004 |
 | BR4.2 | policy | 行の見分けの鍵 | FR4.4 |
 | BR5.1 | constraint | ログ管理の画面と取得の速さは変えない | C5 |

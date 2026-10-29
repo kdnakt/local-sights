@@ -11,26 +11,28 @@ Log Analytics の画面で `stats count(*) by bin(5m)` のような集計のク�
 | QueryPlan | `CommandKind::Stats`（StatsCommand）、結果の形と列の名前の導出（BR3.1・BR3.3） |
 | QueryParser | `stats`・`by`・`as`・`bin()` と 6 つの書き方の関数、書き間違いのエラー（BR1.1〜BR1.7）。振り分けは今の表に足す暫定のもの |
 | StatsAggregator（新規） | グループ化・累積・bin・0 件の 1 行・並び・文字の丸め（BR2.1〜BR2.9） |
-| QueryEvaluator | stats の段を足し、形つきの QueryResult を作る（BR3.1〜BR3.4） |
-| QueryStore・QueryRunner・TauriSink | 型の変更に追従するだけ（copy_rows がイベントの写しを ResultRow::Event で返す、on_evaluated に形つきの結果）。流れは変えない（BR3.1） |
+| QueryEvaluator | 評価の段階の機械に Aggregate の段を足し、EvalOutput を形つきにする（BR3.1〜BR3.5） |
+| QueryStore・TauriSink | 型の変更に追従するだけ（copy_rows がイベントの写しを ResultRow::Event で返す、on_evaluated に形つきの結果） |
+| QueryRunner | EvalOutput の形で分岐を 1 つ足す：Events は今のとおり copy_rows、Aggregates は行をそのまま QueryResult に（BR3.5）。流れの順番は変えない |
 | InsightsSession | 形に従う見出し・行・詳細・書き出しの元、時刻のセルの整形（BR4.1〜BR4.4） |
 | ExportJob | `ExportSnapshotSource::LogAnalytics` を列の名前と形つきの行に（BR4.4）。ExportFormatter は変えない |
 | TauriApp・ApiBridge | 今のコマンドの値の形を広げる（3 章） |
 | QueryResultTable・LogAnalyticsPage・MessageCatalog | 2 つの形の表示、0 行、文言（BR4.5・BR4.6） |
-| CompatCheck | events の結果の型を合わせるだけ（`stats` の比較は U4） |
+| CompatCheck | events の結果の型（ResultColumns、ResultRow の列挙型）を合わせるだけ。`compat/format.rs` の app_row は Events の行だけを扱い、Aggregates の結果は「U4 で対応」と報告して比べない（`stats` の比較は U4） |
+| FetchCheck（確認用プログラム） | 引き数でクエリの文を受け取れるようにし、`stats` の結果なら見出しの列と行（表と同じ文字）を標準出力に表で出す。取得の終わりから最終結果までの時間を測って出す（7 章の 2） |
 
 ## 2. 流れ（手順）
 
 ### UC1 集計のクエリを実行する（成功）
 
 1. 利用者が［Run query］か Cmd/Ctrl+Enter を押す（押せる条件は今のまま）。
-2. QueryParser がクエリを読む。`stats` に達したら BR1.1〜BR1.5 で集計と鍵を読み、BR1.6・BR1.7 を確かめる。問題があれば UC2 へ。
+2. QueryParser がクエリを読む。`stats` に達したら BR1.1〜BR1.5・BR1.8 で集計と鍵を読み（`bin(` の中は 1 語として読む）、列の名前を BR1.9 で決め、BR1.6・BR1.7 を確かめる。問題があれば UC2 へ。
 3. 計画から結果の形（aggregates）と列の名前（鍵 then 集計、BR3.3）が決まる。
 4. 取得は今の流れのまま（足りない分だけ、キャッシュ、ストリームの並行、BR5.2）。
-5. 取得が終わったら評価する。QueryEvaluator が stats の前の命令を今の段で適用し、stats の段で残った位置のイベントを 10,000 行ずつ StatsAggregator に渡す（BR2.9、BR3.2）。塊ごとに進み具合を知らせ、続けるか聞く。
+5. 取得が終わったら評価する。QueryEvaluator が stats の前の命令を今の段で適用し、Aggregate の段（BR3.5）で残った位置のイベントを 10,000 行ずつ StatsAggregator に渡す（BR2.9、BR3.2）。塊ごとに進み具合を知らせ（Aggregate を 1 つの塊の段として数える）、続けるか聞く。既定の 10,000 件の打ち切りと空の列を落とす段は行わない。
 6. StatsAggregator はイベントごとに鍵の値の組を作り（BR2.1、BR2.5）、グループの累積を進める（BR2.2〜BR2.4）。
-7. すべて渡し終えたら、StatsAggregator が行を作る：by なしで 0 グループなら空の 1 行（BR2.6）、グループを鍵の昇順に並べ（BR2.7）、累積を型つきのセルにする（BR2.8 の数値の丸めはセルの値を決めるときに適用）。
-8. QueryEvaluator が QueryResult（shape = aggregates、columns、行 = 集計の行の写し、matchedCount = 行の数）を作り、今の on_evaluated で渡す（BR3.4）。
+7. すべて渡し終えたら、止められない短い仕上げの 1 段で StatsAggregator が行を作る：by なしで 0 グループなら空の 1 行（BR2.6）、グループを鍵の昇順に並べ（BR2.7）、累積を型つきのセルにする（丸めはセルにせず、文字にするときに BR2.8 で行う）。
+8. QueryEvaluator が EvalOutput::Aggregates（列の名前、行、件数）を返し、QueryRunner がそれをそのまま QueryResult（shape = aggregates、ResultColumns::Aggregates、matchedCount = 行の数）にして今の on_evaluated で渡す（BR3.4・BR3.5。events のときは今のとおり copy_rows）。
 9. InsightsSession が結果を持ち、段階を Done にする。見出し（ResultSummary）に shape と columns が載る（BR4.1）。
 10. 画面は見えている行を get_query_rows で読み、values をそのままセルに出す（BR4.5）。時刻のセルの文字は InsightsSession が画面のタイムゾーンで作る（BR4.2）。
 
@@ -135,8 +137,8 @@ erDiagram
 
 team.md の Walking Skeleton の 3 つに合わせる。
 
-1. `cargo test`（中核・アプリ）と Vitest が、CI の各 OS のランナーで通る。純粋なロジック（読み取りの stats、StatsAggregator、文字の丸め、bin）はテストを先に書く。既存のテストは期待値を変えずに通る（BR5.1）。カバレッジは 80% を下回らない。
-2. 手元の確認用プログラム（今の FetchCheck を最小限広げる）で、実際の AWS から取得したログに `stats count(*) by bin(5m)` を当てて結果を出す。取得済み 100 万件に対する `stats` の最終結果までの時間を測って記録する（NFR1 の材料）。
+1. `cargo test`（中核・アプリ）と Vitest が、CI の各 OS のランナーで通る。純粋なロジック（読み取りの stats と `bin(` の字句、StatsAggregator、文字の丸めの境界の表、bin）はテストを先に書く。表の部品は `by @message` の鍵の列が全文で出ること、`by @timestamp` の見出しにタイムゾーンが付かないことを Vitest で確かめる（BR4.5）。既存のテストは期待値を変えずに通る（BR5.1）。カバレッジは 80% を下回らない。
+2. 手元の確認用プログラム（今の FetchCheck を最小限広げる）で、実際の AWS から取得したログに `stats count(*) by bin(5m)` を当てて結果を出す。取得済み 100 万件に対する `stats` の最終結果までの時間を、`stats count(*) by bin(5m)` と鍵の種類が多い `stats count(*) by @logStream`（またはそれに近いもの）の 2 本で測って記録する（NFR1 の材料、FR レビュー R-06）。
 3. GUI で集計のクエリを実行し、集計の行が表に出て、開けて、CSV / Markdown に書き出せること、タイムゾーンの切り替えで時刻の文字だけが変わることを目で確かめる。macOS と Windows の両方で行い、`filter`・`fields`・`sort`・`limit` だけのクエリが前と同じ結果になることも確かめる。
 
 ## 8. 残した問い
@@ -145,5 +147,5 @@ team.md の Walking Skeleton の 3 つに合わせる。
 |---|---|
 | コンソールの細部（鍵のないイベント、数値でない値、0 件の 1 行、小数の桁、既定の並び、関数名の大文字・小文字）がコンソールと同じか | U4 の確認用プログラムで比べ、違えば U2 か U4 で直す |
 | `stats` の前に `sort`・`limit` を書いたときのコンソールの扱い（U1 はそのまま適用） | U2 の機能設計 |
-| `stats` を含むクエリの件数の上限と打ち切り、`stats` のあとの `sort`・`limit` | U2 |
+| `stats` を含むクエリの件数の上限と打ち切り、グループの数とメモリ、`stats` のあとの `sort`・`limit`、残りの関数の引き数・結果の型・表示（OQ1） | U2 |
 | 途中結果での形の切り替え、中断後の印つきの結果 | U3 |

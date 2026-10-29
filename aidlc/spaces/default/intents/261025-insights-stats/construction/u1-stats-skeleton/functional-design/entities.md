@@ -152,7 +152,23 @@ entities:
       - name: value
         type: integer | decimal | string
         required: false
-        constraints: missing は値なし（鍵なしのグループの鍵、足せる値のなかった sum・avg・min・max）。timestamp はエポックのミリ秒（bin の鍵、@timestamp の min・max・toMillis の集計は integer）。表示の文字は BR2.8・BR4.2
+        constraints: missing は値なし（鍵なしのグループの鍵、足せる値のなかった sum・avg・min・max）。timestamp はエポックのミリ秒（bin の鍵、`by @timestamp` の鍵、@timestamp の min・max）。toMillis(@timestamp) の集計は integer。sum・avg は丸めない f64 の decimal で持ち、文字にするときだけ BR2.8 で丸める。Boolean は `1` / `0` の text。表示の文字は BR2.8・BR4.2
+
+  - name: ResultColumns
+    description: 結果の列（列挙型）。events の行の文字は FieldRef から作るため、名前の文字列には変えない（FR レビュー R-02）
+    attributes:
+      - name: kind
+        type: enum
+        required: true
+        allowed_values: [events, aggregates]
+      - name: fields
+        type: list<FieldRef>
+        required: false
+        constraints: events のとき
+      - name: names
+        type: list<string>
+        required: false
+        constraints: aggregates のとき。見出しの文字（ResultSummary.columns）は両方とも名前の文字列にする
 
   - name: QueryResult
     description: 評価の結果（今の QueryResult を広げる）。形を持ち、行は 2 種類の写し
@@ -167,9 +183,9 @@ entities:
         allowed_values: [events, aggregates]
         constraints: 計画に stats があれば aggregates、なければ events（BR3.1）
       - name: columns
-        type: list<string>
+        type: ResultColumns
         required: true
-        constraints: 列の名前。events は今の FieldRef の名前（空の列を落とす今の決まりのまま）、aggregates は鍵の列の名前 then 集計の列の名前（BR3.3）
+        constraints: 列挙型（BR3.6）。events は今の FieldRef の並び（空の列を落とす今の決まりのまま。行の文字は今の row_cells で作る）、aggregates は鍵の列の名前 then 集計の列の名前（BR3.3）
       - name: rows
         type: list<ResultRow>
         required: true
@@ -275,9 +291,9 @@ entities:
     description: 書き出しの元（今の LogAnalytics を広げる）
     attributes:
       - name: columns
-        type: list<string>
+        type: ResultColumns
         required: true
-        constraints: 列の名前（今は FieldRef の並び。名前の文字列に変える）
+        constraints: QueryResult.columns と同じ列挙型（events は FieldRef の並びのまま、aggregates は名前。BR3.6、FR レビュー R-02）
       - name: rows
         type: list<ResultRow>
         required: true
@@ -292,5 +308,5 @@ entities:
 
 - **計画**：QueryPlan の命令に `Stats` が増える。中身は AggregateSpec（関数・引き数・列の名前）の並びと GroupKey（項目か bin(期間)・列の名前）の並び。U1 では `stats` は最後の命令で 1 つだけ。
 - **集計の途中**：AggregateGroup は鍵の値の組ごとに 1 つ。鍵のないイベントは Missing の鍵で 1 つのグループにまとまる（Q3 A）。Accumulator は関数ごとに数・合計・最小最大を持つ。結果には写しだけが残り、途中の状態は評価が終われば捨てる。
-- **結果**：QueryResult が `shape`（events / aggregates）と列の名前の一覧を持ち、行は ResultRow の列挙型（イベントの写し／型つきのセルの列）。どちらの行も写しで、保持を指さない（DD R-01）。
+- **結果**：QueryResult が `shape`（events / aggregates）と列（ResultColumns：events は FieldRef の並び、aggregates は名前）を持ち、行は ResultRow の列挙型（イベントの写し／型つきのセルの列）。どちらの行も写しで、保持を指さない（DD R-01）。
 - **画面と書き出し**：ResultSummary に `shape` が増え、QueryRow は `values` を必ず持ち、イベントの項目は events のときだけ。書き出しの元は列の名前と形つきの行。時刻のセルの文字は、表示と書き出しのときに画面のタイムゾーンで作る（DD R-05）。

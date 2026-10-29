@@ -7,7 +7,10 @@
 - **関数の数**：U1 は 6 つの書き方（`count(*)`・`count(項目)`・`sum`・`avg`・`min`・`max`）。資料にあるほかの関数（`count_distinct`・`pct`・`stddev`・`earliest`・`latest`・`sortsFirst`・`sortsLast`）は U1 では「対応していない」の問題として場所つきで返し（BR1.2）、U2 で足す。
 - **`stats` のあとの命令**：U1 では `stats` を最後の命令とし、あとに命令があれば「対応していない」（BR1.6）。U2 で `sort`・`limit` の後置と、`stats` を含むクエリの件数の上限（FR1.7）を決める。
 - **コンソールの細部のうち U1 で仮に決めるもの**：鍵のないイベント（BR2.1、Q3 A）、数値でない値（BR2.3・BR2.4、Q4 A）、0 件のときの `by` なしの 1 行（BR2.6、Q2 A）、小数の桁（BR2.8、Q5 A）、`sort` を書かないときのグループの並び（BR2.7）は、資料に書かれていないため SQL と一般的な理解で仮に決め、U4 の確認用プログラムでコンソールと比べて直す。
+- **グループの数**：U1 ではグループの数に上限を設けない（`by @message` で 100 万件なら 100 万グループになりうる）。`stats` を含むクエリの件数の上限（FR1.7）とメモリの扱いは U2 で決める。U1 の測定（functional-spec 7 章）には鍵の種類が多いクエリを 1 本含める（FR レビュー R-06）。
 - **一覧の一元化**：U1 は今の `OTHER_COMMANDS`・`function()`・補完の固定の候補に `stats`・`by`・`bin`・6 つの関数を足すだけ（暫定の振り分け、units R-02）。QueryCatalog への置き換えと、色分け・エラー文言・README は U2。
+- **QueryEvaluator と QueryStore の依存の向き（DD R-09）**：今のコードのまま、QueryStore の evaluate_step が QueryEvaluator の Evaluation を受け取って view の上で 1 ステップ進める（QueryStore → QueryEvaluator の型）。QueryEvaluator は QueryStore を知らず、項目の読み手（EvalItems）だけを受け取る。U1 は向きを変えない。
+- **関数の確定した一覧（OQ1）**：U1 の 6 つの書き方は AWS の資料の表（`count()`/`count(*)`/`count(項目)`・`sum(数値の項目)`・`avg(数値の項目)`・`min(項目)`・`max(項目)`、結果は number か項目の値）で確かめた。残りの関数の引き数・結果の型・表示の形は U2 の機能設計で決める（unit-of-work の U1 の注記を改める）。
 - **途中結果と中断**：U3。U1 の評価と結果の差し替えは今までどおり取得がすべて終わってから 1 回。
 
 ## ルール（機械可読）
@@ -70,12 +73,44 @@ rules:
     logic: IF `by` のあとに鍵がない THEN Syntax（by の場所、文言「by のあとに鍵がない」）。IF 括弧が閉じていない THEN 今の UNCLOSED_PAREN。IF count 以外で引き数がない・2 つ以上 THEN Syntax（括弧の場所、文言「引き数の数が違う」）。IF `,` のあとに何もない THEN Syntax（`,` の場所）。IF 集計が 1 つもない（`stats by level`）THEN Syntax（stats の場所）
     violation: 問題を返し、エラーの場所にカーソルを動かす（今の読み取りのエラーの流れ）
     source: FR6.3
+  - id: BR1.8
+    statement: bin( の中だけ、数と単位を 1 つの語として読む。ほかの場所の数の読み方（5m などを INVALID_NUMBER にする今の決まり）は変えない
+    category: validation
+    applies_to: QueryParser（字句解析）
+    trigger: 鍵の位置で `bin` と `(` を読んだとき
+    logic: 今の字句解析器 number() は数字に英字が続く語（5m・30s・1d・5ms）を字句の段で INVALID_NUMBER にするため、BR1.5 に届かない（FR レビュー R-03）。`bin(` の直後だけ、閉じ括弧までの文字を 1 語として取り出し、BR1.5 で数と単位に分ける。単位が ms・w・mo・q・y なら Unsupported、数が 0・空・数でない・単位がない・知らない単位なら Syntax（INVALID_BIN_PERIOD の鍵）。数の上限は 1,000,000（超えたら Syntax。count × millis が i64 を超えないため、FR レビュー R-05）。`filter @timestamp > 5m` の今のエラーは変えない
+    violation: 問題を返す
+    source: FR2.1、Q1 A、FR レビュー R-03・R-05
+  - id: BR1.9
+    statement: as を付けない列の名前は、元の文から切り出した文字（関数名から閉じ括弧まで、または鍵の語）。改行と連続する空白は 1 つの空白にし、コメントは含めない
+    category: validation
+    applies_to: QueryParser
+    trigger: 集計と鍵の列の名前を決めるとき（BR1.4）
+    logic: 語の span を使って元の文から切り出す（トークンの連結ではない）。中の改行・タブ・連続する空白は 1 つの空白に、前後の空白は落とす。`#` のコメントは字句の段で落ちているため含まれない。例：`count( * )` は `count( * )`、`avg(latency)` は `avg(latency)`
+    violation: なし
+    source: FR1.1、FR3.1、FR レビュー R-03
+  - id: BR3.5
+    statement: 評価の段階の機械に Aggregate の段を足す。stats の前の命令を今の段で適用したあと、残った位置を 10,000 行ずつ集計し、止められない短い仕上げで集計の行を作る
+    category: constraint
+    applies_to: QueryEvaluator（Evaluation、Stage、EvalOutput）、QueryRunner
+    trigger: 計画に Stats があるとき
+    logic: Stage に `Aggregate { next, aggregator }` を足す（stats の前の命令がすべて終わったら入る）。各ステップで `rows` の次の 10,000 位置のイベントを aggregator に渡し、ステップの間で今の on_evaluation_progress（続けるか）を聞く。残りがなくなったら `aggregator.finish()` で行を作り Done に移る（グループの並べ替えと文字の丸めはこの 1 段で、途中で止めない。グループ数に比例する短い処理）。aggregates のときは finish_commands の既定の 10,000 件の打ち切りと Columns の段（空の列を落とす）を行わない。passes_planned に Aggregate を 1 つの塊の段として数え、進み具合が 0 のままにならないようにする。EvalOutput は `Events { rows: Vec<usize>, columns: Vec<FieldRef>, ... }` か `Aggregates { columns: Vec<String>, rows: Vec<Vec<CellValue>>, ... }` の列挙型にする。QueryRunner は Events なら今のとおり copy_rows で写しを作って QueryResult にし、Aggregates なら行をそのまま QueryResult にする（copy_rows を呼ばない）。そのため QueryRunner の変更は「形による分岐 1 つ」であり、流れの順番は変えない（BR3.1 を改める）
+    violation: なし
+    source: FR1.8、FR3.6、NFR2、ADR-001・002、FR レビュー R-01
+  - id: BR3.6
+    statement: 結果の列は列挙型で持つ。events は今の FieldRef の並び、aggregates は列の名前の並び
+    category: policy
+    applies_to: QueryResult、ExportSnapshotSource.LogAnalytics、InsightsSession
+    trigger: 結果を作るとき、行の文字を作るとき
+    logic: `ResultColumns::Events(Vec<FieldRef>)` / `ResultColumns::Aggregates(Vec<String>)`。events の行の文字は今の row_cells(&[FieldRef], ...) のまま作る（JSON の項目と toMillis(@timestamp) を名前から復元しない）。見出しの文字（ResultSummary.columns）は両方とも名前の文字列にする。ExportSnapshotSource::LogAnalytics の columns もこの列挙型にする
+    violation: なし
+    source: FR3.4、BR5.1、FR レビュー R-02
   - id: BR2.1
     statement: filter で残ったイベントを by の鍵の値の組ごとにグループにする。鍵の項目を持たないイベントは「なし」の鍵として 1 つのグループにまとめる
     category: calculation
     applies_to: StatsAggregator
     trigger: 評価で stats の命令に達し、イベントを塊ごとに受け取ったとき
-    logic: 鍵ごとに値を読む：決まった項目と JSON の項目は EventFieldReader の値（Missing / Number / Text / Boolean。Boolean は Text の `1` / `0` と同じ文字で扱う）、bin は BR2.5 の区切り。鍵の値の組（型と値）が同じイベントは同じ AggregateGroup に入れる。Missing はほかのどの値とも違い、Missing どうしは同じ（複数の鍵のときは鍵ごとに区別）。by がないときは全体で 1 つのグループ
+    logic: 鍵ごとに値を読む：決まった項目と JSON の項目は EventFieldReader の値（Missing / Number / Text / Boolean）、bin は BR2.5 の区切り。鍵の比べ方は「表に出す文字」で決める：鍵の値を BR2.8 の文字（Number は整数か 4 桁、Boolean は今の display と同じ `1` / `0`、Text はそのまま）にし、文字が同じイベントは同じ AggregateGroup に入れる（数の 200 と文字列の "200" は同じグループ。-0 と 0 も同じ。FR レビュー R-04）。鍵のセルの種類は最初に見た値の種類。`by @timestamp` の鍵は timestamp のセル（表示はタイムゾーンで整形、BR4.2）、`by @logStream`・`@log`・`@message` は text。Missing はほかのどの値とも違い、Missing どうしは同じ（複数の鍵のときは鍵ごとに区別）。by がないときは全体で 1 つのグループ
     violation: なし（イベントを落とさない）
     source: FR1.3、FR1.6、Q3 A
   - id: BR2.2
@@ -99,7 +134,7 @@ rules:
     category: calculation
     applies_to: StatsAggregator（Accumulator）
     trigger: イベントをグループに入れたとき
-    logic: 値が Missing なら無視する。それ以外は今の NaturalSort の順（SortValue）で今までの最小・最大と比べ、小さい（大きい）方を残す。同じ順位の値は先に見た方を残す。結果の CellValue は残った値の型（Number は integer か decimal、Text は text、@timestamp の項目なら timestamp、toMillis(@timestamp) なら integer）。値が 1 つもなければ missing
+    logic: 値が Missing なら無視する。それ以外は今の NaturalSort の順（SortValue）で今までの最小・最大と比べ、小さい（大きい）方を残す。同じ順位の値は先に見た方を残す。結果の CellValue は残った値の型（Number は integer か decimal、Text は text、Boolean は鍵と同じ `1` / `0` の text、@timestamp の項目なら timestamp、toMillis(@timestamp) なら integer）。値が 1 つもなければ missing
     violation: なし
     source: FR1.6、Q4 A
   - id: BR2.5
@@ -131,7 +166,7 @@ rules:
     category: calculation
     applies_to: StatsAggregator（CellValue）、InsightsSession（文字にするとき）
     trigger: 結果を作るとき、表示・書き出しの文字を作るとき
-    logic: integer は 10 進の整数の文字。decimal は、値が整数（小数部が 0）なら整数の文字、そうでなければ小数点以下 4 桁に丸め（四捨五入、half away from zero）、末尾の 0 と不要な小数点を落とす（200.3333、1.5、0.0001 未満は 0 になりうる）。text はそのまま。timestamp は BR4.2。missing は値なし（null）。表・行の詳細・書き出し・確認用プログラムは同じ関数で文字を作る（A7）
+    logic: 丸めは 1 つの純粋な関数 format_aggregate(f64) で行い、セルの値（f64）は丸めずに持って、文字にするときだけ丸める。手順：(1) 値が有限でなければ値なし（null。inf・NaN は sum の桁あふれなどでしか起きない）。(2) r = (x × 10,000).round() ÷ 10,000（Rust の f64::round は half away from zero）。(3) r が -0 なら 0。(4) r が整数で |r| < 2^53 なら整数の文字（`600`）、そうでなければ小数点以下 4 桁の文字から末尾の 0 と不要な小数点を落とす（200.3333、1.5）。|r| ≥ 2^53 の整数は f64 の最短の表記。境界の値（0.00005、-0.00004、2^53、1e20、0.1 + 0.2）はテストの表に入れる（FR レビュー R-05）。sum・avg は常に decimal として持ち、整数に収まれば整数の文字になる。count は integer。text はそのまま。timestamp は BR4.2。missing は値なし（null）。表・行の詳細・書き出し・確認用プログラムは同じ関数で文字を作る（A7）
     violation: なし
     source: FR1.5、A7、Q5 A
   - id: BR2.9
@@ -147,7 +182,7 @@ rules:
     category: policy
     applies_to: QueryEvaluator、QueryStore（copy_rows）、QueryRunner、TauriSink
     trigger: 評価が終わって結果を作るとき
-    logic: IF 計画に Stats がある THEN shape = aggregates、columns = BR3.3、rows = 集計の行（cells）。ELSE shape = events、columns = 今の columns() の名前（空の列を落とす今の決まりのまま）、rows = 今の copy_rows のイベントの写し。行はどちらも写しで、保持を位置で指さない。QueryStore・QueryRunner・TauriSink・CompatCheck は型の変更に追従するだけで流れは変えない（units R-01）
+    logic: IF 計画に Stats がある THEN shape = aggregates、columns = BR3.3（BR3.6 の Aggregates）、rows = 集計の行（cells）。ELSE shape = events、columns = 今の columns()（BR3.6 の Events。空の列を落とす今の決まりのまま）、rows = 今の copy_rows のイベントの写し。行はどちらも写しで、保持を位置で指さない。QueryStore・TauriSink・CompatCheck は型の変更に追従するだけ、QueryRunner は形による分岐を 1 つ足す（BR3.5）。どれも流れの順番は変えない（units R-01、FR レビュー R-01）
     violation: なし
     source: FR3.6、ADR-001、DD レビュー R-01、C3
   - id: BR3.2
@@ -211,7 +246,7 @@ rules:
     category: policy
     applies_to: QueryResultTable、LogAnalyticsPage
     trigger: 見出しを受け取ったとき
-    logic: columns をそのまま見出しに、values をそのままセルに出す（events は今の @message の 1 行目だけの決まりのまま）。aggregates では @message の整形・1 行目の切り出しをしない。列が多いときは表を横にスクロールできる（今の表の作りで足りなければ Cloudscape の Table の設定で、FR3.5）。0 行は「結果は 0 行」の表示（今の 0 件の表示を形に合わせた文言に）。aggregates で 1 行（BR2.6）のときは普通の 1 行
+    logic: 表の部品は見出しの shape を受け取り、それで分岐する。columns をそのまま見出しに、values をそのままセルに出す。events は今のとおり（列の名前が `@message` なら 1 行目だけ、`@timestamp` なら見出しにタイムゾーンを付ける：cellText・columnClass）。aggregates では列の名前で表示を変えない（`by @message` の鍵の列も全文、`by @timestamp` の見出しにもタイムゾーンを付けない。セルの文字は中核が整形済み）。列が多いときは表を横にスクロールできる（今の表の作りで足りなければ Cloudscape の Table の設定で、FR3.5）。0 行は「結果は 0 行」の表示（今の 0 件の表示を形に合わせた文言に）。aggregates で 1 行（BR2.6）のときは普通の 1 行
     violation: なし
     source: FR3.5、FR3.6、FR3.2、NFR11
   - id: BR4.6
@@ -251,6 +286,8 @@ rules:
 | BR1.5 | validation | bin の期間は 1 以上の s・m・h・d | FR2.1、Q1 |
 | BR1.6 | validation | stats は最後の命令で 1 つ（U1） | FR1.4 |
 | BR1.7 | validation | 書き間違いの場所つきのエラー | FR6.3 |
+| BR1.8 | validation | bin( の中だけ数と単位を 1 語で読む、上限 | FR2.1 |
+| BR1.9 | validation | as なしの列の名前は元の文の切り出し | FR3.1 |
 | BR2.1 | calculation | 鍵の値の組でグループ化、鍵なしは 1 グループ | FR1.6、Q3 |
 | BR2.2 | calculation | count(*) と count(項目) | FR1.2 |
 | BR2.3 | calculation | sum・avg は数に読める値だけ | FR1.6、Q4 |
@@ -264,6 +301,8 @@ rules:
 | BR3.2 | policy | stats は filter の残りを集計、fields は列に効かない | FR1.4 |
 | BR3.3 | policy | 列は鍵 then 集計、書いた順 | FR3.1 |
 | BR3.4 | policy | 件数の意味（行の数）、打ち切りなし | FR3.2 |
+| BR3.5 | constraint | 評価の機械の Aggregate の段、EvalOutput の形、runner の分岐 | FR1.8、FR3.6 |
+| BR3.6 | policy | 結果の列は列挙型（FieldRef か名前） | FR3.4 |
 | BR4.1 | policy | 見出しに形、行は values 必須 | FR3.6 |
 | BR4.2 | calculation | 時刻のセルはタイムゾーンで整形 | FR2.3 |
 | BR4.3 | policy | 集計の行の詳細は鍵と集計値だけ | FR3.3 |

@@ -121,12 +121,12 @@
     {
       "id": "FR1.8",
       "status": "OK",
-      "target": "BR3.2, BR5.2"
+      "target": "BR3.2, BR5.2, BR3.5"
     },
     {
       "id": "FR2.1",
       "status": "OK",
-      "target": "BR1.5, BR2.5"
+      "target": "BR1.5, BR2.5, BR1.8"
     },
     {
       "id": "FR2.2",
@@ -141,7 +141,7 @@
     {
       "id": "FR3.1",
       "status": "OK",
-      "target": "BR3.3, BR4.1"
+      "target": "BR3.3, BR4.1, BR1.9"
     },
     {
       "id": "FR3.2",
@@ -156,7 +156,7 @@
     {
       "id": "FR3.4",
       "status": "OK",
-      "target": "BR4.4"
+      "target": "BR4.4, BR3.6"
     },
     {
       "id": "FR3.5",
@@ -166,7 +166,7 @@
     {
       "id": "FR3.6",
       "status": "OK",
-      "target": "BR3.1, BR4.1, BR4.5"
+      "target": "BR3.1, BR4.1, BR4.5, BR3.5"
     },
     {
       "id": "FR4.1",

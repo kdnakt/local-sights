@@ -51,6 +51,7 @@ use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::CloudWatchLogsGateway;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
+use local_sights_core::insights_session::PartialCoverage;
 use local_sights_core::query::evaluator::{
     EvalOutput, Evaluation, EventsOutput, QueryResult, ResultRow,
 };
@@ -60,7 +61,7 @@ use local_sights_core::query::plan::{
     Command, CommandKind, DEFAULT_RESULT_LIMIT, FieldRef, QueryPlan, Span,
 };
 use local_sights_core::query::runner::{
-    QueryOutcome, QueryRun, QueryRunSummary, QuerySink, run_query,
+    FetchEnd, QueryOutcome, QueryRun, QueryRunSummary, QuerySink, run_query,
 };
 use local_sights_core::query::store::{HoldingKey, QueryStore};
 use local_sights_core::retry::{RandomJitter, Retrier, RetryPolicy, StopSignal};
@@ -288,6 +289,8 @@ async fn fetch_period<G: CloudWatchLogsGateway>(
         cache: None,
         run_started_at_ms: now_epoch_seconds().saturating_mul(1_000),
         clock: now_epoch_ms,
+        // Only the fetch is used here: no partial result (261025-insights-stats U3).
+        partial_interval: None,
     };
     let policy = RetryPolicy::default();
     let jitter = RandomJitter;
@@ -627,9 +630,17 @@ impl QuerySink for FetchOnlySink {
         self.job = Some(job.clone());
     }
 
-    fn on_fetch_ended(&mut self, _run_id: u64, summary: &QueryRunSummary) -> bool {
+    fn on_fetch_ended(&mut self, _run_id: u64, summary: &QueryRunSummary) -> FetchEnd {
         self.summary = Some(summary.clone());
-        true
+        FetchEnd::Evaluate
+    }
+
+    fn on_partial_result(
+        &mut self,
+        _run_id: u64,
+        _result: QueryResult,
+        _coverage: PartialCoverage,
+    ) {
     }
 
     fn on_evaluation_progress(&mut self, _run_id: u64, _evaluated: usize, _total: usize) -> bool {

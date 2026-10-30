@@ -688,6 +688,47 @@ export const messages = {
   },
   "insights.partial.show": { en: "Show failed streams", ja: "失敗したストリームを見る" },
   "insights.cancelled": { en: "Query cancelled.", ja: "クエリを中止しました。" },
+  // 261025-insights-stats U3:BR2.6, BR2.7, BR3.4, BR3.5, BR3.7 (NFR9, NFR10).
+  "insights.results.partialMark": {
+    en: "Partial results (fetching: log group {number} / {groups}, up to {count} events)",
+    ja: "途中の結果（取得中：ロググループ {number} / {groups}、{count} 件まで）",
+  },
+  "insights.results.partialMarkOneGroup": {
+    en: "Partial results (fetching: up to {count} events)",
+    ja: "途中の結果（取得中：{count} 件まで）",
+  },
+  "insights.results.cancelledMark": {
+    en: "Results of part of the logs (cancelled)",
+    ja: "一部のログだけの結果（中断）",
+  },
+  "insights.results.announce.partial": {
+    en: "Partial results are shown. They are replaced as the logs are fetched.",
+    ja: "途中の結果を表示しました。取得が進むと差し替わります。",
+  },
+  "insights.results.announce.final": {
+    en: "The final results are shown.",
+    ja: "最終の結果を表示しました。",
+  },
+  "insights.results.announce.cancelled": {
+    en: "Results of part of the logs are shown (cancelled).",
+    ja: "一部のログだけの結果を表示しました（中断）。",
+  },
+  "insights.status.cancelling": {
+    en: "Making the results of what was fetched: {scanned} / {total} events",
+    ja: "結果を作っています：{scanned} / {total} 件",
+  },
+  "insights.status.cancellingFetch": {
+    en: "Stopping the fetch…",
+    ja: "取得を止めています…",
+  },
+  "insights.cancelledPartial": {
+    en: "Query cancelled. Results of part of the logs are shown.",
+    ja: "クエリを中止しました。一部のログだけの結果を出しました。",
+  },
+  "export.notice.partialResult": {
+    en: "These are results of part of the logs.",
+    ja: "一部のログだけの結果です。",
+  },
   "insights.notRun": { en: "The query was not run.", ja: "クエリは実行していません。" },
   "insights.error.at": {
     en: "Line {line}, column {column}: ",

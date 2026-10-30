@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import CodeEditor, { type CodeEditorProps } from "@cloudscape-design/components/code-editor";
 import { loadAce, registerQueryMode, type AceModule } from "../aceLoader";
 import {
@@ -170,15 +170,27 @@ export function QueryEditor({
   // 261025-insights-stats U2:BR4.2: the query's mode is registered with the
   // catalog's rules once they have come (the page keeps them the same), and
   // before CodeEditor asks Ace for the mode; until then the field is plain
-  // text.
-  const coloured = useMemo(() => {
+  // text. Since U3 (U2 code review R-05) the registration is an effect, not
+  // part of the render: the field asks for the mode only once the effect has
+  // registered it for these rules, a moment later.
+  const [registeredRules, setRegisteredRules] = useState<readonly HighlightRule[] | null>(null);
+  useEffect(() => {
     const config = (ace as { config?: Partial<AceModule["config"]> } | null)?.config;
     if (highlightRules.length === 0 || ace === null || !config?.setModuleLoader) {
-      return false;
+      return undefined;
     }
     registerQueryMode(ace, highlightRules);
-    return true;
+    let current = true;
+    void Promise.resolve().then(() => {
+      if (current) {
+        setRegisteredRules(highlightRules);
+      }
+    });
+    return () => {
+      current = false;
+    };
   }, [ace, highlightRules]);
+  const coloured = ace !== null && highlightRules.length > 0 && registeredRules === highlightRules;
 
   // U2:BR9.1: the completer reads the latest candidates and words.
   const candidatesRef = useRef(candidates);

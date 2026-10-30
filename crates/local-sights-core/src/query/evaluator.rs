@@ -1162,6 +1162,9 @@ pub struct QueryResult {
     columns: ResultColumns,
     matched_count: usize,
     truncated_at: Option<usize>,
+    /// The key columns of an aggregates result, the first ones
+    /// (261025-insights-stats U3:BR4.2); 0 for events and without `by`.
+    key_count: usize,
 }
 
 impl QueryResult {
@@ -1175,6 +1178,7 @@ impl QueryResult {
             rows,
             columns: ResultColumns::Events(vec![FieldRef::Timestamp, FieldRef::Message]),
             truncated_at: None,
+            key_count: 0,
         }
     }
 
@@ -1188,6 +1192,7 @@ impl QueryResult {
             columns: ResultColumns::Events(output.columns),
             matched_count: output.matched_count,
             truncated_at: output.truncated_at,
+            key_count: 0,
         }
     }
 
@@ -1206,7 +1211,20 @@ impl QueryResult {
             rows,
             columns: ResultColumns::Aggregates(output.columns),
             truncated_at: output.truncated_at,
+            key_count: 0,
         }
+    }
+
+    /// The same result with its first `count` columns as the keys of its
+    /// aggregate rows (U3:BR4.2: the rows are told apart by them).
+    pub fn with_key_count(mut self, count: usize) -> Self {
+        self.key_count = count;
+        self
+    }
+
+    /// The key columns of the aggregate rows (U3:BR4.2).
+    pub fn key_count(&self) -> usize {
+        self.key_count
     }
 
     /// Events or aggregates (BR3.1).

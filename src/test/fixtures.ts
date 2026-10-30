@@ -167,8 +167,31 @@ export function resultSummary(overrides: Partial<ResultSummary> = {}): ResultSum
     columns: ["@timestamp", "@message"],
     matchedCount: rowCount,
     truncatedAt: null,
+    version: 1,
+    stage: "final",
+    coverage: null,
     ...overrides,
   };
+}
+
+/**
+ * A partial result (261025-insights-stats U3:BR2.6): log group `groupNumber` of
+ * `groupCount` under fetch, `included` events in it.
+ */
+export function partialSummary(
+  { groupNumber = 1, groupCount = 1, included = 40 } = {},
+  overrides: Partial<ResultSummary> = {},
+): ResultSummary {
+  return resultSummary({
+    stage: "partial",
+    coverage: { groupNumber, groupCount, includedEventCount: included },
+    ...overrides,
+  });
+}
+
+/** A result made after [Cancel] from what was fetched (U3:BR3.1). */
+export function cancelledSummary(overrides: Partial<ResultSummary> = {}): ResultSummary {
+  return resultSummary({ stage: "cancelledPartial", ...overrides });
 }
 
 /**
@@ -181,19 +204,22 @@ export function queryRow(
   values?: (string | null)[],
 ): QueryRow {
   const event = logEvent(sequence, message);
+  const logGroupName = "/aws/lambda/MyFunction";
   return {
     ...event,
-    logGroupName: "/aws/lambda/MyFunction",
+    logGroupName,
     values: values ?? [event.displayTime, message],
+    // 261025-insights-stats U3:BR4.2: the log group, stream and order.
+    rowKey: `${logGroupName}\u001f${event.logStreamName}\u001f${event.sequence}`,
   };
 }
 
 /**
  * An aggregate row as `get_query_rows` gives it (261025-insights-stats BR4.1): its
- * cells only, written by the core.
+ * cells only, written by the core, and its key (U3:BR4.2), here its first cell.
  */
-export function aggregateRow(values: (string | null)[]): QueryRow {
-  return { values };
+export function aggregateRow(values: (string | null)[], rowKey = values[0] ?? ""): QueryRow {
+  return { values, rowKey };
 }
 
 /** A shown aggregates result of `columns` with `rowCount` rows (BR3.4: never cut in U1). */
@@ -210,9 +236,11 @@ export function queryRowWindow(
   offset: number,
   limit: number,
   runId = 1,
+  version = 1,
 ): QueryRowWindow {
   return {
     runId,
+    version,
     offset,
     rows: rows.slice(offset, offset + limit),
     totalCount: rows.length,

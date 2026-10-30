@@ -124,8 +124,9 @@ use crate::failure::{ApiFailure, FailureKind};
 use crate::fetch_status::JobStatus;
 use crate::filter::{FilterState, FilterStatus, FilterSummary, normalize_filter_text};
 use crate::insights_session::{
-    AnalyticsField, AnalyticsValue, CompletionCandidate, InsightsSession, InsightsView, QueryBegin,
-    QueryRowDetail, QueryRowWindow, QuerySnapshot, RunContext,
+    AnalyticsField, AnalyticsValue, CancelRequest, CompletionCandidate, InsightsSession,
+    InsightsView, PartialCoverage, QueryBegin, QueryRowDetail, QueryRowWindow, QuerySnapshot,
+    RunContext,
 };
 use crate::log_groups::listing::ListingRequest;
 use crate::log_groups::{
@@ -135,6 +136,7 @@ use crate::log_groups::{
 use crate::paging::PageDecision;
 use crate::query::evaluator::QueryResult;
 use crate::query::plan::{QueryPlan, QueryProblem};
+use crate::query::runner::FetchEnd;
 use crate::query::runner::QueryRunSummary;
 use crate::request::{ValidatedFetch, ValidationError, message_keys, validate_session_input};
 use crate::sso_login::{
@@ -1183,7 +1185,7 @@ impl AppSession {
     pub fn fetch_owner(&self) -> FetchOwner {
         if self.phase == Phase::Fetching {
             FetchOwner::LogManagement
-        } else if self.insights.is_fetching() {
+        } else if self.insights.holds_fetch() {
             FetchOwner::LogAnalytics
         } else {
             FetchOwner::None
@@ -1420,7 +1422,7 @@ impl AppSession {
     /// either screen fetches or a query evaluates (261017-insights-query
     /// U1:BR7.3).
     pub fn can_change_connection(&self) -> bool {
-        self.controls_open() && !self.insights.is_evaluating()
+        self.controls_open() && !self.insights.is_running()
     }
 
     /// No fetch on either screen, no change awaiting confirmation, the
@@ -2033,7 +2035,7 @@ impl AppSession {
                 .collect::<Vec<_>>(),
         ));
         // 261017-insights-query U1:BR2.3: [Fetch] says why it waits.
-        if self.insights.is_fetching() {
+        if self.insights.holds_fetch() {
             validation_errors.push(QUERY_RUNNING_KEY.to_string());
         }
         SessionView {
@@ -2152,7 +2154,7 @@ impl AppSession {
     /// 261017-insights-query U1:BR7.3: no connection change while a query
     /// evaluates.
     fn ensure_not_evaluating(&self) -> Result<(), SessionError> {
-        if self.insights.is_evaluating() {
+        if self.insights.is_running() {
             Err(SessionError::Busy)
         } else {
             Ok(())
@@ -2598,11 +2600,28 @@ impl AppSession {
         self.insights.on_saving(run_id, job_id);
     }
 
-    /// The query fetch of `run_id` ended with `summary`; returns whether to
-    /// evaluate (UC1 8, U3:BR2.5, U1 R-01).
-    pub fn finish_query_fetch(&mut self, run_id: u64, summary: &QueryRunSummary) -> bool {
+    /// The query fetch of `run_id` ended with `summary`; returns whether and
+    /// how to evaluate (UC1 8, U3:BR2.5, U1 R-01, 261025-insights-stats
+    /// U3:BR3.1).
+    pub fn finish_query_fetch(&mut self, run_id: u64, summary: &QueryRunSummary) -> FetchEnd {
         let now = self.clock.now();
         self.insights.finish_fetch(run_id, summary, now)
+    }
+
+    /// A partial result of the query run (261025-insights-stats U3:BR2.1,
+    /// BR2.3); returns whether it was taken.
+    pub fn on_query_partial_result(
+        &mut self,
+        result: QueryResult,
+        coverage: PartialCoverage,
+    ) -> bool {
+        self.insights.on_partial_result(result, coverage)
+    }
+
+    /// The place of the row `key` in version `version` of the shown result
+    /// (261025-insights-stats U3:BR2.8).
+    pub fn find_query_row(&self, run_id: u64, version: u64, key: &str) -> Option<u64> {
+        self.insights.find_row(run_id, version, key)
     }
 
     /// Progress of the evaluation; returns whether to go on (U1:BR5.8).
@@ -2646,15 +2665,21 @@ impl AppSession {
 
     /// The fields of one opened result row of the shown result, its time in
     /// the chosen zone (U2:BR7.3, U3:BR3.2).
-    pub fn display_query_row_detail(&self, run_id: u64, index: usize) -> QueryRowDetail {
+    pub fn display_query_row_detail(
+        &self,
+        run_id: u64,
+        version: u64,
+        index: usize,
+    ) -> QueryRowDetail {
         let zone = self.time_zones.zone(self.time_zone);
-        self.insights.display_row_detail(run_id, index, zone)
+        self.insights
+            .display_row_detail(run_id, version, index, zone)
     }
 
-    /// [Cancel] of the query screen (UC4, R-01, R-02): the run number whose
-    /// stop handle the caller tells to stop, or `None` when it cannot be
-    /// pressed.
-    pub fn request_query_cancel(&mut self) -> Option<u64> {
+    /// [Cancel] of the query screen (UC4, R-01, R-02): what the caller tells
+    /// the stop handle of the run (stop, or since 261025-insights-stats
+    /// U3:BR3.2 abandon), or `None` when it cannot be pressed.
+    pub fn request_query_cancel(&mut self) -> Option<CancelRequest> {
         let close_pending = self.close_confirmation == CloseConfirmation::Pending;
         self.insights.request_cancel(close_pending)
     }
@@ -2669,9 +2694,16 @@ impl AppSession {
     /// At most `limit` rows from `offset` of the shown result, read from
     /// its own copies when `run_id` is its run (U1:BR6.3, U3:BR3.2), with
     /// their times written in the chosen zone.
-    pub fn display_query_rows(&self, run_id: u64, offset: usize, limit: usize) -> QueryRowWindow {
+    /// Since 261025-insights-stats U3, of version `version` only (U3:BR2.4).
+    pub fn display_query_rows(
+        &self,
+        run_id: u64,
+        version: u64,
+        (offset, limit): (usize, usize),
+    ) -> QueryRowWindow {
         let zone = self.time_zones.zone(self.time_zone);
-        self.insights.display_rows(run_id, (offset, limit), zone)
+        self.insights
+            .display_rows(run_id, version, (offset, limit), zone)
     }
 }
 
@@ -6199,7 +6231,10 @@ mod tests {
     /// Runs one query to Done with rows at `rows`.
     fn query_done(session: &mut AppSession, rows: Vec<usize>) -> u64 {
         let run_id = query_started(session).run_id;
-        assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
+        assert_eq!(
+            session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)),
+            FetchEnd::Evaluate
+        );
         session.finish_query_evaluation(QueryResult::new(run_id, 4, query_rows_at(rows)));
         run_id
     }
@@ -6269,7 +6304,10 @@ mod tests {
         // UC7, U1:BR7.3.
         let mut session = insights_ready_session();
         let run_id = query_started(&mut session).run_id;
-        assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
+        assert_eq!(
+            session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)),
+            FetchEnd::Evaluate
+        );
         assert_eq!(session.insights().phase(), AnalyticsPhase::Evaluating);
         assert_eq!(session.fetch_owner(), FetchOwner::None);
         let view = session.view();
@@ -6337,7 +6375,10 @@ mod tests {
         let mut session = insights_ready_session();
         let run_id_2 = query_started(&mut session).run_id;
         assert_eq!(run_id, run_id_2);
-        assert!(session.finish_query_fetch(run_id_2, &query_ended(JobStatus::Completed)));
+        assert_eq!(
+            session.finish_query_fetch(run_id_2, &query_ended(JobStatus::Completed)),
+            FetchEnd::Evaluate
+        );
         assert_eq!(session.request_close(), CloseDecision::Allow);
     }
 
@@ -6359,8 +6400,14 @@ mod tests {
             session.view().insights.cancel_available,
             "the write ended with its range"
         );
-        assert!(session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
-        assert_eq!(session.request_query_cancel(), Some(run_id));
+        assert_eq!(
+            session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)),
+            FetchEnd::Evaluate
+        );
+        assert_eq!(
+            session.request_query_cancel(),
+            Some(CancelRequest::Stop(run_id))
+        );
         assert!(!session.on_query_evaluation_progress(run_id, 1, 4));
         session.stop_query_evaluation(run_id);
         assert_eq!(session.insights().phase(), AnalyticsPhase::Cancelled);
@@ -6389,7 +6436,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["/aws/lambda/orders", "/aws/lambda/MyFunction"]
         );
-        assert!(session.finish_query_fetch(started.run_id, &query_ended(JobStatus::Completed)));
+        assert_eq!(
+            session.finish_query_fetch(started.run_id, &query_ended(JobStatus::Completed)),
+            FetchEnd::Evaluate
+        );
         session.finish_query_evaluation(QueryResult::new(started.run_id, 0, Vec::new()));
         assert_eq!(
             session.update_analytics_input(
@@ -6435,15 +6485,24 @@ mod tests {
                 .filter_map(|row| row.event.as_ref().map(|event| event.timestamp))
                 .collect()
         };
-        assert_eq!(times(session.display_query_rows(run_id, 0, 10)), vec![1, 3]);
-        assert_eq!(times(session.display_query_rows(run_id, 1, 10)), vec![3]);
-        assert!(times(session.display_query_rows(run_id + 1, 0, 10)).is_empty());
+        assert_eq!(
+            times(session.display_query_rows(run_id, 1, (0, 10))),
+            vec![1, 3]
+        );
+        assert_eq!(
+            times(session.display_query_rows(run_id, 1, (1, 10))),
+            vec![3]
+        );
+        assert!(times(session.display_query_rows(run_id + 1, 1, (0, 10))).is_empty());
         let next = query_started(&mut session).run_id;
-        assert!(!session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)));
+        assert_eq!(
+            session.finish_query_fetch(run_id, &query_ended(JobStatus::Completed)),
+            FetchEnd::Skip
+        );
         session.finish_query_evaluation(QueryResult::new(run_id, 4, query_rows_at(vec![0])));
         assert_eq!(session.insights().phase(), AnalyticsPhase::Fetching);
         assert_eq!(
-            times(session.display_query_rows(run_id, 0, 10)),
+            times(session.display_query_rows(run_id, 1, (0, 10))),
             vec![1, 3],
             "the previous result is read while the next run fetches"
         );

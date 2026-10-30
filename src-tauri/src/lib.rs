@@ -189,8 +189,8 @@ use local_sights_core::filter::{FilterChange, ScanStep, ScanTicket, should_repor
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
 use local_sights_core::gateway::{DESCRIBE_LOG_GROUPS, GET_LOG_EVENTS};
 use local_sights_core::insights_session::{
-    AnalyticsField, AnalyticsValue, CompletionCandidate, QueryBegin, QueryRowDetail,
-    QueryRowWindow, QueryStart,
+    AnalyticsField, AnalyticsValue, CancelRequest, CompletionCandidate, PartialCoverage,
+    QueryBegin, QueryRowDetail, QueryRowWindow, QueryStart,
 };
 use local_sights_core::log_groups::listing::{ListingRequest, ListingSink, run_listing};
 use local_sights_core::log_groups::{ListingStatus, LogGroup};
@@ -201,7 +201,9 @@ use local_sights_core::query::evaluator::QueryResult;
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
 use local_sights_core::query::plan::{QueryPlan, QueryProblem};
-use local_sights_core::query::runner::{self, QueryRun, QueryRunSummary, QuerySink};
+use local_sights_core::query::runner::{
+    self, FetchEnd, PARTIAL_EVALUATION_INTERVAL, QueryRun, QueryRunSummary, QuerySink,
+};
 use local_sights_core::query::store::QueryStore;
 use local_sights_core::request::ValidatedFetch;
 use local_sights_core::retry::{
@@ -1020,6 +1022,8 @@ fn spawn_query(
         cache,
         run_started_at_ms: now_epoch_ms(),
         clock: now_epoch_ms,
+        // 261025-insights-stats U3:BR1.1: partial results while fetching.
+        partial_interval: Some(PARTIAL_EVALUATION_INTERVAL),
     };
     let session = Arc::clone(&state.session);
     let store = Arc::clone(&state.query_store);
@@ -1097,21 +1101,31 @@ fn cancel_query(app: AppHandle, state: State<'_, AppState>) {
 }
 
 /// Accepts [Cancel] in the session (which marks the run, R-01), tells the
-/// registered handle of that run to stop for Cancel and hands the new view
-/// to `send` under the session lock (as [`cancel_running_fetch`]). Returns
-/// whether it was accepted.
+/// registered handle of that run to stop for Cancel, or since
+/// 261025-insights-stats U3:BR3.2 the second time while cancelling to
+/// abandon the evaluation after the fetch, and hands the new view to `send`
+/// under the session lock (as [`cancel_running_fetch`]). Returns whether it
+/// was accepted.
 fn cancel_running_query(
     session: &Mutex<AppSession>,
     abort: &Mutex<Option<(u64, StopHandle)>>,
     send: impl FnOnce(SessionView),
 ) -> bool {
     let mut session = lock(session);
-    let Some(run_id) = session.request_query_cancel() else {
+    let Some(request) = session.request_query_cancel() else {
         return false;
+    };
+    let run_id = match request {
+        CancelRequest::Stop(run_id) | CancelRequest::Abandon(run_id) => run_id,
     };
     if let Some((number, handle)) = lock(abort).as_ref() {
         if *number == run_id {
-            handle.stop(StopReason::Cancel);
+            match request {
+                CancelRequest::Stop(_) => {
+                    handle.stop(StopReason::Cancel);
+                }
+                CancelRequest::Abandon(_) => handle.abandon(),
+            }
         }
     }
     send(session.view());
@@ -1120,15 +1134,18 @@ fn cancel_running_query(
 
 /// At most `limit` result rows from `offset` of the run the screen shows
 /// (U1:BR6.4, 261017-insights-query U3:BR3.2); no rows for another run.
-/// The run number alone tells the result (261020-carryover-fixes FR2.3.2).
+/// The run number alone tells the result (261020-carryover-fixes FR2.3.2);
+/// since 261025-insights-stats U3 with the version of that run's result
+/// (U3:BR2.4: no rows for another).
 #[tauri::command]
 fn get_query_rows(
     run_id: u64,
+    version: u64,
     offset: u64,
     limit: u64,
     state: State<'_, AppState>,
 ) -> QueryRowWindow {
-    query_rows(&state.session, run_id, (offset, limit))
+    query_rows(&state.session, (run_id, version), (offset, limit))
 }
 
 /// Reads the rows of [`get_query_rows`] from the shown result's own copies
@@ -1136,28 +1153,52 @@ fn get_query_rows(
 /// the chosen zone.
 fn query_rows(
     session: &Mutex<AppSession>,
-    run_id: u64,
+    (run_id, version): (u64, u64),
     (offset, limit): (u64, u64),
 ) -> QueryRowWindow {
     let offset = usize::try_from(offset).unwrap_or(usize::MAX);
     let limit = usize::try_from(limit)
         .unwrap_or(usize::MAX)
         .min(MAX_ROWS_PER_REQUEST);
-    lock(session).display_query_rows(run_id, offset, limit)
+    lock(session).display_query_rows(run_id, version, (offset, limit))
 }
 
 /// The fields of result row `index` of the run the screen shows
-/// (261017-insights-query U2:BR7.3, U3:BR3.2); no field for another run.
+/// (261017-insights-query U2:BR7.3, U3:BR3.2); no field for another run or,
+/// since 261025-insights-stats U3, another version (U3:BR2.4).
 #[tauri::command]
-fn get_query_row_detail(run_id: u64, index: u64, state: State<'_, AppState>) -> QueryRowDetail {
-    query_row_detail(&state.session, run_id, index)
+fn get_query_row_detail(
+    run_id: u64,
+    version: u64,
+    index: u64,
+    state: State<'_, AppState>,
+) -> QueryRowDetail {
+    query_row_detail(&state.session, (run_id, version), index)
 }
 
 /// Reads [`get_query_row_detail`] from the shown result's own copy of the
 /// row.
-fn query_row_detail(session: &Mutex<AppSession>, run_id: u64, index: u64) -> QueryRowDetail {
+fn query_row_detail(
+    session: &Mutex<AppSession>,
+    (run_id, version): (u64, u64),
+    index: u64,
+) -> QueryRowDetail {
     let index = usize::try_from(index).unwrap_or(usize::MAX);
-    lock(session).display_query_row_detail(run_id, index)
+    lock(session).display_query_row_detail(run_id, version, index)
+}
+
+/// 261025-insights-stats U3:BR2.8: the place of the row whose key is
+/// `row_key` in version `version` of the result of `run_id`, so the screen
+/// keeps the row it showed first; `None` for another version or no such
+/// row.
+#[tauri::command]
+fn find_query_row(
+    run_id: u64,
+    version: u64,
+    row_key: String,
+    state: State<'_, AppState>,
+) -> Option<u64> {
+    lock(&state.session).find_query_row(run_id, version, &row_key)
 }
 
 /// The completion candidates of the query field (261017-insights-query
@@ -2063,8 +2104,16 @@ impl QuerySink for TauriQuerySink {
         self.update(|session| session.on_query_range_fetched(run_id, job));
     }
 
-    fn on_fetch_ended(&mut self, run_id: u64, summary: &QueryRunSummary) -> bool {
+    fn on_fetch_ended(&mut self, run_id: u64, summary: &QueryRunSummary) -> FetchEnd {
         self.update(|session| session.finish_query_fetch(run_id, summary))
+    }
+
+    /// 261025-insights-stats U3:BR2.3: the session's result is replaced and
+    /// the view pushed at once; the rows are not sent (ADR-004), the screen
+    /// reads them by the new version. Partial results come at most every
+    /// second, so they are not throttled.
+    fn on_partial_result(&mut self, _run_id: u64, result: QueryResult, coverage: PartialCoverage) {
+        self.update(|session| session.on_query_partial_result(result, coverage));
     }
 
     fn on_evaluation_progress(&mut self, run_id: u64, evaluated: usize, total: usize) -> bool {
@@ -2182,6 +2231,7 @@ pub fn run() -> Result<(), tauri::Error> {
             get_query_row_detail,
             get_completion_candidates,
             get_query_catalog,
+            find_query_row,
             start_export,
             dismiss_export_notice
         ])
@@ -2500,6 +2550,8 @@ mod tests {
             "get_completion_candidates",
             // 261025-insights-stats U2:BR4.2 (FR review R-08).
             "get_query_catalog",
+            // 261025-insights-stats U3:BR4.1.
+            "find_query_row",
         ] {
             let command = command.to_string();
             assert!(manifest.contains(&command), "{command} in build.rs");
@@ -2613,9 +2665,126 @@ mod tests {
         );
         assert_eq!(sent.len(), 1);
         assert!(sent[0].insights.cancelling);
-        assert!(!sent[0].insights.cancel_available);
+        // 261025-insights-stats U3:BR3.2 (FR5.1): while cancelling [Cancel]
+        // is offered once more, to abandon the evaluation after the fetch.
+        assert_eq!(sent[0].insights.phase, AnalyticsPhase::Cancelling);
+        assert!(sent[0].insights.cancel_available);
+        assert!(cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert!(
+            begun.signal.as_ref().is_some_and(StopSignal::is_abandoned),
+            "the second press abandons"
+        );
+        assert_eq!(sent.len(), 2);
+        assert!(!sent[1].insights.cancel_available);
         assert!(!cancel_running_query(&session, &abort, |view| sent.push(view)));
-        assert_eq!(sent.len(), 1, "a second press sends nothing");
+        assert_eq!(sent.len(), 2, "a third press sends nothing");
+    }
+
+    // ---- 261025-insights-stats U3: versions, rows by key, the 2nd cancel
+
+    /// A run of the ready session fetching, with a partial result of
+    /// `events` shown (version 1).
+    fn query_with_partial(session: &Mutex<AppSession>, events: Vec<LogEvent>) -> u64 {
+        let abort = Mutex::new(None);
+        let start = query_begun(session, &abort, "filter @message like 'ERROR'")
+            .start
+            .unwrap();
+        let coverage = PartialCoverage {
+            group_number: 1,
+            group_count: 1,
+            included_event_count: u64::try_from(events.len()).unwrap(),
+        };
+        assert!(lock(session).on_query_partial_result(
+            QueryResult::new(start.run_id, events.len(), copied(events)),
+            coverage
+        ));
+        start.run_id
+    }
+
+    #[test]
+    fn rows_and_details_of_another_version_are_empty() {
+        // U3:BR2.4, BR4.1: the screen reads with (run, version).
+        let session = query_ready_session();
+        let run_id = query_with_partial(&session, vec![held(5, "a", 0)]);
+        let summary = serde_json::to_value(lock(&session).view().insights.result).unwrap();
+        assert_eq!(
+            (&summary["version"], &summary["stage"]),
+            (&serde_json::json!(1), &serde_json::json!("partial"))
+        );
+        assert_eq!(query_rows(&session, (run_id, 1), (0, 50)).rows.len(), 1);
+        assert!(query_rows(&session, (run_id, 2), (0, 50)).rows.is_empty());
+        assert!(query_row_detail(&session, (run_id, 2), 0).fields.is_empty());
+        assert!(!query_row_detail(&session, (run_id, 1), 0).fields.is_empty());
+        let window = serde_json::to_value(query_rows(&session, (run_id, 1), (0, 50))).unwrap();
+        assert_eq!(window["version"], 1);
+        assert_eq!(
+            window["rows"][0]["rowKey"],
+            "/aws/lambda/orders\u{1f}a\u{1f}0"
+        );
+    }
+
+    #[test]
+    fn find_query_row_gives_the_place_of_a_row_in_a_version_or_none() {
+        // U3:BR2.8: the row shown first is found again in the next version.
+        let session = query_ready_session();
+        let run_id = query_with_partial(&session, vec![held(5, "a", 0)]);
+        let key = "/aws/lambda/orders\u{1f}a\u{1f}0";
+        assert_eq!(lock(&session).find_query_row(run_id, 1, key), Some(0));
+        let coverage = PartialCoverage {
+            group_number: 1,
+            group_count: 1,
+            included_event_count: 2,
+        };
+        lock(&session).on_query_partial_result(
+            QueryResult::new(run_id, 2, copied(vec![held(9, "b", 0), held(5, "a", 0)])),
+            coverage,
+        );
+        let locked = lock(&session);
+        assert_eq!(locked.find_query_row(run_id, 2, key), Some(1), "moved down");
+        assert_eq!(
+            locked.find_query_row(run_id, 1, key),
+            None,
+            "an old version"
+        );
+        assert_eq!(locked.find_query_row(run_id, 2, "nothing"), None);
+    }
+
+    #[test]
+    fn a_second_cancel_query_while_cancelling_abandons_and_a_third_does_nothing() {
+        // U3:BR3.1, BR3.2: the first stops the fetch, the second abandons
+        // the evaluation after it; the partial result stays marked.
+        let session = query_ready_session();
+        let abort = Mutex::new(None);
+        let begun = query_begun(&session, &abort, "filter @message like 'ERROR'");
+        let start = begun.start.unwrap();
+        let signal = begun.signal.unwrap();
+        lock(&session).on_query_partial_result(
+            QueryResult::new(start.run_id, 1, copied(vec![held(5, "a", 0)])),
+            PartialCoverage {
+                group_number: 1,
+                group_count: 1,
+                included_event_count: 1,
+            },
+        );
+        let mut sent = Vec::new();
+        assert!(cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert_eq!(
+            (signal.reason(), signal.is_abandoned()),
+            (Some(StopReason::Cancel), false)
+        );
+        assert!(cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert!(signal.is_abandoned());
+        let mut cancelled = completed_fetch();
+        cancelled.stopped = true;
+        assert_eq!(
+            lock(&session).finish_query_fetch(start.run_id, &cancelled),
+            FetchEnd::Skip
+        );
+        let view = serde_json::to_value(lock(&session).view()).unwrap();
+        assert_eq!(view["insights"]["phase"], "Cancelled");
+        assert_eq!(view["insights"]["result"]["stage"], "cancelledPartial");
+        assert!(!cancel_running_query(&session, &abort, |view| sent.push(view)));
+        assert_eq!(sent.len(), 2);
     }
 
     #[test]
@@ -2705,14 +2874,17 @@ mod tests {
             .unwrap();
         {
             let mut locked = lock(&session);
-            assert!(locked.finish_query_fetch(start.run_id, &completed_fetch()));
+            assert_eq!(
+                locked.finish_query_fetch(start.run_id, &completed_fetch()),
+                FetchEnd::Evaluate
+            );
             locked.finish_query_evaluation(QueryResult::new(
                 start.run_id,
                 2,
                 copied(vec![held(1_704_164_647_000, "b", 0)]),
             ));
         }
-        let window = query_rows(&session, start.run_id, (0, 50));
+        let window = query_rows(&session, (start.run_id, 1), (0, 50));
         assert_eq!(window.total_count, 1);
         assert_eq!(window.rows.len(), 1);
         let row = &window.rows[0];
@@ -2738,7 +2910,7 @@ mod tests {
             "no holdings epoch is sent (261020-carryover-fixes FR2.3)"
         );
         assert!(
-            query_rows(&session, start.run_id + 1, (0, 50))
+            query_rows(&session, (start.run_id + 1, 1), (0, 50))
                 .rows
                 .is_empty(),
             "another run"
@@ -2760,7 +2932,10 @@ mod tests {
         let start = query_begun(session, &abort, "filter @message like 'ERROR'")
             .start
             .unwrap();
-        assert!(lock(session).finish_query_fetch(start.run_id, &completed_fetch()));
+        assert_eq!(
+            lock(session).finish_query_fetch(start.run_id, &completed_fetch()),
+            FetchEnd::Evaluate
+        );
         (start.run_id, events)
     }
 
@@ -2811,7 +2986,7 @@ mod tests {
         );
         let run_id = evaluating.0;
         finish_with_level_column(&session, evaluating, vec![1, 0]);
-        let window = query_rows(&session, run_id, (0, 50));
+        let window = query_rows(&session, (run_id, 1), (0, 50));
         let json = serde_json::to_value(&window).unwrap();
         assert_eq!(json["rows"][0]["values"][0], "2024/01/02 03:04:07.000");
         assert!(
@@ -2840,7 +3015,7 @@ mod tests {
         );
         let run_id = evaluating.0;
         finish_with_level_column(&session, evaluating, vec![0]);
-        let detail = query_row_detail(&session, run_id, 0);
+        let detail = query_row_detail(&session, (run_id, 1), 0);
         let json = serde_json::to_value(&detail).unwrap();
         let names: Vec<&str> = json["fields"]
             .as_array()
@@ -2863,7 +3038,9 @@ mod tests {
         assert_eq!(json["runId"], run_id);
         for (run, index) in [(run_id + 1, 0), (run_id, 1)] {
             assert!(
-                query_row_detail(&session, run, index).fields.is_empty(),
+                query_row_detail(&session, (run, 1), index)
+                    .fields
+                    .is_empty(),
                 "{run} {index}"
             );
         }
@@ -2877,31 +3054,41 @@ mod tests {
         use local_sights_core::query::stats::CellValue;
         let session = query_ready_session();
         let (run_id, _) = query_evaluating(&session, Vec::new());
-        lock(&session).finish_query_evaluation(QueryResult::from_aggregates(
-            run_id,
-            AggregatesOutput {
-                columns: vec!["bin(5m)".to_string(), "count(*)".to_string()],
-                rows: vec![vec![
-                    CellValue::Timestamp(1_704_164_400_000),
-                    CellValue::Integer(3),
-                ]],
-                evaluated_count: 3,
-                matched_count: 1,
-                truncated_at: None,
-            },
-        ));
+        // As the runner gives it: one key column (261025-insights-stats
+        // U3:BR4.2).
+        lock(&session).finish_query_evaluation(
+            QueryResult::from_aggregates(
+                run_id,
+                AggregatesOutput {
+                    columns: vec!["bin(5m)".to_string(), "count(*)".to_string()],
+                    rows: vec![vec![
+                        CellValue::Timestamp(1_704_164_400_000),
+                        CellValue::Integer(3),
+                    ]],
+                    evaluated_count: 3,
+                    matched_count: 1,
+                    truncated_at: None,
+                },
+            )
+            .with_key_count(1),
+        );
         let view = serde_json::to_value(lock(&session).view()).unwrap();
         assert_eq!(view["insights"]["result"]["shape"], "aggregates");
         assert_eq!(
             view["insights"]["result"]["columns"],
             serde_json::json!(["bin(5m)", "count(*)"])
         );
-        let window = serde_json::to_value(query_rows(&session, run_id, (0, 50))).unwrap();
+        let window = serde_json::to_value(query_rows(&session, (run_id, 1), (0, 50))).unwrap();
+        // U3:BR4.2: each row also carries its key, a bin key by its
+        // milliseconds.
         assert_eq!(
             window["rows"][0],
-            serde_json::json!({ "values": ["2024/01/02 03:00:00.000", "3"] })
+            serde_json::json!({
+                "values": ["2024/01/02 03:00:00.000", "3"],
+                "rowKey": "1704164400000"
+            })
         );
-        let detail = serde_json::to_value(query_row_detail(&session, run_id, 0)).unwrap();
+        let detail = serde_json::to_value(query_row_detail(&session, (run_id, 1), 0)).unwrap();
         assert_eq!(
             detail["fields"],
             serde_json::json!([

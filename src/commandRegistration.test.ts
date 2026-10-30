@@ -50,6 +50,8 @@ describe("Tauri command registration", () => {
         "open_sso_url",
         // 261025-insights-stats U2:BR4.2 (FR review R-08).
         "get_query_catalog",
+        // 261025-insights-stats U3:BR4.1.
+        "find_query_row",
       ]),
     );
   });

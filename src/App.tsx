@@ -469,7 +469,16 @@ export function App({ languages, platform }: AppProps) {
 
   // U2:BR4.9: the same notice on whichever page is shown.
   const exportNoticeAlert = session && (
-    <ExportNoticeAlert notice={session.exportNotice} t={t} onDismiss={handleDismissExportNotice} />
+    <ExportNoticeAlert
+      notice={session.exportNotice}
+      t={t}
+      onDismiss={handleDismissExportNotice}
+      // 261025-insights-stats U3:BR3.5: the query screen's export of a cancelled result.
+      partialResult={
+        session.export.request?.screen === "logAnalytics" &&
+        session.insights.result?.stage === "cancelledPartial"
+      }
+    />
   );
 
   // The list: the core's rows, or the measurement harness's (dev only).

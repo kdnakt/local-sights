@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-find-query-row"
+description = "Enables the find_query_row command without any pre-configured scope."
+commands.allow = ["find_query_row"]
+
+[[permission]]
+identifier = "deny-find-query-row"
+description = "Denies the find_query_row command without any pre-configured scope."
+commands.deny = ["find_query_row"]

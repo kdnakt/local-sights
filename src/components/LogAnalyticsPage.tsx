@@ -15,6 +15,7 @@ import { QUERY_EXAMPLES, highlightRules, problemText, type QueryExample } from "
 import {
   getCompletionCandidates,
   getQueryCatalog,
+  isQueryRunning,
   type QueryVocabulary,
   type AnalyticsField,
   type CompletionCandidate,
@@ -216,7 +217,8 @@ export function LogAnalyticsPage({
   }, []);
   const rules = useMemo(() => highlightRules(catalog), [catalog]);
 
-  const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
+  // 261025-insights-stats U3:BR3.7: Cancelling is running too.
+  const running = isQueryRunning(insights.phase);
   const dialogOpen = session.pendingChange !== null || session.settingsDialog === "Open";
   const locked = running || dialogOpen;
   const zone = t(timeZoneLabelKey(session.timeZone));
@@ -509,7 +511,10 @@ interface RunBarProps {
 
 /** The run row (interaction-spec RunBar, U1:BR1.5, BR2.4), with [Examples] (U2:BR9.3). */
 function RunBar({ insights, locked, mac, t, onRun, onCancel, onExample }: RunBarProps) {
-  const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
+  const running = isQueryRunning(insights.phase);
+  // 261025-insights-stats U3:BR3.2: while Cancelling [Cancel] can be pressed once
+  // more (it abandons the results being made); it waits only once it cannot.
+  const waiting = insights.cancelling && !insights.cancelAvailable;
   return (
     <div className="log-analytics-run" data-testid="log-analytics-run">
       <SpaceBetween direction="horizontal" size="s" alignItems="center">
@@ -524,7 +529,7 @@ function RunBar({ insights, locked, mac, t, onRun, onCancel, onExample }: RunBar
         {running && (
           <Button
             disabled={!insights.cancelAvailable && !insights.cancelling}
-            loading={insights.cancelling}
+            loading={waiting}
             loadingText={t("insights.cancelling")}
             onClick={() => {
               if (insights.cancelAvailable) {
@@ -533,7 +538,7 @@ function RunBar({ insights, locked, mac, t, onRun, onCancel, onExample }: RunBar
             }}
             data-testid="log-analytics-cancel-button"
           >
-            {insights.cancelling ? t("insights.cancelling") : t("insights.cancel")}
+            {waiting ? t("insights.cancelling") : t("insights.cancel")}
           </Button>
         )}
         <Box variant="small" color="text-body-secondary">
@@ -591,6 +596,62 @@ function resultCount(result: ResultSummary, t: Translate): string {
  * heading with its count, the result (the previous one while a run goes) and
  * the words for no result; the run's progress is in the query container.
  */
+/**
+ * 261025-insights-stats U3:BR2.6, BR3.4: the mark beside the results heading of a
+ * partial result (which log group is fetched, up to how many events; the log group
+ * left out with one only) or of a cancelled one, in words with Cloudscape's status
+ * indicator, never by colour alone (NFR10). A final result has none.
+ */
+function ResultMark({ result, t }: { result: ResultSummary; t: Translate }) {
+  if (result.stage === "partial") {
+    const coverage = result.coverage;
+    const text =
+      coverage === null || coverage.groupCount <= 1
+        ? t("insights.results.partialMarkOneGroup", {
+            count: coverage?.includedEventCount ?? result.evaluatedCount,
+          })
+        : t("insights.results.partialMark", {
+            number: coverage.groupNumber,
+            groups: coverage.groupCount,
+            count: coverage.includedEventCount,
+          });
+    return (
+      <span data-testid="log-analytics-partial-mark">
+        <StatusIndicator type="in-progress">{text}</StatusIndicator>
+      </span>
+    );
+  }
+  if (result.stage === "cancelledPartial") {
+    return (
+      <span data-testid="log-analytics-cancelled-mark">
+        <StatusIndicator type="stopped">{t("insights.results.cancelledMark")}</StatusIndicator>
+      </span>
+    );
+  }
+  return null;
+}
+
+/**
+ * 261025-insights-stats U3:BR2.7: what the results' live region says. It is made from
+ * the current run's result stage only, so its words change, and are read out, when the
+ * first partial result comes, when the final one comes and when the cancelled one comes;
+ * a newer partial version leaves them as they are.
+ */
+function resultAnnouncement(insights: InsightsView, t: Translate): string {
+  const result = insights.result;
+  if (result === null || result.runId !== insights.runId) {
+    return "";
+  }
+  switch (result.stage) {
+    case "partial":
+      return t("insights.results.announce.partial");
+    case "final":
+      return t("insights.results.announce.final");
+    case "cancelledPartial":
+      return t("insights.results.announce.cancelled");
+  }
+}
+
 function ResultArea({ session, t, onError, onShowFailures, onExport }: ResultAreaProps) {
   const insights = session.insights;
   const result = insights.result;
@@ -598,12 +659,25 @@ function ResultArea({ session, t, onError, onShowFailures, onExport }: ResultAre
   // U3:BR3.4: the previous result stays shown while the next run fetches and
   // evaluates; a failed fetch or evaluation has dropped it already.
   const showsRows = result !== null;
+  // 261025-insights-stats U3:BR3.4: a cancelled result of the run says so.
+  const cancelledResult =
+    result !== null && result.runId === insights.runId && result.stage === "cancelledPartial";
   return (
     <SpaceBetween size="s">
+      <div
+        className="visually-hidden"
+        role="status"
+        aria-live="polite"
+        data-testid="log-analytics-result-announcement"
+      >
+        {resultAnnouncement(insights, t)}
+      </div>
       {insights.phase === "FetchFailed" && insights.failure !== null && (
         <FetchFailedAlert insights={insights} t={t} />
       )}
-      {insights.phase === "Done" && insights.partial && (
+      {/* 261025-insights-stats U3:BR3.4, FR5.4: a cancelled result shows its
+          failed streams too. */}
+      {(insights.phase === "Done" || insights.phase === "Cancelled") && insights.partial && (
         <div role="status" data-testid="log-analytics-partial">
           <Alert
             type="warning"
@@ -623,7 +697,7 @@ function ResultArea({ session, t, onError, onShowFailures, onExport }: ResultAre
       {insights.phase === "Cancelled" && (
         <div role="status" data-testid="log-analytics-cancelled">
           <Alert type="info" statusIconAriaLabel={t("insights.cancel")}>
-            {t("insights.cancelled")}
+            {t(cancelledResult ? "insights.cancelledPartial" : "insights.cancelled")}
           </Alert>
         </div>
       )}
@@ -642,6 +716,7 @@ function ResultArea({ session, t, onError, onShowFailures, onExport }: ResultAre
             counter={showsRows && result !== null ? `(${resultCount(result, t)})` : undefined}
             actions={
               <SpaceBetween direction="horizontal" size="s" alignItems="center">
+                {showsRows && result !== null && <ResultMark result={result} t={t} />}
                 {showsRows && result !== null && result.truncatedAt !== null && (
                   <Box data-testid="log-analytics-truncated">
                     {t(
@@ -685,8 +760,10 @@ function ResultBody({
   showsRows: boolean;
 }) {
   const insights = session.insights;
-  const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
+  const running = isQueryRunning(insights.phase);
   const result = insights.result;
+  // 261025-insights-stats U3:BR2.5: the run's own partial result is not "previous".
+  const previous = running && result !== null && result.runId !== insights.runId;
   const rows =
     showsRows && result !== null ? (
       result.rowCount === 0 ? (
@@ -702,7 +779,7 @@ function ResultBody({
           timeZone={session.timeZone}
           t={t}
           onError={onError}
-          previous={running}
+          previous={previous}
         />
       )
     ) : null;
@@ -733,7 +810,17 @@ function ResultBody({
 function RunProgress({ insights, t }: { insights: InsightsView; t: Translate }) {
   const progress = insights.progress;
   let text: string;
-  if (insights.phase === "Evaluating") {
+  if (insights.phase === "Cancelling") {
+    // 261025-insights-stats U3:BR3.7: the fetch stops, then the results of what was
+    // fetched are made.
+    text =
+      progress !== null && progress.totalCount > 0
+        ? t("insights.status.cancelling", {
+            scanned: progress.evaluatedCount,
+            total: progress.totalCount,
+          })
+        : t("insights.status.cancellingFetch");
+  } else if (insights.phase === "Evaluating") {
     text = t("insights.status.running", {
       scanned: progress?.evaluatedCount ?? 0,
       total: progress?.totalCount ?? 0,

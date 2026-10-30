@@ -33,9 +33,23 @@
 //! A log group no longer chosen loses its holdings when the next run starts
 //! (BR1.3, 261020-carryover-fixes FR2.2.1); every holding goes when the
 //! connection changes or the app closes (BR1.6).
+//!
+//! Since 261025-insights-stats U3 the holder of every range under fetch is
+//! registered here ([`QueryStore::register_inflight`]) and settled with
+//! [`QueryStore::settle_inflight`], which takes its events out, settles them
+//! and unregisters it under one lock of the store, so no event is ever in
+//! both its holder and the settled holdings, nor in neither (U3:BR1.2,
+//! FR4.8). The lock order is fixed: the store, then a holder; the fetch
+//! takes its holder's lock only. A partial view
+//! ([`QueryStore::build_partial_view`]) is the settled events plus copies of
+//! the events under fetch, numbered as settling will number them, in the
+//! result's order (U3:BR1.3). Besides the epoch the view has a version,
+//! moved on by every view built and every change of the holdings; a step or
+//! a copy over a view whose `(epoch, version)` is no longer the store's does
+//! nothing (U3:BR1.4).
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::cache::plan::{
     CacheKey, CachedEvent, CoveredRange, merge_ranges, missing_ranges, record_range,
@@ -201,17 +215,72 @@ impl GroupHoldings {
     }
 }
 
+/// Where an event of a view is (entities.md ViewEntry; 261025-insights-stats
+/// U3:BR1.3, FR review R-02).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewSource {
+    /// The committed events of the log group.
+    Committed,
+    /// The staging events of the log group.
+    Staging,
+    /// A copy of an event under fetch, held by the view itself.
+    Inflight,
+}
+
+impl From<Holding> for ViewSource {
+    fn from(holding: Holding) -> Self {
+        match holding {
+            Holding::Committed => ViewSource::Committed,
+            Holding::Staging => ViewSource::Staging,
+        }
+    }
+}
+
 /// One event of a run's view (entities.md ViewEntry): the chosen log group
 /// it belongs to (by its place in the run's choice), its holding and its
-/// place there. Valid while the epoch stays the view's.
+/// place there. Valid while the view's [`ViewStamp`] is the store's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewEntry {
     /// The log group's place in the run's choice.
     pub group: usize,
-    /// Committed or staging.
-    pub source: Holding,
+    /// Committed, staging, or a copy of an event under fetch.
+    pub source: ViewSource,
     /// The event's place in that holding.
     pub position: usize,
+}
+
+/// Which view a step or a copy is for (261025-insights-stats U3:BR1.4): the
+/// epoch of its run and the version of the view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ViewStamp {
+    /// The run's epoch.
+    pub epoch: u64,
+    /// The view's version.
+    pub version: u64,
+}
+
+/// What [`QueryStore::build_partial_view`] built (entities.md PartialView):
+/// the view itself stays in the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartialView {
+    /// Steps and copies over this view give it.
+    pub stamp: ViewStamp,
+    /// Events in the view.
+    pub length: usize,
+    /// Of those, copies of events under fetch.
+    pub inflight_count: usize,
+}
+
+/// The number [`QueryStore::register_inflight`] gives a holder.
+pub type InflightId = u64;
+
+/// The holder of one range under fetch (entities.md InflightHolder).
+#[derive(Debug)]
+struct InflightHolder {
+    id: InflightId,
+    key: HoldingKey,
+    range: CoveredRange,
+    timeline: Arc<Mutex<EventTimeline>>,
 }
 
 /// The holdings behind the lock.
@@ -224,12 +293,219 @@ struct Holdings {
     /// The current run's view (U3:BR1.5), built for `view_epoch`.
     view: Vec<ViewEntry>,
     view_epoch: Option<u64>,
+    /// 261025-insights-stats U3:BR1.4: moved on by every view built and
+    /// every change of the holdings.
+    view_version: u64,
+    /// The copies of the events under fetch the view holds (U3:BR1.3).
+    inflight_copies: Vec<LogEvent>,
+    /// The holders of the ranges under fetch (entities.md
+    /// InflightRegistry).
+    inflight: Vec<InflightHolder>,
+    next_inflight: InflightId,
+}
+
+impl Holdings {
+    /// U3:BR1.4: the holdings changed, or a view was built.
+    fn move_view_on(&mut self) {
+        self.view_version += 1;
+    }
+
+    /// Whether `stamp` is the current view's.
+    fn is_current(&self, stamp: ViewStamp) -> bool {
+        self.epoch == stamp.epoch
+            && self.view_epoch == Some(stamp.epoch)
+            && self.view_version == stamp.version
+    }
+
+    /// The settled events of every chosen log group in `[start_ms,
+    /// end_ms]`, not yet in order.
+    fn settled_entries(&self, start_ms: i64, end_ms: i64) -> Vec<ViewEntry> {
+        let mut view = Vec::new();
+        for (group_index, key) in self.run_keys.iter().enumerate() {
+            let Some(group) = self.groups.get(key) else {
+                continue;
+            };
+            for source in [Holding::Committed, Holding::Staging] {
+                let events = group.holding(source);
+                let first = events.partition_point(|event| event.timestamp < start_ms);
+                let last = events.partition_point(|event| event.timestamp <= end_ms);
+                view.extend((first..last.max(first)).map(|position| ViewEntry {
+                    group: group_index,
+                    source: source.into(),
+                    position,
+                }));
+            }
+        }
+        view
+    }
+
+    /// Puts `view` in `(timestamp, log group, stream, order)` order and
+    /// makes it the view of `epoch` (BR1.5, U3:BR1.3), moving its version
+    /// on. Returns the stamp.
+    fn install_view(&mut self, mut view: Vec<ViewEntry>, epoch: u64) -> ViewStamp {
+        {
+            let items = RunItems::of(self);
+            view.sort_by(
+                |left, right| match (items.entry(*left), items.entry(*right)) {
+                    (Some(left), Some(right)) => order_key(&left).cmp(&order_key(&right)),
+                    _ => std::cmp::Ordering::Equal,
+                },
+            );
+        }
+        self.view = view;
+        self.view_epoch = Some(epoch);
+        self.move_view_on();
+        ViewStamp {
+            epoch,
+            version: self.view_version,
+        }
+    }
+
+    /// U3:BR1.2: settles `events` of `range` of `key` (see
+    /// [`QueryStore::settle_range`]).
+    fn settle_events(
+        &mut self,
+        key: &HoldingKey,
+        range: CoveredRange,
+        events: Vec<LogEvent>,
+        (completed, run_started_at_ms): (bool, i64),
+    ) -> Option<CoveredRange> {
+        let committed = if completed {
+            record_range(range.start_ms, range.end_ms, run_started_at_ms)
+        } else {
+            None
+        };
+        let (taken, staged): (Vec<LogEvent>, Vec<LogEvent>) = events
+            .into_iter()
+            .filter(|event| range.contains_instant(event.timestamp))
+            .partition(|event| {
+                committed.is_some_and(|part| part.contains_instant(event.timestamp))
+            });
+        let group = self.groups.entry(key.clone()).or_default();
+        group.add(taken, Holding::Committed);
+        if let Some(part) = committed {
+            group.covered = merge_ranges(&group.covered, part);
+        }
+        group.add(staged, Holding::Staging);
+        self.move_view_on();
+        committed
+    }
+
+    /// U3:BR1.3: copies the events of the holder at `index` of the registry
+    /// that lie in its range, numbered as settling will number them (from
+    /// the stream series of its log group, which does not move), and keeps
+    /// those in `[start_ms, end_ms]` as copies of the view. Returns their
+    /// entries. The holder's lock is taken briefly, after the store's.
+    fn copy_inflight(&mut self, index: usize, start_ms: i64, end_ms: i64) -> Vec<ViewEntry> {
+        let Some(holder) = self.inflight.get(index) else {
+            return Vec::new();
+        };
+        let Some(group_index) = self.run_keys.iter().position(|key| *key == holder.key) else {
+            return Vec::new();
+        };
+        // Step 22: in chunks, so the fetch never waits long for its holder.
+        let fetched = copy_in_chunks(&holder.timeline, holder.range, INFLIGHT_COPY_CHUNK);
+        let mut sequences = self
+            .groups
+            .get(&holder.key)
+            .map(|group| group.sequences.clone())
+            .unwrap_or_default();
+        let numbered = sequences.number(fetched, Holding::Staging);
+        let mut entries = Vec::new();
+        for event in numbered {
+            if event.timestamp < start_ms || event.timestamp > end_ms {
+                continue;
+            }
+            entries.push(ViewEntry {
+                group: group_index,
+                source: ViewSource::Inflight,
+                position: self.inflight_copies.len(),
+            });
+            self.inflight_copies.push(event);
+        }
+        entries
+    }
+}
+
+/// 261025-insights-stats U3 (functional-spec 8, Step 22): the most events
+/// a partial view copies from a holder under one lock of it. Measured on a
+/// release build, one lock over 300,000 events took about 58 ms and over
+/// 500,000 about 78 ms, longer than the 50 ms the fetch may wait for its
+/// holder; 50,000 keeps one lock at about 8 ms.
+const INFLIGHT_COPY_CHUNK: usize = 50_000;
+
+/// One chunk of a holder's copy, under one lock of it: the events of `range`
+/// from the time `cursor` on (from its start without one), at most `chunk`
+/// of them, then every other event of the last time copied, so equal times
+/// are never split. Returns the copies and the time the next chunk starts
+/// from, `None` when the range is done. A page added between two chunks
+/// before the time reached is left for the next partial view: no event is
+/// copied twice and the copies stay in the timeline's order.
+fn copy_chunk(
+    timeline: &Mutex<EventTimeline>,
+    range: CoveredRange,
+    cursor: Option<i64>,
+    chunk: usize,
+) -> (Vec<LogEvent>, Option<i64>) {
+    let timeline = timeline.lock().unwrap_or_else(PoisonError::into_inner);
+    let events = timeline.events();
+    let from = cursor.map_or(range.start_ms, |at| at.max(range.start_ms));
+    let first = events.partition_point(|event| event.timestamp < from);
+    let end = events.partition_point(|event| event.timestamp <= range.end_ms);
+    if first >= end {
+        return (Vec::new(), None);
+    }
+    let reach = first.saturating_add(chunk.max(1)).min(end);
+    let Some(edge) = reach.checked_sub(1).and_then(|last| events.get(last)) else {
+        return (Vec::new(), None);
+    };
+    let edge_time = edge.timestamp;
+    let last = events
+        .partition_point(|event| event.timestamp <= edge_time)
+        .min(end);
+    let copies = events
+        .get(first..last)
+        .map(<[LogEvent]>::to_vec)
+        .unwrap_or_default();
+    let next = (last < end).then(|| edge_time.saturating_add(1));
+    (copies, next)
+}
+
+/// The events of `range` in `timeline`, copied `chunk` at a time, each under
+/// a lock of its own ([`copy_chunk`]).
+fn copy_in_chunks(
+    timeline: &Mutex<EventTimeline>,
+    range: CoveredRange,
+    chunk: usize,
+) -> Vec<LogEvent> {
+    let mut copies = Vec::new();
+    let mut cursor = None;
+    loop {
+        let (part, next) = copy_chunk(timeline, range, cursor, chunk);
+        copies.extend(part);
+        match next {
+            Some(at) => cursor = Some(at),
+            None => return copies,
+        }
+    }
+}
+
+/// Where an event stands in a view: `(timestamp, log group, stream, order)`.
+fn order_key<'a>(item: &EvalItem<'a>) -> (i64, &'a str, &'a str, u64) {
+    (
+        item.event.timestamp,
+        item.log_group_name,
+        item.event.log_stream_name.as_str(),
+        item.event.sequence,
+    )
 }
 
 /// The events of a run's view, lent to the evaluator by position.
 struct RunItems<'a> {
     view: &'a [ViewEntry],
-    groups: Vec<(&'a GroupHoldings, &'a str)>,
+    groups: Vec<Option<(&'a GroupHoldings, &'a str)>>,
+    names: Vec<&'a str>,
+    copies: &'a [LogEvent],
 }
 
 impl<'a> RunItems<'a> {
@@ -239,19 +515,37 @@ impl<'a> RunItems<'a> {
             groups: holdings
                 .run_keys
                 .iter()
-                .filter_map(|key| {
+                .map(|key| {
                     holdings
                         .groups
                         .get(key)
                         .map(|group| (group, key.log_group_name.as_str()))
                 })
                 .collect(),
+            names: holdings
+                .run_keys
+                .iter()
+                .map(|key| key.log_group_name.as_str())
+                .collect(),
+            copies: &holdings.inflight_copies,
         }
     }
 
     fn entry(&self, entry: ViewEntry) -> Option<EvalItem<'a>> {
-        let (group, log_group_name) = self.groups.get(entry.group).copied()?;
-        let event = group.holding(entry.source).get(entry.position)?;
+        let (event, log_group_name) = match entry.source {
+            ViewSource::Inflight => (
+                self.copies.get(entry.position)?,
+                *self.names.get(entry.group)?,
+            ),
+            ViewSource::Committed | ViewSource::Staging => {
+                let (group, log_group_name) = (*self.groups.get(entry.group)?)?;
+                let holding = match entry.source {
+                    ViewSource::Committed => Holding::Committed,
+                    _ => Holding::Staging,
+                };
+                (group.holding(holding).get(entry.position)?, log_group_name)
+            }
+        };
         Some(EvalItem {
             event,
             log_group_name,
@@ -303,10 +597,19 @@ impl QueryStore {
             holdings.groups.entry(key.clone()).or_default();
         }
         holdings.run_keys = keys;
-        holdings.view = Vec::new();
-        holdings.view_epoch = None;
+        Self::forget_view(&mut holdings);
         holdings.epoch += 1;
         holdings.epoch
+    }
+
+    /// The view, its copies and the holders under fetch go (a run starts or
+    /// the connection changes, 261025-insights-stats U3:BR1.2, BR1.4).
+    fn forget_view(holdings: &mut Holdings) {
+        holdings.view = Vec::new();
+        holdings.view_epoch = None;
+        holdings.inflight_copies = Vec::new();
+        holdings.inflight.clear();
+        holdings.move_view_on();
     }
 
     /// U3:BR1.6: the connection changed; every log group's holdings and
@@ -315,10 +618,140 @@ impl QueryStore {
         let mut holdings = self.lock();
         holdings.groups.clear();
         holdings.run_keys.clear();
-        holdings.view = Vec::new();
-        holdings.view_epoch = None;
+        Self::forget_view(&mut holdings);
         holdings.epoch += 1;
         holdings.epoch
+    }
+
+    /// The view's version (261025-insights-stats U3:BR1.4).
+    pub fn view_version(&self) -> u64 {
+        self.lock().view_version
+    }
+
+    /// The stamp of the current view when it is the view of `epoch`.
+    pub fn view_stamp(&self, epoch: u64) -> Option<ViewStamp> {
+        let holdings = self.lock();
+        (holdings.epoch == epoch && holdings.view_epoch == Some(epoch)).then_some(ViewStamp {
+            epoch,
+            version: holdings.view_version,
+        })
+    }
+
+    /// 261025-insights-stats U3:BR1.2: the fetch of `range` of `key` starts
+    /// into `timeline`, its own holder, which the store keeps until
+    /// [`QueryStore::settle_inflight`]. The fetch itself only ever locks
+    /// its holder (the lock order is the store, then a holder).
+    pub fn register_inflight(
+        &self,
+        key: &HoldingKey,
+        range: CoveredRange,
+        timeline: Arc<Mutex<EventTimeline>>,
+    ) -> InflightId {
+        let mut holdings = self.lock();
+        holdings.next_inflight += 1;
+        let id = holdings.next_inflight;
+        holdings.inflight.push(InflightHolder {
+            id,
+            key: key.clone(),
+            range,
+            timeline,
+        });
+        id
+    }
+
+    /// Number of ranges under fetch registered.
+    pub fn inflight_count(&self) -> usize {
+        self.lock().inflight.len()
+    }
+
+    /// 261025-insights-stats U3:BR1.2, BR3.6, FR4.8, FR5.3: the fetch of
+    /// holder `id` ended. Under one lock of the store its events are taken
+    /// out of the holder, settled as [`QueryStore::settle_range`] settles
+    /// them (staging only when not `completed`) and the holder is
+    /// unregistered. Returns the range now covered; `None` as well when the
+    /// holder is not registered (a new run or a connection change since).
+    pub fn settle_inflight(
+        &self,
+        id: InflightId,
+        completed: bool,
+        run_started_at_ms: i64,
+    ) -> Option<CoveredRange> {
+        let mut holdings = self.lock();
+        let index = holdings
+            .inflight
+            .iter()
+            .position(|holder| holder.id == id)?;
+        let holder = holdings.inflight.remove(index);
+        let events = holder
+            .timeline
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take_events();
+        holdings.settle_events(
+            &holder.key,
+            holder.range,
+            events,
+            (completed, run_started_at_ms),
+        )
+    }
+
+    /// 261025-insights-stats U3:BR1.3, BR1.4: builds the partial view of
+    /// the run of `epoch`: the settled events of every chosen log group in
+    /// `[start_ms, end_ms]` and copies of the events under fetch in that
+    /// period, in the result's order. `None` when the epoch is no longer the
+    /// run's.
+    pub fn build_partial_view(
+        &self,
+        epoch: u64,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Option<PartialView> {
+        let mut holdings = self.lock();
+        if holdings.epoch != epoch {
+            return None;
+        }
+        holdings.inflight_copies = Vec::new();
+        let mut view = holdings.settled_entries(start_ms, end_ms);
+        let mut inflight_count = 0;
+        for index in 0..holdings.inflight.len() {
+            let copies = holdings.copy_inflight(index, start_ms, end_ms);
+            inflight_count += copies.len();
+            view.extend(copies);
+        }
+        let length = view.len();
+        let stamp = holdings.install_view(view, epoch);
+        Some(PartialView {
+            stamp,
+            length,
+            inflight_count,
+        })
+    }
+
+    /// U3:BR1.4: the next step of `evaluation` over the view stamped
+    /// `stamp`, under one lock. Returns `false`, doing nothing, when that
+    /// view is no longer the store's.
+    pub fn evaluate_view_step(
+        &self,
+        plan: &QueryPlan,
+        evaluation: &mut Evaluation,
+        stamp: ViewStamp,
+    ) -> bool {
+        let holdings = self.lock();
+        if !holdings.is_current(stamp) {
+            return false;
+        }
+        evaluation.step(plan, &RunItems::of(&holdings));
+        true
+    }
+
+    /// U3:BR1.4: as [`QueryStore::copy_rows`] over the view stamped
+    /// `stamp`; `None` when that view is no longer the store's.
+    pub fn copy_view_rows(&self, stamp: ViewStamp, positions: &[usize]) -> Option<Vec<ResultRow>> {
+        let holdings = self.lock();
+        if !holdings.is_current(stamp) {
+            return None;
+        }
+        Some(copy_items(&RunItems::of(&holdings), positions))
     }
 
     /// The current epoch.
@@ -389,6 +822,7 @@ impl QueryStore {
         for range in ranges {
             group.covered = merge_ranges(&group.covered, *range);
         }
+        holdings.move_view_on();
     }
 
     /// U3:BR1.2, review R-01: the fetch of `range` of `key` ended and handed
@@ -405,87 +839,25 @@ impl QueryStore {
         completed: bool,
         run_started_at_ms: i64,
     ) -> Option<CoveredRange> {
-        let committed = if completed {
-            record_range(range.start_ms, range.end_ms, run_started_at_ms)
-        } else {
-            None
-        };
-        let (taken, staged): (Vec<LogEvent>, Vec<LogEvent>) = events
-            .into_iter()
-            .filter(|event| range.contains_instant(event.timestamp))
-            .partition(|event| {
-                committed.is_some_and(|part| part.contains_instant(event.timestamp))
-            });
-        let mut holdings = self.lock();
-        let group = holdings.groups.entry(key.clone()).or_default();
-        group.add(taken, Holding::Committed);
-        if let Some(part) = committed {
-            group.covered = merge_ranges(&group.covered, part);
-        }
-        group.add(staged, Holding::Staging);
-        committed
+        self.lock()
+            .settle_events(key, range, events, (completed, run_started_at_ms))
     }
 
     /// U3:BR1.5: builds the view of the run of `epoch`: of every chosen log
     /// group, the committed and staging events in `[start_ms, end_ms]`, in
     /// `(timestamp, log group, stream, order)` order. Returns its length, or
-    /// `None` when the epoch is no longer the run's.
+    /// `None` when the epoch is no longer the run's. The copies of a partial
+    /// view go (261025-insights-stats U3:BR1.3).
     pub fn build_view(&self, epoch: u64, start_ms: i64, end_ms: i64) -> Option<usize> {
         let mut holdings = self.lock();
         if holdings.epoch != epoch {
             return None;
         }
-        let mut view = Vec::new();
-        for (group_index, key) in holdings.run_keys.iter().enumerate() {
-            let Some(group) = holdings.groups.get(key) else {
-                continue;
-            };
-            for source in [Holding::Committed, Holding::Staging] {
-                let events = group.holding(source);
-                let first = events.partition_point(|event| event.timestamp < start_ms);
-                let last = events.partition_point(|event| event.timestamp <= end_ms);
-                view.extend((first..last.max(first)).map(|position| ViewEntry {
-                    group: group_index,
-                    source,
-                    position,
-                }));
-            }
-        }
+        holdings.inflight_copies = Vec::new();
         // Each holding is in time order already: the sort merges the runs.
-        let items = RunItems {
-            view: &[],
-            groups: holdings
-                .run_keys
-                .iter()
-                .filter_map(|key| {
-                    holdings
-                        .groups
-                        .get(key)
-                        .map(|group| (group, key.log_group_name.as_str()))
-                })
-                .collect(),
-        };
-        view.sort_by(
-            |left, right| match (items.entry(*left), items.entry(*right)) {
-                (Some(left), Some(right)) => (
-                    left.event.timestamp,
-                    left.log_group_name,
-                    left.event.log_stream_name.as_str(),
-                    left.event.sequence,
-                )
-                    .cmp(&(
-                        right.event.timestamp,
-                        right.log_group_name,
-                        right.event.log_stream_name.as_str(),
-                        right.event.sequence,
-                    )),
-                _ => std::cmp::Ordering::Equal,
-            },
-        );
-        drop(items);
+        let view = holdings.settled_entries(start_ms, end_ms);
         let length = view.len();
-        holdings.view = view;
-        holdings.view_epoch = Some(epoch);
+        holdings.install_view(view, epoch);
         Some(length)
     }
 
@@ -530,18 +902,21 @@ impl QueryStore {
         if holdings.view_epoch != Some(epoch) || holdings.epoch != epoch {
             return None;
         }
-        let items = RunItems::of(&holdings);
-        Some(
-            positions
-                .iter()
-                .filter_map(|position| items.item(*position))
-                .map(|item| ResultRow::Event {
-                    event: item.event.clone(),
-                    log_group_name: item.log_group_name.to_string(),
-                })
-                .collect(),
-        )
+        Some(copy_items(&RunItems::of(&holdings), positions))
     }
+}
+
+/// Copies the events at `positions` of `items` with their log group, in the
+/// order asked (U3:BR3.2).
+fn copy_items(items: &RunItems<'_>, positions: &[usize]) -> Vec<ResultRow> {
+    positions
+        .iter()
+        .filter_map(|position| items.item(*position))
+        .map(|item| ResultRow::Event {
+            event: item.event.clone(),
+            log_group_name: item.log_group_name.to_string(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1073,6 +1448,541 @@ mod tests {
         log_view.discard();
         assert_eq!(store.len(), 2);
     }
+
+    // ---- 261025-insights-stats U3:BR1.2-BR1.4, BR2.2 (test first) ------
+
+    use crate::query::evaluator::EvalOutput;
+    use std::sync::Arc;
+
+    /// A holder of a range under fetch, holding `events` (as the fetch
+    /// numbers them, from 0 per stream).
+    fn holder(events: Vec<LogEvent>) -> Arc<Mutex<EventTimeline>> {
+        let mut timeline = EventTimeline::new();
+        timeline.append(events);
+        Arc::new(Mutex::new(timeline))
+    }
+
+    /// The `(timestamp, log group, stream, sequence)` of every row of the
+    /// view stamped `stamp`, in the view's order.
+    fn stamped_rows(
+        store: &QueryStore,
+        stamp: ViewStamp,
+        length: usize,
+    ) -> Vec<(i64, String, String, u64)> {
+        let positions: Vec<usize> = (0..length).collect();
+        store
+            .copy_view_rows(stamp, &positions)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| match row {
+                ResultRow::Event {
+                    event,
+                    log_group_name,
+                } => Some((
+                    event.timestamp,
+                    log_group_name,
+                    event.log_stream_name,
+                    event.sequence,
+                )),
+                ResultRow::Aggregate { .. } => None,
+            })
+            .collect()
+    }
+
+    /// Evaluates `text` to its end over the view stamped `stamp`.
+    fn evaluate_stamped(
+        store: &QueryStore,
+        stamp: ViewStamp,
+        length: usize,
+        text: &str,
+    ) -> EvalOutput {
+        let plan = parse_query(text).unwrap();
+        let mut evaluation = Evaluation::new(&plan, length);
+        while !evaluation.is_done() {
+            assert!(store.evaluate_view_step(&plan, &mut evaluation, stamp));
+        }
+        evaluation.into_output().unwrap()
+    }
+
+    #[test]
+    fn an_inflight_range_is_settled_once_and_leaves_the_registry() {
+        // BR1.2, FR4.8: taken out of its holder, settled and unregistered
+        // in one store lock.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let epoch = store.begin_run(vec![group.clone()]);
+        let fetching = holder(vec![event(100, "a", 0), event(150, "a", 1)]);
+        let id = store.register_inflight(&group, range(100, 199), Arc::clone(&fetching));
+        assert_eq!(store.inflight_count(), 1);
+        let partial = store.build_partial_view(epoch, 0, 1_000).unwrap();
+        assert_eq!((partial.length, partial.inflight_count), (2, 2));
+        assert_eq!(store.counts(&group), (0, 0), "not settled yet");
+
+        assert_eq!(
+            store.settle_inflight(id, true, LATER),
+            Some(range(100, 199))
+        );
+        assert_eq!(store.inflight_count(), 0, "unregistered");
+        assert!(
+            fetching.lock().unwrap().is_empty(),
+            "taken out of the holder"
+        );
+        assert_eq!(store.counts(&group), (2, 0), "settled once");
+        assert_eq!(store.covered_ranges(&group), vec![range(100, 199)]);
+        let after = store.build_partial_view(epoch, 0, 1_000).unwrap();
+        assert_eq!(
+            (after.length, after.inflight_count),
+            (2, 0),
+            "neither twice nor dropped"
+        );
+        assert_eq!(
+            store.settle_inflight(id, true, LATER),
+            None,
+            "settled once only"
+        );
+        assert_eq!(store.counts(&group), (2, 0));
+    }
+
+    #[test]
+    fn an_inflight_range_not_completed_settles_into_staging_and_covers_nothing() {
+        // BR1.2, BR3.6, FR5.3: a failed or cancelled range is staging.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let epoch = store.begin_run(vec![group.clone()]);
+        let id = store.register_inflight(
+            &group,
+            range(100, 199),
+            holder(vec![event(120, "a", 0), event(300, "a", 1)]),
+        );
+        assert_eq!(store.settle_inflight(id, false, LATER), None);
+        assert_eq!(
+            store.counts(&group),
+            (0, 1),
+            "the event outside the range is dropped"
+        );
+        assert!(store.covered_ranges(&group).is_empty());
+        assert_eq!(
+            store.missing_ranges(&group, 100, 199),
+            vec![range(100, 199)]
+        );
+        assert_eq!(
+            store.build_view(epoch, 0, 1_000),
+            Some(1),
+            "used by this run"
+        );
+        store.begin_run(vec![group.clone()]);
+        assert_eq!(store.counts(&group), (0, 0), "discarded by the next run");
+    }
+
+    #[test]
+    fn partial_views_built_while_ranges_settle_never_count_an_event_twice_or_drop_one() {
+        // FR4.8: there is no moment an event is in both its holder and the
+        // settled holdings, nor in neither.
+        let store = Arc::new(QueryStore::new());
+        let groups: Vec<HoldingKey> = (0..4).map(|index| key(&format!("/g{index}"))).collect();
+        let epoch = store.begin_run(groups.clone());
+        let per_range = 500;
+        let ids: Vec<u64> = groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| {
+                let base = i64::try_from(index).unwrap() * 1_000;
+                let events = (0..per_range)
+                    .map(|offset| event(base + offset, "s", 0))
+                    .collect();
+                store.register_inflight(group, range(base, base + 999), holder(events))
+            })
+            .collect();
+        let total = groups.len() * usize::try_from(per_range).unwrap();
+        let reader = {
+            let store = Arc::clone(&store);
+            std::thread::spawn(move || {
+                let mut seen = Vec::new();
+                for _ in 0..200 {
+                    let partial = store.build_partial_view(epoch, 0, 10_000).unwrap();
+                    seen.push(partial.length);
+                }
+                seen
+            })
+        };
+        for id in ids {
+            store.settle_inflight(id, true, LATER);
+        }
+        let seen = reader.join().unwrap();
+        assert!(seen.iter().all(|length| *length == total), "{seen:?}");
+        assert_eq!(store.len(), total);
+    }
+
+    #[test]
+    fn the_partial_view_orders_settled_and_inflight_events_as_a_result_does() {
+        // BR1.3: (time, log group, stream, order in the stream).
+        let store = QueryStore::new();
+        let (orders, payments) = (key("/orders"), key("/payments"));
+        let epoch = store.begin_run(vec![payments.clone(), orders.clone()]);
+        store.settle_range(
+            &payments,
+            range(0, 999),
+            vec![event(100, "s1", 0), event(200, "s1", 1)],
+            true,
+            LATER,
+        );
+        store.register_inflight(
+            &orders,
+            range(0, 999),
+            holder(vec![
+                event(100, "s2", 0),
+                event(100, "s1", 0),
+                event(150, "s1", 1),
+            ]),
+        );
+        let partial = store.build_partial_view(epoch, 0, 999).unwrap();
+        let stamp = partial.stamp;
+        assert_eq!(
+            stamped_rows(&store, stamp, partial.length),
+            vec![
+                (100, "/orders".to_string(), "s1".to_string(), 0),
+                (100, "/orders".to_string(), "s2".to_string(), 0),
+                (100, "/payments".to_string(), "s1".to_string(), 0),
+                (150, "/orders".to_string(), "s1".to_string(), 1),
+                (200, "/payments".to_string(), "s1".to_string(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn inflight_copies_take_the_numbers_settling_gives_and_leave_the_series_as_it_was() {
+        // BR1.3: numbered on from the stream's series without moving it.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let epoch = store.begin_run(vec![group.clone()]);
+        store.settle_range(
+            &group,
+            range(0, 99),
+            vec![event(10, "a", 0), event(20, "a", 1)],
+            true,
+            LATER,
+        );
+        let id = store.register_inflight(
+            &group,
+            range(100, 199),
+            holder(vec![
+                event(110, "a", 0),
+                event(120, "b", 0),
+                event(130, "a", 1),
+            ]),
+        );
+        for _ in 0..2 {
+            let partial = store.build_partial_view(epoch, 0, 199).unwrap();
+            let numbers: Vec<(String, u64)> = stamped_rows(&store, partial.stamp, partial.length)
+                .into_iter()
+                .map(|(_, _, stream, sequence)| (stream, sequence))
+                .collect();
+            assert_eq!(
+                numbers,
+                numbered(&[("a", 0), ("a", 1), ("a", 2), ("b", 0), ("a", 3)]),
+                "the same numbers every time"
+            );
+        }
+        store.settle_inflight(id, true, LATER);
+        store.build_view(epoch, 0, 199);
+        let settled: Vec<u64> = store
+            .copy_rows(epoch, &[0, 1, 2, 3, 4])
+            .unwrap()
+            .iter()
+            .filter_map(|row| row.event().map(|event| event.sequence))
+            .collect();
+        assert_eq!(settled, vec![0, 1, 2, 0, 3], "settling gave the same");
+    }
+
+    #[test]
+    fn the_partial_view_leaves_out_what_is_outside_the_period_or_the_range() {
+        // BR1.3 (FR review R-07), as build_view and settle_inflight do.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let epoch = store.begin_run(vec![group.clone()]);
+        store.register_inflight(
+            &group,
+            range(100, 199),
+            holder(vec![
+                event(50, "a", 0),
+                event(100, "a", 1),
+                event(180, "a", 2),
+                event(199, "a", 3),
+                event(250, "a", 4),
+            ]),
+        );
+        let partial = store.build_partial_view(epoch, 0, 190).unwrap();
+        let times: Vec<i64> = stamped_rows(&store, partial.stamp, partial.length)
+            .into_iter()
+            .map(|(time, ..)| time)
+            .collect();
+        assert_eq!(times, vec![100, 180], "only the range and the period");
+        assert_eq!(partial.inflight_count, 2);
+        assert_eq!(
+            store.build_partial_view(epoch + 1, 0, 190),
+            None,
+            "another epoch"
+        );
+    }
+
+    #[test]
+    fn cached_events_are_in_the_partial_view_as_settled_ones() {
+        // BR1.3: what add_cached committed is part of the settled events.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let epoch = store.begin_run(vec![group.clone()]);
+        store.add_cached(
+            &group,
+            &[range(0, 99)],
+            vec![CachedEvent {
+                timestamp: 50,
+                ingestion_time: None,
+                message: "cached".to_string(),
+                log_stream_name: "a".to_string(),
+                sequence: 9,
+            }],
+        );
+        store.register_inflight(&group, range(100, 199), holder(vec![event(150, "a", 0)]));
+        let partial = store.build_partial_view(epoch, 0, 199).unwrap();
+        assert_eq!((partial.length, partial.inflight_count), (2, 1));
+        assert_eq!(
+            stamped_rows(&store, partial.stamp, partial.length),
+            vec![
+                (50, "/g".to_string(), "a".to_string(), 0),
+                (150, "/g".to_string(), "a".to_string(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_view_version_moves_on_with_every_change_of_the_holdings() {
+        // BR1.4: views, settling, the cache, a run start, a connection
+        // change.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let mut versions = vec![store.view_version()];
+        let epoch = store.begin_run(vec![group.clone()]);
+        versions.push(store.view_version());
+        store.build_view(epoch, 0, 999);
+        versions.push(store.view_version());
+        let id = store.register_inflight(&group, range(0, 99), holder(vec![event(5, "a", 0)]));
+        let partial = store.build_partial_view(epoch, 0, 999).unwrap();
+        assert_eq!(partial.stamp.version, store.view_version());
+        versions.push(store.view_version());
+        store.settle_inflight(id, true, LATER);
+        versions.push(store.view_version());
+        store.add_cached(&group, &[range(100, 199)], Vec::new());
+        versions.push(store.view_version());
+        store.settle_range(
+            &group,
+            range(200, 299),
+            vec![event(250, "a", 0)],
+            true,
+            LATER,
+        );
+        versions.push(store.view_version());
+        store.discard_all();
+        versions.push(store.view_version());
+        assert!(
+            versions.windows(2).all(|pair| pair[0] < pair[1]),
+            "{versions:?}"
+        );
+    }
+
+    #[test]
+    fn a_step_or_a_copy_over_a_view_that_changed_fails_and_does_nothing() {
+        // BR1.4: the positions moved; the partial result is dropped.
+        let store = QueryStore::new();
+        let group = key("/g");
+        let epoch = store.begin_run(vec![group.clone()]);
+        let id = store.register_inflight(
+            &group,
+            range(0, 99),
+            holder(vec![event(5, "a", 0), event(6, "a", 1)]),
+        );
+        let partial = store.build_partial_view(epoch, 0, 99).unwrap();
+        let plan = parse_query("filter @message like 'a'").unwrap();
+        let mut evaluation = Evaluation::new(&plan, partial.length);
+        store.settle_inflight(id, true, LATER);
+        assert!(!store.evaluate_view_step(&plan, &mut evaluation, partial.stamp));
+        assert_eq!(evaluation.evaluated(), 0, "nothing was evaluated");
+        assert_eq!(store.copy_view_rows(partial.stamp, &[0]), None);
+        let again = store.build_partial_view(epoch, 0, 99).unwrap();
+        assert!(store.evaluate_view_step(&plan, &mut evaluation, again.stamp));
+        store.begin_run(vec![group]);
+        assert_eq!(store.copy_view_rows(again.stamp, &[0]), None, "a new run");
+    }
+
+    #[test]
+    fn a_partial_result_has_the_order_of_the_final_result_over_the_same_events() {
+        // BR2.2 (FR4.2 as read): filter/fields, sort/limit and stats alike.
+        let queries = [
+            "filter @message like ':'",
+            "fields @timestamp, @logStream | sort @logStream asc | limit 4",
+            "stats count(*) as n by @logStream",
+        ];
+        for query in queries {
+            let store = QueryStore::new();
+            let (orders, payments) = (key("/orders"), key("/payments"));
+            let epoch = store.begin_run(vec![orders.clone(), payments.clone()]);
+            store.settle_range(
+                &orders,
+                range(0, 99),
+                vec![event(10, "a", 0), event(50, "b", 0), event(50, "a", 1)],
+                true,
+                LATER,
+            );
+            let id = store.register_inflight(
+                &payments,
+                range(0, 99),
+                holder(vec![
+                    event(10, "a", 0),
+                    event(50, "a", 1),
+                    event(90, "c", 0),
+                ]),
+            );
+            let partial = store.build_partial_view(epoch, 0, 99).unwrap();
+            let early = evaluate_stamped(&store, partial.stamp, partial.length, query);
+            let early_rows = match &early {
+                EvalOutput::Events(output) => {
+                    format!("{:?}", stamped_rows_at(&store, partial.stamp, &output.rows))
+                }
+                EvalOutput::Aggregates(output) => format!("{:?}", output.rows),
+            };
+            store.settle_inflight(id, true, LATER);
+            let length = store.build_view(epoch, 0, 99).unwrap();
+            let stamp = store.view_stamp(epoch).unwrap();
+            let last = evaluate_stamped(&store, stamp, length, query);
+            let last_rows = match &last {
+                EvalOutput::Events(output) => {
+                    format!("{:?}", stamped_rows_at(&store, stamp, &output.rows))
+                }
+                EvalOutput::Aggregates(output) => format!("{:?}", output.rows),
+            };
+            assert_eq!(early_rows, last_rows, "{query}");
+        }
+    }
+
+    /// The `(timestamp, log group, stream, sequence)` of the rows at
+    /// `positions` of the view stamped `stamp`.
+    fn stamped_rows_at(
+        store: &QueryStore,
+        stamp: ViewStamp,
+        positions: &[usize],
+    ) -> Vec<(i64, String, String, u64)> {
+        store
+            .copy_view_rows(stamp, positions)
+            .unwrap()
+            .into_iter()
+            .filter_map(|row| match row {
+                ResultRow::Event {
+                    event,
+                    log_group_name,
+                } => Some((
+                    event.timestamp,
+                    log_group_name,
+                    event.log_stream_name,
+                    event.sequence,
+                )),
+                ResultRow::Aggregate { .. } => None,
+            })
+            .collect()
+    }
+
+    // ---- U3 Step 22: the copy of a large holder in chunks (test first) --
+
+    #[test]
+    fn a_holder_copied_in_chunks_gives_the_events_and_order_of_one_copy() {
+        // Equal times on a chunk's border stay in one chunk, so no event is
+        // copied twice or left out and the order is the timeline's.
+        let mut events = Vec::new();
+        for time in [5, 5, 5, 6, 7, 7, 9, 9, 9, 9, 12] {
+            let stream = if time % 2 == 0 { "a" } else { "b" };
+            events.push(event(time, stream, 0));
+        }
+        events.push(event(200, "a", 0));
+        let timeline = Mutex::new({
+            let mut timeline = EventTimeline::new();
+            timeline.append(events);
+            timeline
+        });
+        let whole: Vec<(i64, String)> = timeline
+            .lock()
+            .unwrap()
+            .events()
+            .iter()
+            .filter(|event| event.timestamp <= 100)
+            .map(|event| (event.timestamp, event.log_stream_name.clone()))
+            .collect();
+        for chunk in [1, 2, 3, 4, 100] {
+            let copied: Vec<(i64, String)> = copy_in_chunks(&timeline, range(0, 100), chunk)
+                .into_iter()
+                .map(|event| (event.timestamp, event.log_stream_name))
+                .collect();
+            assert_eq!(copied, whole, "chunk {chunk}");
+        }
+        assert!(copy_in_chunks(&timeline, range(300, 400), 2).is_empty());
+    }
+
+    #[test]
+    fn a_holder_that_grows_between_chunks_gives_no_event_twice() {
+        // A page added between two chunks may come before the place reached:
+        // what is copied is still in order and each event at most once.
+        let timeline = Mutex::new({
+            let mut timeline = EventTimeline::new();
+            timeline.append((0..10).map(|time| event(time, "a", 0)).collect());
+            timeline
+        });
+        let mut copied = Vec::new();
+        let mut cursor = None;
+        let mut grew = false;
+        loop {
+            let (chunk, next) = copy_chunk(&timeline, range(0, 100), cursor, 3);
+            copied.extend(chunk);
+            if !grew {
+                timeline
+                    .lock()
+                    .unwrap()
+                    .append(vec![event(1, "b", 0), event(50, "b", 1)]);
+                grew = true;
+            }
+            match next {
+                Some(at) => cursor = Some(at),
+                None => break,
+            }
+        }
+        let times: Vec<i64> = copied.iter().map(|event| event.timestamp).collect();
+        assert!(times.windows(2).all(|pair| pair[0] <= pair[1]), "{times:?}");
+        let mut unique: Vec<(i64, String)> = copied
+            .iter()
+            .map(|event| (event.timestamp, event.log_stream_name.clone()))
+            .collect();
+        let count = unique.len();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), count, "no event twice");
+        assert!(times.contains(&50), "a later page is copied when reached");
+        assert_eq!(times.iter().filter(|time| **time < 10).count(), 10);
+    }
+
+    #[test]
+    fn a_run_start_forgets_the_inflight_holders_of_the_run_before() {
+        // BR1.2: the registry is the current run's.
+        let store = QueryStore::new();
+        let group = key("/g");
+        store.begin_run(vec![group.clone()]);
+        let id = store.register_inflight(&group, range(0, 99), holder(vec![event(5, "a", 0)]));
+        let epoch = store.begin_run(vec![group.clone()]);
+        assert_eq!(store.inflight_count(), 0);
+        assert_eq!(store.settle_inflight(id, true, LATER), None);
+        assert_eq!(store.counts(&group), (0, 0), "nothing of the old run");
+        assert_eq!(
+            store
+                .build_partial_view(epoch, 0, 99)
+                .map(|view| view.length),
+            Some(0)
+        );
+    }
 }
 
 /// 261017-insights-query U3:BR5.3, NFR2, functional-design review R-03:
@@ -1258,5 +2168,69 @@ mod memory {
             peak_text()
         );
         drop(previous);
+    }
+
+    /// 261025-insights-stats U3 Step 22 (functional-spec 8): how long one
+    /// range's holder is locked while a partial view copies it, and how
+    /// long the whole partial view holds the store, with `count` events
+    /// under fetch in one range (and as many settled). Run with `cargo test
+    /// -p local-sights-core --release --lib query::store -- --ignored
+    /// --nocapture`.
+    fn measure_partial_view(count: usize) -> (Duration, Duration) {
+        let store = QueryStore::new();
+        let group = key(0);
+        let epoch = store.begin_run(vec![group.clone()]);
+        // `events` puts three events in each millisecond.
+        let start_ms = 1_756_000_000_000;
+        let wide = i64::try_from(count).unwrap_or(i64::MAX);
+        let range = CoveredRange {
+            start_ms,
+            end_ms: start_ms + (wide - 1) / 3,
+        };
+        store.settle_range(&group, range, events(count, 0), true, i64::MAX);
+        let mut timeline = EventTimeline::new();
+        timeline.append(events(count, count));
+        let holder = std::sync::Arc::new(Mutex::new(timeline));
+        let later = CoveredRange {
+            start_ms: range.end_ms + 1,
+            end_ms: start_ms + wide,
+        };
+        store.register_inflight(&group, later, std::sync::Arc::clone(&holder));
+        // The holder alone, one chunk a lock: the longest the fetch would wait
+        // for its lock.
+        let mut holder_lock = Duration::ZERO;
+        let mut under_fetch = 0;
+        let mut cursor = None;
+        loop {
+            let copying = Instant::now();
+            let (part, next) = copy_chunk(&holder, later, cursor, INFLIGHT_COPY_CHUNK);
+            holder_lock = holder_lock.max(copying.elapsed());
+            under_fetch += part.len();
+            match next {
+                Some(at) => cursor = Some(at),
+                None => break,
+            }
+        }
+        let building = Instant::now();
+        let partial = store
+            .build_partial_view(epoch, range.start_ms, later.end_ms)
+            .unwrap();
+        let store_lock = building.elapsed();
+        assert_eq!(
+            (partial.length, partial.inflight_count),
+            (count + under_fetch, under_fetch)
+        );
+        (holder_lock, store_lock)
+    }
+
+    #[test]
+    #[ignore = "measures the copy of a large holder; run with --release --ignored"]
+    fn the_copy_of_a_large_holder_under_fetch() {
+        for count in [100_000, 300_000, 500_000] {
+            let (holder_lock, store_lock) = measure_partial_view(count);
+            println!(
+                "{count} events under fetch (+{count} settled): holder locked at most {holder_lock:?} a chunk, partial view built (store locked) in {store_lock:?}"
+            );
+        }
     }
 }

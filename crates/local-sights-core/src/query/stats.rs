@@ -171,7 +171,7 @@ pub fn cell_text(cell: &CellValue, format_time: &dyn Fn(i64) -> String) -> Optio
 
 /// The text a key value is told apart by (BR2.1): as the table would show
 /// it, a time by its milliseconds; `None` for no value.
-fn key_text(cell: &CellValue) -> Option<String> {
+pub(crate) fn key_text(cell: &CellValue) -> Option<String> {
     cell_text(cell, &|time| time.to_string())
 }
 

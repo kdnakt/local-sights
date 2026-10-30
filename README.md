@@ -215,12 +215,15 @@ last). `filter`, `sort` and `limit` written after `stats` work on these rows,
 in the order written, and name their columns (a name with signs in
 backquotes, such as `` `count(*)` ``); `fields` and a second `stats` cannot
 follow it. Without a `limit`, at most 10,000 rows are shown, and the result
-says when rows were cut.
+says when rows were cut. A `filter` after `stats` that compares a column with
+a value keeps, with `!=`, the rows where that column has no value too (an
+empty cell), as `!=` on a missing field does in any `filter`.
 
 `sum`, `avg`, `pct` and `stddev` use the values that read as numbers;
 decimals are shown to four places. `count_distinct` counts the different
 values exactly, `pct(field, p)` is the value at the nearest rank (`p` from 0
-to 100), `stddev` is the sample standard deviation, `earliest` and `latest`
+to 100, read with at most 15 decimal places, such as `pct(latency, 99.9)`),
+`stddev` is the sample standard deviation, `earliest` and `latest`
 are the values of the first and the last event in time, and `sortsFirst` and
 `sortsLast` the first and the last in the order of `sort`. A time (a `bin()`,
 or a time kept by `min`, `max`, `earliest` and the like) is shown in the time
@@ -229,6 +232,28 @@ console.
 
 A query that uses what is not supported, or has a writing mistake, is not run;
 the screen says what and where, without fetching anything.
+
+While a query fetches, partial results are shown and replaced as the logs come
+in: the first as soon as the first page arrives, then at most once a second.
+They are made by the same evaluation as the final result, from what has been
+fetched so far, so they are in the final order (a new row may appear between
+others) and the counts and aggregate values grow. Beside the results heading,
+"Partial results (fetching: log group n / m, up to N events)" says how far
+they go (without the log group part for one log group); it goes when the final
+result comes. An opened row and the row at the top of the list stay where they
+are when a partial result is replaced. The screen reader is told when partial
+results first appear and when the final or the cancelled result comes, not at
+every replacement. **Export** waits for the end of the run.
+
+**Cancel** while fetching stops the fetch and evaluates what was fetched until
+then once: the result is marked "Results of part of the logs (cancelled)",
+shown with the failed streams when some failed, and can be exported (the
+notice says it is of part of the logs; the file itself has no mark). While
+that result is being made, **Cancel** can be pressed once more to stop it: the
+last partial result is kept with the same mark, or, without one, the query is
+just cancelled. **Cancel** while evaluating after the fetch stops the
+evaluation in the same way. The parts fetched to their end before the cancel
+are kept as fetched; the rest is fetched again by the next run.
 
 ## Sign in with SSO
 

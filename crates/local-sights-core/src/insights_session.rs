@@ -55,9 +55,8 @@ use crate::event::LogEvent;
 use crate::export::exporter::{ExportAvailability, ExportBlocker, ExportSnapshotSource};
 use crate::failure::ApiFailure;
 use crate::log_groups::ListingStatus;
-use crate::query::evaluator::{QueryResult, row_cells, row_detail};
-use crate::query::fields::EventFields;
-use crate::query::plan::{QueryPlan, QueryProblem};
+use crate::query::evaluator::{QueryResult, result_row_cells, row_detail};
+use crate::query::plan::{QueryPlan, QueryProblem, ResultShape};
 use crate::query::runner::{GroupFailedStream, GroupFetchStatus, QueryRunSummary};
 use crate::query::store::HoldingKey;
 use crate::request::{ValidationError, message_keys, validate_session_input};
@@ -80,11 +79,17 @@ pub const DEFAULT_QUERY: &str = "fields @timestamp, @message, @logStream, @log\n
      | sort @timestamp desc\n\
      | limit 10000";
 
-/// The commands a query can use, for completion (U2:BR2.1, BR9.1).
-const COMMAND_WORDS: [&str; 4] = ["fields", "filter", "sort", "limit"];
+/// The commands a query can use, for completion (U2:BR2.1, BR9.1; `stats`
+/// since 261025-insights-stats U1).
+const COMMAND_WORDS: [&str; 5] = ["fields", "filter", "sort", "limit", "stats"];
 
-/// The other words, for completion (U2:BR9.1).
-const KEYWORD_WORDS: [&str; 7] = ["and", "or", "not", "like", "in", "asc", "desc"];
+/// The other words, for completion (U2:BR9.1), with the words and functions
+/// of `stats` read in 261025-insights-stats U1 (a provisional list until the
+/// QueryCatalog of U2).
+const KEYWORD_WORDS: [&str; 15] = [
+    "and", "or", "not", "like", "in", "asc", "desc", "by", "as", "count", "sum", "avg", "min",
+    "max", "bin",
+];
 
 /// The fixed fields and the one function, for completion (U2:BR9.1).
 const FIXED_FIELD_WORDS: [&str; 5] = [
@@ -313,6 +318,9 @@ pub struct ResultSummary {
     /// The run that made it; the rows and the details are asked for by it
     /// alone (261020-carryover-fixes FR2.3.1).
     pub run_id: u64,
+    /// Event rows or aggregate rows: the table draws the rows by it
+    /// (261025-insights-stats BR4.1, ADR-006).
+    pub shape: ResultShape,
     /// Result rows (U2:BR7.2).
     pub row_count: u64,
     /// Events evaluated.
@@ -396,18 +404,24 @@ pub struct InsightsView {
     pub can_export: bool,
 }
 
-/// One result row as the screen shows it (U1:BR6.3, U2:BR7.1).
+/// One result row as the screen shows it (U1:BR6.3, U2:BR7.1). An
+/// aggregate row has its cells only (261025-insights-stats BR4.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryRow {
-    /// The event as held.
+    /// The event as held; an event row only.
     #[serde(flatten)]
-    pub event: LogEvent,
-    /// `@timestamp` in the chosen zone, as on Log Management.
-    pub display_time: String,
-    /// `@log`.
-    pub log_group_name: String,
-    /// One cell per result column, `None` without a value (U2:BR7.1).
+    pub event: Option<LogEvent>,
+    /// `@timestamp` in the chosen zone, as on Log Management; an event row
+    /// only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_time: Option<String>,
+    /// `@log`; an event row only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_group_name: Option<String>,
+    /// One cell per result column, `None` without a value (U2:BR7.1); an
+    /// aggregate row's as the table writes them, times in the chosen zone
+    /// (BR2.8, BR4.2).
     pub values: Vec<Option<String>>,
 }
 
@@ -527,13 +541,10 @@ fn chosen_log_groups(
 fn summary_of(result: &QueryResult) -> ResultSummary {
     ResultSummary {
         run_id: result.run_id,
+        shape: result.shape(),
         row_count: count(result.row_count()),
         evaluated_count: count(result.evaluated_count),
-        columns: result
-            .columns()
-            .iter()
-            .map(|column| column.name().to_string())
-            .collect(),
+        columns: result.columns().names(),
         matched_count: count(result.matched_count()),
         truncated_at: result.truncated_at().map(count),
     }
@@ -1136,23 +1147,19 @@ impl InsightsSession {
         let total_count = self.result().map_or(0, |result| {
             u64::try_from(result.row_count()).unwrap_or(u64::MAX)
         });
-        let columns = self.result().map_or(&[][..], QueryResult::columns);
         let format_time = |time| format_display_in_zone(time, zone);
-        let rows = self
-            .result()
-            .map_or(&[][..], |result| result.window(run_id, offset, limit))
-            .iter()
-            .map(|row| QueryRow {
-                display_time: format_time(row.event.timestamp),
-                values: row_cells(
-                    columns,
-                    &EventFields::new(&row.event, &row.log_group_name),
-                    &format_time,
-                ),
-                log_group_name: row.log_group_name.clone(),
-                event: row.event.clone(),
-            })
-            .collect();
+        let rows = self.result().map_or_else(Vec::new, |result| {
+            result
+                .window(run_id, offset, limit)
+                .iter()
+                .map(|row| QueryRow {
+                    display_time: row.event().map(|event| format_time(event.timestamp)),
+                    values: result_row_cells(result.columns(), row, &format_time),
+                    log_group_name: row.log_group_name().map(str::to_string),
+                    event: row.event().cloned(),
+                })
+                .collect()
+        });
         QueryRowWindow {
             run_id,
             offset: u64::try_from(offset).unwrap_or(u64::MAX),
@@ -1162,20 +1169,30 @@ impl InsightsSession {
     }
 
     /// The fields of result row `index` of the shown result, when `run_id`
-    /// is its run (U2:BR7.3, U3:BR3.2); no field otherwise.
+    /// is its run (U2:BR7.3, U3:BR3.2); no field otherwise. An aggregate
+    /// row lists its columns with their cells, as the table writes them
+    /// (261025-insights-stats BR4.3).
     pub fn display_row_detail(&self, run_id: u64, index: usize, zone: Tz) -> QueryRowDetail {
         let format_time = |time| format_display_in_zone(time, zone);
         let fields = self
             .result()
-            .and_then(|result| result.row_at(run_id, index))
-            .map(|row| {
-                row_detail(
-                    &EventFields::new(&row.event, &row.log_group_name),
-                    &format_time,
+            .and_then(|result| {
+                let row = result.row_at(run_id, index)?;
+                let pairs = match row.event_fields() {
+                    Some(fields) => row_detail(&fields, &format_time),
+                    None => result
+                        .columns()
+                        .names()
+                        .into_iter()
+                        .zip(result_row_cells(result.columns(), row, &format_time))
+                        .collect(),
+                };
+                Some(
+                    pairs
+                        .into_iter()
+                        .map(|(name, value)| DetailField { name, value })
+                        .collect(),
                 )
-                .into_iter()
-                .map(|(name, value)| DetailField { name, value })
-                .collect()
             })
             .unwrap_or_default();
         QueryRowDetail {
@@ -1245,7 +1262,7 @@ impl InsightsSession {
     pub fn export_source(&self, zone: Tz) -> Option<ExportSnapshotSource> {
         let result = self.result()?;
         Some(ExportSnapshotSource::LogAnalytics {
-            columns: result.columns().to_vec(),
+            columns: result.columns().clone(),
             rows: result.window(result.run_id, 0, result.row_count()).to_vec(),
             zone,
         })
@@ -1353,7 +1370,7 @@ mod tests {
     fn copies(positions: Vec<usize>) -> Vec<ResultRow> {
         positions
             .into_iter()
-            .map(|position| ResultRow {
+            .map(|position| ResultRow::Event {
                 event: LogEvent {
                     timestamp: i64::try_from(position).unwrap(),
                     ingestion_time: None,
@@ -1509,7 +1526,8 @@ mod tests {
         let now = Instant::now();
         let first_run = done(&mut session, now, vec![0, 3]);
         let revision = session.snapshot().revision;
-        let problem = parse_query("stats count(*)").unwrap_err();
+        // `stats` is read since 261025-insights-stats U1; `parse` is not.
+        let problem = parse_query("parse @message 'a*b' as x").unwrap_err();
         assert_eq!(
             session.begin(revision, Err(problem.clone()), &connected(), now),
             Ok(QueryBegin::Problem)
@@ -1838,7 +1856,7 @@ mod tests {
     #[test]
     fn the_summary_carries_the_columns_the_matched_count_and_the_cut() {
         // U2:BR3.2, BR5.3, BR7.2.
-        use crate::query::evaluator::EvalOutput;
+        use crate::query::evaluator::EventsOutput;
         use crate::query::plan::{FieldRef, JsonPath};
         let mut session = ready();
         let now = Instant::now();
@@ -1846,7 +1864,7 @@ mod tests {
         session.finish_evaluation(
             QueryResult::from_output(
                 run_id,
-                EvalOutput {
+                EventsOutput {
                     rows: (0..10_000).collect(),
                     columns: vec![
                         FieldRef::Timestamp,
@@ -1878,14 +1896,14 @@ mod tests {
     #[test]
     fn rows_give_their_cells_and_an_opened_row_its_fields() {
         // U2:BR7.1, BR7.3.
-        use crate::query::evaluator::EvalOutput;
+        use crate::query::evaluator::EventsOutput;
         use crate::query::plan::{FieldRef, JsonPath};
         let mut session = ready();
         let now = Instant::now();
         let run_id = evaluating(&mut session, now, 1);
         let level = FieldRef::Json(JsonPath::new(vec!["level".to_string()], "level"));
         let gone = FieldRef::Json(JsonPath::new(vec!["gone".to_string()], "gone"));
-        let copied = ResultRow {
+        let copied = ResultRow::Event {
             event: LogEvent {
                 timestamp: 0,
                 ingestion_time: None,
@@ -1898,7 +1916,7 @@ mod tests {
         session.finish_evaluation(
             QueryResult::from_output(
                 run_id,
-                EvalOutput {
+                EventsOutput {
                     rows: vec![0],
                     columns: vec![FieldRef::Timestamp, level, gone],
                     matched_count: 1,
@@ -1918,7 +1936,7 @@ mod tests {
                 None
             ]
         );
-        assert_eq!(window.rows[0].log_group_name, GROUP);
+        assert_eq!(window.rows[0].log_group_name.as_deref(), Some(GROUP));
         assert_eq!((window.run_id, window.total_count), (run_id, 1));
         assert!(
             session
@@ -1996,7 +2014,7 @@ mod tests {
                 .display_rows(run, (0, 10), UTC)
                 .rows
                 .iter()
-                .map(|row| row.event.timestamp)
+                .filter_map(|row| row.event.as_ref().map(|event| event.timestamp))
                 .collect()
         };
         let next = start(&mut session, now).run_id;
@@ -2300,7 +2318,7 @@ mod tests {
         let run_id = start(&mut session, now).run_id;
         assert!(session.finish_fetch(run_id, &ended(JobStatus::Completed, 10), now));
         let plan = parse_query("fields @timestamp, level, @message | limit 10").unwrap();
-        let output = crate::query::evaluator::EvalOutput {
+        let output = crate::query::evaluator::EventsOutput {
             columns: plan.columns(),
             rows: vec![0, 1],
             evaluated_count: 2,
@@ -2308,7 +2326,7 @@ mod tests {
             truncated_at: None,
         };
         let rows = vec![
-            ResultRow {
+            ResultRow::Event {
                 event: LogEvent {
                     timestamp: 1_704_164_645_123,
                     ingestion_time: None,
@@ -2318,7 +2336,7 @@ mod tests {
                 },
                 log_group_name: GROUP.to_string(),
             },
-            ResultRow {
+            ResultRow::Event {
                 event: LogEvent {
                     timestamp: 1_704_164_646_000,
                     ingestion_time: None,
@@ -2367,5 +2385,290 @@ mod tests {
         // No run yet and nothing chosen: no name (the file name falls back).
         let fresh = InsightsSession::new();
         assert_eq!(fresh.export_log_group_name(), None);
+    }
+
+    // ---- 261025-insights-stats U1:BR4.1-BR4.4 ----------------------------
+
+    /// 2025-08-24 16:00:00 UTC, 2025-08-25 01:00:00 in Tokyo.
+    const FOUR_PM: i64 = 1_756_051_200_000;
+
+    /// Finishes a run with the aggregates of `text` over JSON `messages`, one
+    /// a minute from [`FOUR_PM`]; returns the run number.
+    fn aggregated(
+        session: &mut InsightsSession,
+        now: Instant,
+        text: &str,
+        messages: &[&str],
+    ) -> u64 {
+        use crate::query::evaluator::{EvalItem, EvalOutput, evaluate};
+        let events: Vec<LogEvent> = messages
+            .iter()
+            .enumerate()
+            .map(|(index, message)| LogEvent {
+                timestamp: FOUR_PM + i64::try_from(index).unwrap() * 60_000,
+                ingestion_time: None,
+                message: (*message).to_string(),
+                log_stream_name: "s".to_string(),
+                sequence: u64::try_from(index).unwrap(),
+            })
+            .collect();
+        let items: Vec<EvalItem<'_>> = events
+            .iter()
+            .map(|event| EvalItem {
+                event,
+                log_group_name: GROUP,
+            })
+            .collect();
+        let plan = parse_query(text).unwrap();
+        let Some(EvalOutput::Aggregates(output)) =
+            evaluate(&plan, items.as_slice(), || false, |_, _| {})
+        else {
+            panic!("{text:?} gave no aggregates");
+        };
+        let run_id = evaluating(session, now, u64::try_from(events.len()).unwrap());
+        session.finish_evaluation(QueryResult::from_aggregates(run_id, output), now);
+        run_id
+    }
+
+    const LEVELS: [&str; 4] = [
+        r#"{"level":"error","latency":100}"#,
+        r#"{"level":"info","latency":200}"#,
+        r#"{"level":"error","latency":"101"}"#,
+        r#"{"level":"info"}"#,
+    ];
+
+    #[test]
+    fn the_summary_of_an_aggregates_result_has_its_shape_and_names() {
+        // BR4.1, BR3.4.
+        let now = Instant::now();
+        let mut session = ready();
+        aggregated(
+            &mut session,
+            now,
+            "stats count(*) as n, avg(latency) by level",
+            &LEVELS,
+        );
+        let summary = session.view(&connected(), now).result.unwrap();
+        assert_eq!(summary.shape, ResultShape::Aggregates);
+        assert_eq!(summary.columns, vec!["level", "n", "avg(latency)"]);
+        assert_eq!(
+            (
+                summary.row_count,
+                summary.matched_count,
+                summary.evaluated_count,
+                summary.truncated_at
+            ),
+            (2, 2, 4, None)
+        );
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["shape"], "aggregates");
+        let mut events = ready();
+        done(&mut events, now, vec![1]);
+        let json = serde_json::to_value(events.view(&connected(), now).result.unwrap()).unwrap();
+        assert_eq!(json["shape"], "events", "an events result says so too");
+    }
+
+    #[test]
+    fn an_aggregate_row_has_only_its_cells_as_the_table_writes_them() {
+        // BR4.1, BR2.8: values only, no event, no time, no log group.
+        let now = Instant::now();
+        let mut session = ready();
+        let run_id = aggregated(
+            &mut session,
+            now,
+            "stats count(*) as n, avg(latency), max(gone) by level",
+            &LEVELS,
+        );
+        let window = session.display_rows(run_id, (0, 50), UTC);
+        assert_eq!(window.total_count, 2);
+        assert_eq!(
+            window
+                .rows
+                .iter()
+                .map(|row| row.values.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                vec![
+                    Some("error".to_string()),
+                    Some("2".to_string()),
+                    Some("100.5".to_string()),
+                    None
+                ],
+                vec![
+                    Some("info".to_string()),
+                    Some("2".to_string()),
+                    Some("200".to_string()),
+                    None
+                ],
+            ]
+        );
+        assert_eq!(window.rows[0].event, None);
+        let json = serde_json::to_value(&window.rows[0]).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "values": ["error", "2", "100.5", null] })
+        );
+        let mut events = ready();
+        let events_run = done(&mut events, now, vec![7]);
+        let row =
+            serde_json::to_value(&events.display_rows(events_run, (0, 1), UTC).rows[0]).unwrap();
+        assert_eq!(row["displayTime"], "1970/01/01 00:00:00.007");
+        assert_eq!(row["logGroupName"], GROUP);
+        assert_eq!(row["timestamp"], 7, "an event row keeps its event");
+    }
+
+    #[test]
+    fn the_time_cells_follow_the_chosen_zone_and_nothing_else_changes() {
+        // BR4.2, FR2.3.
+        let now = Instant::now();
+        let mut session = ready();
+        let run_id = aggregated(
+            &mut session,
+            now,
+            "stats count(*), min(@timestamp) by bin(2m)",
+            &LEVELS,
+        );
+        let utc = session.display_rows(run_id, (0, 50), UTC);
+        let tokyo = session.display_rows(run_id, (0, 50), chrono_tz::Asia::Tokyo);
+        let cells = |window: &QueryRowWindow| -> Vec<Vec<Option<String>>> {
+            window.rows.iter().map(|row| row.values.clone()).collect()
+        };
+        assert_eq!(
+            cells(&utc),
+            vec![
+                vec![
+                    Some("2025/08/24 16:00:00.000".to_string()),
+                    Some("2".to_string()),
+                    Some("2025/08/24 16:00:00.000".to_string()),
+                ],
+                vec![
+                    Some("2025/08/24 16:02:00.000".to_string()),
+                    Some("2".to_string()),
+                    Some("2025/08/24 16:02:00.000".to_string()),
+                ],
+            ]
+        );
+        assert_eq!(
+            cells(&tokyo)[1],
+            vec![
+                Some("2025/08/25 01:02:00.000".to_string()),
+                Some("2".to_string()),
+                Some("2025/08/25 01:02:00.000".to_string()),
+            ]
+        );
+        assert_eq!(utc.total_count, tokyo.total_count);
+    }
+
+    #[test]
+    fn an_opened_aggregate_row_lists_its_columns_with_their_cells() {
+        // BR4.3.
+        let now = Instant::now();
+        let mut session = ready();
+        let run_id = aggregated(
+            &mut session,
+            now,
+            "stats count(*) as n, max(gone) by level",
+            &LEVELS,
+        );
+        let detail = session.display_row_detail(run_id, 1, UTC);
+        assert_eq!(
+            detail
+                .fields
+                .iter()
+                .map(|field| (field.name.as_str(), field.value.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("level", Some("info")),
+                ("n", Some("2")),
+                ("max(gone)", None)
+            ]
+        );
+        assert!(
+            session
+                .display_row_detail(run_id + 1, 0, UTC)
+                .fields
+                .is_empty()
+        );
+        assert!(session.display_row_detail(run_id, 9, UTC).fields.is_empty());
+    }
+
+    #[test]
+    fn an_aggregates_result_is_exported_with_the_table_text() {
+        // BR4.4.
+        let now = Instant::now();
+        let mut session = ready();
+        aggregated(
+            &mut session,
+            now,
+            "stats count(*), max(gone) by bin(5m)",
+            &LEVELS,
+        );
+        assert!(session.can_export(false).is_available());
+        let snapshot = session
+            .export_source(chrono_tz::Asia::Tokyo)
+            .unwrap()
+            .into_snapshot();
+        assert_eq!(snapshot.columns, vec!["bin(5m)", "count(*)", "max(gone)"]);
+        assert_eq!(
+            snapshot.rows,
+            vec![vec![
+                "2025/08/25 01:00:00.000".to_string(),
+                "4".to_string(),
+                String::new()
+            ]]
+        );
+    }
+
+    #[test]
+    fn no_aggregate_row_is_a_result_of_zero_rows() {
+        // BR2.6, FR3.2: with `by` and nothing left, the result has no row
+        // and nothing to export; without `by` it has one.
+        let now = Instant::now();
+        let mut session = ready();
+        let run_id = aggregated(
+            &mut session,
+            now,
+            "filter level = 'none' | stats count(*) by level",
+            &LEVELS,
+        );
+        let summary = session.view(&connected(), now).result.unwrap();
+        assert_eq!(
+            (summary.shape, summary.row_count),
+            (ResultShape::Aggregates, 0)
+        );
+        assert_eq!(summary.columns, vec!["level", "count(*)"]);
+        assert!(session.display_rows(run_id, (0, 50), UTC).rows.is_empty());
+        assert_eq!(
+            session.can_export(false).blocker,
+            Some(ExportBlocker::NoRows)
+        );
+        let one = aggregated(
+            &mut session,
+            now,
+            "filter level = 'none' | stats count(*)",
+            &LEVELS,
+        );
+        assert_eq!(
+            session.display_rows(one, (0, 50), UTC).rows[0].values,
+            vec![Some("0".to_string())]
+        );
+    }
+
+    #[test]
+    fn stats_and_its_words_are_completed() {
+        // 261025-insights-stats U1 (rules.md, provisional until U2's catalog).
+        let session = ready();
+        let candidates = session.completion_candidates();
+        let kind_of = |text: &str| {
+            candidates
+                .iter()
+                .find(|candidate| candidate.text == text)
+                .map(|candidate| candidate.kind)
+        };
+        assert_eq!(kind_of("stats"), Some(CompletionKind::Command));
+        for word in ["by", "as", "count", "sum", "avg", "min", "max", "bin"] {
+            assert_eq!(kind_of(word), Some(CompletionKind::Keyword), "{word}");
+        }
+        assert_eq!(kind_of("pct"), None, "not read in U1");
     }
 }

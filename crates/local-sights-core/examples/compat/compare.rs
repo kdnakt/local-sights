@@ -36,6 +36,9 @@ pub enum AppSide {
     Rejected(String),
     /// The app's result.
     Rows(AppRows),
+    /// The app's result is aggregate rows (`stats`, 261025-insights-stats
+    /// U1); they are compared from U4, so the query is not compared yet.
+    Aggregates,
 }
 
 /// The app's result of one query.
@@ -188,6 +191,9 @@ pub fn compare_query(
                 stamp(export),
                 stamp(settings)
             ))
+        }
+        (AppSide::Aggregates, _) => {
+            not_compared("the app's result is aggregate rows (stats); they are compared in U4")
         }
         (AppSide::Rejected(app_message), InsightsSide::Rejected(insights_message)) => {
             QueryComparison {
@@ -619,6 +625,27 @@ mod tests {
             only_insights.insights_message.as_deref(),
             Some("MalformedQueryException")
         );
+    }
+
+    #[test]
+    fn an_aggregates_result_is_reported_for_u4_and_not_compared() {
+        // 261025-insights-stats U1: `stats` is compared from U4, whatever
+        // Logs Insights gave.
+        for insights in [
+            InsightsSide::Rows(vec![event("A")]),
+            InsightsSide::Rejected("MalformedQueryException".into()),
+        ] {
+            let compared = compare_query(&set_spec(), &AppSide::Aggregates, &insights);
+            assert_eq!(compared.verdict, Verdict::NotCompared, "{insights:?}");
+            assert!(
+                compared
+                    .note
+                    .as_deref()
+                    .is_some_and(|note| note.contains("U4")),
+                "{compared:?}"
+            );
+            assert!(!compared.verdict.is_compared());
+        }
     }
 
     #[test]

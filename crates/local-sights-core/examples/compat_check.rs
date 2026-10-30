@@ -51,7 +51,9 @@ use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::CloudWatchLogsGateway;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::query::evaluator::{EvalOutput, Evaluation, QueryResult, ResultRow};
+use local_sights_core::query::evaluator::{
+    EvalOutput, Evaluation, EventsOutput, QueryResult, ResultRow,
+};
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
 use local_sights_core::query::plan::{
@@ -368,6 +370,17 @@ impl AppEvaluation {
         }
     }
 
+    /// A `stats` query: its aggregate rows are compared from U4.
+    fn aggregates() -> Self {
+        Self {
+            side: AppSide::Aggregates,
+            sorted: false,
+            sort_keys: Vec::new(),
+            cap: DEFAULT_RESULT_LIMIT,
+            boundary_events: false,
+        }
+    }
+
     fn spec(&self, mode: CompareMode) -> CompareSpec {
         CompareSpec {
             mode,
@@ -400,7 +413,11 @@ fn evaluate_query(
             )));
         }
     };
-    let (output, rows) = evaluate_on_store(store, epoch, &plan)?;
+    let (output, rows) = match evaluate_on_store(store, epoch, &plan)? {
+        StoreEvaluation::Events(output, rows) => (output, rows),
+        // 261025-insights-stats U1: a `stats` result is compared from U4.
+        StoreEvaluation::Aggregates => return Some(AppEvaluation::aggregates()),
+    };
     let cut = output.truncated_at.is_some();
     let next_row = if cut && plan.has_sort() {
         next_row_after_cut(store, epoch, &plan, rows.len(), &output.columns)?
@@ -429,13 +446,17 @@ fn evaluate_query(
     })
 }
 
+/// What [`evaluate_on_store`] made of a plan.
+enum StoreEvaluation {
+    /// The event output and the copies of its rows.
+    Events(EventsOutput, Vec<ResultRow>),
+    /// Aggregate rows (`stats`), not compared before U4.
+    Aggregates,
+}
+
 /// Evaluates `plan` on the view of `epoch` step by step and copies the
 /// result rows out (as the QueryRunner does). `None` when the view is gone.
-fn evaluate_on_store(
-    store: &QueryStore,
-    epoch: u64,
-    plan: &QueryPlan,
-) -> Option<(EvalOutput, Vec<ResultRow>)> {
+fn evaluate_on_store(store: &QueryStore, epoch: u64, plan: &QueryPlan) -> Option<StoreEvaluation> {
     let total = store.view_len(epoch)?;
     let mut evaluation = Evaluation::new(plan, total);
     while !evaluation.is_done() {
@@ -443,9 +464,13 @@ fn evaluate_on_store(
             return None;
         }
     }
-    let output = evaluation.into_output()?;
-    let rows = store.copy_rows(epoch, &output.rows)?;
-    Some((output, rows))
+    match evaluation.into_output()? {
+        EvalOutput::Events(output) => {
+            let rows = store.copy_rows(epoch, &output.rows)?;
+            Some(StoreEvaluation::Events(output, rows))
+        }
+        EvalOutput::Aggregates(_) => Some(StoreEvaluation::Aggregates),
+    }
 }
 
 /// R-01: the first row the cut left out, from the same plan cut one row
@@ -474,7 +499,9 @@ fn next_row_after_cut(
             span: Span::new(1, 1, 1),
         }),
     }
-    let (output, _) = evaluate_on_store(store, epoch, &longer)?;
+    let StoreEvaluation::Events(output, _) = evaluate_on_store(store, epoch, &longer)? else {
+        return Some(None);
+    };
     let Some(position) = output.rows.get(kept) else {
         return Some(None);
     };
@@ -528,7 +555,9 @@ fn row_cap(plan: &QueryPlan) -> usize {
 /// R-03: whether `row`'s event lies in the first or the last second of
 /// `range`.
 fn in_boundary_second(row: &ResultRow, range: TimeRange) -> bool {
-    let time = row.event.timestamp;
+    let Some(time) = row.event().map(|event| event.timestamp) else {
+        return false;
+    };
     let first = range.start_instant();
     let last = range.end_instant();
     (first..first + 1_000).contains(&time) || (last - 999..=last).contains(&time)
@@ -783,6 +812,33 @@ mod tests {
         assert!(out.contains("q1-like  Same  insights=2  app=2"), "{out}");
         assert!(out.contains("q2-latest  Same  insights=2  app=2"), "{out}");
         assert!(out.ends_with("Skipped=0  NotCompared=0\n"), "{out}");
+    }
+
+    /// 261025-insights-stats U1: a `stats` query is evaluated by the app but
+    /// reported as compared in U4; the event queries are compared as before.
+    #[tokio::test]
+    async fn a_stats_query_is_reported_for_u4_and_the_others_are_still_compared() {
+        let folder = tempfile::tempdir().unwrap();
+        write_exports(folder.path(), "Decrypt");
+        write_export(
+            folder.path(),
+            "q3-stats.json",
+            r#"{"status":"Complete","results":[
+                [{"field":"count(*)","value":"3"}]]}"#,
+        );
+        let queries = format!("{QUERIES}q3-stats\tset\tstats\tstats count(*)\n");
+        let prepared = Prepared {
+            queries: parse_query_set(&queries).unwrap(),
+            ..prepared(folder.path())
+        };
+        let mut out = Vec::new();
+        let code = run_check(&FakeLogs::cloudtrail(), &prepared, &mut out).await;
+        let out = String::from_utf8(out).unwrap();
+        assert_eq!(code, 2, "one query not compared: {out}");
+        assert!(out.contains("q1-like  Same  insights=2  app=2"), "{out}");
+        assert!(out.contains("q2-latest  Same  insights=2  app=2"), "{out}");
+        assert!(out.contains("q3-stats  NotCompared"), "{out}");
+        assert!(out.contains("compared in U4"), "{out}");
     }
 
     #[tokio::test]

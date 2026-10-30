@@ -36,21 +36,38 @@ export interface QueryResultTableProps {
   previous?: boolean;
 }
 
-/** The class of a column's cells: the time and the message keep their widths. */
-function columnClass(name: string): string {
+/**
+ * Least width of one aggregate column (261025-insights-stats BR4.5): with many columns
+ * the table scrolls sideways instead of squeezing them.
+ */
+const AGGREGATE_COLUMN_MIN_WIDTH_REM = 8;
+
+/**
+ * The class of a column's cells: in an events result the time and the message keep
+ * their widths; in an aggregates result every column is a plain cell, whatever its name
+ * (261025-insights-stats BR4.5: `by @message` and `by @timestamp` are keys).
+ */
+function columnClass(name: string, aggregates: boolean): string {
+  if (aggregates) {
+    return "query-result-cell";
+  }
   if (name === "@timestamp") {
     return "query-result-time";
   }
   return name === "@message" ? "query-result-message" : "query-result-cell";
 }
 
-/** What a cell shows (U2:BR7.1): the first line of the message, any other value as it is. */
-function cellText(row: QueryRow | null, index: number, name: string): string {
+/**
+ * What a cell shows (U2:BR7.1): the first line of the message, any other value as it
+ * is. An aggregate cell is shown as the core wrote it, a `by @message` key in full
+ * (261025-insights-stats BR4.5).
+ */
+function cellText(row: QueryRow | null, index: number, name: string, aggregates: boolean): string {
   const value = row?.values[index] ?? null;
   if (value === null) {
     return "";
   }
-  return name === "@message" ? firstLine(value) : value;
+  return !aggregates && name === "@message" ? firstLine(value) : value;
 }
 
 /**
@@ -69,6 +86,11 @@ function cellText(row: QueryRow | null, index: number, name: string): string {
  * field and value, read with `get_query_row_detail`: the four fixed fields,
  * then the JSON fields by name (U2:BR7.3); ↑ and ↓ move the selection as on
  * Log Management. Rows can be opened several at once.
+ *
+ * 261025-insights-stats BR4.5, ADR-006: the summary's `shape` picks how the rows are
+ * drawn, in the same place. An aggregates result (`stats`) shows its columns as named,
+ * with no zone added to a heading and no column cut to its first line, and an opened row
+ * lists its columns with their cells. Many columns make the table scroll sideways.
  */
 export function QueryResultTable({
   result,
@@ -208,22 +230,40 @@ export function QueryResultTable({
     }
   };
 
+  const aggregates = result.shape === "aggregates";
   const zone = t(timeZoneLabelKey(timeZone));
   const heading = (name: string) =>
-    name === "@timestamp" ? t("insights.results.column.timestamp", { zone }) : name;
+    !aggregates && name === "@timestamp" ? t("insights.results.column.timestamp", { zone }) : name;
   const positions = Array.from({ length: range.count }, (_, index) => range.first + index);
+  // BR4.5: the header and the rows keep the same least width, so they scroll together.
+  const wide = aggregates
+    ? { minWidth: `calc(28px + ${result.columns.length * AGGREGATE_COLUMN_MIN_WIDTH_REM}rem)` }
+    : undefined;
 
   return (
-    <div className="query-result-table" data-testid="query-result-table">
+    <div
+      className={`query-result-table${aggregates ? " is-aggregates" : ""}`}
+      data-shape={result.shape}
+      data-testid="query-result-table"
+    >
       {previous && (
         <div className="query-result-previous" data-testid="query-result-previous">
           {t("insights.results.previous")}
         </div>
       )}
-      <div className="query-result-header" role="presentation" data-testid="query-result-header">
+      <div
+        className="query-result-header"
+        role="presentation"
+        style={wide}
+        data-testid="query-result-header"
+      >
         <span className="query-result-toggle-cell" />
         {result.columns.map((name, index) => (
-          <span key={`${index}:${name}`} className={columnClass(name)}>
+          <span
+            key={`${index}:${name}`}
+            className={columnClass(name, aggregates)}
+            data-testid="query-result-heading"
+          >
             {heading(name)}
           </span>
         ))}
@@ -231,6 +271,7 @@ export function QueryResultTable({
       <div
         ref={listRef}
         className="query-result-list"
+        style={wide}
         role="grid"
         aria-label={t("insights.results.title")}
         aria-rowcount={result.rowCount}
@@ -275,11 +316,11 @@ export function QueryResultTable({
                     {result.columns.map((name, index) => (
                       <span
                         key={`${index}:${name}`}
-                        className={columnClass(name)}
+                        className={columnClass(name, aggregates)}
                         role="gridcell"
                         data-testid="query-result-cell"
                       >
-                        {cellText(row, index, name)}
+                        {cellText(row, index, name, aggregates)}
                       </span>
                     ))}
                   </div>

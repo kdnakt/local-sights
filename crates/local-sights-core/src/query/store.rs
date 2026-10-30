@@ -535,7 +535,7 @@ impl QueryStore {
             positions
                 .iter()
                 .filter_map(|position| items.item(*position))
-                .map(|item| ResultRow {
+                .map(|item| ResultRow::Event {
                     event: item.event.clone(),
                     log_group_name: item.log_group_name.to_string(),
                 })
@@ -581,12 +581,12 @@ mod tests {
             .copy_rows(epoch, &positions)
             .unwrap_or_default()
             .into_iter()
-            .map(|row| {
-                (
-                    row.event.timestamp,
-                    row.log_group_name,
-                    row.event.log_stream_name,
-                )
+            .filter_map(|row| match row {
+                ResultRow::Event {
+                    event,
+                    log_group_name,
+                } => Some((event.timestamp, log_group_name, event.log_stream_name)),
+                ResultRow::Aggregate { .. } => None,
             })
             .collect()
     }
@@ -833,7 +833,7 @@ mod tests {
         let rows = store.copy_rows(epoch, &[0, 1]).unwrap();
         assert_eq!(
             rows.iter()
-                .map(|row| row.event.sequence)
+                .filter_map(|row| row.event().map(|event| event.sequence))
                 .collect::<Vec<_>>(),
             vec![0, 1],
             "the event fetched again keeps the number it had"
@@ -989,7 +989,7 @@ mod tests {
         let rows = store.copy_rows(epoch, &[0, 1, 2]).unwrap();
         assert_eq!(
             rows.iter()
-                .map(|row| row.event.sequence)
+                .filter_map(|row| row.event().map(|event| event.sequence))
                 .collect::<Vec<_>>(),
             vec![0, 1, 2]
         );
@@ -1013,7 +1013,10 @@ mod tests {
         assert!(store.evaluate_step(&plan, &mut evaluation, epoch));
         assert!(evaluation.is_done());
         assert_eq!(
-            evaluation.into_output().map(|output| output.rows),
+            evaluation.into_output().and_then(|output| match output {
+                crate::query::evaluator::EvalOutput::Events(events) => Some(events.rows),
+                crate::query::evaluator::EvalOutput::Aggregates(_) => None,
+            }),
             Some(vec![2, 0]),
             "newest first (U2:BR4.4)"
         );
@@ -1164,7 +1167,10 @@ mod memory {
             assert!(store.evaluate_step(&plan, &mut evaluation, epoch));
             longest = longest.max(before.elapsed());
         }
-        let output = evaluation.into_output().unwrap();
+        let Some(crate::query::evaluator::EvalOutput::Events(output)) = evaluation.into_output()
+        else {
+            panic!("{text:?} gave no events output");
+        };
         let elapsed = started.elapsed();
         assert_eq!(output.evaluated_count, total);
         let rows = store.copy_rows(epoch, &output.rows).unwrap();
@@ -1237,8 +1243,10 @@ mod memory {
         assert!(
             rows.windows(2).all(|pair| {
                 let latency = |row: &ResultRow| {
-                    serde_json::from_str::<serde_json::Value>(&row.event.message)
-                        .ok()
+                    row.event()
+                        .and_then(|event| {
+                            serde_json::from_str::<serde_json::Value>(&event.message).ok()
+                        })
                         .and_then(|value| value["latency"].as_u64())
                 };
                 latency(&pair[0]) >= latency(&pair[1])

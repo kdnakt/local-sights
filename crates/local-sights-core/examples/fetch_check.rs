@@ -50,6 +50,20 @@
 //! read is an argument error (exit 2) naming its line, column and message
 //! key; nothing is fetched then (U1:BR3.9).
 //!
+//! A `stats` query (261025-insights-stats U1, functional-spec 7.2): the
+//! first line is `aggregated M events into R rows`, then the `columns:` line
+//! (the keys, then the aggregates) and up to 1,000 rows with the cells
+//! written as the table writes them (four decimal places, times in UTC).
+//! Standard error also has `evaluated in N ms (from the end of the fetch to
+//! the final result)`, the time to note for NFR1. The fetch is the same
+//! GetLogEvents flow; the grouping is done here.
+//!
+//! ```text
+//! cargo run --release -p local-sights-core --example fetch_check -- --profile NAME \
+//!   --region us-east-1 --log-group NAME --start "2025/08/24 16:13:26" \
+//!   --end "2025/08/24 17:13:26" --query 'stats count(*) by bin(5m)'
+//! ```
+//!
 //! ```text
 //! cargo run -p local-sights-core --example fetch_check -- --profile NAME \
 //!   --region us-east-1 --log-group NAME --start "2025/08/24 16:13:26" \
@@ -77,6 +91,7 @@
 use std::io::{self, BufWriter, Write};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Instant;
 
 use chrono_tz::Tz;
 use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch};
@@ -84,11 +99,10 @@ use local_sights_core::event::LogEvent;
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::query::evaluator::{QueryResult, ResultRow, row_cells};
-use local_sights_core::query::fields::EventFields;
+use local_sights_core::query::evaluator::{QueryResult, result_row_cells};
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
-use local_sights_core::query::plan::{FieldRef, QueryPlan};
+use local_sights_core::query::plan::{QueryPlan, ResultShape};
 use local_sights_core::query::runner::{QueryRun, QueryRunSummary, QuerySink, run_query};
 use local_sights_core::query::store::{HoldingKey, QueryStore};
 use local_sights_core::request::{
@@ -108,6 +122,10 @@ const EXIT_USAGE: u8 = 2;
 
 /// Matching events printed with `--query`.
 const FIRST_ROWS: usize = 10;
+
+/// Aggregate rows printed for a `stats` query (261025-insights-stats U1);
+/// the rest are counted.
+const AGGREGATE_ROWS: usize = 1_000;
 
 /// The parsed arguments: the raw fetch input, the region code and the
 /// query, when one was given.
@@ -222,8 +240,16 @@ async fn check_query(
         eprintln!("error: the query was not evaluated");
         return ExitCode::from(EXIT_FETCH_FAILED);
     };
-    let first = result.window(result.run_id, 0, FIRST_ROWS);
-    if let Err(error) = write_query_result(&result, first) {
+    // 261025-insights-stats U1 (functional-spec 7.2, NFR1): from the end of
+    // the fetch to the final result.
+    if let (Some(fetched), Some(evaluated)) = (sink.fetch_ended_at, sink.evaluated_at) {
+        eprintln!(
+            "evaluated in {} ms (from the end of the fetch to the final result)",
+            evaluated.saturating_duration_since(fetched).as_millis()
+        );
+    }
+    let mut out = BufWriter::new(io::stdout().lock());
+    if let Err(error) = write_query_result(&mut out, &result).and_then(|()| out.flush()) {
         eprintln!("error: could not write to standard output: {error}");
         return ExitCode::from(EXIT_FETCH_FAILED);
     }
@@ -233,32 +259,48 @@ async fn check_query(
 /// 261017-insights-query U2:BR6.1, BR6.3, BR7.1: the counts (matched,
 /// shown and, when the result was cut, where), the columns, then the cells
 /// of the first rows, one row a line, separated by tabs. A cell without a
-/// value is empty; newlines in a value become spaces.
-fn write_query_result(result: &QueryResult, first: &[ResultRow]) -> io::Result<()> {
-    let mut out = BufWriter::new(io::stdout().lock());
-    write!(
-        out,
-        "matched {} of {} events, showing {}",
-        result.matched_count(),
-        result.evaluated_count,
-        result.row_count()
-    )?;
-    if let Some(cut) = result.truncated_at() {
-        write!(out, " (cut at {cut})")?;
-    }
+/// value is empty; newlines in a value become spaces. An aggregates result
+/// (`stats`, 261025-insights-stats U1) says how many events made how many
+/// rows, then its columns and up to [`AGGREGATE_ROWS`] rows written as the
+/// table writes them (BR2.8; times in UTC).
+fn write_query_result<W: Write>(out: &mut W, result: &QueryResult) -> io::Result<()> {
+    let shown = match result.shape() {
+        ResultShape::Events => {
+            write!(
+                out,
+                "matched {} of {} events, showing {}",
+                result.matched_count(),
+                result.evaluated_count,
+                result.row_count()
+            )?;
+            if let Some(cut) = result.truncated_at() {
+                write!(out, " (cut at {cut})")?;
+            }
+            FIRST_ROWS
+        }
+        ResultShape::Aggregates => {
+            write!(
+                out,
+                "aggregated {} events into {} rows",
+                result.evaluated_count,
+                result.row_count()
+            )?;
+            AGGREGATE_ROWS
+        }
+    };
     writeln!(out)?;
-    let names: Vec<&str> = result.columns().iter().map(FieldRef::name).collect();
-    writeln!(out, "columns: {}", names.join("\t"))?;
-    for row in first {
-        let fields = EventFields::new(&row.event, &row.log_group_name);
-        let cells = row_cells(result.columns(), &fields, &format_utc_millis);
-        let line: Vec<String> = cells
+    writeln!(out, "columns: {}", result.columns().names().join("\t"))?;
+    for row in result.window(result.run_id, 0, shown) {
+        let line: Vec<String> = result_row_cells(result.columns(), row, &format_utc_millis)
             .into_iter()
             .map(|cell| one_line(&cell.unwrap_or_default()))
             .collect();
         writeln!(out, "{}", line.join("\t"))?;
     }
-    out.flush()
+    if result.row_count() > shown {
+        writeln!(out, "... {} more rows", result.row_count() - shown)?;
+    }
+    Ok(())
 }
 
 /// The time now in epoch milliseconds (0 before 1970): the base of the
@@ -432,6 +474,10 @@ impl FetchSink for ProgressSink {
 struct QueryCheckSink {
     ended: Option<FetchJob>,
     result: Option<QueryResult>,
+    /// When the whole fetch ended (261025-insights-stats U1).
+    fetch_ended_at: Option<Instant>,
+    /// When the final result came.
+    evaluated_at: Option<Instant>,
 }
 
 impl FetchSink for QueryCheckSink {
@@ -462,6 +508,7 @@ impl QuerySink for QueryCheckSink {
     }
 
     fn on_fetch_ended(&mut self, _run_id: u64, _summary: &QueryRunSummary) -> bool {
+        self.fetch_ended_at = Some(Instant::now());
         if let Some(job) = &self.ended {
             eprintln!("evaluating {} events...", job.event_count);
         }
@@ -473,6 +520,7 @@ impl QuerySink for QueryCheckSink {
     }
 
     fn on_evaluated(&mut self, result: QueryResult) {
+        self.evaluated_at = Some(Instant::now());
         self.result = Some(result);
     }
 
@@ -488,6 +536,7 @@ impl QuerySink for QueryCheckSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use local_sights_core::query::plan::FieldRef;
 
     fn args(list: &[&str]) -> impl Iterator<Item = String> {
         list.iter()
@@ -575,10 +624,12 @@ mod tests {
 
     #[test]
     fn a_query_that_cannot_be_read_names_its_place_and_reads_dates_as_utc() {
-        let error = read_query("filter @message like /a/\n| stats count(*)").unwrap_err();
+        // `stats` is read since 261025-insights-stats U1; `parse` is not.
+        let error =
+            read_query("filter @message like /a/\n| parse @message 'a*b' as x").unwrap_err();
         assert!(error.contains("line 2, column 3"), "{error}");
         assert!(
-            error.contains("query.unsupported.command (stats)"),
+            error.contains("query.unsupported.command (parse)"),
             "{error}"
         );
         assert!(read_query("filter @timestamp > '2025-08-24 16:43:26'").is_ok());
@@ -605,5 +656,66 @@ mod tests {
     fn a_value_is_written_on_one_line() {
         assert_eq!(one_line("a\r\nb\nc\rd"), "a b c d");
         assert_eq!(one_line(""), "");
+    }
+
+    // ---- 261025-insights-stats U1: stats -------------------------------
+
+    fn written(result: &QueryResult) -> String {
+        let mut out = Vec::new();
+        write_query_result(&mut out, result).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn a_stats_result_is_printed_as_a_table_of_its_columns_and_rows() {
+        use local_sights_core::query::evaluator::AggregatesOutput;
+        use local_sights_core::query::stats::CellValue;
+        assert!(read_query("filter level = 'ERROR' | stats count(*) by bin(5m)").is_ok());
+        let result = QueryResult::from_aggregates(
+            1,
+            AggregatesOutput {
+                columns: vec!["bin(5m)".to_string(), "avg(latency)".to_string()],
+                rows: vec![
+                    vec![
+                        CellValue::Timestamp(1_756_051_200_000),
+                        CellValue::Decimal(200.333_333),
+                    ],
+                    vec![CellValue::Timestamp(1_756_051_500_000), CellValue::Missing],
+                ],
+                evaluated_count: 42,
+            },
+        );
+        assert_eq!(
+            written(&result),
+            "aggregated 42 events into 2 rows\n\
+             columns: bin(5m)\tavg(latency)\n\
+             2025/08/24 16:00:00.000\t200.3333\n\
+             2025/08/24 16:05:00.000\t\n"
+        );
+    }
+
+    #[test]
+    fn an_events_result_is_printed_as_before() {
+        use local_sights_core::event::LogEvent;
+        use local_sights_core::query::evaluator::ResultRow;
+        let rows: Vec<ResultRow> = (0..12)
+            .map(|index| ResultRow::Event {
+                event: LogEvent {
+                    timestamp: 1_756_051_200_000 + index,
+                    ingestion_time: None,
+                    message: format!("line {index}\nnext"),
+                    log_stream_name: "s".to_string(),
+                    sequence: 0,
+                },
+                log_group_name: "/g".to_string(),
+            })
+            .collect();
+        let out = written(&QueryResult::new(1, 30, rows));
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[0], "matched 12 of 30 events, showing 12");
+        assert_eq!(lines[1], "columns: @timestamp\t@message");
+        assert_eq!(lines[2], "2025/08/24 16:00:00.000\tline 0 next");
+        assert_eq!(lines.len(), 2 + FIRST_ROWS + 1);
+        assert_eq!(lines.last(), Some(&"... 2 more rows"));
     }
 }

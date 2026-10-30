@@ -6183,7 +6183,7 @@ mod tests {
     fn query_rows_at(positions: Vec<usize>) -> Vec<crate::query::evaluator::ResultRow> {
         positions
             .into_iter()
-            .map(|position| crate::query::evaluator::ResultRow {
+            .map(|position| crate::query::evaluator::ResultRow::Event {
                 event: LogEvent {
                     timestamp: i64::try_from(position).unwrap(),
                     ingestion_time: None,
@@ -6429,7 +6429,11 @@ mod tests {
         let mut session = insights_ready_session();
         let run_id = query_done(&mut session, vec![1, 3]);
         let times = |window: QueryRowWindow| -> Vec<i64> {
-            window.rows.iter().map(|row| row.event.timestamp).collect()
+            window
+                .rows
+                .iter()
+                .filter_map(|row| row.event.as_ref().map(|event| event.timestamp))
+                .collect()
         };
         assert_eq!(times(session.display_query_rows(run_id, 0, 10)), vec![1, 3]);
         assert_eq!(times(session.display_query_rows(run_id, 1, 10)), vec![3]);

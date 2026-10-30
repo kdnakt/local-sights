@@ -79,51 +79,51 @@ Testing Contract の custom の順番に従う。純粋なロジック（読み�
 
 ### 準備
 
-- [ ] **Step 1** — テストの実行の確認：`cargo test -p local-sights-core --lib query::`、`cargo test -p local-sights-core --lib insights_session`、`cargo test -p local-sights-core --lib export::`、`cargo test -p local-sights --lib`、`cargo test -p local-sights-core --example compat_check`、`npx vitest run src/components/QueryResultTable.test.tsx` が今の状態で通ることを確かめ、結果を記録する（unit-test-instructions.md の基準の数）
-- [ ] **Step 2** — 置き場所の用意：`crates/local-sights-core/src/query/stats.rs` を新しく作り、`query/mod.rs` に `pub mod stats;` を足す（中身は Step 6 から）
+- [x] **Step 1** — テストの実行の確認：`cargo test -p local-sights-core --lib query::`、`cargo test -p local-sights-core --lib insights_session`、`cargo test -p local-sights-core --lib export::`、`cargo test -p local-sights --lib`、`cargo test -p local-sights-core --example compat_check`、`npx vitest run src/components/QueryResultTable.test.tsx` が今の状態で通ることを確かめ、結果を記録する（unit-test-instructions.md の基準の数）
+- [x] **Step 2** — 置き場所の用意：`crates/local-sights-core/src/query/stats.rs` を新しく作り、`query/mod.rs` に `pub mod stats;` を足す（中身は Step 6 から）
 
 ### 計画の型と読み取り（純粋なロジック：テスト先行）
 
-- [ ] **Step 3** — `plan.rs` のテストを先に書く：`CommandKind::Stats(StatsCommand)` の形、`AggregateSpec`・`AggregateArgument`・`GroupKey`・`BinPeriod`、`QueryPlan::result_shape()`（stats があれば aggregates）と `aggregate_columns()`（鍵 then 集計、BR3.3）。実行して失敗を確かめる（BR3.1・BR3.3、FR3.1）
-- [ ] **Step 4** — `plan.rs` を実装し、Step 3 のテストを通す（`has_stats()`、`stats()` の取り出しも）
-- [ ] **Step 5** — `parser.rs` のテストを先に書く：`stats count(*) by bin(5m)`、`stats avg(latency) as a, max(latency) as m`、`by` なし、複数の鍵、`as` なしの列の名前（元の文の切り出し・空白をそろえる、BR1.9）、`bin(5m)`・`bin(30s)`・`bin(1d)` の字句（BR1.8）、`bin(5ms)`/`bin(1w)` は Unsupported、`bin(0m)`・`bin(1000001m)` は Syntax、`count_distinct(x)` などは Unsupported（BR1.2）、`sum(*)` は Syntax（BR1.3）、`by` のあとに何もない・閉じていない括弧・引き数の数の違い・`,` のあと何もない・`stats by level`（BR1.7）、列の名前の重複（BR1.4）、`stats` のあとの命令と 2 つ目の `stats` は Unsupported（BR1.6）、`filter @timestamp > 5m` の今のエラーは変わらない。実行して失敗を確かめる（FR1.1・FR1.3・FR2.1・FR6.3）
-- [ ] **Step 6** — `parser.rs` を実装し、Step 5 のテストを通す：`command()` の振り分けに `stats` を足し（`OTHER_COMMANDS` から外す）、集計・引き数・鍵・`as`・`bin(` の中を 1 語で読む字句を足す。`fields … as` の Unsupported は変えない。新しい問題の鍵を `keys` に足す
+- [x] **Step 3** — `plan.rs` のテストを先に書く：`CommandKind::Stats(StatsCommand)` の形、`AggregateSpec`・`AggregateArgument`・`GroupKey`・`BinPeriod`、`QueryPlan::result_shape()`（stats があれば aggregates）と `aggregate_columns()`（鍵 then 集計、BR3.3）。実行して失敗を確かめる（BR3.1・BR3.3、FR3.1）
+- [x] **Step 4** — `plan.rs` を実装し、Step 3 のテストを通す（`has_stats()`、`stats()` の取り出しも）
+- [x] **Step 5** — `parser.rs` のテストを先に書く：`stats count(*) by bin(5m)`、`stats avg(latency) as a, max(latency) as m`、`by` なし、複数の鍵、`as` なしの列の名前（元の文の切り出し・空白をそろえる、BR1.9）、`bin(5m)`・`bin(30s)`・`bin(1d)` の字句（BR1.8）、`bin(5ms)`/`bin(1w)` は Unsupported、`bin(0m)`・`bin(1000001m)` は Syntax、`count_distinct(x)` などは Unsupported（BR1.2）、`sum(*)` は Syntax（BR1.3）、`by` のあとに何もない・閉じていない括弧・引き数の数の違い・`,` のあと何もない・`stats by level`（BR1.7）、列の名前の重複（BR1.4）、`stats` のあとの命令と 2 つ目の `stats` は Unsupported（BR1.6）、`filter @timestamp > 5m` の今のエラーは変わらない。実行して失敗を確かめる（FR1.1・FR1.3・FR2.1・FR6.3）
+- [x] **Step 6** — `parser.rs` を実装し、Step 5 のテストを通す：`command()` の振り分けに `stats` を足し（`OTHER_COMMANDS` から外す）、集計・引き数・鍵・`as`・`bin(` の中を 1 語で読む字句を足す。`fields … as` の Unsupported は変えない。新しい問題の鍵を `keys` に足す
 
 ### 集計（純粋なロジック：テスト先行）
 
-- [ ] **Step 7** — `stats.rs` のテストを先に書く：`StatsAggregator::new/add/finish`。グループ化（鍵の値の文字で比べる、数の 200 と文字の "200" は同じ、Missing は 1 グループで最後、BR2.1・BR2.7）、count(*)・count(項目)（空の文字も数える、BR2.2）、sum・avg（数に読める文字は足す、真偽値と Missing は無視、足せなければ値なし、BR2.3）、min・max（NaturalSort の順、混ざるとき、Missing は無視、BR2.4）、bin のエポックの倍数（負の時刻も床、BR2.5）、by なしの 0 件は 1 行・by ありの 0 件は 0 行（BR2.6）、鍵の昇順（BR2.7）。実行して失敗を確かめる（FR1.2・FR1.3・FR1.5・FR1.6・FR2.1〜FR2.3）
-- [ ] **Step 8** — `stats.rs` の文字の丸めのテストを先に書く：`format_aggregate`（4 桁に四捨五入、末尾の 0 を落とす、-0 は 0、2^53 以上の整数、1e20、0.1 + 0.2、0.00005、-0.00004、inf・NaN は値なし、BR2.8）。実行して失敗を確かめる（FR1.5、A7）
-- [ ] **Step 9** — `stats.rs` を実装し、Step 7・8 のテストを通す：`CellValue`（missing・integer・decimal・text・timestamp）、`Accumulator`、`AggregateGroup`、`format_aggregate`
+- [x] **Step 7** — `stats.rs` のテストを先に書く：`StatsAggregator::new/add/finish`。グループ化（鍵の値の文字で比べる、数の 200 と文字の "200" は同じ、Missing は 1 グループで最後、BR2.1・BR2.7）、count(*)・count(項目)（空の文字も数える、BR2.2）、sum・avg（数に読める文字は足す、真偽値と Missing は無視、足せなければ値なし、BR2.3）、min・max（NaturalSort の順、混ざるとき、Missing は無視、BR2.4）、bin のエポックの倍数（負の時刻も床、BR2.5）、by なしの 0 件は 1 行・by ありの 0 件は 0 行（BR2.6）、鍵の昇順（BR2.7）。実行して失敗を確かめる（FR1.2・FR1.3・FR1.5・FR1.6・FR2.1〜FR2.3）
+- [x] **Step 8** — `stats.rs` の文字の丸めのテストを先に書く：`format_aggregate`（4 桁に四捨五入、末尾の 0 を落とす、-0 は 0、2^53 以上の整数、1e20、0.1 + 0.2、0.00005、-0.00004、inf・NaN は値なし、BR2.8）。実行して失敗を確かめる（FR1.5、A7）
+- [x] **Step 9** — `stats.rs` を実装し、Step 7・8 のテストを通す：`CellValue`（missing・integer・decimal・text・timestamp）、`Accumulator`、`AggregateGroup`、`format_aggregate`
 
 ### 評価と結果の形（純粋なロジック：テスト先行）
 
-- [ ] **Step 10** — `evaluator.rs` のテストを先に書く：`filter ... | stats count(*)` が filter で残ったイベントだけを数える、Aggregate の段が 10,000 行ずつ進み進み具合が 0 のままにならない、止める信号で結果を捨てる、aggregates では既定の 10,000 件の打ち切りと Columns の段を行わない、`EvalOutput::Aggregates` の列と行、stats のない計画は今と同じ `EvalOutput::Events`。実行して失敗を確かめる（BR2.9・BR3.1・BR3.2・BR3.5、FR1.8・FR3.6）
-- [ ] **Step 11** — `evaluator.rs` を実装し、Step 10 のテストと既存のテストを通す：`Stage::Aggregate`、`EvalOutput` を列挙型に、`ResultColumns`（Events / Aggregates、BR3.6）、`ResultRow` を列挙型（Event / Aggregate）に、`QueryResult` に `shape`、`row_cells` は Events のまま
-- [ ] **Step 12** — `store.rs`・`runner.rs` の型の追従（BR3.1・BR3.5）：`copy_rows` は `ResultRow::Event` の写しを返す、`QueryRunner` は `EvalOutput::Events` なら今のとおり `copy_rows`、`Aggregates` なら行をそのまま `QueryResult` にする（流れの順番は変えない）。既存のテストを通し、aggregates の道のテストを 2 つ足す
+- [x] **Step 10** — `evaluator.rs` のテストを先に書く：`filter ... | stats count(*)` が filter で残ったイベントだけを数える、Aggregate の段が 10,000 行ずつ進み進み具合が 0 のままにならない、止める信号で結果を捨てる、aggregates では既定の 10,000 件の打ち切りと Columns の段を行わない、`EvalOutput::Aggregates` の列と行、stats のない計画は今と同じ `EvalOutput::Events`。実行して失敗を確かめる（BR2.9・BR3.1・BR3.2・BR3.5、FR1.8・FR3.6）
+- [x] **Step 11** — `evaluator.rs` を実装し、Step 10 のテストと既存のテストを通す：`Stage::Aggregate`、`EvalOutput` を列挙型に、`ResultColumns`（Events / Aggregates、BR3.6）、`ResultRow` を列挙型（Event / Aggregate）に、`QueryResult` に `shape`、`row_cells` は Events のまま
+- [x] **Step 12** — `store.rs`・`runner.rs` の型の追従（BR3.1・BR3.5）：`copy_rows` は `ResultRow::Event` の写しを返す、`QueryRunner` は `EvalOutput::Events` なら今のとおり `copy_rows`、`Aggregates` なら行をそのまま `QueryResult` にする（流れの順番は変えない）。既存のテストを通し、aggregates の道のテストを 2 つ足す
 
 ### 表示と書き出し（中核の境界：実装してからテスト）
 
-- [ ] **Step 13** — `insights_session.rs` を実装：`ResultSummary.shape`、`display_rows` は aggregates なら `values` だけ（event・displayTime・logGroupName なし）、時刻のセルは `format_display_in_zone` で整形（BR4.1・BR4.2）、`display_row_detail` は aggregates なら列の（名前, 文字）（BR4.3）、`export_source` は形つき（BR4.4）
-- [ ] **Step 14** — `insights_session.rs` のテストを書いて実行する：aggregates の見出し・行・詳細、タイムゾーンの切り替えで時刻の文字だけ変わる（FR2.3）、書き出しの元、0 行、events は今と同じ（FR3.1〜FR3.4）
-- [ ] **Step 15** — `export/exporter.rs` を実装：`ExportSnapshotSource::LogAnalytics` の `columns` を `ResultColumns` に、aggregates の行は表と同じ文字で書く。テストを書いて実行する（CSV と Markdown の集計の行、events は今と同じ、BR4.4、FR3.4）
+- [x] **Step 13** — `insights_session.rs` を実装：`ResultSummary.shape`、`display_rows` は aggregates なら `values` だけ（event・displayTime・logGroupName なし）、時刻のセルは `format_display_in_zone` で整形（BR4.1・BR4.2）、`display_row_detail` は aggregates なら列の（名前, 文字）（BR4.3）、`export_source` は形つき（BR4.4）
+- [x] **Step 14** — `insights_session.rs` のテストを書いて実行する：aggregates の見出し・行・詳細、タイムゾーンの切り替えで時刻の文字だけ変わる（FR2.3）、書き出しの元、0 行、events は今と同じ（FR3.1〜FR3.4）
+- [x] **Step 15** — `export/exporter.rs` を実装：`ExportSnapshotSource::LogAnalytics` の `columns` を `ResultColumns` に、aggregates の行は表と同じ文字で書く。テストを書いて実行する（CSV と Markdown の集計の行、events は今と同じ、BR4.4、FR3.4）
 
 ### Tauri と画面（境界の層：実装してからテスト）
 
-- [ ] **Step 16** — `src-tauri/src/lib.rs` を実装：`TauriQuerySink` と `get_query_rows` / `get_query_row_detail` の値の形の追従（コマンドの名前と引き数は変えない、新しいコマンドはない）。`cargo test -p local-sights --lib` を実行する
-- [ ] **Step 17** — `src/api.ts` を実装：`ResultSummary.shape`、`QueryRow` の `event` などを任意に
-- [ ] **Step 18** — `src/components/QueryResultTable.tsx`・`LogAnalyticsPage.tsx` を実装：表の部品は見出しの `shape` で分岐する。aggregates では列の名前で表示を変えない（`by @message` の鍵の列も全文、`by @timestamp` の見出しにタイムゾーンを付けない）、行の詳細は列の（名前, 文字）、列が多いときの横スクロール、集計の 0 行の表示（BR4.5、FR3.5・FR3.6）。`data-testid` を足す
-- [ ] **Step 19** — `src/i18n/messages.ts` に新しい文言を英語と日本語で足す：集計の 0 行、「n 行」、stats の読み取りのエラー（BR4.6、NFR9）
-- [ ] **Step 20** — Vitest のテストを書いて実行する（`QueryResultTable.test.tsx`）：aggregates の見出しと行、`by @message` が全文、`by @timestamp` の見出しにタイムゾーンなし、行の詳細、0 行、events は今と同じ
+- [x] **Step 16** — `src-tauri/src/lib.rs` を実装：`TauriQuerySink` と `get_query_rows` / `get_query_row_detail` の値の形の追従（コマンドの名前と引き数は変えない、新しいコマンドはない）。`cargo test -p local-sights --lib` を実行する
+- [x] **Step 17** — `src/api.ts` を実装：`ResultSummary.shape`、`QueryRow` の `event` などを任意に
+- [x] **Step 18** — `src/components/QueryResultTable.tsx`・`LogAnalyticsPage.tsx` を実装：表の部品は見出しの `shape` で分岐する。aggregates では列の名前で表示を変えない（`by @message` の鍵の列も全文、`by @timestamp` の見出しにタイムゾーンを付けない）、行の詳細は列の（名前, 文字）、列が多いときの横スクロール、集計の 0 行の表示（BR4.5、FR3.5・FR3.6）。`data-testid` を足す
+- [x] **Step 19** — `src/i18n/messages.ts` に新しい文言を英語と日本語で足す：集計の 0 行、「n 行」、stats の読み取りのエラー（BR4.6、NFR9）
+- [x] **Step 20** — Vitest のテストを書いて実行する（`QueryResultTable.test.tsx`）：aggregates の見出しと行、`by @message` が全文、`by @timestamp` の見出しにタイムゾーンなし、行の詳細、0 行、events は今と同じ
 
 ### 確認用プログラム（境界の層：実装してからテスト）
 
-- [ ] **Step 21** — `examples/compat/format.rs`・`examples/compat_check.rs` の型の追従：events の結果は今までどおり比べられ、aggregates の結果は「U4 で対応」と報告して比べない。テストを 2 つ足して実行する
-- [ ] **Step 22** — `examples/fetch_check.rs` を広げる：引き数でクエリの文を受け取り、stats の結果なら見出しの列と行（表と同じ文字）を標準出力に表で出し、取得の終わりから最終結果までの時間を出す（手元の確かめ用。AWS への呼び出しは今の取得のまま）
+- [x] **Step 21** — `examples/compat/format.rs`・`examples/compat_check.rs` の型の追従：events の結果は今までどおり比べられ、aggregates の結果は「U4 で対応」と報告して比べない。テストを 2 つ足して実行する
+- [x] **Step 22** — `examples/fetch_check.rs` を広げる：引き数でクエリの文を受け取り、stats の結果なら見出しの列と行（表と同じ文字）を標準出力に表で出し、取得の終わりから最終結果までの時間を出す（手元の確かめ用。AWS への呼び出しは今の取得のまま）
 
 ### 仕上げ
 
-- [ ] **Step 23** — 全体の確認：`cargo fmt --check`、`cargo clippy --workspace`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、unit-test-instructions.md のすべてのコマンドが通ることを確かめる
-- [ ] **Step 24** — ドキュメント：README の対応する範囲に「`stats`（U1 の関数：count・sum・avg・min・max、`by`、`bin()`）」を一時的に書き足す（一覧の一元化と表の作り直しは U2）
+- [x] **Step 23** — 全体の確認：`cargo fmt --check`、`cargo clippy --workspace`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、unit-test-instructions.md のすべてのコマンドが通ることを確かめる
+- [x] **Step 24** — ドキュメント：README の対応する範囲に「`stats`（U1 の関数：count・sum・avg・min・max、`by`、`bin()`）」を一時的に書き足す（一覧の一元化と表の作り直しは U2）
 
 ## 追跡（要件・決まり → 手順）
 

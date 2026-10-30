@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InsightsProgress, InsightsView, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 import {
+  aggregatesSummary,
   connectedView,
   insightsView,
   queryRow,
@@ -207,6 +208,28 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     expect(error).toHaveTextContent("The query was not run.");
     expect(screen.queryByTestId("log-analytics-no-match")).not.toBeInTheDocument();
     expect(screen.queryByTestId("log-analytics-initial")).not.toBeInTheDocument();
+  });
+
+  it("counts an aggregates result in rows and says when it has none (261025-insights-stats BR3.4, BR4.5)", () => {
+    const { rerender } = renderPage(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level", "count(*)"], { rowCount: 0 }),
+      }),
+    );
+    expect(screen.getByTestId("log-analytics-no-rows")).toHaveTextContent(
+      "The query returned 0 rows.",
+    );
+    expect(screen.queryByTestId("log-analytics-no-match")).not.toBeInTheDocument();
+    expect(results()).toHaveTextContent("(0 rows)");
+    rerender(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["bin(5m)", "count(*)"], { rowCount: 3 }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(3 rows)");
+    expect(screen.getByTestId("query-result-table")).toHaveAttribute("data-shape", "aggregates");
   });
 
   it("shows the rows of a result with their count", async () => {

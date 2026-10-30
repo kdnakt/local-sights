@@ -47,7 +47,7 @@ use crate::coordinator::{DeferredFinishSink, FetchJob, FetchSink, run_fetch_with
 use crate::failure::{ApiFailure, FailureKind, SafeDetailFields};
 use crate::fetch_status::JobStatus;
 use crate::gateway::CloudWatchLogsGateway;
-use crate::query::evaluator::{Evaluation, QueryResult};
+use crate::query::evaluator::{EvalOutput, Evaluation, QueryResult};
 use crate::query::plan::QueryPlan;
 use crate::query::store::{HoldingKey, QueryStore};
 use crate::request::{FetchRequest, ValidatedFetch};
@@ -573,8 +573,16 @@ async fn evaluate_held<S: QuerySink>(
             return QueryOutcome::EvaluationStopped;
         }
     }
-    let Some(output) = evaluation.into_output() else {
-        return evaluation_failed(run.run_id, sink);
+    let output = match evaluation.into_output() {
+        Some(EvalOutput::Events(output)) => output,
+        // 261025-insights-stats BR3.5: the aggregate rows are copies
+        // already; nothing is copied out of the holdings.
+        Some(EvalOutput::Aggregates(output)) => {
+            let count = output.rows.len();
+            sink.on_evaluated(QueryResult::from_aggregates(run.run_id, output));
+            return QueryOutcome::Evaluated { rows: count };
+        }
+        None => return evaluation_failed(run.run_id, sink),
     };
     let positions = output.rows.clone();
     let task_store = Arc::clone(store);
@@ -610,7 +618,9 @@ mod tests {
         DescribeLogStreamsRequest, GatewayEvent, GetLogEventsPage, GetLogEventsRequest,
     };
     use crate::log_view::LogView;
+    use crate::query::evaluator::ResultRow;
     use crate::query::parser::parse_query;
+    use crate::query::stats::CellValue;
     use crate::retry::{FixedJitter, RetryPolicy, StopHandle, stop_pair};
     use crate::streams::LogStream;
     use crate::streams::planner::ListingProgress;
@@ -906,12 +916,13 @@ mod tests {
         result
             .window(result.run_id, 0, usize::MAX)
             .iter()
-            .map(|row| {
-                (
-                    row.event.timestamp,
-                    row.log_group_name.clone(),
-                    row.event.message.clone(),
-                )
+            .filter_map(|row| {
+                let event = row.event()?;
+                Some((
+                    event.timestamp,
+                    row.log_group_name()?.to_string(),
+                    event.message.clone(),
+                ))
             })
             .collect()
     }
@@ -1449,7 +1460,8 @@ mod tests {
         assert_eq!(
             result
                 .row_at(result.run_id, 0)
-                .map(|row| row.event.timestamp),
+                .and_then(ResultRow::event)
+                .map(|event| event.timestamp),
             Some(at(10, 10, 0))
         );
     }
@@ -1647,7 +1659,7 @@ mod tests {
         let (outcome, recorder) = query_with(&gateway, &store, &period, |_| {}).await;
         assert_eq!(outcome, QueryOutcome::Evaluated { rows: 3 });
         let result = &recorder.results[0];
-        let names: Vec<&str> = result.columns().iter().map(|field| field.name()).collect();
+        let names = result.columns().names();
         assert_eq!(names, vec!["@timestamp", "n", "level"]);
         assert_eq!(result.matched_count(), 8, "n is 5 or 6 for 8 of 30");
         assert_eq!(result.truncated_at(), Some(3));
@@ -1656,5 +1668,89 @@ mod tests {
             .map(|(time, ..)| time - at(10, 0, 0))
             .collect();
         assert_eq!(offsets, vec![6, 13, 20], "n = 6, oldest first among equals");
+    }
+
+    // ---- 261025-insights-stats U1:BR3.1, BR3.5, BR5.2 --------------------
+
+    /// 30 events of [`ORDERS`] a second apart from 10:00:00, every third an
+    /// error.
+    fn leveled_events() -> Vec<(String, String, i64, String)> {
+        (0..30i64)
+            .map(|i| {
+                let level = if i % 3 == 0 { "error" } else { "info" };
+                (
+                    ORDERS.to_string(),
+                    "s".to_string(),
+                    at(10, 0, 0) + i * 1_000,
+                    format!(r#"{{"level":"{level}","n":{i}}}"#),
+                )
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_stats_query_runs_to_an_aggregates_result_of_its_own_rows() {
+        // BR3.5: the runner's one branch; the rows are made by the
+        // aggregator, not copied from the holdings, and stay readable after
+        // the holdings are discarded.
+        let gateway = FakeLogs {
+            events: leveled_events(),
+            ..FakeLogs::default()
+        };
+        let store = Arc::new(QueryStore::new());
+        let query = "filter level = 'error' | stats count(*) as n, max(n) by level";
+        let period = run(query, &[ORDERS], at(10, 0, 0), at(10, 1, 0));
+        let (outcome, recorder) = query_with(&gateway, &store, &period, |_| {}).await;
+        assert_eq!(outcome, QueryOutcome::Evaluated { rows: 1 });
+        let result = &recorder.results[0];
+        assert_eq!(result.shape(), crate::query::plan::ResultShape::Aggregates);
+        assert_eq!(result.columns().names(), vec!["level", "n", "max(n)"]);
+        assert_eq!((result.matched_count(), result.truncated_at()), (1, None));
+        assert_eq!(result.evaluated_count, 30);
+        store.discard_all();
+        assert_eq!(
+            result.row_at(result.run_id, 0).and_then(ResultRow::cells),
+            Some(
+                &[
+                    CellValue::Text("error".to_string()),
+                    CellValue::Integer(10),
+                    CellValue::Integer(27),
+                ][..]
+            )
+        );
+        assert!(rows(result).is_empty(), "no event rows");
+    }
+
+    #[tokio::test]
+    async fn a_stats_query_over_bins_fetches_as_any_query_does() {
+        // BR5.2: the fetch is the same GetLogEvents flow; the grouping is
+        // done here. Bins of 10 seconds from the epoch.
+        let gateway = FakeLogs {
+            events: leveled_events(),
+            ..FakeLogs::default()
+        };
+        let store = Arc::new(QueryStore::new());
+        let period = run(
+            "stats count(*) by bin(10s)",
+            &[ORDERS],
+            at(10, 0, 0),
+            at(10, 1, 0),
+        );
+        let (outcome, recorder) = query_with(&gateway, &store, &period, |_| {}).await;
+        assert_eq!(outcome, QueryOutcome::Evaluated { rows: 3 });
+        let result = &recorder.results[0];
+        let firsts: Vec<CellValue> = (0..3)
+            .filter_map(|index| result.row_at(result.run_id, index))
+            .filter_map(|row| row.cells().and_then(|cells| cells.first()).cloned())
+            .collect();
+        assert_eq!(
+            firsts,
+            vec![
+                CellValue::Timestamp(at(10, 0, 0)),
+                CellValue::Timestamp(at(10, 0, 10)),
+                CellValue::Timestamp(at(10, 0, 20)),
+            ]
+        );
+        assert_eq!(recorder.heard.last().map(String::as_str), Some("evaluated"));
     }
 }

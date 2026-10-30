@@ -13,7 +13,6 @@
 
 use chrono::DateTime;
 use local_sights_core::query::evaluator::{ResultRow, row_cells};
-use local_sights_core::query::fields::EventFields;
 use local_sights_core::query::plan::FieldRef;
 
 /// The console's pointer to the event, never compared (BR2.1).
@@ -44,11 +43,15 @@ pub fn insights_row(cells: Vec<(String, String)>) -> Row {
     row
 }
 
-/// The app's result row for `columns` as a [`Row`] (BR2.2): the cells as
+/// The app's event row for `columns` as a [`Row`] (BR2.2): the cells as
 /// the result shows them (U2:BR7.1), `@timestamp` written as Logs Insights
-/// writes it, columns without a value left out.
+/// writes it, columns without a value left out. Only event rows are
+/// compared here; an aggregate row (`stats`, 261025-insights-stats U1) is
+/// compared from U4 and gives no pair.
 pub fn app_row(columns: &[FieldRef], row: &ResultRow) -> Row {
-    let fields = EventFields::new(&row.event, &row.log_group_name);
+    let Some(fields) = row.event_fields() else {
+        return Row::new();
+    };
     let mut pairs: Row = columns
         .iter()
         .zip(row_cells(columns, &fields, &insights_timestamp))
@@ -65,7 +68,7 @@ mod tests {
     use local_sights_core::query::parser::parse_query;
 
     fn result_row(timestamp: i64, message: &str) -> ResultRow {
-        ResultRow {
+        ResultRow::Event {
             event: LogEvent {
                 timestamp,
                 ingestion_time: None,
@@ -152,5 +155,16 @@ mod tests {
             ])
         );
         assert_eq!(insights_row(pairs(&[("@ptr", "x")])), Row::new());
+    }
+
+    #[test]
+    fn an_aggregate_row_gives_no_pair_until_u4() {
+        // 261025-insights-stats U1: only event rows are compared here.
+        use local_sights_core::query::stats::CellValue;
+        let row = ResultRow::Aggregate {
+            cells: vec![CellValue::Integer(3)],
+        };
+        let plan = parse_query("fields eventName").unwrap();
+        assert_eq!(app_row(&plan.columns(), &row), Row::new());
     }
 }

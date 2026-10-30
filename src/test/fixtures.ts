@@ -106,12 +106,13 @@ export function insightsView(overrides: Partial<InsightsView> = {}): InsightsVie
 
 /**
  * A shown result with `rowCount` rows and the two default columns, nothing
- * cut (261017-insights-query U2:BR3.3).
+ * cut (261017-insights-query U2:BR3.3): event rows unless `shape` is given.
  */
 export function resultSummary(overrides: Partial<ResultSummary> = {}): ResultSummary {
   const rowCount = overrides.rowCount ?? 2;
   return {
     runId: 1,
+    shape: "events",
     rowCount,
     evaluatedCount: 40,
     columns: ["@timestamp", "@message"],
@@ -136,6 +137,22 @@ export function queryRow(
     logGroupName: "/aws/lambda/MyFunction",
     values: values ?? [event.displayTime, message],
   };
+}
+
+/**
+ * An aggregate row as `get_query_rows` gives it (261025-insights-stats BR4.1): its
+ * cells only, written by the core.
+ */
+export function aggregateRow(values: (string | null)[]): QueryRow {
+  return { values };
+}
+
+/** A shown aggregates result of `columns` with `rowCount` rows (BR3.4: never cut in U1). */
+export function aggregatesSummary(
+  columns: string[],
+  overrides: Partial<ResultSummary> = {},
+): ResultSummary {
+  return resultSummary({ shape: "aggregates", columns, ...overrides });
 }
 
 /** A `get_query_rows` answer cut from `rows`. */

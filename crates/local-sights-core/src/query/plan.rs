@@ -362,6 +362,140 @@ pub struct SortKey {
     pub direction: SortDirection,
 }
 
+/// The aggregate functions of `stats` read in 261025-insights-stats U1
+/// (BR1.2): `count(*)`, `count(field)`, `sum`, `avg`, `min` and `max`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AggregateFunction {
+    /// `count(*)` or `count(field)`.
+    Count,
+    /// `sum(field)`.
+    Sum,
+    /// `avg(field)`.
+    Avg,
+    /// `min(field)`.
+    Min,
+    /// `max(field)`.
+    Max,
+}
+
+/// What an aggregate function reads (entities.md AggregateArgument, BR1.3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AggregateArgument {
+    /// `*`: every event (`count` only).
+    All,
+    /// A fixed field, `toMillis(@timestamp)` or a JSON field.
+    Field(FieldRef),
+}
+
+/// One aggregate of `stats` (entities.md AggregateSpec).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AggregateSpec {
+    /// The function.
+    pub function: AggregateFunction,
+    /// What it reads.
+    pub argument: AggregateArgument,
+    /// The column name: the `as` name, or the text as written (BR1.4,
+    /// BR1.9).
+    pub column_name: String,
+}
+
+/// The unit of a `bin()` period (entities.md BinPeriod.unit, BR1.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinUnit {
+    /// `s`.
+    Seconds,
+    /// `m`.
+    Minutes,
+    /// `h`.
+    Hours,
+    /// `d`.
+    Days,
+}
+
+impl BinUnit {
+    /// Milliseconds of one unit.
+    pub fn millis(self) -> i64 {
+        match self {
+            BinUnit::Seconds => 1_000,
+            BinUnit::Minutes => 60_000,
+            BinUnit::Hours => 3_600_000,
+            BinUnit::Days => 86_400_000,
+        }
+    }
+}
+
+/// The period of `bin()` (entities.md BinPeriod): a count from 1 to
+/// 1,000,000 (BR1.8) of a unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BinPeriod {
+    /// At least 1.
+    pub count: u32,
+    /// Seconds, minutes, hours or days.
+    pub unit: BinUnit,
+}
+
+impl BinPeriod {
+    /// The period in milliseconds; the bins are its multiples from the epoch
+    /// (BR2.5). The largest count read keeps this inside `i64`.
+    pub fn millis(&self) -> i64 {
+        i64::from(self.count).saturating_mul(self.unit.millis())
+    }
+}
+
+/// What a `by` key groups by (entities.md GroupKey.kind).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupKeyKind {
+    /// A fixed field or a JSON field.
+    Field(FieldRef),
+    /// `bin(period)` of `@timestamp`.
+    Bin(BinPeriod),
+}
+
+/// One `by` key of `stats` (entities.md GroupKey).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupKey {
+    /// What it groups by.
+    pub kind: GroupKeyKind,
+    /// The column name: the `as` name, or the text as written (BR1.4).
+    pub column_name: String,
+}
+
+/// The content of a `stats` command (entities.md StatsCommand): the
+/// aggregates and the `by` keys, each in the order written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatsCommand {
+    /// At least one.
+    pub aggregates: Vec<AggregateSpec>,
+    /// None without `by`: the whole input is one group (BR2.6).
+    pub group_keys: Vec<GroupKey>,
+}
+
+impl StatsCommand {
+    /// The column names: the keys, then the aggregates (BR3.3).
+    pub fn column_names(&self) -> Vec<String> {
+        self.group_keys
+            .iter()
+            .map(|key| key.column_name.clone())
+            .chain(
+                self.aggregates
+                    .iter()
+                    .map(|aggregate| aggregate.column_name.clone()),
+            )
+            .collect()
+    }
+}
+
+/// The shape of a result (261025-insights-stats ADR-001, BR3.1): rows of
+/// events, or rows of aggregates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResultShape {
+    /// Event rows (no `stats`).
+    Events,
+    /// Aggregate rows (`stats`).
+    Aggregates,
+}
+
 /// What one command does (entities.md Command.kind).
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandKind {
@@ -374,6 +508,9 @@ pub enum CommandKind {
     /// `limit`: the first rows only; 0 keeps no row (U2:BR5.1, Loop-back 3,
     /// p08).
     Limit(u32),
+    /// `stats`: groups the rows and aggregates each group
+    /// (261025-insights-stats U1: one, as the last command, BR1.6).
+    Stats(StatsCommand),
 }
 
 /// One command with the place of its name (entities.md Command).
@@ -447,6 +584,38 @@ impl QueryPlan {
             .iter()
             .any(|command| matches!(command.kind, CommandKind::Limit(_)))
     }
+
+    /// The `stats` command, when one is written (261025-insights-stats U1).
+    pub fn stats(&self) -> Option<&StatsCommand> {
+        self.commands
+            .iter()
+            .find_map(|command| match &command.kind {
+                CommandKind::Stats(stats) => Some(stats),
+                _ => None,
+            })
+    }
+
+    /// Whether a `stats` command is written.
+    pub fn has_stats(&self) -> bool {
+        self.stats().is_some()
+    }
+
+    /// Aggregates with `stats`, events without (BR3.1).
+    pub fn result_shape(&self) -> ResultShape {
+        if self.has_stats() {
+            ResultShape::Aggregates
+        } else {
+            ResultShape::Events
+        }
+    }
+
+    /// The column names of an aggregates result: the `by` keys, then the
+    /// aggregates, as written (BR3.3); none without `stats`.
+    pub fn aggregate_columns(&self) -> Vec<String> {
+        self.stats()
+            .map(StatsCommand::column_names)
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -511,5 +680,119 @@ mod tests {
         };
         assert!(!none.has_row_limit());
         assert_eq!(bare.filters().count(), 0);
+    }
+
+    // ---- 261025-insights-stats U1:BR3.1, BR3.3 ----------------------------
+
+    fn count_all() -> AggregateSpec {
+        AggregateSpec {
+            function: AggregateFunction::Count,
+            argument: AggregateArgument::All,
+            column_name: "count(*)".to_string(),
+        }
+    }
+
+    fn avg_latency() -> AggregateSpec {
+        AggregateSpec {
+            function: AggregateFunction::Avg,
+            argument: AggregateArgument::Field(json(&["latency"], "latency")),
+            column_name: "a".to_string(),
+        }
+    }
+
+    fn by_level() -> GroupKey {
+        GroupKey {
+            kind: GroupKeyKind::Field(json(&["level"], "level")),
+            column_name: "level".to_string(),
+        }
+    }
+
+    fn by_bin(count: u32, unit: BinUnit, name: &str) -> GroupKey {
+        GroupKey {
+            kind: GroupKeyKind::Bin(BinPeriod { count, unit }),
+            column_name: name.to_string(),
+        }
+    }
+
+    fn stats_plan(stats: StatsCommand) -> QueryPlan {
+        QueryPlan {
+            commands: vec![
+                command(CommandKind::Filter(Condition::new(
+                    ConditionKind::Compare {
+                        field: FieldRef::Message,
+                        op: CompareOp::Eq,
+                        value: Literal::Text("x".to_string()),
+                    },
+                    AT,
+                ))),
+                command(CommandKind::Stats(stats)),
+            ],
+        }
+    }
+
+    #[test]
+    fn a_plan_with_stats_has_the_aggregates_shape_and_one_without_the_events_shape() {
+        // BR3.1.
+        let stats = StatsCommand {
+            aggregates: vec![count_all()],
+            group_keys: Vec::new(),
+        };
+        let plan = stats_plan(stats.clone());
+        assert!(plan.has_stats());
+        assert_eq!(plan.stats(), Some(&stats));
+        assert_eq!(plan.result_shape(), ResultShape::Aggregates);
+        let events = QueryPlan {
+            commands: vec![command(CommandKind::Limit(5))],
+        };
+        assert!(!events.has_stats());
+        assert_eq!(events.stats(), None);
+        assert_eq!(events.result_shape(), ResultShape::Events);
+        assert_eq!(events.aggregate_columns(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_aggregate_columns_are_the_keys_then_the_aggregates_as_written() {
+        // BR3.3.
+        let plan = stats_plan(StatsCommand {
+            aggregates: vec![count_all(), avg_latency()],
+            group_keys: vec![by_bin(5, BinUnit::Minutes, "bin(5m)"), by_level()],
+        });
+        assert_eq!(
+            plan.aggregate_columns(),
+            vec!["bin(5m)", "level", "count(*)", "a"]
+        );
+    }
+
+    #[test]
+    fn a_stats_without_by_has_only_the_aggregate_columns() {
+        let plan = stats_plan(StatsCommand {
+            aggregates: vec![avg_latency(), count_all()],
+            group_keys: Vec::new(),
+        });
+        assert_eq!(plan.aggregate_columns(), vec!["a", "count(*)"]);
+    }
+
+    #[test]
+    fn a_bin_period_is_its_count_times_the_milliseconds_of_its_unit() {
+        // BR1.5.
+        let period = |count, unit| BinPeriod { count, unit }.millis();
+        assert_eq!(period(30, BinUnit::Seconds), 30_000);
+        assert_eq!(period(5, BinUnit::Minutes), 300_000);
+        assert_eq!(period(1, BinUnit::Hours), 3_600_000);
+        assert_eq!(period(1, BinUnit::Days), 86_400_000);
+        // The largest count read (BR1.8) stays inside i64.
+        assert_eq!(period(1_000_000, BinUnit::Days), 86_400_000_000_000);
+    }
+
+    #[test]
+    fn the_shape_is_spelled_for_the_screen() {
+        assert_eq!(
+            serde_json::to_value(ResultShape::Aggregates).unwrap(),
+            serde_json::json!("aggregates")
+        );
+        assert_eq!(
+            serde_json::to_value(ResultShape::Events).unwrap(),
+            serde_json::json!("events")
+        );
     }
 }

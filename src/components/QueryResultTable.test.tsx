@@ -3,7 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { QueryRow, QueryRowDetail, ResultSummary } from "../api";
 import { createTranslator } from "../i18n/messages";
-import { queryRow, queryRowWindow, resultSummary, t } from "../test/fixtures";
+import {
+  aggregateRow,
+  aggregatesSummary,
+  queryRow,
+  queryRowWindow,
+  resultSummary,
+  t,
+} from "../test/fixtures";
 import { QueryResultTable } from "./QueryResultTable";
 
 vi.mock("../api", async (importOriginal) => {
@@ -35,10 +42,10 @@ function detailOf(runId: number, index: number): QueryRowDetail {
     runId,
     index,
     fields: [
-      { name: "@timestamp", value: row.displayTime },
-      { name: "@log", value: row.logGroupName },
-      { name: "@logStream", value: row.logStreamName },
-      { name: "@message", value: row.message },
+      { name: "@timestamp", value: row.displayTime ?? null },
+      { name: "@log", value: row.logGroupName ?? null },
+      { name: "@logStream", value: row.logStreamName ?? null },
+      { name: "@message", value: row.message ?? null },
       { name: "`user.id`", value: "u1" },
       { name: "http.status", value: "500" },
       { name: "z", value: null },
@@ -252,5 +259,125 @@ describe("QueryResultTable (261017-insights-query U1:BR6.3, BR6.4, U2:BR7.1-BR7.
     expect(screen.getByTestId("query-result-previous")).toHaveTextContent("前回の実行の結果");
     renderTable();
     expect(screen.getAllByTestId("query-result-previous")).toHaveLength(1);
+  });
+});
+
+describe("QueryResultTable with an aggregates result (261025-insights-stats BR4.5)", () => {
+  const binned = [
+    aggregateRow(["2024/01/02 03:00:00.000", "12", "200.3333"]),
+    aggregateRow(["2024/01/02 03:05:00.000", "3", null]),
+  ];
+
+  function serve(answer: QueryRow[]) {
+    vi.mocked(api.getQueryRows).mockReset();
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
+      queryRowWindow(answer, offset, limit, runId),
+    );
+  }
+
+  const cellTexts = () =>
+    screen.getAllByTestId("query-result-cell").map((cell) => cell.textContent);
+
+  it("draws the key and aggregate columns with the cells the core wrote", async () => {
+    serve(binned);
+    renderTable(
+      aggregatesSummary(["bin(5m)", "count(*)", "avg(latency)"], { runId: 3, rowCount: 2 }),
+    );
+    expect(screen.getByTestId("query-result-table")).toHaveAttribute("data-shape", "aggregates");
+    expect(screen.getAllByTestId("query-result-heading").map((cell) => cell.textContent)).toEqual([
+      "bin(5m)",
+      "count(*)",
+      "avg(latency)",
+    ]);
+    await waitFor(() =>
+      expect(cellTexts()).toEqual([
+        "2024/01/02 03:00:00.000",
+        "12",
+        "200.3333",
+        "2024/01/02 03:05:00.000",
+        "3",
+        "",
+      ]),
+    );
+    expect(screen.getByRole("grid")).toHaveAttribute("aria-rowcount", "2");
+  });
+
+  it("shows a by @message key in full, not by its first line", async () => {
+    serve([aggregateRow(["ERROR first line\n  at second line", "4"])]);
+    renderTable(aggregatesSummary(["@message", "count(*)"], { runId: 3, rowCount: 1 }));
+    await waitFor(() => expect(cellTexts()).toEqual(["ERROR first line\n  at second line", "4"]));
+    const cells = screen.getAllByTestId("query-result-cell");
+    expect(cells[0]).toHaveClass("query-result-cell");
+  });
+
+  it("adds no zone to a by @timestamp heading", () => {
+    serve([]);
+    renderTable(aggregatesSummary(["@timestamp", "count(*)"], { runId: 3, rowCount: 0 }));
+    expect(screen.getAllByTestId("query-result-heading").map((cell) => cell.textContent)).toEqual([
+      "@timestamp",
+      "count(*)",
+    ]);
+    expect(screen.getByTestId("query-result-table")).not.toHaveTextContent("(UTC)");
+  });
+
+  it("opens an aggregate row with its columns and cells", async () => {
+    serve(binned);
+    vi.mocked(api.getQueryRowDetail).mockReset();
+    vi.mocked(api.getQueryRowDetail).mockImplementation(async (runId, index) => ({
+      runId,
+      index,
+      fields: [
+        { name: "bin(5m)", value: "2024/01/02 03:05:00.000" },
+        { name: "count(*)", value: "3" },
+        { name: "avg(latency)", value: null },
+      ],
+    }));
+    const user = userEvent.setup();
+    renderTable(
+      aggregatesSummary(["bin(5m)", "count(*)", "avg(latency)"], { runId: 3, rowCount: 2 }),
+    );
+    const second = (await screen.findAllByTestId("query-result-row"))[1]!;
+    await user.click(within(second).getByRole("button", { name: "Show details" }));
+    const details = screen.getByTestId("query-result-details");
+    await waitFor(() =>
+      expect(within(details).getByTestId("query-result-field-count(*)").textContent).toBe("3"),
+    );
+    expect(
+      within(details)
+        .getAllByRole("rowheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["bin(5m)", "count(*)", "avg(latency)"]);
+    expect(within(details).getByTestId("query-result-field-avg(latency)").textContent).toBe("");
+    expect(api.getQueryRowDetail).toHaveBeenCalledWith(3, 1);
+  });
+
+  it("reads no row for a result of 0 rows", () => {
+    serve([]);
+    renderTable(aggregatesSummary(["level", "count(*)"], { runId: 3, rowCount: 0 }));
+    expect(screen.queryAllByTestId("query-result-row")).toHaveLength(0);
+    expect(api.getQueryRows).not.toHaveBeenCalled();
+    expect(screen.getByRole("grid")).toHaveAttribute("aria-rowcount", "0");
+  });
+
+  it("lets many columns scroll sideways and leaves an events result as it was", () => {
+    serve([]);
+    const columns = Array.from({ length: 12 }, (_, index) => `c${index}`);
+    const { unmount } = render(
+      <QueryResultTable
+        result={aggregatesSummary(columns, { runId: 3, rowCount: 0 })}
+        timeZone="Utc"
+        t={t}
+        onError={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("query-result-table")).toHaveClass("is-aggregates");
+    expect(screen.getByTestId("query-result-header").style.minWidth).toBe("calc(28px + 96rem)");
+    expect(screen.getByRole("grid").style.minWidth).toBe("calc(28px + 96rem)");
+    unmount();
+    renderTable(resultSummary({ runId: 3, rowCount: 0 }));
+    expect(screen.getByTestId("query-result-table")).toHaveAttribute("data-shape", "events");
+    expect(screen.getByTestId("query-result-table")).not.toHaveClass("is-aggregates");
+    expect(screen.getByTestId("query-result-header").style.minWidth).toBe("");
+    expect(screen.getByTestId("query-result-table")).toHaveTextContent("@timestamp (UTC)");
   });
 });

@@ -534,9 +534,13 @@ interface ResultAreaProps {
 
 /**
  * The count beside the results heading (U2:BR5.3, BR7.2): the rows shown,
- * and the matched rows too when a cut dropped some.
+ * and the matched rows too when a cut dropped some. An aggregates result
+ * counts its rows (261025-insights-stats BR3.4; never cut in U1).
  */
 function resultCount(result: ResultSummary, t: Translate): string {
+  if (result.shape === "aggregates") {
+    return t("insights.results.rows", { count: result.rowCount });
+  }
   return result.truncatedAt === null
     ? t("insights.results.matched", { count: result.rowCount })
     : t("insights.results.count", { shown: result.rowCount, matched: result.matchedCount });
@@ -642,7 +646,12 @@ function ResultBody({
   const rows =
     showsRows && result !== null ? (
       result.rowCount === 0 ? (
-        <Box data-testid="log-analytics-no-match">{t("insights.results.none")}</Box>
+        result.shape === "aggregates" ? (
+          // 261025-insights-stats BR4.5, FR3.2: a `stats ... by` with nothing left.
+          <Box data-testid="log-analytics-no-rows">{t("insights.results.noRows")}</Box>
+        ) : (
+          <Box data-testid="log-analytics-no-match">{t("insights.results.none")}</Box>
+        )
       ) : (
         <QueryResultTable
           result={result}

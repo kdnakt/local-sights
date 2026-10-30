@@ -142,6 +142,12 @@
 //! of its rows, checked by the run number, so they no longer lock the
 //! QueryStore (U3:BR3.2).
 //!
+//! Since 261025-insights-stats U1 a result has a shape: the summary in
+//! `session-changed` says `events` or `aggregates`, and for an aggregates
+//! result `get_query_rows` gives each row its cells only (no event, time or
+//! log group) and `get_query_row_detail` its columns with their cells. The
+//! commands, their arguments and the permissions are unchanged (BR4.1).
+//!
 //! Since 261022-small-features U2 the shown rows of either screen can be
 //! exported as CSV or Markdown to a file or the clipboard (U2 FR2-FR4).
 //! `start_export` is an async command that waits for the end like
@@ -2560,7 +2566,8 @@ mod tests {
         let begun = query_begun(
             &session,
             &abort,
-            "filter @message like /ERROR/ | stats count(*)",
+            // `stats` is read since 261025-insights-stats U1; `parse` is not.
+            "filter @message like /ERROR/ | parse @message 'a*b' as x",
         );
         assert!(begun.start.is_none() && begun.signal.is_none());
         assert!(lock(&abort).is_none());
@@ -2620,7 +2627,7 @@ mod tests {
     fn copied(events: Vec<LogEvent>) -> Vec<ResultRow> {
         events
             .into_iter()
-            .map(|event| ResultRow {
+            .map(|event| ResultRow::Event {
                 event,
                 log_group_name: "/aws/lambda/orders".to_string(),
             })
@@ -2649,9 +2656,18 @@ mod tests {
         assert_eq!(window.total_count, 1);
         assert_eq!(window.rows.len(), 1);
         let row = &window.rows[0];
-        assert_eq!(row.event.log_stream_name, "b");
-        assert_eq!(row.log_group_name, "/aws/lambda/orders");
-        assert_eq!(row.display_time, "2024/01/02 03:04:07.000", "UTC zone");
+        assert_eq!(
+            row.event
+                .as_ref()
+                .map(|event| event.log_stream_name.as_str()),
+            Some("b")
+        );
+        assert_eq!(row.log_group_name.as_deref(), Some("/aws/lambda/orders"));
+        assert_eq!(
+            row.display_time.as_deref(),
+            Some("2024/01/02 03:04:07.000"),
+            "UTC zone"
+        );
         let json = serde_json::to_value(&window).unwrap();
         assert_eq!(json["rows"][0]["logGroupName"], "/aws/lambda/orders");
         assert_eq!(json["rows"][0]["displayTime"], "2024/01/02 03:04:07.000");
@@ -2671,7 +2687,7 @@ mod tests {
 
     // ---- 261017-insights-query U2 ---------------------------------------
 
-    use local_sights_core::query::evaluator::{EvalOutput, ResultRow};
+    use local_sights_core::query::evaluator::{EventsOutput, ResultRow};
     use local_sights_core::query::plan::{FieldRef, JsonPath};
 
     /// A query run of `session` that fetched `events` and is evaluating;
@@ -2708,7 +2724,7 @@ mod tests {
         let copies = copied(rows.iter().map(|row| events[*row].clone()).collect());
         lock(session).finish_query_evaluation(QueryResult::from_output(
             run_id,
-            EvalOutput {
+            EventsOutput {
                 matched_count: rows.len(),
                 rows,
                 columns: vec![
@@ -2791,6 +2807,46 @@ mod tests {
                 "{run} {index}"
             );
         }
+    }
+
+    #[test]
+    fn aggregate_rows_and_their_details_go_to_the_screen_as_cells_only() {
+        // 261025-insights-stats BR4.1, BR4.3: the same commands, the values
+        // of an aggregate row only, its details as (column, cell).
+        use local_sights_core::query::evaluator::AggregatesOutput;
+        use local_sights_core::query::stats::CellValue;
+        let session = query_ready_session();
+        let (run_id, _) = query_evaluating(&session, Vec::new());
+        lock(&session).finish_query_evaluation(QueryResult::from_aggregates(
+            run_id,
+            AggregatesOutput {
+                columns: vec!["bin(5m)".to_string(), "count(*)".to_string()],
+                rows: vec![vec![
+                    CellValue::Timestamp(1_704_164_400_000),
+                    CellValue::Integer(3),
+                ]],
+                evaluated_count: 3,
+            },
+        ));
+        let view = serde_json::to_value(lock(&session).view()).unwrap();
+        assert_eq!(view["insights"]["result"]["shape"], "aggregates");
+        assert_eq!(
+            view["insights"]["result"]["columns"],
+            serde_json::json!(["bin(5m)", "count(*)"])
+        );
+        let window = serde_json::to_value(query_rows(&session, run_id, (0, 50))).unwrap();
+        assert_eq!(
+            window["rows"][0],
+            serde_json::json!({ "values": ["2024/01/02 03:00:00.000", "3"] })
+        );
+        let detail = serde_json::to_value(query_row_detail(&session, run_id, 0)).unwrap();
+        assert_eq!(
+            detail["fields"],
+            serde_json::json!([
+                { "name": "bin(5m)", "value": "2024/01/02 03:00:00.000" },
+                { "name": "count(*)", "value": "3" }
+            ])
+        );
     }
 
     #[test]

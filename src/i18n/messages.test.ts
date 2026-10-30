@@ -118,6 +118,19 @@ const QUERY_PROBLEM_KEYS = [
   "query.unsupported.limitAny",
   // 261017-insights-query U3:BR5.1.
   "query.syntax.nestingTooDeep",
+  // 261025-insights-stats U1 (BR1.2-BR1.9).
+  "query.syntax.missingAggregate",
+  "query.syntax.expectedAggregate",
+  "query.syntax.missingGroupKey",
+  "query.syntax.trailingComma",
+  "query.syntax.argumentCount",
+  "query.syntax.aggregateStar",
+  "query.syntax.expectedAlias",
+  "query.syntax.duplicateColumn",
+  "query.syntax.invalidBinPeriod",
+  "query.unsupported.binUnit",
+  "query.unsupported.aggregateFunction",
+  "query.unsupported.afterStats",
 ];
 
 describe("message catalog", () => {
@@ -135,8 +148,9 @@ describe("message catalog", () => {
   });
 
   it("has every reading problem of the query in both languages, with its word (261017-insights-query NFR9)", () => {
-    // The core's keys::ALL: 31 in U1, 41 in U2, 42 since U3.
-    expect(QUERY_PROBLEM_KEYS).toHaveLength(42);
+    // The core's keys::ALL: 31 in U1, 41 in U2, 42 in U3, 54 since
+    // 261025-insights-stats U1.
+    expect(QUERY_PROBLEM_KEYS).toHaveLength(54);
     for (const key of QUERY_PROBLEM_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }

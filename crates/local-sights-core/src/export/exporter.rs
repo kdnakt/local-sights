@@ -12,7 +12,9 @@
 //! copy of the rows only. Turning the rows into text
 //! ([`ExportSnapshotSource::into_snapshot`]: the display time, `row_cells`,
 //! the three columns) and writing the output ([`render_to`]) happen on a
-//! blocking thread with no lock held (NFR2).
+//! blocking thread with no lock held (NFR2). A result of aggregates
+//! (261025-insights-stats BR4.4) is written with its column names and the
+//! cells as the table writes them.
 
 use std::io::{self, Write};
 
@@ -22,9 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::LogEvent;
 use crate::export::formatter::{self, ExportFormat};
-use crate::query::evaluator::{ResultRow, row_cells};
-use crate::query::fields::EventFields;
-use crate::query::plan::FieldRef;
+use crate::query::evaluator::{ResultColumns, ResultRow, result_row_cells};
 use crate::time_range::format_display_in_zone;
 
 /// Most characters of the log group part of a default file name (BR4.5):
@@ -224,10 +224,11 @@ pub enum ExportSnapshotSource {
         zone: Tz,
     },
     /// The Log Analytics screen's result (BR3.1): its columns and rows in
-    /// the result's order.
+    /// the result's order, events or aggregates (261025-insights-stats
+    /// BR4.4).
     LogAnalytics {
-        /// The result columns.
-        columns: Vec<FieldRef>,
+        /// The result columns: fields of events, or names of aggregates.
+        columns: ResultColumns,
         /// The result rows.
         rows: Vec<ResultRow>,
         /// The chosen time zone.
@@ -260,7 +261,8 @@ impl ExportSnapshotSource {
     /// time as the list shows it, the stream name and the whole message.
     /// Log Analytics: the result columns, each cell as the table shows it
     /// (`row_cells`), `@message` as the whole message, a missing value as the
-    /// empty string (BR3.1).
+    /// empty string (BR3.1); an aggregate row's cells as the table writes
+    /// them, times in `zone` (261025-insights-stats BR4.4).
     pub fn into_snapshot(self) -> ExportSnapshot {
         match self {
             Self::LogManagement { events, zone } => ExportSnapshot {
@@ -283,21 +285,14 @@ impl ExportSnapshotSource {
             } => {
                 let format_time = |time| format_display_in_zone(time, zone);
                 ExportSnapshot {
-                    columns: columns
-                        .iter()
-                        .map(|column| column.name().to_string())
-                        .collect(),
+                    columns: columns.names(),
                     rows: rows
                         .iter()
                         .map(|row| {
-                            row_cells(
-                                &columns,
-                                &EventFields::new(&row.event, &row.log_group_name),
-                                &format_time,
-                            )
-                            .into_iter()
-                            .map(Option::unwrap_or_default)
-                            .collect()
+                            result_row_cells(&columns, row, &format_time)
+                                .into_iter()
+                                .map(Option::unwrap_or_default)
+                                .collect()
                         })
                         .collect(),
                 }
@@ -635,6 +630,103 @@ mod tests {
         assert_eq!(
             serde_json::to_value(job.view()).unwrap()["request"]["format"],
             serde_json::json!("csv")
+        );
+    }
+
+    // ---- 261025-insights-stats U1:BR4.4 ----------------------------------
+
+    use crate::query::plan::FieldRef;
+    use crate::query::stats::CellValue;
+
+    /// An aggregates result of two rows: a bin, a count, an average and a
+    /// value missing in the second row.
+    fn aggregates_source(zone: Tz) -> ExportSnapshotSource {
+        let cells = |time: i64, count: i64, average: f64, last: CellValue| ResultRow::Aggregate {
+            cells: vec![
+                CellValue::Timestamp(time),
+                CellValue::Integer(count),
+                CellValue::Decimal(average),
+                last,
+            ],
+        };
+        ExportSnapshotSource::LogAnalytics {
+            columns: ResultColumns::Aggregates(vec![
+                "bin(5m)".to_string(),
+                "count(*)".to_string(),
+                "avg(latency)".to_string(),
+                "max(level)".to_string(),
+            ]),
+            rows: vec![
+                cells(
+                    1_756_051_200_000,
+                    3,
+                    200.333_333,
+                    CellValue::Text("warn, high".to_string()),
+                ),
+                cells(1_756_051_500_000, 1, 0.1 + 0.2, CellValue::Missing),
+            ],
+            zone,
+        }
+    }
+
+    #[test]
+    fn an_aggregates_result_is_written_as_csv_with_the_table_text() {
+        let snapshot = aggregates_source(Tz::UTC).into_snapshot();
+        assert_eq!(
+            snapshot.columns,
+            vec!["bin(5m)", "count(*)", "avg(latency)", "max(level)"]
+        );
+        let mut csv = Vec::new();
+        render_to(&mut csv, snapshot, ExportFormat::Csv, false).unwrap();
+        assert_eq!(
+            String::from_utf8(csv).unwrap(),
+            "bin(5m),count(*),avg(latency),max(level)\r\n\
+             2025/08/24 16:00:00.000,3,200.3333,\"warn, high\"\r\n\
+             2025/08/24 16:05:00.000,1,0.3,\r\n"
+        );
+    }
+
+    #[test]
+    fn an_aggregates_result_is_written_as_markdown_with_times_in_the_zone() {
+        let snapshot = aggregates_source(chrono_tz::Asia::Tokyo).into_snapshot();
+        let mut markdown = Vec::new();
+        render_to(&mut markdown, snapshot, ExportFormat::Markdown, false).unwrap();
+        assert_eq!(
+            String::from_utf8(markdown).unwrap(),
+            "| bin(5m) | count(*) | avg(latency) | max(level) |\n\
+             | --- | --- | --- | --- |\n\
+             | 2025/08/25 01:00:00.000 | 3 | 200.3333 | warn, high |\n\
+             | 2025/08/25 01:05:00.000 | 1 | 0.3 |  |\n"
+        );
+    }
+
+    #[test]
+    fn an_events_result_is_still_written_from_its_fields() {
+        // BR5.1: the events path is as it was.
+        let source = ExportSnapshotSource::LogAnalytics {
+            columns: ResultColumns::Events(vec![FieldRef::Timestamp, FieldRef::Message]),
+            rows: vec![ResultRow::Event {
+                event: LogEvent {
+                    timestamp: 1_704_164_645_123,
+                    ingestion_time: None,
+                    message: "first\nsecond".to_string(),
+                    log_stream_name: "s".to_string(),
+                    sequence: 0,
+                },
+                log_group_name: "/g".to_string(),
+            }],
+            zone: Tz::UTC,
+        };
+        assert_eq!(source.row_count(), 1);
+        assert_eq!(
+            source.into_snapshot(),
+            ExportSnapshot {
+                columns: vec!["@timestamp".to_string(), "@message".to_string()],
+                rows: vec![vec![
+                    "2024/01/02 03:04:05.123".to_string(),
+                    "first\nsecond".to_string()
+                ]],
+            }
         );
     }
 

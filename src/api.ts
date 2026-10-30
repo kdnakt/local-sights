@@ -308,6 +308,9 @@ export interface InsightsProgress {
   totalCount: number;
 }
 
+/** The shape of a result (261025-insights-stats ADR-001). */
+export type ResultShape = "events" | "aggregates";
+
 /**
  * The shown result; its rows are read with `runId` alone (U3:BR3.2: the core keeps
  * copies of them, so they stay readable while the next run fetches, U3:BR3.4;
@@ -315,6 +318,11 @@ export interface InsightsProgress {
  */
 export interface ResultSummary {
   runId: number;
+  /**
+   * Event rows, or the aggregate rows of a `stats` (261025-insights-stats BR4.1): the
+   * table draws the rows by it.
+   */
+  shape: ResultShape;
   /** Result rows shown (U2:BR7.2). */
   rowCount: number;
   evaluatedCount: number;
@@ -365,11 +373,17 @@ export interface InsightsView {
   canExport: boolean;
 }
 
-/** One result row (U1:BR6.3): the event, its time in the chosen zone and `@log`. */
-export interface QueryRow extends LogEvent {
-  displayTime: string;
-  logGroupName: string;
-  /** One cell per result column; `null` without a value (U2:BR7.1). */
+/**
+ * One result row (U1:BR6.3): an event row has the event, its time in the chosen zone
+ * and `@log`; an aggregate row has its cells only (261025-insights-stats BR4.1).
+ */
+export interface QueryRow extends Partial<LogEvent> {
+  displayTime?: string;
+  logGroupName?: string;
+  /**
+   * One cell per result column; `null` without a value (U2:BR7.1). An aggregate row's
+   * cells are written by the core, times in the chosen zone (BR2.8, BR4.2).
+   */
   values: (string | null)[];
 }
 
@@ -384,7 +398,11 @@ export interface QueryDetailField {
 export interface QueryRowDetail {
   runId: number;
   index: number;
-  /** `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; empty when stale. */
+  /**
+   * `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; for an
+   * aggregate row its columns with their cells (261025-insights-stats BR4.3); empty when
+   * stale.
+   */
   fields: QueryDetailField[];
 }
 

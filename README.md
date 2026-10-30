@@ -189,12 +189,14 @@ for how to write one. This version reads the following part of it.
 | Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                                                                              |
 | Comparing two fields, such as `a = b` or `@logStream != @log`: a name without quotes after `=`, `!=`, `<`, `<=`, `>` or `>=` is a field, so `readOnly = true` compares with a field named `true` (as the console reads it); write `readOnly = "true"` for the value |
 | `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                                                                    |
+| `stats` as the last command, with `count(*)`, `count(field)`, `sum`, `avg`, `min` and `max` (each with an optional `as name`), and `by` fields or `bin(period)` (`s`, `m`, `h`, `d`), such as `stats count(*) by bin(5m)` (for now; the full list comes later)      |
 
-| Not supported                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The other commands (`stats`, `parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)                                  |
-| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]` |
-| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                                                |
+| Not supported                                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The other commands (`parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)                                                                    |
+| A command after `stats`, the other `stats` functions (`count_distinct`, `pct`, `stddev`, `earliest`, `latest`, `sortsFirst`, `sortsLast`), and `bin()` periods in `ms`, `w`, `mo`, `q` or `y` |
+| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]`                          |
+| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                                                                         |
 
 As in the console, a JSON `true` or `false` is shown as `1` or `0` in the
 result and in an opened row, but is compared as the text: `readOnly = "true"`
@@ -205,6 +207,13 @@ with each other and with numbers. When two fields are compared and either is
 missing from an event, the event meets no comparison, not even `!=` (so
 `eventName != errorCode` keeps only events that have `errorCode`); a missing
 field against a value still meets `!=`.
+
+A `stats` query shows one row per group: the `by` columns, then the aggregate
+columns, in ascending order of the `by` values (events without a `by` field
+make one group, shown last). `sum` and `avg` add the values that read as
+numbers; decimals are shown to four places. A time (a `bin()` or the `min` or
+`max` of `@timestamp`) is shown in the time zone chosen. These details are
+provisional until they are compared with the console.
 
 A query that uses what is not supported, or has a writing mistake, is not run;
 the screen says what and where, without fetching anything.

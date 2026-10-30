@@ -624,6 +624,12 @@ export const messages = {
     en: "No matching events. No events in the selected log groups and time range matched the query.",
     ja: "一致するイベントはありません。選んだロググループと期間に、クエリに一致するイベントはありませんでした。",
   },
+  // ---- 261025-insights-stats U1: aggregate rows (BR3.4, BR4.5, BR4.6) ----
+  "insights.results.rows": { en: "{count} rows", ja: "{count} 行" },
+  "insights.results.noRows": {
+    en: "The query returned 0 rows. No events in the selected log groups and time range made a group.",
+    ja: "結果は 0 行です。選んだロググループと期間に、グループになるイベントはありませんでした。",
+  },
   "insights.results.column.timestamp": { en: "@timestamp ({zone})", ja: "@timestamp（{zone}）" },
   "insights.results.column.message": { en: "@message", ja: "@message" },
   "insights.results.expand": { en: "Show details", ja: "詳細を開く" },
@@ -848,6 +854,55 @@ export const messages = {
   "query.unsupported.limitAny": {
     en: 'limit "{word}" is not supported in this version.',
     ja: "limit の「{word}」にはこの版では対応していません。",
+  },
+  // ---- 261025-insights-stats U1: reading stats (BR1.2-BR1.9, BR4.6) ----
+  "query.syntax.missingAggregate": {
+    en: "stats needs at least one function such as count(*).",
+    ja: "stats の後ろに count(*) のような関数がありません。",
+  },
+  "query.syntax.expectedAggregate": {
+    en: "A function such as count(*) or avg(field) is needed here.",
+    ja: "ここには count(*) や avg(項目) のような関数が要ります。",
+  },
+  "query.syntax.missingGroupKey": {
+    en: "by needs at least one field or bin().",
+    ja: "by の後ろに項目か bin() がありません。",
+  },
+  "query.syntax.trailingComma": {
+    en: 'There is nothing after ",".',
+    ja: "「,」の後ろに何もありません。",
+  },
+  "query.syntax.argumentCount": {
+    en: "The function has the wrong number of arguments. It takes one field.",
+    ja: "関数の引数の数が違います。項目を 1 つ書いてください。",
+  },
+  "query.syntax.aggregateStar": {
+    en: "Only count can take *. Write a field here.",
+    ja: "* を書けるのは count だけです。ここには項目を書いてください。",
+  },
+  "query.syntax.expectedAlias": {
+    en: "as needs a column name.",
+    ja: "as の後ろに列の名前がありません。",
+  },
+  "query.syntax.duplicateColumn": {
+    en: 'The column "{word}" is written twice. Give one of them another name with as.',
+    ja: "列「{word}」が 2 つあります。どちらかに as で別の名前を付けてください。",
+  },
+  "query.syntax.invalidBinPeriod": {
+    en: "bin() needs a period such as 5m: a whole number from 1 to 1000000 and s, m, h or d.",
+    ja: "bin() には 5m のような期間が要ります。1 から 1000000 までの整数と s・m・h・d のどれかです。",
+  },
+  "query.unsupported.binUnit": {
+    en: 'The period "{word}" is not supported in this version. Use s, m, h or d.',
+    ja: "期間「{word}」にはこの版では対応していません。s・m・h・d を使ってください。",
+  },
+  "query.unsupported.aggregateFunction": {
+    en: 'The function "{word}" is not supported yet. Use count, sum, avg, min or max.',
+    ja: "関数「{word}」にはまだ対応していません。count・sum・avg・min・max を使ってください。",
+  },
+  "query.unsupported.afterStats": {
+    en: 'Commands after stats, such as "{word}", are not supported yet.',
+    ja: "stats の後ろの命令（「{word}」など）にはまだ対応していません。",
   },
   // ---- 261022-small-features U2: the export (BR4.1, BR4.9, review R-02) ----
   "export.menu": { en: "Export", ja: "エクスポート" },

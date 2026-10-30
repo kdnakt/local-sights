@@ -30,8 +30,9 @@ use crate::query::fields::{EventFields, FieldValue, read_field};
 use crate::query::natural::{SortKeyRef, SortValue, compare_sort_keys};
 use crate::query::plan::{
     CommandKind, CompareOp, Condition, ConditionKind, DEFAULT_RESULT_LIMIT, FieldRef, LikePattern,
-    Literal, QueryPlan, SortDirection, SortKey,
+    Literal, QueryPlan, ResultShape, SortDirection, SortKey,
 };
+use crate::query::stats::{AggregateTable, CellValue, StatsAggregator, cell_text};
 
 /// Rows worked on between two looks at the stop signal (U1:BR5.8). May be
 /// changed after measuring NFR1 and NFR2.
@@ -137,7 +138,8 @@ pub fn condition_holds(condition: &Condition, fields: &EventFields<'_>) -> bool 
 
 /// The number a text of digits stands for (U2:BR1.6): an optional `-`, then
 /// digits, then optionally `.` and digits; no blank, sign `+` or exponent.
-fn number_of_digits(text: &str) -> Option<f64> {
+/// `sum` and `avg` read texts the same way (261025-insights-stats BR2.3).
+pub(crate) fn number_of_digits(text: &str) -> Option<f64> {
     let digits = text.strip_prefix('-').unwrap_or(text);
     let (whole, fraction) = digits.split_once('.').unwrap_or((digits, "0"));
     let all_digits =
@@ -311,9 +313,41 @@ fn like(value: FieldValue<'_>, pattern: &LikePattern) -> bool {
     }
 }
 
-/// What an evaluation leaves when it ends (entities.md QueryResult).
+/// What an evaluation leaves when it ends (entities.md QueryResult), in the
+/// shape of the plan (261025-insights-stats BR3.1, BR3.5).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EvalOutput {
+pub enum EvalOutput {
+    /// No `stats`: rows of events.
+    Events(EventsOutput),
+    /// `stats`: rows of aggregates.
+    Aggregates(AggregatesOutput),
+}
+
+impl EvalOutput {
+    /// Events evaluated: every held event.
+    pub fn evaluated_count(&self) -> usize {
+        match self {
+            EvalOutput::Events(output) => output.evaluated_count,
+            EvalOutput::Aggregates(output) => output.evaluated_count,
+        }
+    }
+}
+
+/// The aggregate rows of a `stats` (BR3.3, BR3.5): never cut, no column
+/// left out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AggregatesOutput {
+    /// The column names: the keys, then the aggregates.
+    pub columns: Vec<String>,
+    /// One cell per column per row, in the order of BR2.7.
+    pub rows: Vec<Vec<CellValue>>,
+    /// Events evaluated: every held event.
+    pub evaluated_count: usize,
+}
+
+/// The event rows of a plan without `stats`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventsOutput {
     /// The result rows: positions in the holdings, in the result's order.
     pub rows: Vec<usize>,
     /// The columns, empty ones left out (U2:BR3.2-BR3.4).
@@ -346,14 +380,22 @@ enum Stage {
     Ordering,
     /// Command `index` is applied; `pass` is its chunked work so far.
     Command { index: usize, pass: Pass },
+    /// `stats`: the rows up to `next` are given to the aggregator
+    /// (261025-insights-stats BR2.9, BR3.5).
+    Aggregate {
+        next: usize,
+        aggregator: Box<StatsAggregator>,
+    },
     /// The result's columns are being checked for values (U2:BR3.4).
     Columns {
         columns: Vec<FieldRef>,
         present: Vec<bool>,
         next: usize,
     },
-    /// Finished.
+    /// Finished with event rows.
     Done { columns: Vec<FieldRef> },
+    /// Finished with aggregate rows (BR3.5).
+    Aggregated(AggregateTable),
 }
 
 /// The chunked work of one command.
@@ -374,10 +416,11 @@ struct KeyedRow {
     values: Box<[SortValue]>,
 }
 
-/// Whether `command` needs chunks: a `filter`, or a `sort` on a JSON field.
+/// Whether `command` needs chunks: a `filter`, a `sort` on a JSON field, or
+/// a `stats` (BR3.5: one chunked pass, so the progress moves).
 fn is_chunked(command: &CommandKind) -> bool {
     match command {
-        CommandKind::Filter(_) => true,
+        CommandKind::Filter(_) | CommandKind::Stats(_) => true,
         CommandKind::Sort(keys) => keys.iter().any(|key| is_json(&key.field)),
         CommandKind::Fields(_) | CommandKind::Limit(_) => false,
     }
@@ -503,10 +546,13 @@ impl Evaluation {
                 pass: Pass::Filter { next, .. } | Pass::SortValues { next, .. },
                 ..
             } => *next < self.rows.len(),
+            Stage::Aggregate { next, .. } => *next < self.rows.len(),
             Stage::Columns { present, next, .. } => {
                 *next < self.rows.len() && present.iter().any(|seen| !seen)
             }
-            Stage::Ordering | Stage::Command { .. } | Stage::Done { .. } => false,
+            Stage::Ordering | Stage::Command { .. } | Stage::Done { .. } | Stage::Aggregated(_) => {
+                false
+            }
         }
     }
 
@@ -530,13 +576,41 @@ impl Evaluation {
                 Some(command) => self.apply(&command.kind, index, pass, items),
                 None => self.finish_commands(plan),
             },
+            Stage::Aggregate { next, aggregator } => self.aggregate(next, aggregator, items),
             Stage::Columns {
                 columns,
                 present,
                 next,
             } => self.check_columns(columns, present, next, items),
-            done @ Stage::Done { .. } => done,
+            done @ (Stage::Done { .. } | Stage::Aggregated(_)) => done,
         };
+    }
+
+    /// One chunk of `stats` (BR2.9), or, after the last, the rows of the
+    /// groups (BR3.5): ordering and making them is one short step that is
+    /// not stopped. The commands before `stats` were applied; `stats` is the
+    /// last command (BR1.6), so the default cut and the column check are not
+    /// made (BR3.2).
+    fn aggregate<I: EvalItems + ?Sized>(
+        &mut self,
+        next: usize,
+        mut aggregator: Box<StatsAggregator>,
+        items: &I,
+    ) -> Stage {
+        let end = next.saturating_add(EVALUATION_CHUNK).min(self.rows.len());
+        for position in &self.rows[next.min(end)..end] {
+            if let Some(item) = items.item(*position) {
+                aggregator.add(&EventFields::new(item.event, item.log_group_name));
+            }
+        }
+        if end < self.rows.len() {
+            return Stage::Aggregate {
+                next: end,
+                aggregator,
+            };
+        }
+        self.passes_done += 1;
+        Stage::Aggregated(aggregator.finish())
     }
 
     /// The next piece of work of command `index`.
@@ -552,6 +626,10 @@ impl Evaluation {
             pass: Pass::Fresh,
         };
         match (command, pass) {
+            (CommandKind::Stats(stats), _) => Stage::Aggregate {
+                next: 0,
+                aggregator: Box::new(StatsAggregator::new(stats.clone())),
+            },
             (CommandKind::Fields(_), _) => following(),
             (CommandKind::Limit(count), _) => {
                 // U2:BR5.1: the first `count` rows; 0 keeps none (Loop-back
@@ -687,9 +765,10 @@ impl Evaluation {
         }
     }
 
-    /// Whether every command was applied and the columns checked.
+    /// Whether every command was applied and the columns checked, or the
+    /// aggregate rows made.
     pub fn is_done(&self) -> bool {
-        matches!(self.stage, Stage::Done { .. })
+        matches!(self.stage, Stage::Done { .. } | Stage::Aggregated(_))
     }
 
     /// Events evaluated so far: the held events times the share of the
@@ -702,7 +781,8 @@ impl Evaluation {
             Stage::Command {
                 pass: Pass::Filter { next, .. } | Pass::SortValues { next, .. },
                 ..
-            } => (*next, self.rows.len()),
+            }
+            | Stage::Aggregate { next, .. } => (*next, self.rows.len()),
             _ => (0, 1),
         };
         // done/planned of the total, with the current pass's share, in
@@ -720,20 +800,28 @@ impl Evaluation {
 
     /// The output, once done.
     pub fn into_output(self) -> Option<EvalOutput> {
-        let Stage::Done { columns } = self.stage else {
-            return None;
+        let columns = match self.stage {
+            Stage::Done { columns } => columns,
+            Stage::Aggregated(table) => {
+                return Some(EvalOutput::Aggregates(AggregatesOutput {
+                    columns: table.columns,
+                    rows: table.rows,
+                    evaluated_count: self.total,
+                }));
+            }
+            _ => return None,
         };
         // U2:BR5.3: a cut is shown only when rows are left; `limit 0` leaves
         // none, so nothing is shown as cut (Loop-back 3, p08).
         let truncated_at =
             (!self.rows.is_empty() && self.rows.len() < self.matched).then_some(self.rows.len());
-        Some(EvalOutput {
+        Some(EvalOutput::Events(EventsOutput {
             rows: self.rows,
             columns,
             matched_count: self.matched,
             truncated_at,
             evaluated_count: self.total,
-        })
+        }))
     }
 }
 
@@ -754,15 +842,101 @@ fn json_sort_values<I: EvalItems + ?Sized>(
         .collect()
 }
 
-/// One result row, copied out of the holdings when the evaluation ended
-/// (entities.md ResultRow, 261017-insights-query U3:BR3.2): the event and
-/// its log group, the value of `@log`.
+/// One result row, a copy that refers to no holdings (entities.md
+/// ResultRow, 261017-insights-query U3:BR3.2, 261025-insights-stats
+/// ADR-001, DD review R-01): an event with its log group, or the cells of an
+/// aggregate row.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResultRow {
-    /// The event as held.
-    pub event: LogEvent,
-    /// Its log group.
-    pub log_group_name: String,
+pub enum ResultRow {
+    /// An event row.
+    Event {
+        /// The event as held.
+        event: LogEvent,
+        /// Its log group, the value of `@log`.
+        log_group_name: String,
+    },
+    /// An aggregate row: one cell per column (BR3.3).
+    Aggregate {
+        /// The cells, typed; their text is made when shown (BR4.2).
+        cells: Vec<CellValue>,
+    },
+}
+
+impl ResultRow {
+    /// The event of an event row.
+    pub fn event(&self) -> Option<&LogEvent> {
+        match self {
+            ResultRow::Event { event, .. } => Some(event),
+            ResultRow::Aggregate { .. } => None,
+        }
+    }
+
+    /// The log group of an event row.
+    pub fn log_group_name(&self) -> Option<&str> {
+        match self {
+            ResultRow::Event { log_group_name, .. } => Some(log_group_name),
+            ResultRow::Aggregate { .. } => None,
+        }
+    }
+
+    /// The cells of an aggregate row.
+    pub fn cells(&self) -> Option<&[CellValue]> {
+        match self {
+            ResultRow::Aggregate { cells } => Some(cells),
+            ResultRow::Event { .. } => None,
+        }
+    }
+
+    /// The fields of an event row, its message not read yet.
+    pub fn event_fields(&self) -> Option<EventFields<'_>> {
+        match self {
+            ResultRow::Event {
+                event,
+                log_group_name,
+            } => Some(EventFields::new(event, log_group_name)),
+            ResultRow::Aggregate { .. } => None,
+        }
+    }
+}
+
+/// The columns of a result (261025-insights-stats BR3.6, FR review R-02):
+/// the fields of an events result, from which its cells are made, or the
+/// names of an aggregates result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResultColumns {
+    /// The fields, in order (U2:BR3.2-BR3.4).
+    Events(Vec<FieldRef>),
+    /// The names, keys then aggregates (BR3.3).
+    Aggregates(Vec<String>),
+}
+
+impl ResultColumns {
+    /// The column headings: the fields' names as written, or the names.
+    pub fn names(&self) -> Vec<String> {
+        match self {
+            ResultColumns::Events(fields) => fields
+                .iter()
+                .map(|field| field.name().to_string())
+                .collect(),
+            ResultColumns::Aggregates(names) => names.clone(),
+        }
+    }
+
+    /// The shape these columns belong to.
+    pub fn shape(&self) -> ResultShape {
+        match self {
+            ResultColumns::Events(_) => ResultShape::Events,
+            ResultColumns::Aggregates(_) => ResultShape::Aggregates,
+        }
+    }
+
+    /// The fields of an events result; none for aggregates.
+    pub fn fields(&self) -> &[FieldRef] {
+        match self {
+            ResultColumns::Events(fields) => fields,
+            ResultColumns::Aggregates(_) => &[],
+        }
+    }
 }
 
 /// The result of one finished evaluation (entities.md QueryResult). Since
@@ -770,7 +944,9 @@ pub struct ResultRow {
 /// result's order (U2:BR3.1, BR4.4), at most 100,000 of them since the
 /// result is cut by `limit` or at 10,000 (U3:BR3.2), so the result can be
 /// read whatever the holdings become: a later run that fetches more or
-/// discards its staging events does not change it (U3:BR3.4).
+/// discards its staging events does not change it (U3:BR3.4). Since
+/// 261025-insights-stats U1 a result has a shape: event rows, or the
+/// aggregate rows of a `stats`, which are copies too (ADR-001, BR3.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryResult {
     /// The run that made it; the screen tells a result apart by it alone
@@ -780,7 +956,7 @@ pub struct QueryResult {
     /// Events evaluated.
     pub evaluated_count: usize,
     rows: Vec<ResultRow>,
-    columns: Vec<FieldRef>,
+    columns: ResultColumns,
     matched_count: usize,
     truncated_at: Option<usize>,
 }
@@ -794,22 +970,45 @@ impl QueryResult {
             evaluated_count,
             matched_count: rows.len(),
             rows,
-            columns: vec![FieldRef::Timestamp, FieldRef::Message],
+            columns: ResultColumns::Events(vec![FieldRef::Timestamp, FieldRef::Message]),
             truncated_at: None,
         }
     }
 
     /// The result `output` of run `run_id`, with `rows`, the copies of the
     /// events at `output.rows`, in that order.
-    pub fn from_output(run_id: u64, output: EvalOutput, rows: Vec<ResultRow>) -> Self {
+    pub fn from_output(run_id: u64, output: EventsOutput, rows: Vec<ResultRow>) -> Self {
         Self {
             run_id,
             evaluated_count: output.evaluated_count,
             rows,
-            columns: output.columns,
+            columns: ResultColumns::Events(output.columns),
             matched_count: output.matched_count,
             truncated_at: output.truncated_at,
         }
+    }
+
+    /// The aggregate rows `output` of run `run_id` (BR3.1, BR3.4): the rows
+    /// are the groups, none is cut in U1.
+    pub fn from_aggregates(run_id: u64, output: AggregatesOutput) -> Self {
+        let rows: Vec<ResultRow> = output
+            .rows
+            .into_iter()
+            .map(|cells| ResultRow::Aggregate { cells })
+            .collect();
+        Self {
+            run_id,
+            evaluated_count: output.evaluated_count,
+            matched_count: rows.len(),
+            rows,
+            columns: ResultColumns::Aggregates(output.columns),
+            truncated_at: None,
+        }
+    }
+
+    /// Events or aggregates (BR3.1).
+    pub fn shape(&self) -> ResultShape {
+        self.columns.shape()
     }
 
     /// Number of result rows.
@@ -817,8 +1016,8 @@ impl QueryResult {
         self.rows.len()
     }
 
-    /// The columns (U2:BR3.2-BR3.4).
-    pub fn columns(&self) -> &[FieldRef] {
+    /// The columns (U2:BR3.2-BR3.4, BR3.6).
+    pub fn columns(&self) -> &ResultColumns {
         &self.columns
     }
 
@@ -867,6 +1066,31 @@ pub fn row_cells(
             other => fields.display(other),
         })
         .collect()
+}
+
+/// The cells of one result row as the table, the opened row and the export
+/// show them (U2:BR7.1, 261025-insights-stats BR4.2, BR4.4): an event row's
+/// for the fields of `columns` ([`row_cells`]), an aggregate row's cells
+/// written by [`cell_text`], times by `format_time`.
+pub fn result_row_cells(
+    columns: &ResultColumns,
+    row: &ResultRow,
+    format_time: &dyn Fn(i64) -> String,
+) -> Vec<Option<String>> {
+    match row {
+        ResultRow::Event {
+            event,
+            log_group_name,
+        } => row_cells(
+            columns.fields(),
+            &EventFields::new(event, log_group_name),
+            format_time,
+        ),
+        ResultRow::Aggregate { cells } => cells
+            .iter()
+            .map(|cell| cell_text(cell, format_time))
+            .collect(),
+    }
 }
 
 /// The fields and values of one opened row (U2:BR7.3): `@timestamp`,
@@ -955,8 +1179,21 @@ mod tests {
             .collect()
     }
 
-    fn output(text: &str, events: &[LogEvent]) -> EvalOutput {
-        evaluate(&query(text), items(events).as_slice(), || false, |_, _| {}).unwrap()
+    fn output(text: &str, events: &[LogEvent]) -> EventsOutput {
+        events_of(evaluate(
+            &query(text),
+            items(events).as_slice(),
+            || false,
+            |_, _| {},
+        ))
+    }
+
+    /// The events output of an evaluation that ended (no `stats`).
+    fn events_of(output: Option<EvalOutput>) -> EventsOutput {
+        match output {
+            Some(EvalOutput::Events(events)) => events,
+            other => panic!("not an events output: {other:?}"),
+        }
     }
 
     /// The result rows of `text`, newest first without a `sort` (U2:BR4.4).
@@ -1380,7 +1617,10 @@ mod tests {
             || false,
             |done, total| seen.push((done, total)),
         );
-        assert_eq!(all.map(|output| output.matched_count), Some(25_000));
+        assert_eq!(
+            all.map(|output| events_of(Some(output)).matched_count),
+            Some(25_000)
+        );
         assert_eq!(
             seen,
             vec![(10_000, 25_000), (20_000, 25_000), (25_000, 25_000)]
@@ -1403,7 +1643,7 @@ mod tests {
         let none: &[EvalItem<'_>] = &[];
         let empty = evaluate(&plan, none, || true, |_, _| panic!("no chunk"));
         assert_eq!(
-            empty.map(|output| output.rows),
+            empty.map(|output| events_of(Some(output)).rows),
             Some(Vec::new()),
             "nothing to evaluate"
         );
@@ -1634,7 +1874,7 @@ mod tests {
         );
         assert_eq!(stopped, None);
         assert_eq!(seen, vec![(10_000, 25_000), (20_000, 25_000)]);
-        let all = evaluate(&plan, items.as_slice(), || false, |_, _| {}).unwrap();
+        let all = events_of(evaluate(&plan, items.as_slice(), || false, |_, _| {}));
         assert_eq!(
             all.rows,
             vec![24_996, 24_989, 24_982],
@@ -1710,7 +1950,7 @@ mod tests {
     fn copied(times: &[i64]) -> Vec<ResultRow> {
         times
             .iter()
-            .map(|time| ResultRow {
+            .map(|time| ResultRow::Event {
                 event: event(*time, "s", 0, "m"),
                 log_group_name: GROUP.to_string(),
             })
@@ -1718,7 +1958,9 @@ mod tests {
     }
 
     fn times(rows: &[ResultRow]) -> Vec<i64> {
-        rows.iter().map(|row| row.event.timestamp).collect()
+        rows.iter()
+            .filter_map(|row| row.event().map(|event| event.timestamp))
+            .collect()
     }
 
     fn result() -> QueryResult {
@@ -1732,9 +1974,15 @@ mod tests {
         assert_eq!(times(result.window(3, 0, 5)), vec![1, 4, 5, 8, 9]);
         assert_eq!(result.row_count(), 5);
         assert_eq!(result.evaluated_count, 10);
-        assert_eq!(result.row_at(3, 1).map(|row| row.event.timestamp), Some(4));
         assert_eq!(
-            result.row_at(3, 1).map(|row| row.log_group_name.as_str()),
+            result
+                .row_at(3, 1)
+                .and_then(ResultRow::event)
+                .map(|event| event.timestamp),
+            Some(4)
+        );
+        assert_eq!(
+            result.row_at(3, 1).and_then(ResultRow::log_group_name),
             Some(GROUP)
         );
         assert_eq!(result.row_at(3, 5), None);
@@ -1768,7 +2016,7 @@ mod tests {
     fn a_result_keeps_the_columns_the_cut_and_the_copies_of_its_output() {
         let result = QueryResult::from_output(
             2,
-            EvalOutput {
+            EventsOutput {
                 rows: vec![3, 1],
                 columns: vec![FieldRef::Log],
                 matched_count: 9,
@@ -1777,7 +2025,10 @@ mod tests {
             },
             copied(&[30, 10]),
         );
-        assert_eq!(result.columns(), &[FieldRef::Log]);
+        assert_eq!(
+            result.columns(),
+            &ResultColumns::Events(vec![FieldRef::Log])
+        );
         assert_eq!(
             (
                 result.matched_count(),
@@ -1787,6 +2038,195 @@ mod tests {
             (9, Some(2), 20)
         );
         assert_eq!(times(result.window(2, 0, 9)), vec![30, 10]);
+    }
+
+    // ---- 261025-insights-stats U1:BR2.9, BR3.1, BR3.2, BR3.5 -------------
+
+    /// The aggregates output of `text` over `events` (with `stats`).
+    fn aggregates(text: &str, events: &[LogEvent]) -> AggregatesOutput {
+        match evaluate(&query(text), items(events).as_slice(), || false, |_, _| {}) {
+            Some(EvalOutput::Aggregates(output)) => output,
+            other => panic!("not an aggregates output: {other:?}"),
+        }
+    }
+
+    fn levels(count: usize) -> Vec<LogEvent> {
+        (0..count)
+            .map(|index| {
+                let level = if index % 3 == 0 { "error" } else { "info" };
+                let time = i64::try_from(index).unwrap_or(i64::MAX);
+                event(
+                    time,
+                    "s",
+                    index as u64,
+                    &format!("{{\"level\":\"{level}\",\"n\":{index}}}"),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn stats_aggregates_only_the_events_the_filter_kept() {
+        // BR3.2: the filter's rows are the input; fields do not reach the
+        // aggregate columns.
+        let events = levels(9);
+        let output = aggregates(
+            "fields @message | filter level = 'error' | stats count(*), sum(n)",
+            &events,
+        );
+        assert_eq!(output.columns, vec!["count(*)", "sum(n)"]);
+        assert_eq!(
+            output.rows,
+            vec![vec![CellValue::Integer(3), CellValue::Decimal(9.0)]]
+        );
+        assert_eq!(output.evaluated_count, 9);
+    }
+
+    #[test]
+    fn the_aggregate_columns_are_the_keys_then_the_aggregates() {
+        // BR3.1, BR3.3.
+        let output = aggregates("stats count(*) as n, max(n) by level", &levels(6));
+        assert_eq!(output.columns, vec!["level", "n", "max(n)"]);
+        assert_eq!(
+            output.rows,
+            vec![
+                vec![
+                    CellValue::Text("error".to_string()),
+                    CellValue::Integer(2),
+                    CellValue::Integer(3)
+                ],
+                vec![
+                    CellValue::Text("info".to_string()),
+                    CellValue::Integer(4),
+                    CellValue::Integer(5)
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn the_aggregate_stage_reports_progress_chunk_by_chunk() {
+        // BR2.9, BR3.5: the aggregation counts as one chunked pass, so the
+        // progress never stays at 0.
+        let events = levels(25_000);
+        let items = items(&events);
+        let plan = query("stats count(*)");
+        let mut seen = Vec::new();
+        let output = evaluate(
+            &plan,
+            items.as_slice(),
+            || false,
+            |done, total| seen.push((done, total)),
+        );
+        assert!(matches!(output, Some(EvalOutput::Aggregates(_))));
+        assert_eq!(
+            seen,
+            vec![(10_000, 25_000), (20_000, 25_000), (25_000, 25_000)]
+        );
+        let filtered = query("filter level = 'error' | stats count(*)");
+        let mut seen = Vec::new();
+        evaluate(
+            &filtered,
+            items.as_slice(),
+            || false,
+            |done, total| seen.push((done, total)),
+        );
+        assert_eq!(seen.first(), Some(&(5_000, 25_000)), "half of two passes");
+        assert_eq!(seen.last(), Some(&(25_000, 25_000)));
+    }
+
+    #[test]
+    fn a_stop_during_the_aggregation_drops_everything() {
+        // BR2.9, U1:BR5.8.
+        let events = levels(25_000);
+        let items = items(&events);
+        let plan = query("stats count(*) by level");
+        let mut asked = 0;
+        let mut seen = Vec::new();
+        let stopped = evaluate(
+            &plan,
+            items.as_slice(),
+            || {
+                asked += 1;
+                asked > 2
+            },
+            |done, total| seen.push((done, total)),
+        );
+        assert_eq!(stopped, None);
+        assert_eq!(seen, vec![(10_000, 25_000), (20_000, 25_000)]);
+    }
+
+    #[test]
+    fn aggregates_are_not_cut_at_ten_thousand_and_keep_columns_without_values() {
+        // BR3.2, BR3.5: no default cut, no column check.
+        let events = levels(12_000);
+        let by_n = aggregates("stats count(*) by n", &events);
+        assert_eq!(by_n.rows.len(), 12_000);
+        let gone = aggregates("stats count(*) by gone", &events);
+        assert_eq!(gone.columns, vec!["gone", "count(*)"]);
+        assert_eq!(
+            gone.rows,
+            vec![vec![CellValue::Missing, CellValue::Integer(12_000)]]
+        );
+        let none = aggregates("filter level = 'none' | stats count(*) by level", &events);
+        assert!(none.rows.is_empty());
+        let one = aggregates("filter level = 'none' | stats count(*)", &events);
+        assert_eq!(one.rows, vec![vec![CellValue::Integer(0)]]);
+    }
+
+    #[test]
+    fn stats_after_sort_and_limit_aggregates_their_rows() {
+        // BR1.6, BR3.2: U1 applies the commands before stats as written.
+        let events = levels(9);
+        let output = aggregates("sort n desc | limit 2 | stats max(n), min(n)", &events);
+        assert_eq!(
+            output.rows,
+            vec![vec![CellValue::Integer(8), CellValue::Integer(7)]]
+        );
+    }
+
+    #[test]
+    fn a_plan_without_stats_still_gives_events() {
+        // BR5.1: the events path is unchanged.
+        let events = levels(4);
+        let output = evaluate(
+            &query("filter level = 'info'"),
+            items(&events).as_slice(),
+            || false,
+            |_, _| {},
+        );
+        let Some(EvalOutput::Events(events_output)) = output else {
+            panic!("not events: {output:?}");
+        };
+        assert_eq!(events_output.rows, vec![2, 1]);
+        assert_eq!(
+            events_output.columns,
+            vec![FieldRef::Timestamp, FieldRef::Message]
+        );
+    }
+
+    #[test]
+    fn an_aggregates_result_is_shaped_and_its_rows_are_the_cells() {
+        // BR3.1, BR3.4, BR3.6.
+        let output = aggregates("stats count(*) by level", &levels(6));
+        let result = QueryResult::from_aggregates(4, output);
+        assert_eq!(result.shape(), ResultShape::Aggregates);
+        assert_eq!(
+            result.columns(),
+            &ResultColumns::Aggregates(vec!["level".to_string(), "count(*)".to_string()])
+        );
+        assert_eq!(result.columns().names(), vec!["level", "count(*)"]);
+        assert_eq!((result.row_count(), result.matched_count()), (2, 2));
+        assert_eq!(result.truncated_at(), None);
+        assert_eq!(result.evaluated_count, 6);
+        assert_eq!(
+            result.row_at(4, 1).and_then(ResultRow::cells),
+            Some(&[CellValue::Text("info".to_string()), CellValue::Integer(4)][..])
+        );
+        assert_eq!(result.row_at(4, 1).and_then(ResultRow::event), None);
+        let events = QueryResult::new(1, 0, Vec::new());
+        assert_eq!(events.shape(), ResultShape::Events);
+        assert_eq!(events.columns().names(), vec!["@timestamp", "@message"]);
     }
 }
 
@@ -1850,7 +2290,7 @@ mod speed {
 
     /// Evaluates `text` step by step as the runner does and returns the
     /// output, the whole time and the longest step.
-    fn measure(text: &str, items: &GroupEvents<'_>) -> (EvalOutput, Duration, Duration) {
+    fn measure(text: &str, items: &GroupEvents<'_>) -> (EventsOutput, Duration, Duration) {
         let plan = parse_query(text).unwrap();
         let started = Instant::now();
         let mut longest = Duration::ZERO;
@@ -1864,7 +2304,10 @@ mod speed {
             longest = longest.max(before.elapsed());
         }
         let elapsed = started.elapsed();
-        (evaluation.into_output().unwrap(), elapsed, longest)
+        let Some(EvalOutput::Events(output)) = evaluation.into_output() else {
+            panic!("{text:?} gave no events output");
+        };
+        (output, elapsed, longest)
     }
 
     fn measure_all(count: usize) {

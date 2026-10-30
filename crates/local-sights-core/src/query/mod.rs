@@ -23,4 +23,5 @@ pub mod natural;
 pub mod parser;
 pub mod plan;
 pub mod runner;
+pub mod stats;
 pub mod store;

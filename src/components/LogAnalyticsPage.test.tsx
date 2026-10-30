@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InsightsProgress, InsightsView, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 import {
+  QUERY_CATALOG,
   aggregatesSummary,
   connectedView,
   insightsView,
@@ -21,6 +22,7 @@ vi.mock("../api", async (importOriginal) => {
     getQueryRows: vi.fn(),
     getQueryRowDetail: vi.fn(),
     getCompletionCandidates: vi.fn(),
+    getQueryCatalog: vi.fn(),
   };
 });
 vi.mock("../aceLoader", () => ({ loadAce: () => Promise.resolve({}) }));
@@ -80,6 +82,8 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     );
     vi.mocked(api.getCompletionCandidates).mockReset();
     vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
+    vi.mocked(api.getQueryCatalog).mockReset();
+    vi.mocked(api.getQueryCatalog).mockResolvedValue([...QUERY_CATALOG]);
   });
 
   it("lays out the log group, the range, the query and the run row, with no results yet", () => {
@@ -301,8 +305,11 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
         },
       }),
     );
-    expect(screen.getByTestId("query-problem")).toHaveTextContent(
-      'Line 1, column 30: "stats" is not supported in this version. Supported commands: fields, filter, sort, limit.',
+    // 261025-insights-stats U2:BR4.2: the list is the catalog's, stats included.
+    await waitFor(() =>
+      expect(screen.getByTestId("query-problem")).toHaveTextContent(
+        'Line 1, column 30: "stats" is not supported in this version. Supported commands: fields, filter, sort, limit, stats.',
+      ),
     );
     expect(editor()).toHaveValue("filter @message like /ERROR/");
     await act(async () => undefined);
@@ -426,6 +433,75 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     rerender(view({ phase: "Fetching", runId: 1, canRun: false }));
     rerender(view({ phase: "Done", runId: 1, result: resultSummary() }));
     await waitFor(() => expect(api.getCompletionCandidates).toHaveBeenCalledTimes(3));
+  });
+
+  // ---- 261025-insights-stats U2:BR3.2, BR4.2 ----------------------------
+
+  it("asks the core for the catalog once, however the run changes (BR4.2)", async () => {
+    const { rerender } = renderPage();
+    await waitFor(() => expect(api.getQueryCatalog).toHaveBeenCalledTimes(1));
+    rerender(view({ phase: "Fetching", runId: 1, canRun: false }));
+    rerender(view({ phase: "Done", runId: 1, result: resultSummary() }));
+    await act(async () => undefined);
+    expect(api.getQueryCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("names no command list and shows no error when the catalog cannot be had (BR4.2)", async () => {
+    vi.mocked(api.getQueryCatalog).mockRejectedValue(new Error("denied"));
+    const { onError } = renderPage(
+      view({
+        phase: "QueryError",
+        runId: 2,
+        problem: {
+          kind: "Unsupported",
+          messageKey: "query.unsupported.command",
+          word: "parse",
+          span: { line: 1, column: 1, length: 5 },
+        },
+      }),
+    );
+    await act(async () => undefined);
+    expect(screen.getByTestId("query-problem")).toHaveTextContent(
+      'Line 1, column 1: "parse" is not supported in this version.',
+    );
+    expect(screen.getByTestId("query-problem")).not.toHaveTextContent("Supported commands");
+    expect(onError).not.toHaveBeenCalled();
+    expect(editor()).toHaveAttribute("data-language", "text");
+  });
+
+  it("says in rows how an aggregates result was cut (BR3.2)", () => {
+    const { rerender } = renderPage(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level", "count(*)"], {
+          rowCount: 10_000,
+          matchedCount: 10_003,
+          truncatedAt: 10_000,
+        }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(10000 of 10003 rows)");
+    expect(screen.getByTestId("log-analytics-truncated")).toHaveTextContent("Showing 10000 rows");
+    rerender(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level", "count(*)"], { rowCount: 2, matchedCount: 2 }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(2 rows)");
+    expect(screen.queryByTestId("log-analytics-truncated")).not.toBeInTheDocument();
+  });
+
+  it("says the aggregates cut in Japanese too (BR3.2, NFR9)", () => {
+    renderPage(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level"], { rowCount: 5, matchedCount: 9, truncatedAt: 5 }),
+      }),
+      "ja",
+    );
+    expect(results()).toHaveTextContent("(9 行中 5 行)");
+    expect(screen.getByTestId("log-analytics-truncated")).toHaveTextContent("5 行まで表示");
   });
 
   it("shows the columns of fields with their cells (U2:BR7.1)", async () => {

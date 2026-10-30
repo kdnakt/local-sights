@@ -275,7 +275,10 @@ pub fn parse_query(text: &str) -> Result<QueryPlan, QueryProblem> {
         };
         let Command { kind, span } = parser.command(command)?;
         // U2:BR1.4: a command after `stats` goes into it.
-        match (commands.last_mut().map(|last: &mut Command| &mut last.kind), kind) {
+        match (
+            commands.last_mut().map(|last: &mut Command| &mut last.kind),
+            kind,
+        ) {
             (Some(CommandKind::Stats(stats)), kind) => stats.after.push(after_stats(kind, span)?),
             (_, CommandKind::Stats(stats)) => {
                 parser.result_columns = Some(stats.result_columns());
@@ -306,11 +309,7 @@ fn after_stats(kind: CommandKind, span: Span) -> Result<AfterStatsCommand, Query
             "fields",
             span,
         )),
-        CommandKind::Stats(_) => Err(QueryProblem::unsupported(
-            keys::SECOND_STATS,
-            "stats",
-            span,
-        )),
+        CommandKind::Stats(_) => Err(QueryProblem::unsupported(keys::SECOND_STATS, "stats", span)),
     }
 }
 
@@ -1317,7 +1316,10 @@ impl Parser {
 
     /// The field, `,`, percentile and `)` of `pct(`, the `(` being at
     /// `open` (U2:BR1.2): a percentile from 0 to 100, kept as written.
-    fn pct_arguments(&mut self, open: Span) -> Result<(AggregateArgument, Percentile), QueryProblem> {
+    fn pct_arguments(
+        &mut self,
+        open: Span,
+    ) -> Result<(AggregateArgument, Percentile), QueryProblem> {
         let unclosed = || QueryProblem::syntax(keys::UNCLOSED_PAREN, open);
         let argument = match self.aggregate_field(AggregateFunction::Pct, open)? {
             Some(argument) => argument,
@@ -3715,8 +3717,16 @@ mod tests {
         // BR1.2, U1:BR1.3, BR1.7.
         for (text, key, span) in [
             ("stats pct(latency)", keys::ARGUMENT_COUNT, at(1, 10, 1)),
-            ("stats pct(latency, 1, 2)", keys::ARGUMENT_COUNT, at(1, 10, 1)),
-            ("stats count_distinct(a, b)", keys::ARGUMENT_COUNT, at(1, 21, 1)),
+            (
+                "stats pct(latency, 1, 2)",
+                keys::ARGUMENT_COUNT,
+                at(1, 10, 1),
+            ),
+            (
+                "stats count_distinct(a, b)",
+                keys::ARGUMENT_COUNT,
+                at(1, 21, 1),
+            ),
             ("stats latest()", keys::ARGUMENT_COUNT, at(1, 13, 1)),
             ("stats stddev(*)", keys::AGGREGATE_STAR, at(1, 14, 1)),
             ("stats pct(*, 95)", keys::AGGREGATE_STAR, at(1, 11, 1)),
@@ -3816,7 +3826,11 @@ mod tests {
     fn a_name_that_is_no_result_column_is_a_mistake_at_its_place() {
         // BR1.4 (b): exact case; a name like count(*) needs backquotes.
         for (text, word, span) in [
-            ("stats count(*) as n | filter level = 'a'", "level", at(1, 30, 5)),
+            (
+                "stats count(*) as n | filter level = 'a'",
+                "level",
+                at(1, 30, 5),
+            ),
             ("stats count(*) as n | sort N", "N", at(1, 28, 1)),
             (
                 "stats count(*) by level | filter count(*) > 1",
@@ -3825,7 +3839,8 @@ mod tests {
             ),
             ("stats count(*) as n | filter n = m", "m", at(1, 34, 1)),
         ] {
-            let found = assert_problem(text, ProblemKind::Syntax, keys::UNKNOWN_RESULT_COLUMN, span);
+            let found =
+                assert_problem(text, ProblemKind::Syntax, keys::UNKNOWN_RESULT_COLUMN, span);
             assert_eq!(found.word.as_deref(), Some(word), "{text}");
         }
     }
@@ -3917,7 +3932,10 @@ mod tests {
             }
         }
         for word in ["and", "or", "not", "like", "in"] {
-            assert!(parse_query(&format!("filter {word} = 1")).is_err(), "{word}");
+            assert!(
+                parse_query(&format!("filter {word} = 1")).is_err(),
+                "{word}"
+            );
             assert!(parse_query(&format!("sort {word}")).is_err(), "{word}");
         }
         for word in ["by", "as", "asc", "desc"] {

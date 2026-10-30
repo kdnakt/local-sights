@@ -184,19 +184,19 @@ for how to write one. This version reads the following part of it.
 
 | Supported                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (0 to 100,000, `limit 0` giving no row; without one, 10,000 rows), joined with `\|` and applied in the order written                                                                                |
+| Commands: `fields`, `filter`, `sort` (ascending, or descending with desc), `limit` (0 to 100,000, `limit 0` giving no row; without one, 10,000 rows) and `stats`, joined with `\|` and applied in the order written                                                 |
 | Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``)                                                   |
 | Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                                                                              |
 | Comparing two fields, such as `a = b` or `@logStream != @log`: a name without quotes after `=`, `!=`, `<`, `<=`, `>` or `>=` is a field, so `readOnly = true` compares with a field named `true` (as the console reads it); write `readOnly = "true"` for the value |
 | `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                                                                    |
-| `stats` as the last command, with `count(*)`, `count(field)`, `sum`, `avg`, `min` and `max` (each with an optional `as name`), and `by` fields or `bin(period)` (`s`, `m`, `h`, `d`), such as `stats count(*) by bin(5m)` (for now; the full list comes later)      |
+| Aggregate functions in `stats`: `count(*)`, `count(field)`, `count_distinct`, `sum`, `avg`, `min`, `max`, `pct(field, percentile)`, `stddev`, `earliest`, `latest`, `sortsFirst` and `sortsLast`, grouped by fields or `bin(period)` (s, m, h, d)                   |
 
-| Not supported                                                                                                                                                                                 |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The other commands (`parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)                                                                    |
-| A command after `stats`, the other `stats` functions (`count_distinct`, `pct`, `stddev`, `earliest`, `latest`, `sortsFirst`, `sortsLast`), and `bin()` periods in `ms`, `w`, `mo`, `q` or `y` |
-| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]`                          |
-| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                                                                         |
+| Not supported                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------- |
+| The other commands (`parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)               |
+| `fields` after `stats`, a second `stats`, and `bin()` periods in `ms`, `w`, `mo`, `q` or `y`                                             |
+| Other functions (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]` |
+| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                    |
 
 As in the console, a JSON `true` or `false` is shown as `1` or `0` in the
 result and in an opened row, but is compared as the text: `readOnly = "true"`
@@ -209,11 +209,23 @@ missing from an event, the event meets no comparison, not even `!=` (so
 field against a value still meets `!=`.
 
 A `stats` query shows one row per group: the `by` columns, then the aggregate
-columns, in ascending order of the `by` values (events without a `by` field
-make one group, shown last). `sum` and `avg` add the values that read as
-numbers; decimals are shown to four places. A time (a `bin()` or the `min` or
-`max` of `@timestamp`) is shown in the time zone chosen. These details are
-provisional until they are compared with the console.
+columns, each named by its `as name` or by its text as written, in ascending
+order of the `by` values (events without a `by` field make one group, shown
+last). `filter`, `sort` and `limit` written after `stats` work on these rows,
+in the order written, and name their columns (a name with signs in
+backquotes, such as `` `count(*)` ``); `fields` and a second `stats` cannot
+follow it. Without a `limit`, at most 10,000 rows are shown, and the result
+says when rows were cut.
+
+`sum`, `avg`, `pct` and `stddev` use the values that read as numbers;
+decimals are shown to four places. `count_distinct` counts the different
+values exactly, `pct(field, p)` is the value at the nearest rank (`p` from 0
+to 100), `stddev` is the sample standard deviation, `earliest` and `latest`
+are the values of the first and the last event in time, and `sortsFirst` and
+`sortsLast` the first and the last in the order of `sort`. A time (a `bin()`,
+or a time kept by `min`, `max`, `earliest` and the like) is shown in the time
+zone chosen. These details are provisional until they are compared with the
+console.
 
 A query that uses what is not supported, or has a writing mistake, is not run;
 the screen says what and where, without fetching anything.

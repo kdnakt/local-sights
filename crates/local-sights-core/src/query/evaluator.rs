@@ -442,7 +442,8 @@ impl Finishing {
                 let start = self.keep.len();
                 let end = start.saturating_add(EVALUATION_CHUNK).min(self.rows.len());
                 for cells in &self.rows[start..end] {
-                    self.keep.push(condition_holds(condition, &CellFields { cells }));
+                    self.keep
+                        .push(condition_holds(condition, &CellFields { cells }));
                 }
                 if end < self.rows.len() {
                     return;
@@ -458,7 +459,8 @@ impl Finishing {
             }
             AfterStatsCommand::Sort(keys) => {
                 // Stable: equal rows keep the order they had.
-                self.rows.sort_by(|left, right| compare_cell_rows(keys, left, right));
+                self.rows
+                    .sort_by(|left, right| compare_cell_rows(keys, left, right));
             }
             AfterStatsCommand::Limit(count) => {
                 // 0 keeps none (261017-insights-query Loop-back 3, p08).
@@ -778,7 +780,6 @@ fn finish_aggregates(mut finishing: Finishing, stats: Option<&StatsCommand>) -> 
 }
 
 impl Evaluation {
-
     /// One chunk of `stats` (BR2.9), or, after the last, the rows of the
     /// groups (BR3.5): ordering and making them is one short step that is
     /// not stopped. The commands before `stats` were applied. The commands
@@ -2458,7 +2459,10 @@ mod tests {
             ("filter c = '3'", vec![text("error")]),
             ("filter a = 3", vec![text("error")]),
             ("filter a < 4.4", vec![text("error")]),
-            ("filter level = 'info' or c = 3", vec![text("error"), text("info")]),
+            (
+                "filter level = 'info' or c = 3",
+                vec![text("error"), text("info")],
+            ),
             ("filter level like 'err' and c = 3", vec![text("error")]),
             ("filter level =~ /^i/", vec![text("info")]),
             ("filter level not like /r/", vec![text("info")]),
@@ -2500,7 +2504,10 @@ mod tests {
             .map(|index| event(four_pm + index * 60_000, "s", 0, "m"))
             .collect();
         let base = "stats count(*) as c by bin(1m) as t";
-        let output = aggregates(&format!("{base} | filter t >= {}", four_pm + 120_000), &events);
+        let output = aggregates(
+            &format!("{base} | filter t >= {}", four_pm + 120_000),
+            &events,
+        );
         assert_eq!(
             keys_of(&output),
             vec![
@@ -2508,7 +2515,10 @@ mod tests {
                 CellValue::Timestamp(four_pm + 180_000)
             ]
         );
-        let output = aggregates(&format!("{base} | filter t < '2025-08-25 01:01:00'"), &events);
+        let output = aggregates(
+            &format!("{base} | filter t < '2025-08-25 01:01:00'"),
+            &events,
+        );
         assert_eq!(keys_of(&output), vec![CellValue::Timestamp(four_pm)]);
     }
 
@@ -2555,8 +2565,14 @@ mod tests {
             (zero.rows.len(), zero.matched_count, zero.truncated_at),
             (0, 9, None)
         );
-        let twice = aggregates("stats count(*) by n | limit 5 | sort n desc | limit 2", &events);
-        assert_eq!(keys_of(&twice), vec![CellValue::Integer(4), CellValue::Integer(3)]);
+        let twice = aggregates(
+            "stats count(*) by n | limit 5 | sort n desc | limit 2",
+            &events,
+        );
+        assert_eq!(
+            keys_of(&twice),
+            vec![CellValue::Integer(4), CellValue::Integer(3)]
+        );
         assert_eq!((twice.matched_count, twice.truncated_at), (9, Some(2)));
         let uc1 = aggregates(
             "stats count(*) as n by level | filter n > 1 | sort n desc | limit 1",
@@ -2575,7 +2591,10 @@ mod tests {
             (cut.rows.len(), cut.matched_count, cut.truncated_at),
             (10_000, 10_001, Some(10_000))
         );
-        assert_eq!(cut.rows.last().map(|row| row[0].clone()), Some(CellValue::Integer(9_999)));
+        assert_eq!(
+            cut.rows.last().map(|row| row[0].clone()),
+            Some(CellValue::Integer(9_999))
+        );
         let exact = aggregates("stats count(*) by n", &events[..10_000]);
         assert_eq!(
             (exact.rows.len(), exact.matched_count, exact.truncated_at),
@@ -2583,7 +2602,11 @@ mod tests {
         );
         let filtered = aggregates("stats count(*) as c by n | filter n >= 5000", &events);
         assert_eq!(
-            (filtered.rows.len(), filtered.matched_count, filtered.truncated_at),
+            (
+                filtered.rows.len(),
+                filtered.matched_count,
+                filtered.truncated_at
+            ),
             (5_001, 5_001, None),
             "the filter's rows are what is counted"
         );
@@ -2602,7 +2625,11 @@ mod tests {
         );
         let refiltered = aggregates("stats count(*) by n | limit 3 | filter n > 0", &events);
         assert_eq!(
-            (refiltered.rows.len(), refiltered.matched_count, refiltered.truncated_at),
+            (
+                refiltered.rows.len(),
+                refiltered.matched_count,
+                refiltered.truncated_at
+            ),
             (2, 2, None)
         );
         let trailing = aggregates("stats count(*) by n | limit 3 | sort n desc", &events);
@@ -2659,8 +2686,16 @@ mod tests {
         assert_eq!(
             output.rows,
             vec![
-                vec![text("error"), CellValue::Integer(3), CellValue::Decimal(9.0)],
-                vec![text("info"), CellValue::Integer(6), CellValue::Decimal(27.0)],
+                vec![
+                    text("error"),
+                    CellValue::Integer(3),
+                    CellValue::Decimal(9.0)
+                ],
+                vec![
+                    text("info"),
+                    CellValue::Integer(6),
+                    CellValue::Decimal(27.0)
+                ],
             ]
         );
         assert_eq!((output.matched_count, output.truncated_at), (2, None));
@@ -2686,7 +2721,11 @@ mod tests {
         let output = aggregates("stats count(*) by n", &levels(10_005));
         let result = QueryResult::from_aggregates(2, output);
         assert_eq!(
-            (result.row_count(), result.matched_count(), result.truncated_at()),
+            (
+                result.row_count(),
+                result.matched_count(),
+                result.truncated_at()
+            ),
             (10_000, 10_005, Some(10_000))
         );
     }
@@ -2840,7 +2879,10 @@ mod speed {
 
     /// Evaluates the `stats` query `text` step by step as the runner does
     /// and returns the output, the whole time and the longest step.
-    fn measure_stats(text: &str, items: &GroupEvents<'_>) -> (AggregatesOutput, Duration, Duration) {
+    fn measure_stats(
+        text: &str,
+        items: &GroupEvents<'_>,
+    ) -> (AggregatesOutput, Duration, Duration) {
         let plan = parse_query(text).unwrap();
         let started = Instant::now();
         let mut longest = Duration::ZERO;
@@ -2859,20 +2901,21 @@ mod speed {
     }
 
     /// 261025-insights-stats U2:BR2.6, NFR2 (DD review R-10, FR review
-    /// R-06): the heavy `stats` (every @message kept for count_distinct, every
-    /// latency for pct) over the same 1,000,000 events as U1's
-    /// `stats count(*) by bin(5m)`, within three times its time. Every
-    /// message of [`held_events`] differs, so count_distinct keeps 1,000,000
-    /// texts: the worst case.
+    /// R-06; code-generation Q1 A): the heavy `stats` (every @message kept
+    /// for count_distinct, every latency for pct) over 1,000,000 events,
+    /// within three times U1's `stats sum(latency) by @logStream`, which
+    /// reads the same JSON field and groups by the same key. Every message
+    /// of [`held_events`] differs, so count_distinct keeps 1,000,000 texts:
+    /// the worst case.
     #[test]
     #[ignore = "measures speed; run with --release --ignored"]
-    fn the_heavy_stats_takes_at_most_three_times_the_bin_count() {
+    fn the_heavy_stats_takes_at_most_three_times_the_sum_by_stream() {
         let events = held_events(1_000_000);
         let items = GroupEvents {
             events: &events,
             log_group_name: GROUP,
         };
-        let baseline = "stats count(*) by bin(5m)";
+        let baseline = "stats sum(latency) by @logStream";
         let heavy = "stats count_distinct(@message), pct(latency, 99) by @logStream";
         let every = "stats count(*), count(level), count_distinct(level), sum(latency), \
                      avg(latency), min(latency), max(latency), pct(latency, 50), \
@@ -2880,15 +2923,6 @@ mod speed {
                      sortsLast(level) by bin(5m)";
         // One run first, so the allocator and caches are warm for both.
         measure_stats(baseline, &items);
-        for part in [
-            "stats count(*) by @logStream",
-            "stats count_distinct(@message) by @logStream",
-            "stats pct(latency, 99) by @logStream",
-            "stats sum(latency) by @logStream",
-        ] {
-            let (_, time, step) = measure_stats(part, &items);
-            println!("  part {part}: {time:?} (longest step {step:?})");
-        }
         let (base, base_time, base_step) = measure_stats(baseline, &items);
         let (heavy_output, heavy_time, heavy_step) = measure_stats(heavy, &items);
         let (every_output, every_time, every_step) = measure_stats(every, &items);

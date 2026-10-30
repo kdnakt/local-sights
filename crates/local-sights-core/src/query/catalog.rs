@@ -156,7 +156,9 @@ impl QueryCatalog {
 
     /// The command `word`, in any case.
     pub fn command(word: &str) -> Option<&'static QueryVocabulary> {
-        Self::find(VocabularyKind::Command, |name| name.eq_ignore_ascii_case(word))
+        Self::find(VocabularyKind::Command, |name| {
+            name.eq_ignore_ascii_case(word)
+        })
     }
 
     /// The aggregate function `name`, exactly as written (BR1.1).
@@ -172,8 +174,10 @@ impl QueryCatalog {
     /// Whether `word` is a reserved keyword, in any case: never a field
     /// name.
     pub fn is_reserved(word: &str) -> bool {
-        Self::find(VocabularyKind::Keyword, |name| name.eq_ignore_ascii_case(word))
-            .is_some_and(|keyword| keyword.reserved)
+        Self::find(VocabularyKind::Keyword, |name| {
+            name.eq_ignore_ascii_case(word)
+        })
+        .is_some_and(|keyword| keyword.reserved)
     }
 
     fn find(
@@ -239,10 +243,7 @@ mod tests {
             ]
         );
         assert!(names(VocabularyKind::AggregateFunction, false).is_empty());
-        assert_eq!(
-            names(VocabularyKind::Function, true),
-            vec![TO_MILLIS, BIN]
-        );
+        assert_eq!(names(VocabularyKind::Function, true), vec![TO_MILLIS, BIN]);
         assert_eq!((TO_MILLIS, BIN), ("toMillis", "bin"));
     }
 
@@ -313,6 +314,62 @@ mod tests {
         assert_eq!(QueryCatalog::function("tomillis"), None);
     }
 
+    // ---- BR4.4 (FR6.1, NFR7): the README's table and the catalog --------
+
+    const README: &str = include_str!("../../../../README.md");
+
+    /// The table row of the README that starts with `start` (after `| `).
+    fn readme_row(start: &str) -> &'static str {
+        README
+            .lines()
+            .find(|line| {
+                line.strip_prefix("| ")
+                    .is_some_and(|row| row.starts_with(start))
+            })
+            .unwrap_or_else(|| panic!("no README row starts with {start:?}"))
+    }
+
+    /// The names a row lists: its words in backquotes after the row's label
+    /// (up to the first `:`, when there is one), each without its
+    /// parentheses and arguments, when it is a name at all.
+    fn listed_names(row: &str) -> std::collections::BTreeSet<String> {
+        let list = row.split_once(':').map_or(row, |(_, list)| list);
+        list.split('`')
+            .skip(1)
+            .step_by(2)
+            .map(|word| word.split('(').next().unwrap_or(word).trim().to_string())
+            .filter(|name| {
+                !name.is_empty() && name.chars().all(|c| c.is_ascii_alphabetic() || c == '_')
+            })
+            .collect()
+    }
+
+    fn set(names: Vec<&str>) -> std::collections::BTreeSet<String> {
+        names.into_iter().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn the_readme_lists_the_commands_and_functions_of_the_catalog() {
+        // BR4.4: three rows, compared with the catalog in exact case.
+        assert_eq!(
+            listed_names(readme_row("Commands")),
+            set(QueryCatalog::names(VocabularyKind::Command, true)),
+            "Supported: Commands"
+        );
+        let mut functions = QueryCatalog::names(VocabularyKind::AggregateFunction, true);
+        functions.push(BIN);
+        assert_eq!(
+            listed_names(readme_row("Aggregate functions")),
+            set(functions),
+            "Supported: Aggregate functions in stats"
+        );
+        assert_eq!(
+            listed_names(readme_row("The other commands")),
+            set(QueryCatalog::names(VocabularyKind::Command, false)),
+            "Not supported: The other commands"
+        );
+    }
+
     #[test]
     fn the_catalog_goes_to_the_screen_in_camel_case() {
         // BR4.2.
@@ -341,9 +398,6 @@ mod tests {
         .iter()
         .map(|kind| serde_json::to_value(kind).unwrap())
         .collect();
-        assert_eq!(
-            kinds,
-            vec!["command", "function", "keyword", "fixedField"]
-        );
+        assert_eq!(kinds, vec!["command", "function", "keyword", "fixedField"]);
     }
 }

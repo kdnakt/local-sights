@@ -406,8 +406,28 @@ export interface QueryRowDetail {
   fields: QueryDetailField[];
 }
 
-/** What a completion candidate is (U2:BR9.1). */
-export type CompletionKind = "Command" | "Keyword" | "FixedField" | "JsonField";
+/**
+ * What a completion candidate is (U2:BR9.1); `Function` is an aggregate
+ * function of `stats` or `bin` (261025-insights-stats U2:BR4.3).
+ */
+export type CompletionKind = "Command" | "Keyword" | "FixedField" | "JsonField" | "Function";
+
+/** What a word of the core's QueryCatalog is (261025-insights-stats U2:BR4.1). */
+export type VocabularyKind =
+  "command" | "aggregateFunction" | "function" | "keyword" | "fixedField";
+
+/**
+ * One word of the core's QueryCatalog (261025-insights-stats U2:BR4.1, BR4.2):
+ * the screen colours the query and names the commands it can use from these.
+ */
+export interface QueryVocabulary {
+  name: string;
+  kind: VocabularyKind;
+  /** Whether this version runs it. */
+  supported: boolean;
+  /** A keyword never read as a field name (`and`, `or`, `not`, `like`, `in`). */
+  reserved: boolean;
+}
 
 /** One completion candidate of the query field (U2:BR9.1). */
 export interface CompletionCandidate {
@@ -943,6 +963,14 @@ export function getQueryRowDetail(runId: number, index: number): Promise<QueryRo
 /** The words and field names the query field completes (U2:BR9.1, Should). */
 export function getCompletionCandidates(): Promise<CompletionCandidate[]> {
   return invoke<CompletionCandidate[]>("get_completion_candidates");
+}
+
+/**
+ * The words of a query from the core's QueryCatalog (261025-insights-stats
+ * U2:BR4.2); fixed while the app runs, so it is asked once.
+ */
+export function getQueryCatalog(): Promise<QueryVocabulary[]> {
+  return invoke<QueryVocabulary[]>("get_query_catalog");
 }
 
 /**

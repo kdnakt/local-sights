@@ -541,6 +541,7 @@ export const messages = {
   "insights.completion.keyword": { en: "keyword", ja: "言葉" },
   "insights.completion.field": { en: "field", ja: "項目" },
   "insights.completion.jsonField": { en: "JSON field", ja: "JSON の項目" },
+  "insights.completion.function": { en: "function", ja: "関数" },
   "insights.examples": { en: "Examples", ja: "例" },
   "insights.examples.errors": {
     en: "Errors that are not timeouts",
@@ -626,6 +627,15 @@ export const messages = {
   },
   // ---- 261025-insights-stats U1: aggregate rows (BR3.4, BR4.5, BR4.6) ----
   "insights.results.rows": { en: "{count} rows", ja: "{count} 行" },
+  // 261025-insights-stats U2:BR3.2: the cut of aggregate rows, in rows.
+  "insights.results.rowsOfMatched": {
+    en: "{shown} of {matched} rows",
+    ja: "{matched} 行中 {shown} 行",
+  },
+  "insights.results.truncatedRows": {
+    en: "Showing {shown} rows",
+    ja: "{shown} 行まで表示",
+  },
   "insights.results.noRows": {
     en: "The query returned 0 rows. No events in the selected log groups and time range made a group.",
     ja: "結果は 0 行です。選んだロググループと期間に、グループになるイベントはありませんでした。",
@@ -683,10 +693,16 @@ export const messages = {
     en: "Line {line}, column {column}: ",
     ja: "{line} 行 {column} 列：",
   },
+  // 261025-insights-stats U2:BR4.2: the lists come from the core's QueryCatalog.
   "insights.error.supportedList": {
-    en: "Supported commands: fields, filter, sort, limit.",
-    ja: "使える命令：fields、filter、sort、limit",
+    en: "Supported commands: {names}.",
+    ja: "使える命令：{names}",
   },
+  "insights.error.functionList": {
+    en: "Supported functions: {names}.",
+    ja: "使える関数：{names}",
+  },
+  "insights.error.listSeparator": { en: ", ", ja: "、" },
   "query.syntax.noCommand": {
     en: "The query has no command. Start it with fields, filter, sort or limit.",
     ja: "クエリに命令がありません。fields、filter、sort、limit のどれかで始めてください。",
@@ -792,8 +808,8 @@ export const messages = {
     ja: "項目「{word}」はこの版では使えません。@timestamp、@message、@logStream、@log か JSON の項目を使ってください。",
   },
   "query.unsupported.function": {
-    en: 'The function "{word}" is not supported in this version. Only toMillis(@timestamp) can be used.',
-    ja: "関数「{word}」にはこの版では対応していません。使えるのは toMillis(@timestamp) だけです。",
+    en: 'The function "{word}" is not supported here in this version.',
+    ja: "関数「{word}」はこの版ではここに使えません。",
   },
   "query.unsupported.toMillisArgument": {
     en: "toMillis can only take @timestamp.",
@@ -897,12 +913,25 @@ export const messages = {
     ja: "期間「{word}」にはこの版では対応していません。s・m・h・d を使ってください。",
   },
   "query.unsupported.aggregateFunction": {
-    en: 'The function "{word}" is not supported yet. Use count, sum, avg, min or max.',
-    ja: "関数「{word}」にはまだ対応していません。count・sum・avg・min・max を使ってください。",
+    en: 'The stats function "{word}" is not supported in this version.',
+    ja: "stats の関数「{word}」にはこの版では対応していません。",
   },
-  "query.unsupported.afterStats": {
-    en: 'Commands after stats, such as "{word}", are not supported yet.',
-    ja: "stats の後ろの命令（「{word}」など）にはまだ対応していません。",
+  // ---- 261025-insights-stats U2: pct and the commands after stats (BR1.2-BR1.5) ----
+  "query.syntax.pctOutOfRange": {
+    en: 'The percentile of pct must be a number from 0 to 100 (up to 15 decimal places), not "{word}".',
+    ja: "pct の百分位には「{word}」ではなく 0 から 100 までの数（小数は 15 桁まで）を書いてください。",
+  },
+  "query.syntax.unknownResultColumn": {
+    en: 'After stats, "{word}" is not a column of its result. Write a column name as stats shows it, in backquotes when it has signs, such as `count(*)`.',
+    ja: "stats の後ろでは「{word}」は結果の列ではありません。列の名前を stats の結果のとおりに書き、`count(*)` のように記号を含む名前は ` で囲んでください。",
+  },
+  "query.unsupported.fieldsAfterStats": {
+    en: '"{word}" after stats is not supported in this version. Use filter, sort or limit after stats.',
+    ja: "stats の後ろの「{word}」にはこの版では対応していません。stats の後ろには filter・sort・limit を使えます。",
+  },
+  "query.unsupported.secondStats": {
+    en: 'A second "{word}" is not supported in this version. Write one stats.',
+    ja: "2 つ目の「{word}」にはこの版では対応していません。stats は 1 つにしてください。",
   },
   // ---- 261022-small-features U2: the export (BR4.1, BR4.9, review R-02) ----
   "export.menu": { en: "Export", ja: "エクスポート" },

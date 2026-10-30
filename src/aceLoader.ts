@@ -9,12 +9,13 @@
  *
  * Since 261017-insights-query U2 two more are registered: the completion
  * extension CodeEditor loads (`ext-language_tools`, U2:BR9.1), and the
- * query's own mode, whose highlight rules are `QUERY_HIGHLIGHT_RULES`
- * (U2:BR9.2). Both are Should: without them the field still works as a
- * plain text field.
+ * query's own mode (U2:BR9.2). Both are Should: without them the field still
+ * works as a plain text field. Since 261025-insights-stats U2:BR4.2 the mode's
+ * rules are made from the core's QueryCatalog, so the mode is registered by
+ * `registerQueryMode` once the catalog has come, not when Ace is loaded.
  */
 
-import { QUERY_HIGHLIGHT_RULES, QUERY_LANGUAGE } from "./analytics";
+import { QUERY_LANGUAGE, type HighlightRule } from "./analytics";
 
 /** The Ace module object CodeEditor takes as its `ace` property. */
 export type AceModule = typeof import("ace-builds");
@@ -25,10 +26,10 @@ type ModeClass = new () => object;
 type RulesClass = new () => { $rules: unknown };
 
 /**
- * The query's mode: Ace's text mode with the query's highlight rules. Built
- * from the classes the loaded Ace defines, so no other module is needed.
+ * The query's mode: Ace's text mode with the highlight `rules`. Built from
+ * the classes the loaded Ace defines, so no other module is needed.
  */
-export function queryMode(ace: AceModule): { Mode: ModeClass } {
+export function queryMode(ace: AceModule, rules: readonly HighlightRule[]): { Mode: ModeClass } {
   const { Mode: TextMode } = ace.require("ace/mode/text") as { Mode: ModeClass };
   const { TextHighlightRules } = ace.require("ace/mode/text_highlight_rules") as {
     TextHighlightRules: RulesClass;
@@ -36,7 +37,7 @@ export function queryMode(ace: AceModule): { Mode: ModeClass } {
   class QueryHighlightRules extends TextHighlightRules {
     constructor() {
       super();
-      this.$rules = { start: QUERY_HIGHLIGHT_RULES.map((rule) => ({ ...rule })) };
+      this.$rules = { start: rules.map((rule) => ({ ...rule })) };
     }
   }
   class QueryMode extends TextMode {
@@ -54,7 +55,6 @@ export function loadAce(): Promise<AceModule> {
       "ace/mode/text",
       () => import("ace-builds/src-noconflict/mode-text"),
     );
-    ace.config.setModuleLoader(`ace/mode/${QUERY_LANGUAGE}`, () => Promise.resolve(queryMode(ace)));
     ace.config.setModuleLoader(
       "ace/ext/language_tools",
       () => import("ace-builds/src-noconflict/ext-language_tools"),
@@ -70,4 +70,15 @@ export function loadAce(): Promise<AceModule> {
     return ace;
   });
   return loading;
+}
+
+/**
+ * Registers the query's mode with `rules` (261025-insights-stats U2:BR4.2).
+ * The catalog does not change while the app runs, so this is done once,
+ * before the field first asks for the mode.
+ */
+export function registerQueryMode(ace: AceModule, rules: readonly HighlightRule[]): void {
+  ace.config.setModuleLoader(`ace/mode/${QUERY_LANGUAGE}`, () =>
+    Promise.resolve(queryMode(ace, rules)),
+  );
 }

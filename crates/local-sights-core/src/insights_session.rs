@@ -55,6 +55,7 @@ use crate::event::LogEvent;
 use crate::export::exporter::{ExportAvailability, ExportBlocker, ExportSnapshotSource};
 use crate::failure::ApiFailure;
 use crate::log_groups::ListingStatus;
+use crate::query::catalog::{BIN, QueryCatalog, TO_MILLIS, VocabularyKind};
 use crate::query::evaluator::{QueryResult, result_row_cells, row_detail};
 use crate::query::plan::{QueryPlan, QueryProblem, ResultShape};
 use crate::query::runner::{GroupFailedStream, GroupFetchStatus, QueryRunSummary};
@@ -79,26 +80,38 @@ pub const DEFAULT_QUERY: &str = "fields @timestamp, @message, @logStream, @log\n
      | sort @timestamp desc\n\
      | limit 10000";
 
-/// The commands a query can use, for completion (U2:BR2.1, BR9.1; `stats`
-/// since 261025-insights-stats U1).
-const COMMAND_WORDS: [&str; 5] = ["fields", "filter", "sort", "limit", "stats"];
-
-/// The other words, for completion (U2:BR9.1), with the words and functions
-/// of `stats` read in 261025-insights-stats U1 (a provisional list until the
-/// QueryCatalog of U2).
-const KEYWORD_WORDS: [&str; 15] = [
-    "and", "or", "not", "like", "in", "asc", "desc", "by", "as", "count", "sum", "avg", "min",
-    "max", "bin",
-];
-
-/// The fixed fields and the one function, for completion (U2:BR9.1).
-const FIXED_FIELD_WORDS: [&str; 5] = [
-    "@timestamp",
-    "@message",
-    "@logStream",
-    "@log",
-    "toMillis(@timestamp)",
-];
+/// The fixed words of completion, all from the QueryCatalog
+/// (261025-insights-stats U2:BR4.1, BR4.3): the commands this version runs,
+/// the keywords, the fixed fields with `toMillis(@timestamp)` (its text as
+/// U2 of 261017-insights-query offered it), and the aggregate functions and
+/// `bin`.
+fn catalog_candidates() -> Vec<CompletionCandidate> {
+    let candidate = |text: &str, kind| CompletionCandidate {
+        text: text.to_string(),
+        kind,
+    };
+    let names = |kind, supported| QueryCatalog::names(kind, supported).into_iter();
+    let mut candidates: Vec<CompletionCandidate> = names(VocabularyKind::Command, true)
+        .map(|word| candidate(word, CompletionKind::Command))
+        .collect();
+    candidates.extend(
+        names(VocabularyKind::Keyword, true).map(|word| candidate(word, CompletionKind::Keyword)),
+    );
+    candidates.extend(
+        names(VocabularyKind::FixedField, true)
+            .map(|word| candidate(word, CompletionKind::FixedField)),
+    );
+    candidates.push(candidate(
+        &format!("{TO_MILLIS}(@timestamp)"),
+        CompletionKind::FixedField,
+    ));
+    candidates.extend(
+        names(VocabularyKind::AggregateFunction, true)
+            .chain(std::iter::once(BIN))
+            .map(|word| candidate(word, CompletionKind::Function)),
+    );
+    candidates
+}
 
 /// Phase of the last run (functional-spec 4, entities.md InsightsRun.phase).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -133,6 +146,9 @@ pub enum CompletionKind {
     FixedField,
     /// A JSON field of the fetched logs.
     JsonField,
+    /// An aggregate function of `stats`, or `bin`
+    /// (261025-insights-stats U2:BR4.3).
+    Function,
 }
 
 /// One completion candidate (entities.md CompletionCandidate, U2:BR9.1).
@@ -1045,18 +1061,7 @@ impl InsightsSession {
     /// U2:BR9.1: the commands, the words, the fixed fields and the JSON
     /// field names of the last fetch (none before one).
     pub fn completion_candidates(&self) -> Vec<CompletionCandidate> {
-        let words = |words: &[&str], kind| {
-            words
-                .iter()
-                .map(move |word| CompletionCandidate {
-                    text: (*word).to_string(),
-                    kind,
-                })
-                .collect::<Vec<_>>()
-        };
-        let mut candidates = words(&COMMAND_WORDS, CompletionKind::Command);
-        candidates.extend(words(&KEYWORD_WORDS, CompletionKind::Keyword));
-        candidates.extend(words(&FIXED_FIELD_WORDS, CompletionKind::FixedField));
+        let mut candidates = catalog_candidates();
         candidates.extend(self.field_names.iter().map(|name| CompletionCandidate {
             text: name.clone(),
             kind: CompletionKind::JsonField,
@@ -2654,21 +2659,150 @@ mod tests {
         );
     }
 
+    fn kinds_of(session: &InsightsSession) -> Vec<(String, CompletionKind)> {
+        session
+            .completion_candidates()
+            .into_iter()
+            .map(|candidate| (candidate.text, candidate.kind))
+            .collect()
+    }
+
+    fn kind_in(candidates: &[(String, CompletionKind)], text: &str) -> Option<CompletionKind> {
+        candidates
+            .iter()
+            .find(|(candidate, _)| candidate == text)
+            .map(|(_, kind)| *kind)
+    }
+
     #[test]
-    fn stats_and_its_words_are_completed() {
-        // 261025-insights-stats U1 (rules.md, provisional until U2's catalog).
-        let session = ready();
-        let candidates = session.completion_candidates();
-        let kind_of = |text: &str| {
-            candidates
-                .iter()
-                .find(|candidate| candidate.text == text)
-                .map(|candidate| candidate.kind)
-        };
-        assert_eq!(kind_of("stats"), Some(CompletionKind::Command));
-        for word in ["by", "as", "count", "sum", "avg", "min", "max", "bin"] {
-            assert_eq!(kind_of(word), Some(CompletionKind::Keyword), "{word}");
+    fn stats_by_as_and_every_function_are_completed() {
+        // U1 offered count..bin as provisional keywords; U2:BR4.3 offers
+        // the twelve functions and bin as functions, from the catalog
+        // (changed as BR5.1 allows).
+        let candidates = kinds_of(&ready());
+        assert_eq!(kind_in(&candidates, "stats"), Some(CompletionKind::Command));
+        for word in ["by", "as"] {
+            assert_eq!(
+                kind_in(&candidates, word),
+                Some(CompletionKind::Keyword),
+                "{word}"
+            );
         }
-        assert_eq!(kind_of("pct"), None, "not read in U1");
+        for word in [
+            "count",
+            "count_distinct",
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "pct",
+            "stddev",
+            "earliest",
+            "latest",
+            "sortsFirst",
+            "sortsLast",
+            "bin",
+        ] {
+            assert_eq!(
+                kind_in(&candidates, word),
+                Some(CompletionKind::Function),
+                "{word}"
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(CompletionKind::Function).unwrap(),
+            serde_json::json!("Function")
+        );
+    }
+
+    #[test]
+    fn the_earlier_candidates_keep_their_texts_and_kinds() {
+        // U2:BR4.1: the words of 261017-insights-query U2:BR9.1 stay as they
+        // were; the console's commands this version does not run are not
+        // offered.
+        let candidates = kinds_of(&ready());
+        for word in ["fields", "filter", "sort", "limit"] {
+            assert_eq!(
+                kind_in(&candidates, word),
+                Some(CompletionKind::Command),
+                "{word}"
+            );
+        }
+        for word in ["and", "or", "not", "like", "in", "asc", "desc"] {
+            assert_eq!(
+                kind_in(&candidates, word),
+                Some(CompletionKind::Keyword),
+                "{word}"
+            );
+        }
+        for word in [
+            "@timestamp",
+            "@message",
+            "@logStream",
+            "@log",
+            "toMillis(@timestamp)",
+        ] {
+            assert_eq!(
+                kind_in(&candidates, word),
+                Some(CompletionKind::FixedField),
+                "{word}"
+            );
+        }
+        for word in ["parse", "dedup", "filterIndex", "toMillis"] {
+            assert_eq!(kind_in(&candidates, word), None, "{word}");
+        }
+        let mut texts: Vec<&str> = candidates.iter().map(|(text, _)| text.as_str()).collect();
+        texts.sort_unstable();
+        let before = texts.len();
+        texts.dedup();
+        assert_eq!(texts.len(), before, "every candidate once");
+        assert_eq!(before, 5 + 9 + 5 + 13);
+    }
+
+    #[test]
+    fn the_json_field_names_follow_the_catalog_words() {
+        // U2:BR4.3 with 261017-insights-query U2:BR9.1: the names of the
+        // last fetch come after the fixed words.
+        let mut session = ready();
+        session.field_names = vec!["http.status".to_string(), "level".to_string()];
+        let candidates = kinds_of(&session);
+        let fixed = catalog_candidates().len();
+        assert_eq!(
+            candidates[fixed..].to_vec(),
+            vec![
+                ("http.status".to_string(), CompletionKind::JsonField),
+                ("level".to_string(), CompletionKind::JsonField),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_cut_of_an_aggregates_result_reaches_the_summary() {
+        // U2:BR3.2: matched before the cut and the rows shown.
+        let now = Instant::now();
+        let mut session = ready();
+        let messages: Vec<String> = (0..10_003).map(|n| format!(r#"{{"n":{n}}}"#)).collect();
+        let messages: Vec<&str> = messages.iter().map(String::as_str).collect();
+        aggregated(&mut session, now, "stats count(*) by n", &messages);
+        let summary = session.view(&connected(), now).result.unwrap();
+        assert_eq!(
+            (
+                summary.row_count,
+                summary.matched_count,
+                summary.truncated_at
+            ),
+            (10_000, 10_003, Some(10_000))
+        );
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["truncatedAt"], 10_000);
+        assert_eq!(json["matchedCount"], 10_003);
+        aggregated(
+            &mut session,
+            now,
+            "stats count(*) by n | limit 3",
+            &messages,
+        );
+        let limited = session.view(&connected(), now).result.unwrap();
+        assert_eq!((limited.row_count, limited.truncated_at), (3, Some(3)));
     }
 }

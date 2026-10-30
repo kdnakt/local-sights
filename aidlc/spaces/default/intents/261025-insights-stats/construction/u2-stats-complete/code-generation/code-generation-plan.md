@@ -118,29 +118,29 @@ Testing Contract の custom の順番に従う。純粋なロジック（一覧�
   - stats のないクエリと U1 の stats のクエリの結果が今と同じ（BR5.1）。
   - 実行して失敗を確かめる（FR1.4・FR1.7）
 - [x] **Step 11** — `evaluator.rs` を実装し、Step 10 のテストと既存のテストを通す：Aggregate の段の仕上げで `StatsCommand.after` を書いた順に適用し、10,000 行ごとに止める信号を確かめ、events と同じ判定で打ち切る。U1 の「aggregates は打ち切らない」の分岐を改める
-- [ ] **Step 12** — 測定のテストを 1 つ足す（`#[ignore]`、手で `--ignored` を付けて流す）：作ったイベント 100 万件（実際の AWS は使わない）で、`stats count_distinct(@message), pct(latency, 99) by @logStream` と U1 の `stats count(*) by bin(5m)` の評価の時間を測って出し、3 倍以内であることを確かめる。満たさないときは BR2.6 の手（count_distinct を値の文字のハッシュで持つ、pct を数の配列だけにする）を試し、それでも満たさなければ記録して利用者に諮る（BR2.6、NFR2）
+- [x] **Step 12** — 測定のテストを 1 つ足す（`#[ignore]`、手で `--ignored` を付けて流す）：作ったイベント 100 万件（実際の AWS は使わない）で、`stats count_distinct(@message), pct(latency, 99) by @logStream` と U1 の `stats count(*) by bin(5m)` の評価の時間を測って出し、3 倍以内であることを確かめる。満たさないときは BR2.6 の手（count_distinct を値の文字のハッシュで持つ、pct を数の配列だけにする）を試し、それでも満たさなければ記録して利用者に諮る（BR2.6、NFR2）
 
 ### 補完（中核の境界：実装してからテスト）
 
-- [ ] **Step 13** — `insights_session.rs` を実装：`COMMAND_WORDS`・`KEYWORD_WORDS`・`FIXED_FIELD_WORDS` を QueryCatalog から作る（今の候補の文字、`toMillis(@timestamp)` などはそのまま）、集計の関数と bin を `CompletionKind::Function` の候補に足す、U1 で足した暫定の候補を消す（BR4.3・BR4.1）
-- [ ] **Step 14** — `insights_session.rs` のテストを書いて実行する：候補に stats・by・as・12 の関数・bin が入る、今の候補の文字が変わらない、JSON の項目の名前が今のとおり入る、aggregates の打ち切りの見出し（truncatedAt）が画面へ渡る（BR4.3・BR3.2）
+- [x] **Step 13** — `insights_session.rs` を実装：`COMMAND_WORDS`・`KEYWORD_WORDS`・`FIXED_FIELD_WORDS` を QueryCatalog から作る（今の候補の文字、`toMillis(@timestamp)` などはそのまま）、集計の関数と bin を `CompletionKind::Function` の候補に足す、U1 で足した暫定の候補を消す（BR4.3・BR4.1）
+- [x] **Step 14** — `insights_session.rs` のテストを書いて実行する：候補に stats・by・as・12 の関数・bin が入る、今の候補の文字が変わらない、JSON の項目の名前が今のとおり入る、aggregates の打ち切りの見出し（truncatedAt）が画面へ渡る（BR4.3・BR3.2）
 
 ### Tauri と画面（境界の層：実装してからテスト）
 
-- [ ] **Step 15** — `src-tauri/src/lib.rs` に `get_query_catalog` のコマンドを足す（固定の一覧を返し、AppState の鍵を取らない）。`build.rs` のコマンドの一覧、`capabilities/default.json`、`permissions/` に足す。今の権限の一致のテストの、名前を明示する一覧にこのコマンドを足し、テストを 2 つ足して `cargo test -p local-sights --lib` を実行する（BR4.2）
-- [ ] **Step 16** — `src/api.ts` に `getQueryCatalog` と一覧の型を足す。`src/analytics.ts` は一覧の命令（supported と unsupported）・関数・キーワードから色分けの規則を作り、一覧が届くまでは色分けなしで動くようにする。`QueryEditor.tsx` は規則を受け取る（BR4.2）
-- [ ] **Step 17** — `LogAnalyticsPage.tsx` は画面が初めて出たときに一覧を 1 回だけ取り、取れなければ色分けなしで動く。`i18n/messages.ts` の `insights.error.supportedList` を「使える命令：{commands}」の差し込みの文にし、`query.unsupported.function` を一覧に合わせて直す。新しい問題の鍵（Step 6）の文言を英語と日本語で足す（BR4.2・BR4.6 の続き、NFR9）
-- [ ] **Step 18** — `QueryResultTable.tsx` に aggregates の打ち切りの注記を「行」に合わせた文言で出す（BR3.2）
-- [ ] **Step 19** — Vitest のテストを書いて実行する：色分けの規則が一覧から作られる・一覧がないときは色分けなし（`analytics`・`QueryEditor`）、「使える命令」の文に supported の命令が差し込まれる・一覧がないときの文（`LogAnalyticsPage`）、aggregates の打ち切りの注記（`QueryResultTable`）、新しい文言の鍵が英語と日本語にそろう（`messages.test.ts`）、権限の一致（`commandRegistration.test.ts`）
+- [x] **Step 15** — `src-tauri/src/lib.rs` に `get_query_catalog` のコマンドを足す（固定の一覧を返し、AppState の鍵を取らない）。`build.rs` のコマンドの一覧、`capabilities/default.json`、`permissions/` に足す。今の権限の一致のテストの、名前を明示する一覧にこのコマンドを足し、テストを 2 つ足して `cargo test -p local-sights --lib` を実行する（BR4.2）
+- [x] **Step 16** — `src/api.ts` に `getQueryCatalog` と一覧の型を足す。`src/analytics.ts` は一覧の命令（supported と unsupported）・関数・キーワードから色分けの規則を作り、一覧が届くまでは色分けなしで動くようにする。`QueryEditor.tsx` は規則を受け取る（BR4.2）
+- [x] **Step 17** — `LogAnalyticsPage.tsx` は画面が初めて出たときに一覧を 1 回だけ取り、取れなければ色分けなしで動く。`i18n/messages.ts` の `insights.error.supportedList` を「使える命令：{commands}」の差し込みの文にし、`query.unsupported.function` を一覧に合わせて直す。新しい問題の鍵（Step 6）の文言を英語と日本語で足す（BR4.2・BR4.6 の続き、NFR9）
+- [x] **Step 18** — `QueryResultTable.tsx` に aggregates の打ち切りの注記を「行」に合わせた文言で出す（BR3.2）
+- [x] **Step 19** — Vitest のテストを書いて実行する：色分けの規則が一覧から作られる・一覧がないときは色分けなし（`analytics`・`QueryEditor`）、「使える命令」の文に supported の命令が差し込まれる・一覧がないときの文（`LogAnalyticsPage`）、aggregates の打ち切りの注記（`QueryResultTable`）、新しい文言の鍵が英語と日本語にそろう（`messages.test.ts`）、権限の一致（`commandRegistration.test.ts`）
 
 ### ドキュメント（純粋なロジック：テスト先行）
 
-- [ ] **Step 20** — README と QueryCatalog の一致のテストを先に書く（中核のテスト。README を `include_str!` で読む）：Supported の Commands の行、Supported の Aggregate functions の行、Not supported の The other commands の行を先頭の語で見つけ、バッククォートの語から括弧と引き数を外した名前の集まりが、supported の命令・supported の集計の関数と bin・unsupported の命令と大文字・小文字まで一致すること。実行して失敗を確かめる（BR4.4、FR6.1、NFR7）
-- [ ] **Step 21** — `README.md` を直して Step 20 のテストを通す：Commands の行に `stats` を足し、「Aggregate functions in `stats`」の行（12 の関数と `bin(…)`）を新しく置き、Not supported の最初の行から `stats` を外す。U1 で暫定に書き足した段落を、この表と、集計の行の並び・4 桁の丸め・既定 10,000 行の打ち切りの説明に置き換える（`toMillis` の行と表のそのほかの行の形は今のまま）
+- [x] **Step 20** — README と QueryCatalog の一致のテストを先に書く（中核のテスト。README を `include_str!` で読む）：Supported の Commands の行、Supported の Aggregate functions の行、Not supported の The other commands の行を先頭の語で見つけ、バッククォートの語から括弧と引き数を外した名前の集まりが、supported の命令・supported の集計の関数と bin・unsupported の命令と大文字・小文字まで一致すること。実行して失敗を確かめる（BR4.4、FR6.1、NFR7）
+- [x] **Step 21** — `README.md` を直して Step 20 のテストを通す：Commands の行に `stats` を足し、「Aggregate functions in `stats`」の行（12 の関数と `bin(…)`）を新しく置き、Not supported の最初の行から `stats` を外す。U1 で暫定に書き足した段落を、この表と、集計の行の並び・4 桁の丸め・既定 10,000 行の打ち切りの説明に置き換える（`toMillis` の行と表のそのほかの行の形は今のまま）
 
 ### 仕上げ
 
-- [ ] **Step 22** — 全体の確認：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、unit-test-instructions.md のすべてのコマンドが通ることを確かめる。`cargo test --workspace` と Vitest 全体も通ることを確かめる
+- [x] **Step 22** — 全体の確認：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、unit-test-instructions.md のすべてのコマンドが通ることを確かめる。`cargo test --workspace` と Vitest 全体も通ることを確かめる
 
 ## 追跡（要件・決まり → 手順）
 

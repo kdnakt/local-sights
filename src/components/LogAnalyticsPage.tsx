@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Alert from "@cloudscape-design/components/alert";
 import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
@@ -11,9 +11,11 @@ import Modal from "@cloudscape-design/components/modal";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import TimeInput from "@cloudscape-design/components/time-input";
-import { QUERY_EXAMPLES, problemText, type QueryExample } from "../analytics";
+import { QUERY_EXAMPLES, highlightRules, problemText, type QueryExample } from "../analytics";
 import {
   getCompletionCandidates,
+  getQueryCatalog,
+  type QueryVocabulary,
   type AnalyticsField,
   type CompletionCandidate,
   type ExportFormat,
@@ -126,6 +128,12 @@ function synced(insights: InsightsView, drafts: Record<Side, DateTimeParts>, que
  * while a run goes) and the words for no result; while a run goes with no
  * previous result the results container is empty (A9).
  *
+ * Since 261025-insights-stats U2 the page asks the core's QueryCatalog once
+ * when first shown: the query field is coloured from it and a problem names
+ * the commands (or functions) this version runs from it; without it the
+ * field is plain text and no list is named (BR4.2). An aggregates result
+ * cut at a `limit` or at 10,000 rows says so in rows (BR3.2).
+ *
  * Since 261022-small-features U2 the results heading carries the [Export]
  * menu (U2:BR4.1), disabled while the core says the result cannot be
  * exported (`insights.canExport`, U2:BR3.2) and busy while an export runs
@@ -183,6 +191,30 @@ export function LogAnalyticsPage({
       current = false;
     };
   }, [insights.runId, insights.phase, onError]);
+
+  // 261025-insights-stats U2:BR4.2: the catalog is asked once, when the page
+  // is first shown; it does not change while the app runs. Without it the
+  // query is plain text and a problem's words name no list (UC3).
+  const [catalog, setCatalog] = useState<readonly QueryVocabulary[] | null>(null);
+  useEffect(() => {
+    let current = true;
+    Promise.resolve()
+      .then(getQueryCatalog)
+      .then(
+        (list) => {
+          if (current && Array.isArray(list)) {
+            setCatalog(list);
+          }
+        },
+        () => {
+          // Not an error the person can act on: the page works without it.
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, []);
+  const rules = useMemo(() => highlightRules(catalog), [catalog]);
 
   const running = insights.phase === "Fetching" || insights.phase === "Evaluating";
   const dialogOpen = session.pendingChange !== null || session.settingsDialog === "Open";
@@ -282,7 +314,7 @@ export function LogAnalyticsPage({
 
   const problem =
     insights.phase === "QueryError" && problemQuery !== null ? insights.problem : null;
-  const problemWords = problem === null ? "" : problemText(problem, t);
+  const problemWords = problem === null ? "" : problemText(problem, t, catalog);
 
   return (
     <div className="log-analytics-page" data-testid="log-analytics-page">
@@ -364,6 +396,7 @@ export function LogAnalyticsPage({
                 problem={problem}
                 problemMessage={problemWords}
                 candidates={candidates}
+                highlightRules={rules}
                 focusRequest={focusRequest}
                 mac={mac}
                 t={t}
@@ -539,7 +572,13 @@ interface ResultAreaProps {
  */
 function resultCount(result: ResultSummary, t: Translate): string {
   if (result.shape === "aggregates") {
-    return t("insights.results.rows", { count: result.rowCount });
+    // 261025-insights-stats U2:BR3.2: aggregate rows are cut too, said in rows.
+    return result.truncatedAt === null
+      ? t("insights.results.rows", { count: result.rowCount })
+      : t("insights.results.rowsOfMatched", {
+          shown: result.rowCount,
+          matched: result.matchedCount,
+        });
   }
   return result.truncatedAt === null
     ? t("insights.results.matched", { count: result.rowCount })
@@ -605,7 +644,12 @@ function ResultArea({ session, t, onError, onShowFailures, onExport }: ResultAre
               <SpaceBetween direction="horizontal" size="s" alignItems="center">
                 {showsRows && result !== null && result.truncatedAt !== null && (
                   <Box data-testid="log-analytics-truncated">
-                    {t("insights.results.truncated", { shown: result.truncatedAt })}
+                    {t(
+                      result.shape === "aggregates"
+                        ? "insights.results.truncatedRows"
+                        : "insights.results.truncated",
+                      { shown: result.truncatedAt },
+                    )}
                   </Box>
                 )}
                 {/* 261022-small-features U2:BR4.1: [Export] of the result. */}

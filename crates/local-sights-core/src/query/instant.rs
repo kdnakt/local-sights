@@ -135,7 +135,8 @@ pub fn resolve_date_texts(plan: QueryPlan, zone: Tz) -> Result<QueryPlan, QueryP
                             .into_iter()
                             .map(|command| match command {
                                 AfterStatsCommand::Filter(condition) => {
-                                    resolve_condition(condition, zone).map(AfterStatsCommand::Filter)
+                                    resolve_condition(condition, zone)
+                                        .map(AfterStatsCommand::Filter)
                                 }
                                 other => Ok(other),
                             })

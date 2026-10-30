@@ -3,15 +3,64 @@ import type {
   InsightsView,
   QueryRow,
   QueryRowWindow,
+  QueryVocabulary,
   ResultSummary,
   RowWindow,
   SessionView,
   SsoLoginView,
+  VocabularyKind,
 } from "../api";
 import { createTranslator } from "../i18n/messages";
 
 /** English translator used by component tests. */
 export const t = createTranslator("en");
+
+function words(kind: VocabularyKind, supported: boolean, names: string[]): QueryVocabulary[] {
+  return names.map((name) => ({ name, kind, supported, reserved: false }));
+}
+
+/**
+ * The core's QueryCatalog as `get_query_catalog` returns it
+ * (261025-insights-stats U2:BR4.1); `analytics.test.ts` checks it against
+ * `catalog.rs`.
+ */
+export const QUERY_CATALOG: readonly QueryVocabulary[] = [
+  ...words("command", true, ["fields", "filter", "sort", "limit", "stats"]),
+  ...words("command", false, [
+    "parse",
+    "dedup",
+    "display",
+    "pattern",
+    "diff",
+    "unmask",
+    "unnest",
+    "lookup",
+    "filterIndex",
+    "source",
+  ]),
+  ...words("aggregateFunction", true, [
+    "count",
+    "count_distinct",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "pct",
+    "stddev",
+    "earliest",
+    "latest",
+    "sortsFirst",
+    "sortsLast",
+  ]),
+  ...words("function", true, ["toMillis", "bin"]),
+  ...["by", "as", "and", "or", "not", "like", "in", "asc", "desc"].map((name) => ({
+    name,
+    kind: "keyword" as const,
+    supported: true,
+    reserved: ["and", "or", "not", "like", "in"].includes(name),
+  })),
+  ...words("fixedField", true, ["@timestamp", "@message", "@logStream", "@log"]),
+];
 
 export function sessionView(overrides: Partial<SessionView> = {}): SessionView {
   return {

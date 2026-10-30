@@ -39,6 +39,8 @@ fn main() {
             // 261017-insights-query U2: an opened row and completion.
             "get_query_row_detail",
             "get_completion_candidates",
+            // 261025-insights-stats U2: the words of a query for the screen.
+            "get_query_catalog",
             // 261022-small-features U2: the export of either screen.
             "start_export",
             "dismiss_export_notice",

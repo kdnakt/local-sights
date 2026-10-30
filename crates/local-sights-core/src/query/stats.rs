@@ -1031,9 +1031,16 @@ mod tests {
     #[test]
     fn count_distinct_of_the_time_counts_the_times() {
         // BR2.1: the time is told apart by its milliseconds.
-        let events = [json(FOUR_PM, "a"), json(FOUR_PM, "b"), json(FOUR_PM + 1, "c")];
+        let events = [
+            json(FOUR_PM, "a"),
+            json(FOUR_PM, "b"),
+            json(FOUR_PM + 1, "c"),
+        ];
         assert_eq!(
-            rows("stats count_distinct(@timestamp), count_distinct(@message)", &events),
+            rows(
+                "stats count_distinct(@timestamp), count_distinct(@message)",
+                &events
+            ),
             vec![vec![CellValue::Integer(2), CellValue::Integer(3)]]
         );
     }
@@ -1277,7 +1284,13 @@ mod tests {
 
     #[test]
     fn pct_of_a_hundred_values_is_the_nearest_rank() {
-        for (percentile, rank) in [("0", 1.0), ("7", 7.0), ("50", 50.0), ("99.9", 100.0), ("100", 100.0)] {
+        for (percentile, rank) in [
+            ("0", 1.0),
+            ("7", 7.0),
+            ("50", 50.0),
+            ("99.9", 100.0),
+            ("100", 100.0),
+        ] {
             assert_eq!(
                 pct_of_one_to(100, percentile),
                 CellValue::Decimal(rank),
@@ -1289,7 +1302,13 @@ mod tests {
     #[test]
     fn pct_of_a_hundred_and_one_values_rounds_the_rank_up() {
         // ceil(7 × 101 / 100) = 8, ceil(50.5) = 51, ceil(100.899) = 101.
-        for (percentile, rank) in [("0", 1.0), ("7", 8.0), ("50", 51.0), ("99.9", 101.0), ("100", 101.0)] {
+        for (percentile, rank) in [
+            ("0", 1.0),
+            ("7", 8.0),
+            ("50", 51.0),
+            ("99.9", 101.0),
+            ("100", 101.0),
+        ] {
             assert_eq!(
                 pct_of_one_to(101, percentile),
                 CellValue::Decimal(rank),
@@ -1300,7 +1319,10 @@ mod tests {
 
     #[test]
     fn pct_of_no_value_is_no_value() {
-        assert_eq!(rows("stats pct(n, 50)", &[]), vec![vec![CellValue::Missing]]);
+        assert_eq!(
+            rows("stats pct(n, 50)", &[]),
+            vec![vec![CellValue::Missing]]
+        );
         assert_eq!(
             rows("stats pct(n, 50)", &[json(1, r#"{"n":"abc"}"#)]),
             vec![vec![CellValue::Missing]]
@@ -1333,7 +1355,10 @@ mod tests {
             json(4, r#"{"n":-0.25}"#),
         ];
         assert_eq!(
-            rows("stats pct(n, 25), pct(n, 26), pct(n, 75), pct(n, 100)", &events),
+            rows(
+                "stats pct(n, 25), pct(n, 26), pct(n, 75), pct(n, 100)",
+                &events
+            ),
             vec![vec![
                 CellValue::Decimal(-3.0),
                 CellValue::Decimal(-0.25),

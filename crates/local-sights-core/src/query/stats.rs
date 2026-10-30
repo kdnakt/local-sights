@@ -28,7 +28,6 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use std::hash::{BuildHasherDefault, DefaultHasher, Hasher};
 
 use crate::query::evaluator::number_of_digits;
 use crate::query::fields::{EventFields, FieldValue};
@@ -222,9 +221,9 @@ enum Accumulator {
     /// `min`, `max`, `sortsFirst` or `sortsLast`: the value kept so far,
     /// with its order (U1:BR2.4, U2:BR2.4).
     Extreme(Option<(SortValue, CellValue)>),
-    /// `count_distinct`: the 64-bit hashes of the texts of the values seen
-    /// (U2:BR2.1, BR2.6's first remedy: no text is copied).
-    Distinct(HashSet<u64, BuildHasherDefault<HashedKey>>),
+    /// `count_distinct`: the texts of the values seen, counted exactly
+    /// (U2:BR2.1; code-generation Q2 A kept this over a hash).
+    Distinct(HashSet<String>),
     /// `pct`: every value read as a number, ordered at the end (U2:BR2.2).
     Values(Vec<f64>),
     /// `stddev`: Welford's count, mean and sum of squared differences
@@ -247,7 +246,7 @@ impl Accumulator {
             | AggregateFunction::Max
             | AggregateFunction::SortsFirst
             | AggregateFunction::SortsLast => Accumulator::Extreme(None),
-            AggregateFunction::CountDistinct => Accumulator::Distinct(HashSet::default()),
+            AggregateFunction::CountDistinct => Accumulator::Distinct(HashSet::new()),
             AggregateFunction::Pct => Accumulator::Values(Vec::new()),
             AggregateFunction::Stddev => Accumulator::Spread {
                 count: 0,
@@ -301,7 +300,9 @@ impl Accumulator {
             }
             Accumulator::Distinct(seen) => {
                 if let Some(text) = distinct_text(field, value) {
-                    seen.insert(text_hash(&text));
+                    if !seen.contains(text.as_ref()) {
+                        seen.insert(text.into_owned());
+                    }
                 }
             }
             Accumulator::Values(values) => {
@@ -374,37 +375,6 @@ impl Accumulator {
             }
             Accumulator::Chosen(chosen) => chosen.map_or(CellValue::Missing, |(_, cell)| cell),
         }
-    }
-}
-
-/// The 64-bit hash `count_distinct` keeps of a value's text (BR2.6): two
-/// different texts share one with a chance of about n² / 2^65, below one in
-/// ten million for a million values.
-fn text_hash(text: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    hasher.write(text.as_bytes());
-    hasher.finish()
-}
-
-/// The hasher of a set of [`text_hash`]es: the key is a hash already, so it
-/// is used as it is.
-#[derive(Debug, Clone, Copy, Default)]
-struct HashedKey(u64);
-
-impl Hasher for HashedKey {
-    fn finish(&self) -> u64 {
-        self.0
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        // Only u64 keys are hashed here; any other input is folded in.
-        for byte in bytes {
-            self.0 = self.0.rotate_left(8) ^ u64::from(*byte);
-        }
-    }
-
-    fn write_u64(&mut self, value: u64) {
-        self.0 = value;
     }
 }
 

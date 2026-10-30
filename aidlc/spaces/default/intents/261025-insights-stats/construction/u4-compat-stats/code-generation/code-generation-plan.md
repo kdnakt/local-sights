@@ -81,16 +81,16 @@ Testing Contract の custom の順番に従う。比べる処理（組の読み�
 
 ### 準備
 
-- [ ] **Step 1** — テストの実行の確認：unit-test-instructions.md のコマンドが今の状態で通ることを確かめ、通過の数を記録する
+- [x] **Step 1** — テストの実行の確認：unit-test-instructions.md のコマンドが今の状態で通ることを確かめ、通過の数を記録する
 
 ### 組の読み方（純粋なロジック：テスト先行）
 
-- [ ] **Step 2** — `examples/compat/queries.rs` のテストを先に書く：今の 4 欄の行が今のとおり読める（`splitn(5)` に変えても同じ）、5 つ目の欄の `列の名前=decimal`・`列の名前=approximate` を `;` で区切って読む、列の名前の空白の扱い、読めない欄（種類の誤り、`=` がない、空の名前）はその行のエラー、`keyorder` の mode を読む、`# provisional: U1:BR2.1 = s03` の注記を読む（BR1.3・BR1.4・BR2.8）。実行して失敗を確かめる（FR7.1・FR7.3）
-- [ ] **Step 3** — `queries.rs` を実装し、Step 2 のテストを通す：`ColumnTolerance`、`CompareMode::KeyOrder`、`ProvisionalRuleCheck` の読み取り
+- [x] **Step 2** — `examples/compat/queries.rs` のテストを先に書く：今の 4 欄の行が今のとおり読める（`splitn(5)` に変えても同じ）、5 つ目の欄の `列の名前=decimal`・`列の名前=approximate` を `;` で区切って読む、列の名前の空白の扱い、読めない欄（種類の誤り、`=` がない、空の名前）はその行のエラー、`keyorder` の mode を読む、`# provisional: U1:BR2.1 = s03` の注記を読む（BR1.3・BR1.4・BR2.8）。実行して失敗を確かめる（FR7.1・FR7.3）
+- [x] **Step 3** — `queries.rs` を実装し、Step 2 のテストを通す：`ColumnTolerance`、`CompareMode::KeyOrder`、`ProvisionalRuleCheck` の読み取り
 
 ### 比べ方（純粋なロジック：テスト先行）
 
-- [ ] **Step 4** — `examples/compat/format.rs` と `compare.rs` のテストを先に書く：
+- [x] **Step 4** — `examples/compat/format.rs` と `compare.rs` のテストを先に書く：
   - 集計の行の Row：列の名前と表と同じセルの文字、時刻のセルは `insights_timestamp` の UTC の書き方（BR2.1・BR2.7 (1)）。
   - 小数の範囲：|a − b| ≤ 0.0001 または ≤ 1e-6 × max(|a|, |b|) なら withinDecimal、同じ文字は exact、片方が数でなければ文字で比べる、範囲を超えれば different（BR2.2）。
   - 近似の範囲：整数どうしで ≤ 2% なら withinApproximate（BR2.3）。
@@ -100,33 +100,33 @@ Testing Contract の custom の順番に従う。比べる処理（組の読み�
   - 集計の打ち切り：sort のない集計が limit か既定の 10,000 行で切られたら Skipped、sort のある集計は同点の段（BR2.4）。
   - events の今の比べ方が変わらないこと。
   - 実行して失敗を確かめる（FR7.1）
-- [ ] **Step 5** — `format.rs` と `compare.rs` を実装し、Step 4 のテストと既存のテストを通す：`CellDifference`（exact・withinDecimal・withinApproximate・different）
+- [x] **Step 5** — `format.rs` と `compare.rs` を実装し、Step 4 のテストと既存のテストを通す：`CellDifference`（exact・withinDecimal・withinApproximate・different）
 
 ### 組（データ）
 
-- [ ] **Step 6** — `examples/compat_queries.txt` に集計のクエリ s01〜 を足す（BR1.1 に挙げたもの、order・set・keyorder の使い分け、count_distinct の列に approximate）。U2 のレビュー R-02 の分として、値のない列への `!=` を確かめる `stats count(*) as n by errorCode | filter errorCode != "AccessDenied"` を足す。冒頭に、クエリの文にタブを書けないことと、`# provisional:` の対応の注記を書く（rules.md の「仮の決まりと確かめるクエリ」の表と同じ。U2:BR1.4 の `!=` も足す）。@log を鍵にするクエリと日時の文字との比較は入れない（BR3.2）。既定の 10,000 行（U2:BR3.2）は notChecked と書く
-- [ ] **Step 7** — 新しい `examples/compat_queries_numeric.txt` を作る（BR1.2 のクエリ n01〜、項目の名前は仮に `latency`・`status`、小数の列に decimal、冒頭に「自分のロググループの項目の名前に書き換えて使う」の注記と、pct の百分位の小数の上限の注記）
-- [ ] **Step 8** — 組のファイルが読めることのテストを足して実行する：2 つの組を `queries.rs` で読み、行のエラーがないこと、id が重ならないこと、`# provisional:` の対応のクエリの id がすべて組にあること
+- [x] **Step 6** — `examples/compat_queries.txt` に集計のクエリ s01〜 を足す（BR1.1 に挙げたもの、order・set・keyorder の使い分け、count_distinct の列に approximate）。U2 のレビュー R-02 の分として、値のない列への `!=` を確かめる `stats count(*) as n by errorCode | filter errorCode != "AccessDenied"` を足す。冒頭に、クエリの文にタブを書けないことと、`# provisional:` の対応の注記を書く（rules.md の「仮の決まりと確かめるクエリ」の表と同じ。U2:BR1.4 の `!=` も足す）。@log を鍵にするクエリと日時の文字との比較は入れない（BR3.2）。既定の 10,000 行（U2:BR3.2）は notChecked と書く
+- [x] **Step 7** — 新しい `examples/compat_queries_numeric.txt` を作る（BR1.2 のクエリ n01〜、項目の名前は仮に `latency`・`status`、小数の列に decimal、冒頭に「自分のロググループの項目の名前に書き換えて使う」の注記と、pct の百分位の小数の上限の注記）
+- [x] **Step 8** — 組のファイルが読めることのテストを足して実行する：2 つの組を `queries.rs` で読み、行のエラーがないこと、id が重ならないこと、`# provisional:` の対応のクエリの id がすべて組にあること
 
 ### 報告（純粋なロジック：テスト先行）
 
-- [ ] **Step 9** — `examples/compat/report.rs` のテストを先に書く：クエリごとの「同じ」「同じ（小数の誤差の範囲：n セル）」「同じ（近似の範囲：n セル）」「違い」、範囲内の違いの例は最初の 5 つ、仮の決まりごとのまとめ（一致・違い・比べていない）、期間の端の違いを分けて出す、終了コード（違いがあれば 1、範囲内の違いだけなら 0）（BR2.5・BR1.4・BR2.7 (5)）。実行して失敗を確かめる
-- [ ] **Step 10** — `report.rs` を実装し、Step 9 のテストを通す
+- [x] **Step 9** — `examples/compat/report.rs` のテストを先に書く：クエリごとの「同じ」「同じ（小数の誤差の範囲：n セル）」「同じ（近似の範囲：n セル）」「違い」、範囲内の違いの例は最初の 5 つ、仮の決まりごとのまとめ（一致・違い・比べていない）、期間の端の違いを分けて出す、終了コード（違いがあれば 1、範囲内の違いだけなら 0）（BR2.5・BR1.4・BR2.7 (5)）。実行して失敗を確かめる
+- [x] **Step 10** — `report.rs` を実装し、Step 9 のテストを通す
 
 ### つなぎ（境界：実装してからテスト）
 
-- [ ] **Step 11** — `examples/compat_check.rs` を実装：アプリの結果が aggregates なら集計の AppRows を作る（列の名前は `ResultColumns::Aggregates`、セルは表と同じ文字、時刻は `insights_timestamp`）、並べ替えの項目は stats のあとの sort の鍵の列の名前、`row_cap` は stats のあとの limit（なければ 10,000）、打ち切りは `matched_count` と表に出した行の数から求め、同点の段は最後の行と同じ値の行を両側から除いて件数だけ比べる、bin の鍵の列が期間の最初か最後の区切りの行は「期間の端の違い」として分ける（BR2.7）。U1 で「U4 で対応」と報告していた分岐を消す。テストを書いて `cargo test -p local-sights-core --example compat_check` を実行する（見本の結果で、集計の道・打ち切り・期間の端）
-- [ ] **Step 12** — 手元の比べ方の手順を、今の手順がある `README.md` の節に書き足す（今の手順に、集計の組と数の組の選び方、`QUERIES=` と `--queries`、数の組の項目の名前の書き換え、数の項目を持つロググループがないときは `avg(toMillis(@timestamp))` の 1 本で代えること、結果の記録の仕方を足す）。U4 の記録 `code-summary.md` に、仮の決まりごとの手元の比較の結果（matches・differs・notChecked）と、differs のときに直したか諮ったかを書く表の欄を用意する（BR3.1。手元の結果は開発者が実行したあとに埋め、直しが要れば BR3.1 のとおり U4 の中で直すか諮る）
+- [x] **Step 11** — `examples/compat_check.rs` を実装：アプリの結果が aggregates なら集計の AppRows を作る（列の名前は `ResultColumns::Aggregates`、セルは表と同じ文字、時刻は `insights_timestamp`）、並べ替えの項目は stats のあとの sort の鍵の列の名前、`row_cap` は stats のあとの limit（なければ 10,000）、打ち切りは `matched_count` と表に出した行の数から求め、同点の段は最後の行と同じ値の行を両側から除いて件数だけ比べる、bin の鍵の列が期間の最初か最後の区切りの行は「期間の端の違い」として分ける（BR2.7）。U1 で「U4 で対応」と報告していた分岐を消す。テストを書いて `cargo test -p local-sights-core --example compat_check` を実行する（見本の結果で、集計の道・打ち切り・期間の端）
+- [x] **Step 12** — 手元の比べ方の手順を、今の手順がある `README.md` の節に書き足す（今の手順に、集計の組と数の組の選び方、`QUERIES=` と `--queries`、数の組の項目の名前の書き換え、数の項目を持つロググループがないときは `avg(toMillis(@timestamp))` の 1 本で代えること、結果の記録の仕方を足す）。U4 の記録 `code-summary.md` に、仮の決まりごとの手元の比較の結果（matches・differs・notChecked）と、differs のときに直したか諮ったかを書く表の欄を用意する（BR3.1。手元の結果は開発者が実行したあとに埋め、直しが要れば BR3.1 のとおり U4 の中で直すか諮る）
 
 ### 持ち越し（U3 のコード生成のレビュー）
 
-- [ ] **Step 13** — `src/components/QueryResultTable.tsx`：新しい版が届いてから `findQueryRow` の答えで開いた行の位置が付け替わるまで、開いた行の詳細の取得を待つ（古い位置で別の行の詳細を取りに行かない、U3 レビュー R-02）
-- [ ] **Step 14** — `src/App.tsx`・`ExportNoticeAlert.tsx`：書き出しの通知の添え書き（一部のログだけの結果）を、書き出しを始めたときの結果の stage で決めて覚え、次の実行が始まっても消えないようにする（U3 レビュー R-05）
-- [ ] **Step 15** — 持ち越しの Vitest を書いて実行する：付け替えまで詳細を取りに行かない、付け替えのあとに正しい行の詳細を取る、通知の添え書きが次の実行で消えない、中断でない結果では添え書きがない
+- [x] **Step 13** — `src/components/QueryResultTable.tsx`：新しい版が届いてから `findQueryRow` の答えで開いた行の位置が付け替わるまで、開いた行の詳細の取得を待つ（古い位置で別の行の詳細を取りに行かない、U3 レビュー R-02）
+- [x] **Step 14** — `src/App.tsx`・`ExportNoticeAlert.tsx`：書き出しの通知の添え書き（一部のログだけの結果）を、書き出しを始めたときの結果の stage で決めて覚え、次の実行が始まっても消えないようにする（U3 レビュー R-05）
+- [x] **Step 15** — 持ち越しの Vitest を書いて実行する：付け替えまで詳細を取りに行かない、付け替えのあとに正しい行の詳細を取る、通知の添え書きが次の実行で消えない、中断でない結果では添え書きがない
 
 ### 仕上げ
 
-- [ ] **Step 16** — 全体の確認：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、unit-test-instructions.md のすべてのコマンド、`cargo test --workspace` と Vitest 全体が通ることを確かめる。組のファイルとリポジトリに、コンソールから書き出した結果やログの中身、アカウント ID などがないことを確かめる（NFR4・project.md Forbidden）
+- [x] **Step 16** — 全体の確認：`cargo fmt --check`、`cargo clippy --workspace --all-targets`、`npx prettier --check .`、`npx eslint .`、`npx tsc --noEmit`、unit-test-instructions.md のすべてのコマンド、`cargo test --workspace` と Vitest 全体が通ることを確かめる。組のファイルとリポジトリに、コンソールから書き出した結果やログの中身、アカウント ID などがないことを確かめる（NFR4・project.md Forbidden）
 
 ## 追跡（要件・決まり → 手順）
 

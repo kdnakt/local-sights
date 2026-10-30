@@ -5,14 +5,17 @@ import type {
   FetchProgressUpdate,
   FilterProgressUpdate,
   FilterSummary,
+  ResultSummary,
   RowWindow,
   SessionView,
 } from "./api";
 import { App } from "./App";
 import {
+  cancelledSummary,
   connectedView,
   insightsView,
   logEvent,
+  partialSummary,
   queryRow,
   queryRowWindow,
   resultSummary,
@@ -1407,6 +1410,63 @@ describe("App", () => {
       expect(screen.getByTestId("export-notice")).toHaveTextContent(
         "There is no space left to write /Volumes/x/a.csv.",
       );
+    });
+
+    // 261025-insights-stats U3 code review R-05 (fixed in U4): the note that the rows are
+    // of part of the logs is decided as the export starts, so a new run keeps it.
+    describe("the note of an export of a cancelled result", () => {
+      async function exportResult(result: ResultSummary) {
+        const user = userEvent.setup();
+        const view = (overrides: Partial<SessionView> = {}, current = result) =>
+          connectedView({
+            insights: insightsView({ canExport: true, result: current }),
+            ...overrides,
+          });
+        vi.mocked(api.getSession).mockResolvedValue(view());
+        render(<App languages={["en-US"]} />);
+        await screen.findByTestId("fetch-form");
+        await user.click(screen.getByRole("link", { name: "Log Analytics" }));
+        const page = screen.getByTestId("app-page-logAnalytics");
+        await user.click(within(within(page).getByTestId("export-menu")).getByRole("button"));
+        await user.click(screen.getByRole("menuitem", { name: "Save as CSV" }));
+        expect(api.startExport).toHaveBeenCalledWith("logAnalytics", "csv", "file");
+        return view;
+      }
+      const saved = { kind: "Saved", path: "/tmp/q.csv", rowCount: 3 } as const;
+      const done = {
+        exportNotice: saved,
+        export: {
+          exportNumber: 1,
+          status: "Done",
+          request: { screen: "logAnalytics", format: "csv", target: "file" },
+          rowCount: 3,
+        },
+      } as const;
+
+      it("stays on the notice when a new run starts", async () => {
+        const view = await exportResult(cancelledSummary());
+        push(view(done));
+        expect(screen.getByTestId("export-notice")).toHaveTextContent(
+          "Saved 3 rows to /tmp/q.csv. These are results of part of the logs.",
+        );
+        // The next run's partial result, then its final one, replace the cancelled one.
+        push(view(done, partialSummary({}, { runId: 2 })));
+        expect(screen.getByTestId("export-notice")).toHaveTextContent("part of the logs");
+        push(view(done, resultSummary({ runId: 2 })));
+        expect(screen.getByTestId("export-notice")).toHaveTextContent("part of the logs");
+      });
+
+      it("is not added for an export of a result that was not cancelled", async () => {
+        const view = await exportResult(resultSummary());
+        push(view(done));
+        expect(screen.getByTestId("export-notice")).not.toHaveTextContent("part of the logs");
+        // A later cancelled run does not add it to the notice of that export.
+        push(view(done, cancelledSummary({ runId: 2 })));
+        expect(screen.getByTestId("export-notice")).toHaveTextContent(
+          "Saved 3 rows to /tmp/q.csv.",
+        );
+        expect(screen.getByTestId("export-notice")).not.toHaveTextContent("part of the logs");
+      });
     });
 
     it("rewrites the notice when the language changes (BR4.9)", async () => {

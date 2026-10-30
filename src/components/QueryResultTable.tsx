@@ -92,9 +92,14 @@ function layoutOf(rowCount: number, opened: OpenedRows): Layout {
 /** No row open. */
 const NONE_OPEN: OpenedRows = new Map();
 
-/** The opened rows, for the run they were opened in (another run's mean nothing). */
+/**
+ * The opened rows, for the run they were opened in (another run's mean nothing) and the
+ * version whose places they hold: after a newer version comes, their places are the
+ * older version's until `find_query_row` has placed them again (U3 code review R-02).
+ */
 interface OpenedState {
   runId: number;
+  version: number;
   rows: OpenedRows;
 }
 
@@ -135,7 +140,9 @@ interface Shown {
  * run comes, the place of each opened row and of the row shown first is asked with
  * `find_query_row`; an opened row found there stays open at its new place, one not
  * found is closed, and the list scrolls so that the row shown first is first again
- * (BR2.8). Rows opened in another run are not kept.
+ * (BR2.8). Rows opened in another run are not kept. Until the opened rows are placed in
+ * the newer version, their fields are not read: their old places may name other rows
+ * there (U3 code review R-02).
  */
 export function QueryResultTable({
   result,
@@ -150,9 +157,12 @@ export function QueryResultTable({
   const { runId, version, rowCount } = result;
   const [openedState, setOpenedState] = useState<OpenedState>(() => ({
     runId,
+    version,
     rows: NONE_OPEN,
   }));
   const opened = openedState.runId === runId ? openedState.rows : NONE_OPEN;
+  // U3 code review R-02: the opened rows' places are this version's.
+  const placedHere = openedState.runId === runId && openedState.version === version;
   const [selected, setSelected] = useState<number | null>(null);
   const [answer, setAnswer] = useState<QueryRowWindow | null>(null);
   const [details, setDetails] = useState<ReadonlyMap<string, QueryRowDetail>>(() => new Map());
@@ -189,7 +199,7 @@ export function QueryResultTable({
         }
         const found = new Map(pairs);
         const rows = reopenedRows(shown.current.opened, found);
-        setOpenedState({ runId, rows });
+        setOpenedState({ runId, version, rows });
         const first = top === null ? null : (found.get(top) ?? null);
         if (first !== null) {
           const next = layoutOf(rowCount, rows);
@@ -265,6 +275,10 @@ export function QueryResultTable({
     };
   }, []);
   useEffect(() => {
+    // U3 code review R-02: wait until the opened rows are placed in this version.
+    if (!placedHere) {
+      return;
+    }
     for (const position of openPositions) {
       const key = `${runId}:${version}:${timeZone}:${position}`;
       if (requested.current.has(key)) {
@@ -285,7 +299,7 @@ export function QueryResultTable({
         },
       );
     }
-  }, [openPositions, runId, version, timeZone, onError]);
+  }, [openPositions, placedHere, runId, version, timeZone, onError]);
 
   const rowAt = (position: number): QueryRow | null => {
     if (answer === null || answer.runId !== runId || answer.version !== version) {
@@ -298,7 +312,7 @@ export function QueryResultTable({
     setSelected(position);
     // BR2.8: kept by the row's key; a row not read yet by its place until it is.
     const key = openedKeyAt(opened, position) ?? rowAt(position)?.rowKey ?? `\u0000${position}`;
-    setOpenedState({ runId, rows: toggleOpenedRow(opened, key, position) });
+    setOpenedState({ runId, version, rows: toggleOpenedRow(opened, key, position) });
   };
 
   const select = (position: number) => {

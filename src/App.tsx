@@ -60,7 +60,7 @@ import {
   type SessionView,
   type TimeZoneChoice,
 } from "./api";
-import { APP_PAGES, PAGE_NAME_KEY, type AppPage } from "./analytics";
+import { APP_PAGES, PAGE_NAME_KEY, isPartialResultExport, type AppPage } from "./analytics";
 import { AppNavigation } from "./components/AppNavigation";
 import { CancelNotice } from "./components/CancelNotice";
 import { CloseConfirmDialog } from "./components/CloseConfirmDialog";
@@ -219,6 +219,14 @@ export function App({ languages, platform }: AppProps) {
   const [commandError, setCommandError] = useState<CommandErrorText | null>(null);
   const [filterDraft, setFilterDraft] = useState<string | null>(null);
   const [filterFailures, setFilterFailures] = useState(0);
+  // 261025-insights-stats U3 code review R-05: whether the last export copied a
+  // cancelled result of the query screen, decided as it starts, so that a new run
+  // does not change the notice of an export already made.
+  const [exportOfPartial, setExportOfPartial] = useState(false);
+  const latestSession = useRef<SessionView | null>(null);
+  useEffect(() => {
+    latestSession.current = session;
+  });
   const settingsButtonRef = useRef<ButtonProps.Ref>(null);
   const perf = usePerfRows();
   const pane = usePaneWidth();
@@ -401,8 +409,12 @@ export function App({ languages, platform }: AppProps) {
   // 261022-small-features U2:BR4.1: [Export] of either screen; the Running
   // job, the end and the notice arrive as `session-changed` (BR4.8, BR4.9).
   const handleExport = useCallback(
-    (screen: ExportScreen, format: ExportFormat, target: ExportTarget) =>
-      run(() => startExport(screen, format, target)),
+    (screen: ExportScreen, format: ExportFormat, target: ExportTarget) => {
+      setExportOfPartial(
+        isPartialResultExport(screen, latestSession.current?.insights.result?.stage),
+      );
+      return run(() => startExport(screen, format, target));
+    },
     [run],
   );
   const handleExportLogs = useCallback(
@@ -473,11 +485,9 @@ export function App({ languages, platform }: AppProps) {
       notice={session.exportNotice}
       t={t}
       onDismiss={handleDismissExportNotice}
-      // 261025-insights-stats U3:BR3.5: the query screen's export of a cancelled result.
-      partialResult={
-        session.export.request?.screen === "logAnalytics" &&
-        session.insights.result?.stage === "cancelledPartial"
-      }
+      // 261025-insights-stats U3:BR3.5: the query screen's export of a cancelled
+      // result, as it was when the export started (U3 code review R-05).
+      partialResult={exportOfPartial}
     />
   );
 

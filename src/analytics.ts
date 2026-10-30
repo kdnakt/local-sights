@@ -6,15 +6,18 @@
  * and the first line of a cell (U2:BR7.1). Since U3 the choice of up to 50
  * log groups (U3:BR4.1). Since 261025-insights-stats U2 the syntax colours and
  * the lists of commands and functions in a problem's words come from the
- * core's QueryCatalog (BR4.2).
+ * core's QueryCatalog (BR4.2). Since U4 whether an export copies a cancelled
+ * result (U3 code review R-05).
  */
 
 import type {
   CompletionCandidate,
   CompletionKind,
+  ExportScreen,
   QueryProblem,
   QuerySpan,
   QueryVocabulary,
+  ResultStage,
   VocabularyKind,
 } from "./api";
 import type { Translate } from "./i18n/messages";
@@ -357,4 +360,16 @@ export function limitSelection(values: readonly string[], max: number): string[]
     }
   }
   return chosen;
+}
+
+/**
+ * 261025-insights-stats U3:BR3.5, U3 code review R-05: whether an export started from
+ * `screen` while the query screen's result is at `stage` copies a result made from part
+ * of the logs, decided as the export starts so that a later run does not change it.
+ */
+export function isPartialResultExport(
+  screen: ExportScreen,
+  stage: ResultStage | null | undefined,
+): boolean {
+  return screen === "logAnalytics" && stage === "cancelledPartial";
 }

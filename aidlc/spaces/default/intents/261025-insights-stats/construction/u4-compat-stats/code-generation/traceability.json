@@ -1,0 +1,31 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-compat-stats",
+  "upstream_ids": [
+    "FR7.1", "FR7.2", "FR7.3", "NFR3", "NFR4",
+    "BR1.1", "BR1.2", "BR1.3", "BR1.4",
+    "BR2.1", "BR2.2", "BR2.3", "BR2.4", "BR2.5", "BR2.6", "BR2.7", "BR2.8",
+    "BR3.1", "BR3.2"
+  ],
+  "coverage": [
+    { "id": "FR7.1", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "id": "FR7.2", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries.txt" },
+    { "id": "FR7.3", "status": "OK", "target": "crates/local-sights-core/examples/compat/report.rs" },
+    { "id": "NFR3", "status": "OK", "target": "README.md" },
+    { "id": "NFR4", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries.txt" },
+    { "id": "BR1.1", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries.txt" },
+    { "id": "BR1.2", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries_numeric.txt" },
+    { "id": "BR1.3", "status": "OK", "target": "crates/local-sights-core/examples/compat/queries.rs" },
+    { "id": "BR1.4", "status": "OK", "target": "crates/local-sights-core/examples/compat/report.rs" },
+    { "id": "BR2.1", "status": "OK", "target": "crates/local-sights-core/examples/compat/format.rs" },
+    { "id": "BR2.2", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "id": "BR2.3", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "id": "BR2.4", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "id": "BR2.5", "status": "OK", "target": "crates/local-sights-core/examples/compat/report.rs" },
+    { "id": "BR2.6", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "id": "BR2.7", "status": "OK", "target": "crates/local-sights-core/examples/compat_check.rs" },
+    { "id": "BR2.8", "status": "OK", "target": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "id": "BR3.1", "status": "OK", "target": "README.md" },
+    { "id": "BR3.2", "status": "OK", "target": "crates/local-sights-core/examples/compat_queries.txt" }
+  ]
+}

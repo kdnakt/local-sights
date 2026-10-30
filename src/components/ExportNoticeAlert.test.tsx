@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { isPartialResultExport } from "../analytics";
 import type { ExportNotice } from "../api";
 import { createTranslator } from "../i18n/messages";
 import { t } from "../test/fixtures";
@@ -103,5 +104,14 @@ describe("ExportNoticeAlert (261022-small-features U2:BR4.9, review R-02)", () =
   it("adds nothing to a done export of a complete result", () => {
     renderNotice({ kind: "Copied", rowCount: 2 });
     expect(screen.getByTestId("export-notice")).not.toHaveTextContent("part of the logs");
+  });
+
+  // 261025-insights-stats U3 code review R-05 (fixed in U4).
+  it("is told to add the note only for an export of a cancelled result of the query screen", () => {
+    expect(isPartialResultExport("logAnalytics", "cancelledPartial")).toBe(true);
+    for (const stage of ["final", "partial", null, undefined] as const) {
+      expect(isPartialResultExport("logAnalytics", stage)).toBe(false);
+    }
+    expect(isPartialResultExport("logManagement", "cancelledPartial")).toBe(false);
   });
 });

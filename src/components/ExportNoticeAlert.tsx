@@ -11,7 +11,9 @@ export interface ExportNoticeAlertProps {
   /**
    * The export copied the cancelled result of a query, made from part of the logs
    * (261025-insights-stats U3:BR3.5, FR5.2): a saved or copied notice says so. The file
-   * itself carries no mark.
+   * itself carries no mark. The caller decides it as the export starts
+   * (`isPartialResultExport`), so a new run does not take it off the notice of an
+   * export already made (U3 code review R-05).
    */
   partialResult?: boolean;
 }

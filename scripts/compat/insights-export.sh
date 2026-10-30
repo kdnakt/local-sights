@@ -195,15 +195,17 @@ while IFS= read -r line || [ -n "$line" ]; do
   line=${line%"$CR"}
   trimmed=${line#"${line%%[![:space:]]*}"}
   case "$trimmed" in '' | '#'*) continue ;; esac
-  # id<TAB>order|set<TAB>purpose<TAB>query, as compat_check reads it.
+  # id<TAB>order|set|keyorder<TAB>purpose<TAB>query[<TAB>tolerances], as
+  # compat_check reads it (261025-insights-stats U4:BR1.3, BR2.8): the query
+  # ends at the next tab, and the tolerances are compat_check's only.
   id=${line%%"$TAB"*}
   rest=${line#*"$TAB"}
   mode=${rest%%"$TAB"*}
   rest=${rest#*"$TAB"}
   rest=${rest#*"$TAB"}
-  query=$rest
+  query=${rest%%"$TAB"*}
   case "$id" in '' | *[!A-Za-z0-9-]*) fail "$QUERIES line $line_number: bad id" ;; esac
-  case "$mode" in order | set) ;; *) fail "$QUERIES line $line_number: bad mode" ;; esac
+  case "$mode" in order | set | keyorder) ;; *) fail "$QUERIES line $line_number: bad mode" ;; esac
   case "$seen_ids" in *" $id "*) fail "$QUERIES line $line_number: the id $id is used twice" ;; esac
   seen_ids="$seen_ids$id "
   [ -n "$query" ] || fail "$QUERIES line $line_number: empty query"

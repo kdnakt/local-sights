@@ -1,10 +1,33 @@
 # 261017-insights-query U4: the query set compared with the console's Logs Insights (BR3.1).
-# One query a line: id<TAB>order|set<TAB>purpose<TAB>query. Lines starting with # are notes.
+# One query a line: id<TAB>order|set|keyorder<TAB>purpose<TAB>query[<TAB>tolerances].
+# Lines starting with # are notes. A query text cannot hold a tab: a tab ends the query.
 # The field names follow a CloudTrail log group (eventSource, eventName, errorCode,
 # userIdentity.type, userIdentity.invokedBy, readOnly, eventVersion, awsRegion). For another log group, write another
 # file and pass it with QUERIES= (insights-export.sh) and --queries (compat_check).
-# Query texts only: never put log contents here (NFR4). No @log values and no date texts.
-# order = the rows are compared in order (queries with sort, BR2.3); set = only the collection.
+# Query texts only: never put log contents here (NFR4). No @log values and no date texts;
+# no stats query keyed by @log either (its value has no account ID, 261025-insights-stats U4:BR3.2).
+# order = the rows are compared in order (queries with sort, BR2.3); set = only the collection;
+# keyorder = the collection, then the order of the key values of a stats without sort (U4:BR2.8).
+# tolerances (261025-insights-stats U4:BR1.3, optional fifth field): <column>=decimal or
+# <column>=approximate, separated by ;. A column name cannot hold = or ;.
+#
+# 261025-insights-stats U4:BR1.4: the provisional rules of U1 and U2 and the queries that check
+# them (functional-design rules.md "仮の決まりと確かめるクエリ"); compat_check sums them up at the
+# end of its report. U1:BR2.3, U1:BR2.8, U2:BR2.2 and U2:BR2.3 are checked by
+# compat_queries_numeric.txt. U1:BR2.5 also covers FR2.2 (no empty bin).
+# provisional: U1:BR1.1 = s12-upper-command
+# provisional: U1:BR2.1 = s03-missing-key
+# provisional: U1:BR2.5 = s01-bin5m, s10-two-keys
+# provisional: U1:BR2.6 = s04-nobykey-zero
+# provisional: U1:BR2.7 = s15-keyorder
+# provisional: U2:BR1.1 = s13-upper-function, s14-mixed-function
+# provisional: U2:BR1.4 = s08-after-filter, s16-ne-missing
+# provisional: U2:BR2.1 = s05-count-distinct
+# provisional: U2:BR2.4 = s07-sorts-first
+# provisional: U2:BR2.5 = s06-earliest-latest
+# U2:BR3.2 (the default 10,000 rows) is not checked: a CloudTrail log group does not make 10,000
+# groups (FR review R-03). s11 only checks that a result under 10,000 rows is not cut.
+# provisional: U2:BR3.2 = notChecked
 q01-doc-latest	order	資料の例（fields・sort・limit）	fields @timestamp, @message | sort @timestamp desc | limit 20
 q02-doc-like	order	資料の例（like）	fields @timestamp, @message | filter @message like /Exception/ | sort @timestamp desc | limit 20
 q03-doc-regex-ci	set	資料の例（(?i)）	fields eventName | filter eventName like /(?i)assumerole/
@@ -34,3 +57,21 @@ p09-json-number	set	仮：数字だけの文字列（JSON の文字列）と文�
 p10-field-eq	set	仮：項目どうしの =	fields eventName, eventSource | filter userIdentity.invokedBy = eventSource
 p11-field-ne-missing	set	仮：右辺の項目がないときの !=	fields eventName, errorCode | filter eventName != errorCode
 p12-text-vs-digits	set	仮：数字でない文字列と数字だけの文字列の大小	fields eventName | filter eventName > "5"
+# 261025-insights-stats U4:BR1.1: the aggregate queries (stats). s16 checks != on a key without a
+# value, after stats (U2 code review R-02).
+s01-bin5m	set	集計：bin(5m)（空のビンを出さない、FR2.2）	stats count(*) by bin(5m)
+s02-order-top	order	集計：sort と limit（order）	stats count(*) as n by eventSource | sort n desc | limit 10
+s03-missing-key	set	仮：鍵のないイベントは 1 グループ（U1:BR2.1）	stats count(*) by errorCode
+s04-nobykey-zero	set	仮：by なしの 0 件は 1 行（U1:BR2.6）	filter eventName = "NoSuchEvent" | stats count(*)
+s05-count-distinct	set	仮：count_distinct（コンソールは近似、U2:BR2.1）	stats count_distinct(eventName) by eventSource	count_distinct(eventName)=approximate
+s06-earliest-latest	set	仮：earliest・latest の同じ時刻（U2:BR2.5）	stats earliest(eventName), latest(eventName) by eventSource
+s07-sorts-first	set	仮：sortsFirst = min、sortsLast = max（U2:BR2.4）	stats sortsFirst(eventName), min(eventName), sortsLast(eventName), max(eventName)
+s08-after-filter	set	仮：stats のあとの filter（U2:BR1.4）	stats count(*) as n by eventSource | filter n > 10
+s09-nested-key	set	集計：JSON の入れ子の鍵	stats count(*) by userIdentity.type
+s10-two-keys	set	集計：鍵が 2 つ（bin と項目）	stats count(*) by bin(1h), eventSource
+s11-default-cap	set	集計：既定の 10,000 行より少なければ切られない（U2:BR3.2）	stats count(*) by eventName
+s12-upper-command	set	仮：命令の大文字（U1:BR1.1）	STATS count(*) by eventSource
+s13-upper-function	set	仮：関数名の大文字（U2:BR1.1）	stats COUNT(*) by eventSource
+s14-mixed-function	set	仮：関数名の大文字・小文字の混在（U2:BR1.1）	stats Count_Distinct(eventName)	Count_Distinct(eventName)=approximate
+s15-keyorder	keyorder	仮：sort がないときは鍵の昇順（U1:BR2.7）	stats count(*) by eventSource
+s16-ne-missing	set	仮：stats のあとの値のない鍵への !=（U2:BR1.4、U2 レビュー R-02）	stats count(*) as n by errorCode | filter errorCode != "AccessDenied"

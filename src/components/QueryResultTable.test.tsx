@@ -357,6 +357,54 @@ describe("QueryResultTable across versions of a result (261025-insights-stats U3
     );
   });
 
+  // 261025-insights-stats U3 code review R-02 (fixed in U4): an opened row's old place
+  // names another row in the newer version, so its fields wait for find_query_row.
+  it("does not read an opened row's fields at its old place before the newer version places it", async () => {
+    // Every place asked for (the opened row and the row shown first) waits until
+    // `place` answers them as version 2 would.
+    const waiting: Array<() => void> = [];
+    vi.mocked(api.findQueryRow).mockImplementation(
+      (_runId, _version, rowKey) =>
+        new Promise<number | null>((resolve) => {
+          waiting.push(() => resolve(newer.findIndex((row) => row.rowKey === rowKey)));
+        }),
+    );
+    const place = () => waiting.splice(0).forEach((answer) => answer());
+    const user = userEvent.setup();
+    const { show } = renderVersions(partial(1, 500));
+    const second = (await screen.findAllByTestId("query-result-row"))[1]!;
+    await waitFor(() => expect(second).toHaveTextContent("ERROR first line"));
+    await user.click(within(second).getByRole("button", { name: "Show details" }));
+    await waitFor(() => expect(api.getQueryRowDetail).toHaveBeenCalledWith(3, 1, 1));
+    show(partial(2, 503));
+    await waitFor(() => expect(api.findQueryRow).toHaveBeenCalledWith(3, 2, rows[1]!.rowKey));
+    // Waiting for the place: nothing is read for version 2, and the row says so.
+    await Promise.resolve();
+    expect(api.getQueryRowDetail).not.toHaveBeenCalledWith(3, 2, expect.any(Number));
+    expect(screen.getByTestId("query-result-details-loading")).toBeInTheDocument();
+    place();
+    await waitFor(() => expect(api.getQueryRowDetail).toHaveBeenCalledWith(3, 2, 4));
+    expect(api.getQueryRowDetail).not.toHaveBeenCalledWith(3, 2, 1);
+    await waitFor(() =>
+      expect(screen.getByTestId("query-result-details")).toHaveTextContent("ERROR first line"),
+    );
+  });
+
+  it("reads no field of version 2 for an opened row the newer version does not have", async () => {
+    vi.mocked(api.findQueryRow).mockResolvedValue(null);
+    const user = userEvent.setup();
+    const { show } = renderVersions(partial(1, 500));
+    const first = (await screen.findAllByTestId("query-result-row"))[0]!;
+    await waitFor(() => expect(first).toHaveTextContent("ERROR 0"));
+    await user.click(within(first).getByRole("button", { name: "Show details" }));
+    await waitFor(() => expect(api.getQueryRowDetail).toHaveBeenCalledWith(3, 1, 0));
+    show(partial(2, 503));
+    await waitFor(() =>
+      expect(screen.queryByTestId("query-result-details")).not.toBeInTheDocument(),
+    );
+    expect(api.getQueryRowDetail).not.toHaveBeenCalledWith(3, 2, expect.any(Number));
+  });
+
   it("drops rows read for an older version and keeps nothing of another run", async () => {
     vi.mocked(api.getQueryRows).mockImplementation(async (runId, version, offset, limit) =>
       queryRowWindow(rows, offset, limit, runId, version - 1),

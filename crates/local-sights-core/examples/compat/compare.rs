@@ -19,26 +19,90 @@
 //! 6. The rows are compared as multisets of `(column, value)` pairs (BR2.1).
 //! 7. For a query compared in order, the sort values are compared row by
 //!    row; rows with the same sort values may come in any order (BR2.3).
+//!
+//! 261025-insights-stats U4 compares aggregate rows (`stats`) through the
+//! same seven steps (BR2.1), with these additions:
+//!
+//! - Step 3: an aggregates result without `sort` cut by its `limit` or at
+//!   10,000 is Skipped too (BR2.4).
+//! - Step 5: for a sorted aggregates result that was cut, the rows with the
+//!   last shown row's sort value are left out on both sides and only their
+//!   counts compared, since the console's next row is not in its export
+//!   (BR2.7 (4)).
+//! - Step 6: with a column tolerance (the query set's fifth field), the rows
+//!   are paired by their columns without a tolerance and only the tolerant
+//!   cells of a pair are compared, decimals within 1e-6 relative or 0.0001
+//!   absolute (BR2.2) and `count_distinct` within 2% (BR2.3) being the same
+//!   (BR2.6). The cells within a tolerance are counted apart (BR2.5). A
+//!   difference in a row of the first or the last bin of the period is
+//!   listed apart as a period edge and is still a difference (BR2.7 (5)).
+//! - Steps 5 and 7: decimal sort values within the tolerance are the same
+//!   rank (BR2.2).
+//! - After step 6, a keyorder query compares the order of the key values
+//!   (BR2.8).
 
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 
 use crate::compat::export::InsightsSide;
 use crate::compat::format::Row;
-use crate::compat::queries::CompareMode;
+use crate::compat::queries::{ColumnTolerance, CompareMode, ToleranceKind, tolerance_of};
 
-/// Rows of each side listed when the collections differ (BR3.2).
+/// Rows of each side listed when the collections differ (BR3.2), and cells
+/// within a tolerance listed as examples (U4:BR2.5).
 pub const LISTED_ROWS: usize = 5;
+
+/// BR2.2: the absolute error of two decimals taken as the same.
+pub const DECIMAL_ABSOLUTE: f64 = 0.000_1;
+
+/// BR2.2: the error relative to the larger of two decimals taken as the
+/// same.
+pub const DECIMAL_RELATIVE: f64 = 1e-6;
+
+/// BR2.3: the error of two `count_distinct` counts taken as the same, as a
+/// fraction of the larger (2% = 1/50).
+pub const APPROXIMATE_PARTS: i128 = 50;
+
+/// The binary error of reading the decimal texts: `0.5001 - 0.5` is a little
+/// above 0.0001 as an `f64`. Far below the four decimal places written.
+const READING_SLACK: f64 = 1e-12;
 
 /// What the app made of one query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppSide {
     /// The app refused the query (a QueryProblem), with its description.
     Rejected(String),
-    /// The app's result.
+    /// The app's event rows.
     Rows(AppRows),
-    /// The app's result is aggregate rows (`stats`, 261025-insights-stats
-    /// U1); they are compared from U4, so the query is not compared yet.
-    Aggregates,
+    /// The app's aggregate rows (`stats`, 261025-insights-stats U4:BR2.1,
+    /// entities.md AppRows.shape).
+    Aggregates(AppRows),
+}
+
+/// How one cell compares (entities.md CellDifference).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CellDifference {
+    /// The same text.
+    Exact,
+    /// Two numbers within the decimal tolerance (BR2.2).
+    WithinDecimal,
+    /// Two whole numbers within the approximate tolerance (BR2.3).
+    WithinApproximate,
+    /// A difference.
+    Different,
+}
+
+/// A cell taken as the same within a tolerance (BR2.5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithinCell {
+    /// The column.
+    pub column: String,
+    /// Logs Insights' value.
+    pub insights: String,
+    /// The app's value.
+    pub app: String,
+    /// WithinDecimal or WithinApproximate.
+    pub kind: CellDifference,
 }
 
 /// The app's result of one query.
@@ -64,8 +128,18 @@ pub struct CompareSpec {
     /// The fields of the last `sort`, when every one of them is a column of
     /// the result; empty when one is not (the sort values cannot be seen).
     pub sort_keys: Vec<String>,
-    /// The row cap: the last `limit` from 1, or 10,000 (U2:BR5.1, BR5.2).
+    /// The row cap: the last `limit` from 1, or 10,000 (U2:BR5.1, BR5.2);
+    /// for aggregates the last `limit` after `stats` (BR2.7 (3)).
     pub cap: usize,
+    /// The column tolerances (BR1.3); empty when every cell is compared
+    /// exactly.
+    pub tolerances: Vec<ColumnTolerance>,
+    /// The key columns of an aggregates result, whose order a keyorder
+    /// query compares (BR2.8).
+    pub key_columns: Vec<String>,
+    /// `(column, value)` of the first and the last bin of the period
+    /// (BR2.7 (5)); empty without a `bin` key.
+    pub period_edges: Vec<(String, String)>,
 }
 
 /// The outcome of one query (entities.md QueryComparison.verdict, R-02).
@@ -138,7 +212,20 @@ pub struct QueryComparison {
     pub missing_in_app: Vec<Row>,
     /// Rows only the app has, the first [`LISTED_ROWS`].
     pub missing_in_insights: Vec<Row>,
-    /// The first row (from 1) whose sort values differ (BR2.3).
+    /// Rows only Logs Insights has in the first or the last bin of the
+    /// period, the first [`LISTED_ROWS`] (U4:BR2.7 (5)).
+    pub edge_missing_in_app: Vec<Row>,
+    /// Rows only the app has in the first or the last bin of the period,
+    /// the first [`LISTED_ROWS`].
+    pub edge_missing_in_insights: Vec<Row>,
+    /// Cells taken as the same within the decimal tolerance (U4:BR2.5).
+    pub within_decimal: usize,
+    /// Cells taken as the same within the approximate tolerance.
+    pub within_approximate: usize,
+    /// The first [`LISTED_ROWS`] cells within a tolerance.
+    pub within_examples: Vec<WithinCell>,
+    /// The first row (from 1) whose sort values differ (BR2.3), or, for a
+    /// keyorder query, whose key values differ (U4:BR2.8).
     pub first_order_mismatch: Option<usize>,
     /// The column names on one side only (BR2.1).
     pub columns: Option<ColumnDifference>,
@@ -160,6 +247,11 @@ impl QueryComparison {
             app_count: None,
             missing_in_app: Vec::new(),
             missing_in_insights: Vec::new(),
+            edge_missing_in_app: Vec::new(),
+            edge_missing_in_insights: Vec::new(),
+            within_decimal: 0,
+            within_approximate: 0,
+            within_examples: Vec::new(),
             first_order_mismatch: None,
             columns: None,
             tied_at_cut: None,
@@ -192,9 +284,6 @@ pub fn compare_query(
                 stamp(settings)
             ))
         }
-        (AppSide::Aggregates, _) => {
-            not_compared("the app's result is aggregate rows (stats); they are compared in U4")
-        }
         (AppSide::Rejected(app_message), InsightsSide::Rejected(insights_message)) => {
             QueryComparison {
                 app_message: Some(app_message.clone()),
@@ -207,13 +296,76 @@ pub fn compare_query(
             insights_count: Some(rows.len()),
             ..QueryComparison::new(Verdict::OnlyAppRejected)
         },
-        (AppSide::Rows(app_rows), InsightsSide::Rejected(insights_message)) => QueryComparison {
+        (
+            AppSide::Rows(app_rows) | AppSide::Aggregates(app_rows),
+            InsightsSide::Rejected(insights_message),
+        ) => QueryComparison {
             insights_message: Some(insights_message.clone()),
             app_count: Some(app_rows.rows.len()),
             ..QueryComparison::new(Verdict::OnlyInsightsRejected)
         },
-        (AppSide::Rows(app_rows), InsightsSide::Rows(rows)) => compare_rows(spec, app_rows, rows),
+        (AppSide::Rows(app_rows), InsightsSide::Rows(rows)) => {
+            compare_rows(spec, app_rows, rows, Shape::Events)
+        }
+        (AppSide::Aggregates(app_rows), InsightsSide::Rows(rows)) => {
+            compare_rows(spec, app_rows, rows, Shape::Aggregates)
+        }
     }
+}
+
+/// The shape of the app's rows, for the step of the tie at the cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shape {
+    Events,
+    Aggregates,
+}
+
+/// U4:BR2.2, BR2.3: how Logs Insights' cell `insights` and the app's `app`
+/// compare under `tolerance`. The same text is exact; otherwise only two
+/// finite numbers (decimal) or two whole numbers (approximate) can be within
+/// the tolerance, and anything else is a difference.
+pub fn compare_cell(insights: &str, app: &str, tolerance: Option<ToleranceKind>) -> CellDifference {
+    if insights == app {
+        return CellDifference::Exact;
+    }
+    match tolerance {
+        Some(ToleranceKind::Decimal) => match (finite_number(insights), finite_number(app)) {
+            (Some(left), Some(right)) if within_decimal(left, right) => {
+                CellDifference::WithinDecimal
+            }
+            _ => CellDifference::Different,
+        },
+        Some(ToleranceKind::Approximate) => {
+            match (insights.trim().parse::<i64>(), app.trim().parse::<i64>()) {
+                (Ok(left), Ok(right)) if within_approximate(left, right) => {
+                    CellDifference::WithinApproximate
+                }
+                _ => CellDifference::Different,
+            }
+        }
+        None => CellDifference::Different,
+    }
+}
+
+/// A text read as a finite number.
+fn finite_number(text: &str) -> Option<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())
+}
+
+/// BR2.2: |a − b| ≤ 0.0001, or ≤ 1e-6 × max(|a|, |b|).
+fn within_decimal(left: f64, right: f64) -> bool {
+    let difference = (left - right).abs();
+    difference <= DECIMAL_ABSOLUTE + READING_SLACK
+        || difference <= DECIMAL_RELATIVE * left.abs().max(right.abs())
+}
+
+/// BR2.3: |a − b| ≤ 0.02 × max(|a|, |b|), in whole numbers.
+fn within_approximate(left: i64, right: i64) -> bool {
+    let (left, right) = (i128::from(left), i128::from(right));
+    (left - right).abs() * APPROXIMATE_PARTS <= left.abs().max(right.abs())
 }
 
 fn not_compared(note: &str) -> QueryComparison {
@@ -224,7 +376,12 @@ fn not_compared(note: &str) -> QueryComparison {
 }
 
 /// Both sides have rows: steps 3 to 7 of the module.
-fn compare_rows(spec: &CompareSpec, app: &AppRows, insights: &[Row]) -> QueryComparison {
+fn compare_rows(
+    spec: &CompareSpec,
+    app: &AppRows,
+    insights: &[Row],
+    shape: Shape,
+) -> QueryComparison {
     let counted = |verdict| QueryComparison {
         insights_count: Some(insights.len()),
         app_count: Some(app.rows.len()),
@@ -256,31 +413,37 @@ fn compare_rows(spec: &CompareSpec, app: &AppRows, insights: &[Row]) -> QueryCom
         };
     }
     let tie = if spec.sorted && app.cut {
-        tie_at_cut(&spec.sort_keys, app)
+        match shape {
+            Shape::Events => tie_at_cut(spec, app),
+            // BR2.7 (4): the console's next row is not in its export.
+            Shape::Aggregates => app.rows.last(),
+        }
     } else {
         None
     };
-    let keep = |row: &&Row| {
-        tie.as_ref()
-            .is_none_or(|value| !has_sort_value(row, &spec.sort_keys, value))
-    };
+    let keep = |row: &&Row| tie.is_none_or(|tied| !same_sort_values(spec, row, tied));
     let insights_kept: Vec<&Row> = insights.iter().filter(keep).collect();
     let app_kept: Vec<&Row> = app.rows.iter().filter(keep).collect();
-    let tied_at_cut = tie.as_ref().map(|_| {
+    let tied_at_cut = tie.map(|_| {
         (
             insights.len() - insights_kept.len(),
             app.rows.len() - app_kept.len(),
         )
     });
-    let (missing_in_app, missing_in_insights) = multiset_difference(&insights_kept, &app_kept);
+    let matched = match_rows(&spec.tolerances, &insights_kept, &app_kept);
     let mut result = QueryComparison {
         tied_at_cut,
+        within_decimal: matched.within_decimal,
+        within_approximate: matched.within_approximate,
+        within_examples: matched.within_examples,
         ..counted(Verdict::Same)
     };
-    if !missing_in_app.is_empty() || !missing_in_insights.is_empty() {
+    if !matched.only_insights.is_empty() || !matched.only_app.is_empty() {
         result.verdict = Verdict::Different;
-        result.missing_in_app = missing_in_app;
-        result.missing_in_insights = missing_in_insights;
+        (result.edge_missing_in_app, result.missing_in_app) =
+            split_edges(matched.only_insights, &spec.period_edges);
+        (result.edge_missing_in_insights, result.missing_in_insights) =
+            split_edges(matched.only_app, &spec.period_edges);
         return result;
     }
     if insights.len() != app.rows.len() {
@@ -288,14 +451,176 @@ fn compare_rows(spec: &CompareSpec, app: &AppRows, insights: &[Row]) -> QueryCom
         result.verdict = Verdict::Different;
         return result;
     }
-    if spec.mode == CompareMode::Order && spec.sorted && !spec.sort_keys.is_empty() {
-        result.first_order_mismatch =
-            first_order_mismatch(&spec.sort_keys, &insights_kept, &app_kept);
-        if result.first_order_mismatch.is_some() {
-            result.verdict = Verdict::Different;
+    result.first_order_mismatch = match spec.mode {
+        CompareMode::Order if spec.sorted && !spec.sort_keys.is_empty() => {
+            first_order_mismatch(spec, &insights_kept, &app_kept)
         }
+        CompareMode::KeyOrder if !spec.key_columns.is_empty() => {
+            first_key_order_mismatch(&spec.key_columns, &insights_kept, &app_kept)
+        }
+        _ => None,
+    };
+    if result.first_order_mismatch.is_some() {
+        result.verdict = Verdict::Different;
     }
     result
+}
+
+/// What pairing the rows of both sides left (BR2.6): the rows of each side
+/// the other has no match for, every one in its side's order, and the cells
+/// within a tolerance.
+#[derive(Debug, Default)]
+struct RowMatch {
+    only_insights: Vec<Row>,
+    only_app: Vec<Row>,
+    within_decimal: usize,
+    within_approximate: usize,
+    within_examples: Vec<WithinCell>,
+}
+
+impl RowMatch {
+    fn note_within(&mut self, cell: WithinCell) {
+        match cell.kind {
+            CellDifference::WithinDecimal => self.within_decimal += 1,
+            CellDifference::WithinApproximate => self.within_approximate += 1,
+            CellDifference::Exact | CellDifference::Different => return,
+        }
+        if self.within_examples.len() < LISTED_ROWS {
+            self.within_examples.push(cell);
+        }
+    }
+}
+
+/// BR2.1, BR2.6: without a tolerance the rows are multisets; with one, the
+/// rows are paired by their columns without a tolerance, rows sharing that
+/// key in the ascending order of their tolerant values, and a pair whose
+/// tolerant cells differ beyond the tolerance is a row on each side only.
+fn match_rows(tolerances: &[ColumnTolerance], insights: &[&Row], app: &[&Row]) -> RowMatch {
+    if tolerances.is_empty() {
+        return RowMatch {
+            only_insights: only_in(insights, app),
+            only_app: only_in(app, insights),
+            ..RowMatch::default()
+        };
+    }
+    let insights_groups = group_by_key(tolerances, insights);
+    let mut app_groups = group_by_key(tolerances, app);
+    let mut matched = RowMatch::default();
+    for (key, mut insights_rows) in insights_groups {
+        let position = app_groups.iter().position(|(other, _)| *other == key);
+        let mut app_rows = position.map_or_else(Vec::new, |at| app_groups.remove(at).1);
+        insights_rows.sort_by(|left, right| compare_tolerant(tolerances, left, right));
+        app_rows.sort_by(|left, right| compare_tolerant(tolerances, left, right));
+        let pairs = insights_rows.len().min(app_rows.len());
+        for (insights_row, app_row) in insights_rows.iter().zip(&app_rows) {
+            pair_rows(tolerances, insights_row, app_row, &mut matched);
+        }
+        matched
+            .only_insights
+            .extend(insights_rows[pairs..].iter().map(|row| (*row).clone()));
+        matched
+            .only_app
+            .extend(app_rows[pairs..].iter().map(|row| (*row).clone()));
+    }
+    for (_, rows) in app_groups {
+        matched.only_app.extend(rows.into_iter().cloned());
+    }
+    matched
+}
+
+/// The rows of `rows` grouped by their columns without a tolerance, the
+/// groups in the order their first row comes.
+fn group_by_key<'a>(tolerances: &[ColumnTolerance], rows: &[&'a Row]) -> Vec<(Row, Vec<&'a Row>)> {
+    let mut groups: Vec<(Row, Vec<&'a Row>)> = Vec::new();
+    for row in rows {
+        let key: Row = row
+            .iter()
+            .filter(|(name, _)| tolerance_of(tolerances, name).is_none())
+            .cloned()
+            .collect();
+        match groups.iter_mut().find(|(other, _)| *other == key) {
+            Some((_, members)) => members.push(row),
+            None => groups.push((key, vec![row])),
+        }
+    }
+    groups
+}
+
+/// The value of `column` in `row`.
+fn cell<'a>(row: &'a Row, column: &str) -> Option<&'a str> {
+    row.iter()
+        .find(|(name, _)| name == column)
+        .map(|(_, value)| value.as_str())
+}
+
+/// The ascending order of two rows by their tolerant values, in the order of
+/// the tolerances: numbers as numbers, other texts as texts, no value last.
+fn compare_tolerant(tolerances: &[ColumnTolerance], left: &Row, right: &Row) -> Ordering {
+    tolerances
+        .iter()
+        .map(|tolerance| {
+            match (
+                cell(left, &tolerance.column),
+                cell(right, &tolerance.column),
+            ) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Greater,
+                (Some(_), None) => Ordering::Less,
+                (Some(left), Some(right)) => match (finite_number(left), finite_number(right)) {
+                    (Some(a), Some(b)) => a.total_cmp(&b),
+                    _ => left.cmp(right),
+                },
+            }
+        })
+        .find(|ordering| ordering.is_ne())
+        .unwrap_or(Ordering::Equal)
+}
+
+/// BR2.6: compares the tolerant cells of one pair; a cell beyond its
+/// tolerance (or a value on one side only) makes the pair a row on each side
+/// only, otherwise the cells within a tolerance are noted.
+fn pair_rows(tolerances: &[ColumnTolerance], insights: &Row, app: &Row, matched: &mut RowMatch) {
+    let mut within = Vec::new();
+    for tolerance in tolerances {
+        let compared = match (
+            cell(insights, &tolerance.column),
+            cell(app, &tolerance.column),
+        ) {
+            (None, None) => continue,
+            (Some(left), Some(right)) => compare_cell(left, right, Some(tolerance.kind)),
+            _ => CellDifference::Different,
+        };
+        if compared == CellDifference::Different {
+            matched.only_insights.push(insights.clone());
+            matched.only_app.push(app.clone());
+            return;
+        }
+        within.push(WithinCell {
+            column: tolerance.column.clone(),
+            insights: cell(insights, &tolerance.column)
+                .unwrap_or_default()
+                .to_string(),
+            app: cell(app, &tolerance.column).unwrap_or_default().to_string(),
+            kind: compared,
+        });
+    }
+    for cell in within {
+        matched.note_within(cell);
+    }
+}
+
+/// BR2.7 (5): `rows` split into those of the first or the last bin of the
+/// period and the others, the first [`LISTED_ROWS`] of each.
+fn split_edges(rows: Vec<Row>, edges: &[(String, String)]) -> (Vec<Row>, Vec<Row>) {
+    let (edge, other): (Vec<Row>, Vec<Row>) = rows.into_iter().partition(|row| {
+        edges
+            .iter()
+            .any(|(column, value)| cell(row, column) == Some(value.as_str()))
+    });
+    (
+        edge.into_iter().take(LISTED_ROWS).collect(),
+        other.into_iter().take(LISTED_ROWS).collect(),
+    )
 }
 
 /// BR2.1: the column names of each side, `@ptr` aside (the rows hold none),
@@ -333,36 +658,31 @@ fn sort_key<'a>(row: &'a Row, keys: &[String]) -> Vec<Option<&'a str>> {
         .collect()
 }
 
-/// R-01: the sort value shared by the last row kept and the first row cut,
-/// when they share one.
-fn tie_at_cut(keys: &[String], app: &AppRows) -> Option<Vec<Option<String>>> {
-    let last = sort_key(app.rows.last()?, keys);
-    let next = sort_key(app.next_row.as_ref()?, keys);
-    (last == next).then(|| {
-        last.into_iter()
-            .map(|value| value.map(str::to_string))
-            .collect()
+/// R-01: the last row kept, when it and the first row cut share their sort
+/// value.
+fn tie_at_cut<'a>(spec: &CompareSpec, app: &'a AppRows) -> Option<&'a Row> {
+    let last = app.rows.last()?;
+    let next = app.next_row.as_ref()?;
+    same_sort_values(spec, last, next).then_some(last)
+}
+
+/// Whether two rows have the same sort values; decimal values within the
+/// tolerance are the same rank (U4:BR2.2).
+fn same_sort_values(spec: &CompareSpec, left: &Row, right: &Row) -> bool {
+    spec.sort_keys.iter().all(|key| {
+        let decimal = tolerance_of(&spec.tolerances, key).filter(|k| *k == ToleranceKind::Decimal);
+        match (cell(left, key), cell(right, key)) {
+            (None, None) => true,
+            (Some(left), Some(right)) => {
+                compare_cell(left, right, decimal) != CellDifference::Different
+            }
+            _ => false,
+        }
     })
 }
 
-/// Whether `row`'s sort values are `value`.
-fn has_sort_value(row: &Row, keys: &[String], value: &[Option<String>]) -> bool {
-    let key = sort_key(row, keys);
-    key.len() == value.len()
-        && key
-            .iter()
-            .zip(value)
-            .all(|(left, right)| *left == right.as_deref())
-}
-
-/// BR2.1: the rows of each side that the other does not have, counting
-/// repeated rows, the first [`LISTED_ROWS`] of each in their side's order.
-fn multiset_difference(insights: &[&Row], app: &[&Row]) -> (Vec<Row>, Vec<Row>) {
-    (only_in(insights, app), only_in(app, insights))
-}
-
-/// The rows of `side` left when every row of `other` takes one equal row
-/// away.
+/// BR2.1: the rows of `side` left when every row of `other` takes one equal
+/// row away, counting repeated rows, in `side`'s order.
 fn only_in(side: &[&Row], other: &[&Row]) -> Vec<Row> {
     let mut available: HashMap<&Row, usize> = HashMap::new();
     for row in other {
@@ -375,12 +695,22 @@ fn only_in(side: &[&Row], other: &[&Row]) -> Vec<Row> {
             _ => only.push(*row),
         }
     }
-    only.into_iter().take(LISTED_ROWS).cloned().collect()
+    only.into_iter().cloned().collect()
 }
 
 /// BR2.3: the first row (from 1) whose sort values differ; rows with the
 /// same sort values may come in any order (FR3.4).
-fn first_order_mismatch(keys: &[String], insights: &[&Row], app: &[&Row]) -> Option<usize> {
+fn first_order_mismatch(spec: &CompareSpec, insights: &[&Row], app: &[&Row]) -> Option<usize> {
+    insights
+        .iter()
+        .zip(app)
+        .position(|(left, right)| !same_sort_values(spec, left, right))
+        .map(|index| index + 1)
+}
+
+/// U4:BR2.8: the first row (from 1) whose key values differ, both sides in
+/// the order they gave their rows.
+fn first_key_order_mismatch(keys: &[String], insights: &[&Row], app: &[&Row]) -> Option<usize> {
     insights
         .iter()
         .zip(app)
@@ -411,6 +741,9 @@ mod tests {
             sorted: false,
             sort_keys: Vec::new(),
             cap: 10_000,
+            tolerances: Vec::new(),
+            key_columns: Vec::new(),
+            period_edges: Vec::new(),
         }
     }
 
@@ -420,7 +753,35 @@ mod tests {
             sorted: true,
             sort_keys: vec![key.to_string()],
             cap,
+            ..set_spec()
         }
+    }
+
+    fn tolerant(list: &[(&str, ToleranceKind)]) -> Vec<ColumnTolerance> {
+        list.iter()
+            .map(|(column, kind)| ColumnTolerance {
+                column: (*column).to_string(),
+                kind: *kind,
+            })
+            .collect()
+    }
+
+    fn aggregates(columns: &[&str], rows: Vec<Row>) -> AppSide {
+        AppSide::Aggregates(AppRows {
+            columns: columns.iter().map(|name| (*name).to_string()).collect(),
+            rows,
+            cut: false,
+            next_row: None,
+        })
+    }
+
+    fn aggregates_cut(columns: &[&str], rows: Vec<Row>) -> AppSide {
+        AppSide::Aggregates(AppRows {
+            columns: columns.iter().map(|name| (*name).to_string()).collect(),
+            rows,
+            cut: true,
+            next_row: None,
+        })
     }
 
     fn app(columns: &[&str], rows: Vec<Row>) -> AppSide {
@@ -627,25 +988,403 @@ mod tests {
         );
     }
 
+    // 261025-insights-stats U4: aggregate rows (BR2.1-BR2.4, BR2.6-BR2.8).
+
+    /// BR2.2: within 0.0001, or within 1e-6 of the larger value, is the
+    /// same; just outside is not.
     #[test]
-    fn an_aggregates_result_is_reported_for_u4_and_not_compared() {
-        // 261025-insights-stats U1: `stats` is compared from U4, whatever
-        // Logs Insights gave.
-        for insights in [
-            InsightsSide::Rows(vec![event("A")]),
-            InsightsSide::Rejected("MalformedQueryException".into()),
-        ] {
-            let compared = compare_query(&set_spec(), &AppSide::Aggregates, &insights);
-            assert_eq!(compared.verdict, Verdict::NotCompared, "{insights:?}");
-            assert!(
-                compared
-                    .note
-                    .as_deref()
-                    .is_some_and(|note| note.contains("U4")),
-                "{compared:?}"
-            );
-            assert!(!compared.verdict.is_compared());
-        }
+    fn decimal_cells_within_the_absolute_or_the_relative_error_are_the_same() {
+        let decimal = Some(ToleranceKind::Decimal);
+        assert_eq!(
+            compare_cell("1.2346", "1.2346", decimal),
+            CellDifference::Exact
+        );
+        assert_eq!(
+            compare_cell("1", "1.0001", decimal),
+            CellDifference::WithinDecimal
+        );
+        assert_eq!(
+            compare_cell("0.5", "0.5001", decimal),
+            CellDifference::WithinDecimal
+        );
+        assert_eq!(
+            compare_cell("1", "1.00011", decimal),
+            CellDifference::Different
+        );
+        assert_eq!(
+            compare_cell("1000000", "1000000.9", decimal),
+            CellDifference::WithinDecimal,
+            "1e-6 of 1,000,000.9 is above 0.9"
+        );
+        assert_eq!(
+            compare_cell("1000000", "1000001.5", decimal),
+            CellDifference::Different
+        );
+        assert_eq!(
+            compare_cell("-2.5", "-2.50005", decimal),
+            CellDifference::WithinDecimal
+        );
+    }
+
+    #[test]
+    fn a_cell_that_is_not_a_number_is_compared_as_text() {
+        let decimal = Some(ToleranceKind::Decimal);
+        assert_eq!(
+            compare_cell("Decrypt", "Decrypt", decimal),
+            CellDifference::Exact
+        );
+        assert_eq!(
+            compare_cell("Decrypt", "Encrypt", decimal),
+            CellDifference::Different
+        );
+        assert_eq!(compare_cell("1", "x", decimal), CellDifference::Different);
+        assert_eq!(compare_cell("NaN", "NaN", decimal), CellDifference::Exact);
+        assert_eq!(
+            compare_cell("inf", "1e400", decimal),
+            CellDifference::Different
+        );
+        // Without a tolerance only the same text is the same.
+        assert_eq!(compare_cell("1.0", "1", None), CellDifference::Different);
+        assert_eq!(compare_cell("1", "1", None), CellDifference::Exact);
+    }
+
+    /// BR2.3: whole numbers within 2% of the larger are the same.
+    #[test]
+    fn approximate_cells_within_two_percent_are_the_same() {
+        let approximate = Some(ToleranceKind::Approximate);
+        assert_eq!(
+            compare_cell("100", "102", approximate),
+            CellDifference::WithinApproximate
+        );
+        assert_eq!(
+            compare_cell("102", "100", approximate),
+            CellDifference::WithinApproximate
+        );
+        assert_eq!(
+            compare_cell("100", "103", approximate),
+            CellDifference::Different
+        );
+        assert_eq!(compare_cell("0", "0", approximate), CellDifference::Exact);
+        assert_eq!(
+            compare_cell("0", "1", approximate),
+            CellDifference::Different
+        );
+        assert_eq!(
+            compare_cell("100", "100.5", approximate),
+            CellDifference::Different,
+            "not whole numbers: compared as text"
+        );
+    }
+
+    /// BR2.6: without a tolerant column the rows are multisets, as for
+    /// events.
+    #[test]
+    fn aggregate_rows_without_a_tolerance_are_compared_as_multisets() {
+        let count = |source: &str, n: &str| row(&[("eventSource", source), ("count(*)", n)]);
+        let app_side = aggregates(
+            &["eventSource", "count(*)"],
+            vec![count("s3", "2"), count("kms", "1")],
+        );
+        let same = compare_query(
+            &set_spec(),
+            &app_side,
+            &InsightsSide::Rows(vec![count("kms", "1"), count("s3", "2")]),
+        );
+        assert_eq!(same.verdict, Verdict::Same);
+        assert_eq!((same.within_decimal, same.within_approximate), (0, 0));
+        let different = compare_query(
+            &set_spec(),
+            &app_side,
+            &InsightsSide::Rows(vec![count("kms", "1"), count("s3", "3")]),
+        );
+        assert_eq!(different.verdict, Verdict::Different);
+        assert_eq!(different.missing_in_app, vec![count("s3", "3")]);
+        assert_eq!(different.missing_in_insights, vec![count("s3", "2")]);
+    }
+
+    /// BR2.6: the rows are paired by their columns without a tolerance; the
+    /// tolerant cells of a pair are compared with BR2.2 / BR2.3.
+    #[test]
+    fn rows_are_paired_by_the_columns_without_a_tolerance() {
+        let spec = CompareSpec {
+            tolerances: tolerant(&[
+                ("avg(latency)", ToleranceKind::Decimal),
+                ("count_distinct(eventName)", ToleranceKind::Approximate),
+            ]),
+            ..set_spec()
+        };
+        let stat = |status: &str, avg: &str, distinct: &str| {
+            row(&[
+                ("status", status),
+                ("avg(latency)", avg),
+                ("count_distinct(eventName)", distinct),
+            ])
+        };
+        let columns = ["status", "avg(latency)", "count_distinct(eventName)"];
+        let app_side = aggregates(
+            &columns,
+            vec![stat("200", "12.3456", "100"), stat("500", "3", "7")],
+        );
+        let within = compare_query(
+            &spec,
+            &app_side,
+            &InsightsSide::Rows(vec![stat("500", "3", "7"), stat("200", "12.34565", "102")]),
+        );
+        assert_eq!(within.verdict, Verdict::Same, "{within:?}");
+        assert_eq!((within.within_decimal, within.within_approximate), (1, 1));
+        assert_eq!(
+            within.within_examples[0],
+            WithinCell {
+                column: "avg(latency)".to_string(),
+                insights: "12.34565".to_string(),
+                app: "12.3456".to_string(),
+                kind: CellDifference::WithinDecimal,
+            }
+        );
+        let beyond = compare_query(
+            &spec,
+            &app_side,
+            &InsightsSide::Rows(vec![stat("500", "3", "7"), stat("200", "12.5", "100")]),
+        );
+        assert_eq!(beyond.verdict, Verdict::Different);
+        assert_eq!(beyond.missing_in_app, vec![stat("200", "12.5", "100")]);
+        assert_eq!(
+            beyond.missing_in_insights,
+            vec![stat("200", "12.3456", "100")]
+        );
+    }
+
+    /// BR2.6: rows sharing their key (a `stats` without `by` is one row with
+    /// no key) are paired in the ascending order of their tolerant values;
+    /// a key on one side only is a difference.
+    #[test]
+    fn rows_sharing_a_key_are_paired_in_order_and_a_key_on_one_side_is_a_difference() {
+        let spec = CompareSpec {
+            tolerances: tolerant(&[("avg(x)", ToleranceKind::Decimal)]),
+            ..set_spec()
+        };
+        let avg = |value: &str| row(&[("avg(x)", value)]);
+        let single = compare_query(
+            &spec,
+            &aggregates(&["avg(x)"], vec![avg("2.00001")]),
+            &InsightsSide::Rows(vec![avg("2")]),
+        );
+        assert_eq!(single.verdict, Verdict::Same);
+        assert_eq!(single.within_decimal, 1);
+        let shared = compare_query(
+            &spec,
+            &aggregates(&["avg(x)"], vec![avg("5.00001"), avg("1")]),
+            &InsightsSide::Rows(vec![avg("1.00005"), avg("5")]),
+        );
+        assert_eq!(shared.verdict, Verdict::Same, "{shared:?}");
+        assert_eq!(shared.within_decimal, 2);
+        let keyed = |key: &str, value: &str| row(&[("k", key), ("avg(x)", value)]);
+        let one_side = compare_query(
+            &spec,
+            &aggregates(&["k", "avg(x)"], vec![keyed("a", "1")]),
+            &InsightsSide::Rows(vec![keyed("a", "1"), keyed("b", "1")]),
+        );
+        assert_eq!(one_side.verdict, Verdict::Different);
+        assert_eq!(one_side.missing_in_app, vec![keyed("b", "1")]);
+        assert!(one_side.missing_in_insights.is_empty());
+    }
+
+    /// BR2.2 (FR review R-05): in the order step decimal sort values within
+    /// the tolerance are the same rank.
+    #[test]
+    fn decimal_sort_values_within_the_tolerance_are_the_same_rank() {
+        let spec = CompareSpec {
+            tolerances: tolerant(&[("s", ToleranceKind::Decimal)]),
+            ..sorted_spec("s", 10_000)
+        };
+        let sum = |status: &str, value: &str| row(&[("status", status), ("s", value)]);
+        let result = compare_query(
+            &spec,
+            &aggregates(
+                &["status", "s"],
+                vec![sum("200", "9.00004"), sum("500", "1")],
+            ),
+            &InsightsSide::Rows(vec![sum("200", "9"), sum("500", "1")]),
+        );
+        assert_eq!(result.verdict, Verdict::Same, "{result:?}");
+        assert_eq!(result.first_order_mismatch, None);
+        let swapped = compare_query(
+            &spec,
+            &aggregates(&["status", "s"], vec![sum("500", "1"), sum("200", "9")]),
+            &InsightsSide::Rows(vec![sum("200", "9"), sum("500", "1")]),
+        );
+        assert_eq!(swapped.first_order_mismatch, Some(1));
+    }
+
+    /// BR2.8: keyorder compares the collection, then the order of the key
+    /// values, naming the first row out of order.
+    #[test]
+    fn keyorder_compares_the_order_of_the_key_values_after_the_collection() {
+        let spec = CompareSpec {
+            mode: CompareMode::KeyOrder,
+            key_columns: vec!["eventSource".to_string()],
+            ..set_spec()
+        };
+        let count = |source: &str, n: &str| row(&[("eventSource", source), ("count(*)", n)]);
+        let insights =
+            InsightsSide::Rows(vec![count("kms", "1"), count("s3", "2"), count("sts", "4")]);
+        let ascending = compare_query(
+            &spec,
+            &aggregates(
+                &["eventSource", "count(*)"],
+                vec![count("kms", "1"), count("s3", "2"), count("sts", "4")],
+            ),
+            &insights,
+        );
+        assert_eq!(ascending.verdict, Verdict::Same);
+        let other_order = compare_query(
+            &spec,
+            &aggregates(
+                &["eventSource", "count(*)"],
+                vec![count("kms", "1"), count("sts", "4"), count("s3", "2")],
+            ),
+            &insights,
+        );
+        assert_eq!(other_order.verdict, Verdict::Different);
+        assert_eq!(other_order.first_order_mismatch, Some(2));
+        assert!(other_order.missing_in_app.is_empty());
+        let as_set = compare_query(
+            &CompareSpec {
+                mode: CompareMode::Set,
+                ..spec
+            },
+            &aggregates(
+                &["eventSource", "count(*)"],
+                vec![count("kms", "1"), count("sts", "4"), count("s3", "2")],
+            ),
+            &insights,
+        );
+        assert_eq!(as_set.verdict, Verdict::Same);
+    }
+
+    /// BR2.4: an aggregates result without `sort` cut by its `limit` or at
+    /// 10,000 is not compared.
+    #[test]
+    fn an_unsorted_aggregates_result_cut_at_its_cap_is_skipped() {
+        let count = |source: &str| row(&[("eventSource", source), ("count(*)", "1")]);
+        let rows = vec![count("kms"), count("s3")];
+        let cut = compare_query(
+            &CompareSpec {
+                cap: 2,
+                ..set_spec()
+            },
+            &aggregates_cut(&["eventSource", "count(*)"], rows.clone()),
+            &InsightsSide::Rows(rows.clone()),
+        );
+        assert_eq!(cut.verdict, Verdict::Skipped);
+        let not_cut = compare_query(
+            &set_spec(),
+            &aggregates(&["eventSource", "count(*)"], rows.clone()),
+            &InsightsSide::Rows(rows),
+        );
+        assert_eq!(not_cut.verdict, Verdict::Same);
+    }
+
+    /// BR2.4, BR2.7 (4): a sorted aggregates result that was cut leaves out,
+    /// on both sides, the rows with the last shown row's sort value (decimal
+    /// values within the tolerance included) and compares their counts.
+    #[test]
+    fn a_cut_sorted_aggregates_result_leaves_out_the_rows_tied_with_the_last_row() {
+        let spec = CompareSpec {
+            tolerances: tolerant(&[("n", ToleranceKind::Decimal)]),
+            ..sorted_spec("n", 2)
+        };
+        let count = |source: &str, n: &str| row(&[("eventSource", source), ("n", n)]);
+        let app_side = aggregates_cut(
+            &["eventSource", "n"],
+            vec![count("s3", "9"), count("kms", "4")],
+        );
+        let same = compare_query(
+            &spec,
+            &app_side,
+            &InsightsSide::Rows(vec![count("s3", "9"), count("sts", "4.00001")]),
+        );
+        assert_eq!(same.verdict, Verdict::Same, "{same:?}");
+        assert_eq!(same.tied_at_cut, Some((1, 1)));
+        let fewer = compare_query(
+            &spec,
+            &app_side,
+            &InsightsSide::Rows(vec![count("s3", "9")]),
+        );
+        assert_eq!(
+            fewer.verdict,
+            Verdict::Different,
+            "the counts of the tied rows"
+        );
+        let other_first = compare_query(
+            &spec,
+            &app_side,
+            &InsightsSide::Rows(vec![count("s3", "8"), count("kms", "4")]),
+        );
+        assert_eq!(other_first.verdict, Verdict::Different);
+    }
+
+    /// BR2.7 (5): a difference in a row whose bin is the first or the last
+    /// of the period is listed apart as a period edge, and is still a
+    /// difference.
+    #[test]
+    fn a_difference_in_the_first_or_last_bin_is_listed_as_a_period_edge() {
+        let spec = CompareSpec {
+            period_edges: vec![
+                ("bin(5m)".to_string(), "2024-01-02 00:00:00.000".to_string()),
+                ("bin(5m)".to_string(), "2024-01-02 00:55:00.000".to_string()),
+            ],
+            ..set_spec()
+        };
+        let bin = |at: &str, n: &str| row(&[("bin(5m)", at), ("count(*)", n)]);
+        let result = compare_query(
+            &spec,
+            &aggregates(
+                &["bin(5m)", "count(*)"],
+                vec![
+                    bin("2024-01-02 00:00:00.000", "3"),
+                    bin("2024-01-02 00:05:00.000", "2"),
+                    bin("2024-01-02 00:55:00.000", "1"),
+                ],
+            ),
+            &InsightsSide::Rows(vec![
+                bin("2024-01-02 00:00:00.000", "4"),
+                bin("2024-01-02 00:05:00.000", "2"),
+                bin("2024-01-02 00:55:00.000", "1"),
+            ]),
+        );
+        assert_eq!(result.verdict, Verdict::Different);
+        assert!(result.missing_in_app.is_empty() && result.missing_in_insights.is_empty());
+        assert_eq!(
+            result.edge_missing_in_app,
+            vec![bin("2024-01-02 00:00:00.000", "4")]
+        );
+        assert_eq!(
+            result.edge_missing_in_insights,
+            vec![bin("2024-01-02 00:00:00.000", "3")]
+        );
+        let middle = compare_query(
+            &spec,
+            &aggregates(
+                &["bin(5m)", "count(*)"],
+                vec![bin("2024-01-02 00:05:00.000", "2")],
+            ),
+            &InsightsSide::Rows(vec![bin("2024-01-02 00:05:00.000", "5")]),
+        );
+        assert_eq!(middle.missing_in_app.len(), 1, "not an edge");
+        assert!(middle.edge_missing_in_app.is_empty());
+    }
+
+    /// The refusal steps are the same for an aggregates result.
+    #[test]
+    fn an_aggregates_result_and_a_refusal_are_one_sided_refusals() {
+        let app_side = aggregates(&["count(*)"], vec![row(&[("count(*)", "3")])]);
+        let refused = InsightsSide::Rejected("MalformedQueryException".into());
+        let only_insights = compare_query(&set_spec(), &app_side, &refused);
+        assert_eq!(only_insights.verdict, Verdict::OnlyInsightsRejected);
+        assert_eq!(only_insights.app_count, Some(1));
+        let missing = compare_query(&set_spec(), &app_side, &InsightsSide::Missing);
+        assert_eq!(missing.verdict, Verdict::NotCompared);
     }
 
     #[test]

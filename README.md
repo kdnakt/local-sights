@@ -566,6 +566,51 @@ compared query was the same, 1 a difference, 2 that it could not compare.
 Give both the same `QUERIES=` / `--queries` file when you use another set.
 Record the summary, not the log contents, in the unit's `code-summary.md`.
 
+#### Aggregate queries (`stats`)
+
+The CloudTrail set also holds the `stats` queries `s01`–`s16`; they are
+compared as aggregate rows (the column names and the cells as the result table
+writes them, times in UTC). A line may have a fifth field of column
+tolerances, `<column>=decimal` (numbers within 1e-6 relative or 0.0001
+absolute are the same) or `<column>=approximate` (whole numbers within 2%,
+for the console's approximate `count_distinct`), separated by `;`. The mode
+`keyorder` compares the rows, then the order of the key values of a `stats`
+without `sort`. A query the same only within a tolerance prints
+`Same (within decimal tolerance: n cells)` or
+`Same (within approximate tolerance: n cells)` with its first five such
+cells, and still exits with 0. A count that differs in the first or the last
+`bin` of the period is marked `period-edge-differences` and listed apart; it
+is still a difference. After the counts, the check sums up each provisional
+rule the set names in its `# provisional:` notes as `matches`, `differs` or
+`notChecked`.
+
+For the numeric aggregates (`avg`, `sum`, `pct`, `stddev` and the rest), use
+`crates/local-sights-core/examples/compat_queries_numeric.txt` (`n01`–`n06`)
+on a log group whose events have a JSON number field. Copy it outside the
+repository and rewrite its field names to yours first: `latency` stands for a
+number field and `status` for a text field, in the queries and in the
+tolerance columns (`avg(latency)` becomes `avg(<your field>)`). Then give the
+copy to both:
+
+```bash
+cp crates/local-sights-core/examples/compat_queries_numeric.txt ~/numeric.txt
+# edit ~/numeric.txt: latency and status -> your field names
+PROFILE=dev REGION=us-east-1 GROUP=MyAppLogs START=1767435900 END=1767439500 \
+  OUT=~/insights-export-numeric QUERIES=~/numeric.txt ./scripts/compat/insights-export.sh
+cargo run -p local-sights-core --example compat_check -- \
+  --export-dir ~/insights-export-numeric --queries ~/numeric.txt
+```
+
+Without a log group that has a number field, keep only the line `n06`
+(`stats avg(toMillis(@timestamp))`, a number in every log group) in the copy,
+and compare that one query.
+
+Record the result in the unit's `code-summary.md`: for each provisional rule,
+the outcome (`matches`, `differs` or `notChecked`) and, for `differs`,
+whether the app was changed to the console's behaviour or the question was
+taken to the user. Never record the exports, log contents, account IDs or
+role names.
+
 ## App icon
 
 The icon is drawn in `src-tauri/icons/source/icon.svg` (a rounded dark blue

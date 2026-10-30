@@ -21,7 +21,8 @@ use chrono_tz::Tz;
 
 use crate::query::parser::keys;
 use crate::query::plan::{
-    Command, CommandKind, Condition, ConditionKind, Literal, QueryPlan, QueryProblem,
+    AfterStatsCommand, Command, CommandKind, Condition, ConditionKind, Literal, QueryPlan,
+    QueryProblem,
 };
 use crate::time_range::{DateTimeParseError, instant_in_zone};
 
@@ -125,6 +126,21 @@ pub fn resolve_date_texts(plan: QueryPlan, zone: Tz) -> Result<QueryPlan, QueryP
                 kind: match command.kind {
                     CommandKind::Filter(condition) => {
                         CommandKind::Filter(resolve_condition(condition, zone)?)
+                    }
+                    // The filters after `stats` on a time column
+                    // (261025-insights-stats U2:BR1.4 (c)).
+                    CommandKind::Stats(mut stats) => {
+                        stats.after = stats
+                            .after
+                            .into_iter()
+                            .map(|command| match command {
+                                AfterStatsCommand::Filter(condition) => {
+                                    resolve_condition(condition, zone).map(AfterStatsCommand::Filter)
+                                }
+                                other => Ok(other),
+                            })
+                            .collect::<Result<_, QueryProblem>>()?;
+                        CommandKind::Stats(stats)
                     }
                     other => other,
                 },

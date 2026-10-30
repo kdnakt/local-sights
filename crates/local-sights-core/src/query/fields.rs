@@ -61,7 +61,9 @@ pub fn read_field<'a>(
         FieldRef::Message => FieldValue::Text(&event.message),
         FieldRef::LogStream => FieldValue::Text(&event.log_stream_name),
         FieldRef::Log => FieldValue::Text(log_group_name),
-        FieldRef::Json(_) => FieldValue::Missing,
+        // A result column after `stats` is no field of an event
+        // (261025-insights-stats U2:BR1.4).
+        FieldRef::Json(_) | FieldRef::Column(_) => FieldValue::Missing,
     }
 }
 
@@ -162,6 +164,19 @@ fn walk_leaves<'a>(
     }
 }
 
+/// Where a condition reads its values from: an event's fields, or the cells
+/// of an aggregate row after `stats` (261025-insights-stats U2:BR3.1).
+pub trait FieldSource {
+    /// The value of `field`; Missing when the source has none.
+    fn value(&self, field: &FieldRef) -> FieldValue<'_>;
+}
+
+impl FieldSource for EventFields<'_> {
+    fn value(&self, field: &FieldRef) -> FieldValue<'_> {
+        EventFields::value(self, field)
+    }
+}
+
 /// The fields of one event, its message read as JSON at most once.
 #[derive(Debug)]
 pub struct EventFields<'a> {
@@ -228,6 +243,7 @@ impl<'a> EventFields<'a> {
             FieldRef::Message => Some(self.event.message.clone()),
             FieldRef::LogStream => Some(self.event.log_stream_name.clone()),
             FieldRef::Log => Some(self.log_group_name.to_string()),
+            FieldRef::Column(_) => None,
         }
     }
 

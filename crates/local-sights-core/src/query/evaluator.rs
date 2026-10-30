@@ -21,16 +21,22 @@
 //! alone, which cannot be stopped in the middle; fixed fields are read in
 //! place while ordering. The column check reads the result rows only, in
 //! chunks (functional-design review R-02).
+//!
+//! With `stats` (261025-insights-stats) the rows the commands before it left
+//! are aggregated chunk by chunk; the aggregate rows are then finished by
+//! the `filter`, `sort` and `limit` written after `stats`, in that order, a
+//! filter [`EVALUATION_CHUNK`] rows at a time, and cut at 10,000 rows without
+//! a `limit`, as the event rows are (U2:BR3.1, BR3.2).
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use crate::event::LogEvent;
-use crate::query::fields::{EventFields, FieldValue, read_field};
+use crate::query::fields::{EventFields, FieldSource, FieldValue, read_field};
 use crate::query::natural::{SortKeyRef, SortValue, compare_sort_keys};
 use crate::query::plan::{
-    CommandKind, CompareOp, Condition, ConditionKind, DEFAULT_RESULT_LIMIT, FieldRef, LikePattern,
-    Literal, QueryPlan, ResultShape, SortDirection, SortKey,
+    AfterStatsCommand, CommandKind, CompareOp, Condition, ConditionKind, DEFAULT_RESULT_LIMIT,
+    FieldRef, LikePattern, Literal, QueryPlan, ResultShape, SortDirection, SortKey, StatsCommand,
 };
 use crate::query::stats::{AggregateTable, CellValue, StatsAggregator, cell_text};
 
@@ -100,9 +106,10 @@ pub fn matches(plan: &QueryPlan, item: &EvalItem<'_>) -> bool {
         .all(|condition| condition_holds(condition, &fields))
 }
 
-/// Whether `condition` holds for the event of `fields`, from left to right,
-/// stopping as soon as the answer is known (U1:BR5.2).
-pub fn condition_holds(condition: &Condition, fields: &EventFields<'_>) -> bool {
+/// Whether `condition` holds for the event of `fields` (or, after `stats`,
+/// for an aggregate row, 261025-insights-stats U2:BR3.1), from left to
+/// right, stopping as soon as the answer is known (U1:BR5.2).
+pub fn condition_holds<F: FieldSource + ?Sized>(condition: &Condition, fields: &F) -> bool {
     match &condition.kind {
         ConditionKind::And(parts) => parts.iter().all(|part| condition_holds(part, fields)),
         ConditionKind::Or(parts) => parts.iter().any(|part| condition_holds(part, fields)),
@@ -333,16 +340,179 @@ impl EvalOutput {
     }
 }
 
-/// The aggregate rows of a `stats` (BR3.3, BR3.5): never cut, no column
-/// left out.
+/// The aggregate rows of a `stats` (U1:BR3.3, BR3.5): no column left out;
+/// after the commands written after `stats`, cut as the event rows are
+/// (U2:BR3.1, BR3.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AggregatesOutput {
     /// The column names: the keys, then the aggregates.
     pub columns: Vec<String>,
-    /// One cell per column per row, in the order of BR2.7.
+    /// One cell per column per row: in the order of BR2.7, or of a `sort`
+    /// after `stats`.
     pub rows: Vec<Vec<CellValue>>,
     /// Events evaluated: every held event.
     pub evaluated_count: usize,
+    /// Rows left before the last `limit` and the default cut; a `limit`
+    /// with a `filter` after it is not undone (U2:BR3.2, as
+    /// [`EventsOutput::matched_count`]).
+    pub matched_count: usize,
+    /// The number of rows shown, when a `limit` or the default 10,000 cut
+    /// rows (U2:BR3.2).
+    pub truncated_at: Option<usize>,
+}
+
+/// The cells of one aggregate row as a [`FieldSource`]: a result column
+/// reads its cell, any other field has no value (U2:BR3.1).
+struct CellFields<'a> {
+    cells: &'a [CellValue],
+}
+
+impl FieldSource for CellFields<'_> {
+    fn value(&self, field: &FieldRef) -> FieldValue<'_> {
+        match field {
+            FieldRef::Column(column) => self
+                .cells
+                .get(column.index)
+                .map_or(FieldValue::Missing, cell_value),
+            _ => FieldValue::Missing,
+        }
+    }
+}
+
+/// A cell as a field value (U2:BR3.1): integers, decimals and times are
+/// numbers (a time in milliseconds), texts are texts.
+fn cell_value(cell: &CellValue) -> FieldValue<'_> {
+    match cell {
+        CellValue::Missing => FieldValue::Missing,
+        // A count or a whole JSON number below 2^53: exact.
+        CellValue::Integer(number) | CellValue::Timestamp(number) => {
+            FieldValue::Number(*number as f64)
+        }
+        CellValue::Decimal(number) => FieldValue::Number(*number),
+        CellValue::Text(text) => FieldValue::Text(text),
+    }
+}
+
+/// The aggregate rows being finished by the commands after `stats`
+/// (U2:BR3.1): command `next` of them is applied next.
+#[derive(Debug)]
+struct Finishing {
+    columns: Vec<String>,
+    rows: Vec<Vec<CellValue>>,
+    matched: usize,
+    next: usize,
+    /// The `filter` being applied: rows judged so far, and which hold.
+    keep: Vec<bool>,
+}
+
+/// The finished aggregate rows, cut (U2:BR3.2).
+#[derive(Debug)]
+struct Aggregated {
+    columns: Vec<String>,
+    rows: Vec<Vec<CellValue>>,
+    matched: usize,
+    truncated_at: Option<usize>,
+}
+
+impl Finishing {
+    fn new(table: AggregateTable) -> Self {
+        Self {
+            matched: table.rows.len(),
+            columns: table.columns,
+            rows: table.rows,
+            next: 0,
+            keep: Vec::new(),
+        }
+    }
+
+    /// Whether every command after `stats` was applied.
+    fn is_finished(&self, stats: &StatsCommand) -> bool {
+        self.next >= stats.after.len()
+    }
+
+    /// One piece of the commands after `stats`: [`EVALUATION_CHUNK`] rows of
+    /// a `filter`, a whole `sort` (which cannot be stopped in the middle,
+    /// like the events' sort) or a `limit`.
+    fn work(&mut self, stats: &StatsCommand) {
+        let Some(command) = stats.after.get(self.next) else {
+            return;
+        };
+        match command {
+            AfterStatsCommand::Filter(condition) => {
+                let start = self.keep.len();
+                let end = start.saturating_add(EVALUATION_CHUNK).min(self.rows.len());
+                for cells in &self.rows[start..end] {
+                    self.keep.push(condition_holds(condition, &CellFields { cells }));
+                }
+                if end < self.rows.len() {
+                    return;
+                }
+                let keep = std::mem::take(&mut self.keep);
+                let rows = std::mem::take(&mut self.rows);
+                self.rows = rows
+                    .into_iter()
+                    .zip(keep)
+                    .filter_map(|(row, kept)| kept.then_some(row))
+                    .collect();
+                self.matched = self.rows.len();
+            }
+            AfterStatsCommand::Sort(keys) => {
+                // Stable: equal rows keep the order they had.
+                self.rows.sort_by(|left, right| compare_cell_rows(keys, left, right));
+            }
+            AfterStatsCommand::Limit(count) => {
+                // 0 keeps none (261017-insights-query Loop-back 3, p08).
+                self.rows
+                    .truncate(usize::try_from(*count).unwrap_or(usize::MAX));
+            }
+        }
+        self.next += 1;
+    }
+
+    /// The default cut, unless a `limit` is written after `stats`, and what
+    /// was cut (U2:BR3.2): the events' rule.
+    fn cut(mut self, has_row_limit: bool) -> Aggregated {
+        if !has_row_limit {
+            self.rows.truncate(DEFAULT_RESULT_LIMIT);
+        }
+        let truncated_at =
+            (!self.rows.is_empty() && self.rows.len() < self.matched).then_some(self.rows.len());
+        Aggregated {
+            columns: self.columns,
+            rows: self.rows,
+            matched: self.matched,
+            truncated_at,
+        }
+    }
+}
+
+/// Two aggregate rows by the columns of a `sort` after `stats`, in the
+/// natural order of `sort` (U2:BR3.1).
+fn compare_cell_rows(keys: &[SortKey], left: &[CellValue], right: &[CellValue]) -> Ordering {
+    for sort_key in keys {
+        let order = compare_sort_keys(
+            cell_sort_key(left, &sort_key.field),
+            cell_sort_key(right, &sort_key.field),
+        );
+        let order = match sort_key.direction {
+            SortDirection::Asc => order,
+            SortDirection::Desc => order.reverse(),
+        };
+        if order != Ordering::Equal {
+            return order;
+        }
+    }
+    Ordering::Equal
+}
+
+/// The sort value of the cell `field` names in `cells`.
+fn cell_sort_key<'a>(cells: &'a [CellValue], field: &FieldRef) -> SortKeyRef<'a> {
+    let FieldRef::Column(column) = field else {
+        return SortKeyRef::Missing;
+    };
+    cells
+        .get(column.index)
+        .map_or(SortKeyRef::Missing, |cell| SortKeyRef::of(cell_value(cell)))
 }
 
 /// The event rows of a plan without `stats`.
@@ -392,10 +562,13 @@ enum Stage {
         present: Vec<bool>,
         next: usize,
     },
+    /// The aggregate rows are being finished by the commands after `stats`
+    /// (U2:BR3.1).
+    Finishing(Box<Finishing>),
     /// Finished with event rows.
     Done { columns: Vec<FieldRef> },
-    /// Finished with aggregate rows (BR3.5).
-    Aggregated(AggregateTable),
+    /// Finished with aggregate rows (U1:BR3.5, U2:BR3.2).
+    Aggregated(Box<Aggregated>),
 }
 
 /// The chunked work of one command.
@@ -547,6 +720,8 @@ impl Evaluation {
                 ..
             } => *next < self.rows.len(),
             Stage::Aggregate { next, .. } => *next < self.rows.len(),
+            // Every piece of the commands after `stats` is one (U2:BR3.1).
+            Stage::Finishing(_) => true,
             Stage::Columns { present, next, .. } => {
                 *next < self.rows.len() && present.iter().any(|seen| !seen)
             }
@@ -577,6 +752,7 @@ impl Evaluation {
                 None => self.finish_commands(plan),
             },
             Stage::Aggregate { next, aggregator } => self.aggregate(next, aggregator, items),
+            Stage::Finishing(finishing) => finish_aggregates(*finishing, plan.stats()),
             Stage::Columns {
                 columns,
                 present,
@@ -585,12 +761,29 @@ impl Evaluation {
             done @ (Stage::Done { .. } | Stage::Aggregated(_)) => done,
         };
     }
+}
+
+/// One piece of the commands after `stats` of `stats`, then the cut once
+/// they are all applied (U2:BR3.1, BR3.2).
+fn finish_aggregates(mut finishing: Finishing, stats: Option<&StatsCommand>) -> Stage {
+    // A plan without `stats` never comes here; then there is nothing after.
+    let Some(stats) = stats else {
+        return Stage::Aggregated(Box::new(finishing.cut(false)));
+    };
+    finishing.work(stats);
+    if finishing.is_finished(stats) {
+        return Stage::Aggregated(Box::new(finishing.cut(stats.has_row_limit())));
+    }
+    Stage::Finishing(Box::new(finishing))
+}
+
+impl Evaluation {
 
     /// One chunk of `stats` (BR2.9), or, after the last, the rows of the
     /// groups (BR3.5): ordering and making them is one short step that is
-    /// not stopped. The commands before `stats` were applied; `stats` is the
-    /// last command (BR1.6), so the default cut and the column check are not
-    /// made (BR3.2).
+    /// not stopped. The commands before `stats` were applied. The commands
+    /// after it are applied in later steps; without any, the rows are cut
+    /// at once (U2:BR3.1, BR3.2). There is no column check (U1:BR3.2).
     fn aggregate<I: EvalItems + ?Sized>(
         &mut self,
         next: usize,
@@ -610,7 +803,13 @@ impl Evaluation {
             };
         }
         self.passes_done += 1;
-        Stage::Aggregated(aggregator.finish())
+        let nothing_after = aggregator.stats().after.is_empty();
+        let has_row_limit = aggregator.stats().has_row_limit();
+        let finishing = Finishing::new(aggregator.finish());
+        if nothing_after {
+            return Stage::Aggregated(Box::new(finishing.cut(has_row_limit)));
+        }
+        Stage::Finishing(Box::new(finishing))
     }
 
     /// The next piece of work of command `index`.
@@ -802,11 +1001,14 @@ impl Evaluation {
     pub fn into_output(self) -> Option<EvalOutput> {
         let columns = match self.stage {
             Stage::Done { columns } => columns,
-            Stage::Aggregated(table) => {
+            Stage::Aggregated(done) => {
+                let done = *done;
                 return Some(EvalOutput::Aggregates(AggregatesOutput {
-                    columns: table.columns,
-                    rows: table.rows,
+                    columns: done.columns,
+                    rows: done.rows,
                     evaluated_count: self.total,
+                    matched_count: done.matched,
+                    truncated_at: done.truncated_at,
                 }));
             }
             _ => return None,
@@ -988,8 +1190,8 @@ impl QueryResult {
         }
     }
 
-    /// The aggregate rows `output` of run `run_id` (BR3.1, BR3.4): the rows
-    /// are the groups, none is cut in U1.
+    /// The aggregate rows `output` of run `run_id` (U1:BR3.1, BR3.4), with
+    /// what was cut (U2:BR3.2).
     pub fn from_aggregates(run_id: u64, output: AggregatesOutput) -> Self {
         let rows: Vec<ResultRow> = output
             .rows
@@ -999,10 +1201,10 @@ impl QueryResult {
         Self {
             run_id,
             evaluated_count: output.evaluated_count,
-            matched_count: rows.len(),
+            matched_count: output.matched_count,
             rows,
             columns: ResultColumns::Aggregates(output.columns),
-            truncated_at: None,
+            truncated_at: output.truncated_at,
         }
     }
 
@@ -2157,11 +2359,16 @@ mod tests {
     }
 
     #[test]
-    fn aggregates_are_not_cut_at_ten_thousand_and_keep_columns_without_values() {
-        // BR3.2, BR3.5: no default cut, no column check.
+    fn aggregates_are_cut_at_ten_thousand_and_keep_columns_without_values() {
+        // U1:BR3.2, BR3.5 gave no default cut; U2:BR3.2 cuts the aggregate
+        // rows at 10,000 as the event rows are (U1:BR3.4 revised there).
+        // Still no column check.
         let events = levels(12_000);
         let by_n = aggregates("stats count(*) by n", &events);
-        assert_eq!(by_n.rows.len(), 12_000);
+        assert_eq!(
+            (by_n.rows.len(), by_n.matched_count, by_n.truncated_at),
+            (10_000, 12_000, Some(10_000))
+        );
         let gone = aggregates("stats count(*) by gone", &events);
         assert_eq!(gone.columns, vec!["gone", "count(*)"]);
         assert_eq!(
@@ -2227,6 +2434,261 @@ mod tests {
         let events = QueryResult::new(1, 0, Vec::new());
         assert_eq!(events.shape(), ResultShape::Events);
         assert_eq!(events.columns().names(), vec!["@timestamp", "@message"]);
+    }
+
+    // ---- 261025-insights-stats U2:BR3.1, BR3.2, BR5.1 ----------------------
+
+    fn text(value: &str) -> CellValue {
+        CellValue::Text(value.to_string())
+    }
+
+    /// The first cells of the rows of `output`.
+    fn keys_of(output: &AggregatesOutput) -> Vec<CellValue> {
+        output.rows.iter().map(|row| row[0].clone()).collect()
+    }
+
+    #[test]
+    fn a_filter_after_stats_compares_the_cells_as_fields_are_compared() {
+        // BR3.1 (c): integer and decimal cells are numbers, texts texts;
+        // comparison, and / or / not, like, regular expressions and in.
+        let events = levels(9); // error: n 0, 3, 6; info: the other six
+        let by_level = "stats count(*) as c, avg(n) as a by level";
+        for (written, expected) in [
+            ("filter c > 3", vec![text("info")]),
+            ("filter c = '3'", vec![text("error")]),
+            ("filter a = 3", vec![text("error")]),
+            ("filter a < 4.4", vec![text("error")]),
+            ("filter level = 'info' or c = 3", vec![text("error"), text("info")]),
+            ("filter level like 'err' and c = 3", vec![text("error")]),
+            ("filter level =~ /^i/", vec![text("info")]),
+            ("filter level not like /r/", vec![text("info")]),
+            ("filter c in [6, 7]", vec![text("info")]),
+            ("filter not (c = 6)", vec![text("error")]),
+            ("filter c > a", vec![text("info")]),
+        ] {
+            let output = aggregates(&format!("{by_level} | {written}"), &events);
+            assert_eq!(keys_of(&output), expected, "{written}");
+        }
+    }
+
+    #[test]
+    fn a_missing_cell_meets_a_value_as_a_missing_field_does() {
+        // BR3.1: Missing is no value; it meets `=`, `<` and `>` never, and
+        // `!=` as a missing field of an event does (U2:BR1.5).
+        let events = levels(6);
+        let base = "stats max(gone) as g, count(*) as c by level";
+        for (written, expected) in [
+            ("filter g = 1", Vec::<CellValue>::new()),
+            ("filter g > 0", Vec::new()),
+            ("filter g like 'x'", Vec::new()),
+            ("filter g = c", Vec::new()),
+            ("filter g != 1", vec![text("error"), text("info")]),
+        ] {
+            let output = aggregates(&format!("{base} | {written}"), &events);
+            assert_eq!(keys_of(&output), expected, "{written}");
+        }
+        let event_output = output("filter gone != 1", &events);
+        assert_eq!(event_output.rows.len(), 6, "the same as an event's field");
+    }
+
+    #[test]
+    fn a_time_column_compares_as_the_timestamp_does() {
+        // BR1.4 (c), BR3.1: milliseconds, and a date text in the chosen
+        // zone (Asia/Tokyo here, as `query` resolves it).
+        let four_pm = 1_756_051_200_000; // 2025-08-25 01:00:00 in Tokyo
+        let events: Vec<LogEvent> = (0..4i64)
+            .map(|index| event(four_pm + index * 60_000, "s", 0, "m"))
+            .collect();
+        let base = "stats count(*) as c by bin(1m) as t";
+        let output = aggregates(&format!("{base} | filter t >= {}", four_pm + 120_000), &events);
+        assert_eq!(
+            keys_of(&output),
+            vec![
+                CellValue::Timestamp(four_pm + 120_000),
+                CellValue::Timestamp(four_pm + 180_000)
+            ]
+        );
+        let output = aggregates(&format!("{base} | filter t < '2025-08-25 01:01:00'"), &events);
+        assert_eq!(keys_of(&output), vec![CellValue::Timestamp(four_pm)]);
+    }
+
+    #[test]
+    fn a_sort_after_stats_orders_naturally_and_keeps_equal_rows_in_place() {
+        // BR3.1: the natural order of sort; equal values keep the ascending
+        // order of the keys.
+        let events = levels(9);
+        let counted = aggregates("stats count(*) as c by n | sort c desc", &events);
+        assert_eq!(
+            keys_of(&counted),
+            (0..9).map(CellValue::Integer).collect::<Vec<_>>(),
+            "nine counts of 1: the key order stays"
+        );
+        let by_level = aggregates("stats count(*) as c by level | sort c desc, level", &events);
+        assert_eq!(keys_of(&by_level), vec![text("info"), text("error")]);
+        let mixed = aggregates(
+            "stats count(*) as c by v | sort v desc",
+            &timed_json(&[
+                (1, r#"{"v":"x10"}"#),
+                (2, r#"{"v":"x2"}"#),
+                (3, r#"{"v":7}"#),
+                (4, "plain"),
+            ]),
+        );
+        assert_eq!(
+            keys_of(&mixed),
+            vec![
+                CellValue::Integer(7),
+                text("x10"),
+                text("x2"),
+                CellValue::Missing
+            ],
+            "descending: numbers, texts in reverse natural order, missing last"
+        );
+    }
+
+    #[test]
+    fn limits_after_stats_apply_in_order_and_limit_0_keeps_no_row() {
+        // BR1.4, BR3.1, BR3.2.
+        let events = levels(9);
+        let zero = aggregates("stats count(*) by n | limit 0", &events);
+        assert_eq!(
+            (zero.rows.len(), zero.matched_count, zero.truncated_at),
+            (0, 9, None)
+        );
+        let twice = aggregates("stats count(*) by n | limit 5 | sort n desc | limit 2", &events);
+        assert_eq!(keys_of(&twice), vec![CellValue::Integer(4), CellValue::Integer(3)]);
+        assert_eq!((twice.matched_count, twice.truncated_at), (9, Some(2)));
+        let uc1 = aggregates(
+            "stats count(*) as n by level | filter n > 1 | sort n desc | limit 1",
+            &events,
+        );
+        assert_eq!(uc1.rows, vec![vec![text("info"), CellValue::Integer(6)]]);
+        assert_eq!((uc1.matched_count, uc1.truncated_at), (2, Some(1)));
+    }
+
+    #[test]
+    fn aggregate_rows_are_cut_at_ten_thousand_without_a_limit() {
+        // BR3.2: as the event rows (U2:BR5.2, BR5.3).
+        let events = levels(10_001);
+        let cut = aggregates("stats count(*) by n", &events);
+        assert_eq!(
+            (cut.rows.len(), cut.matched_count, cut.truncated_at),
+            (10_000, 10_001, Some(10_000))
+        );
+        assert_eq!(cut.rows.last().map(|row| row[0].clone()), Some(CellValue::Integer(9_999)));
+        let exact = aggregates("stats count(*) by n", &events[..10_000]);
+        assert_eq!(
+            (exact.rows.len(), exact.matched_count, exact.truncated_at),
+            (10_000, 10_000, None)
+        );
+        let filtered = aggregates("stats count(*) as c by n | filter n >= 5000", &events);
+        assert_eq!(
+            (filtered.rows.len(), filtered.matched_count, filtered.truncated_at),
+            (5_001, 5_001, None),
+            "the filter's rows are what is counted"
+        );
+        let large = aggregates("stats count(*) by n | limit 100000", &events);
+        assert_eq!((large.rows.len(), large.truncated_at), (10_001, None));
+    }
+
+    #[test]
+    fn a_limit_after_stats_says_what_it_cut_and_a_filter_after_it_is_not_undone() {
+        // BR3.2 (FR review R-03): the events' rule (review R-08).
+        let events = levels(9);
+        let three = aggregates("stats count(*) by n | limit 3", &events);
+        assert_eq!(
+            (three.rows.len(), three.matched_count, three.truncated_at),
+            (3, 9, Some(3))
+        );
+        let refiltered = aggregates("stats count(*) by n | limit 3 | filter n > 0", &events);
+        assert_eq!(
+            (refiltered.rows.len(), refiltered.matched_count, refiltered.truncated_at),
+            (2, 2, None)
+        );
+        let trailing = aggregates("stats count(*) by n | limit 3 | sort n desc", &events);
+        assert_eq!(
+            (trailing.matched_count, trailing.truncated_at),
+            (9, Some(3))
+        );
+        let none = aggregates("stats count(*) by n | filter n > 100", &events);
+        assert_eq!((none.rows.len(), none.truncated_at), (0, None));
+    }
+
+    #[test]
+    fn a_stop_while_the_rows_are_finished_drops_everything() {
+        // BR3.1 (FR review R-06): the commands after stats are applied
+        // 10,000 rows at a time, the stop signal asked between.
+        let events = levels(25_000);
+        let items = items(&events);
+        let plan = query("stats count(*) as c by n | filter c = 1 | sort n desc");
+        let mut asked = 0;
+        let finished = evaluate(
+            &plan,
+            items.as_slice(),
+            || {
+                asked += 1;
+                false
+            },
+            |_, _| {},
+        );
+        let Some(EvalOutput::Aggregates(finished)) = finished else {
+            panic!("no aggregates: {finished:?}");
+        };
+        assert_eq!(finished.rows.len(), 10_000);
+        assert_eq!(asked, 7, "3 chunks of stats, 3 of the filter, the sort");
+        for stop_at in 4..=7 {
+            let mut asked = 0;
+            let stopped = evaluate(
+                &plan,
+                items.as_slice(),
+                || {
+                    asked += 1;
+                    asked >= stop_at
+                },
+                |_, _| {},
+            );
+            assert_eq!(stopped, None, "stopped at look {stop_at}");
+        }
+    }
+
+    #[test]
+    fn a_stats_without_commands_after_it_gives_what_u1_gave() {
+        // BR5.1: rows, columns, counts and the steps are unchanged.
+        let events = levels(9);
+        let output = aggregates("stats count(*) as c, sum(n) by level", &events);
+        assert_eq!(
+            output.rows,
+            vec![
+                vec![text("error"), CellValue::Integer(3), CellValue::Decimal(9.0)],
+                vec![text("info"), CellValue::Integer(6), CellValue::Decimal(27.0)],
+            ]
+        );
+        assert_eq!((output.matched_count, output.truncated_at), (2, None));
+        let result = QueryResult::from_aggregates(1, output);
+        assert_eq!((result.matched_count(), result.truncated_at()), (2, None));
+        let events = levels(25_000);
+        let mut asked = 0;
+        evaluate(
+            &query("stats count(*) by level"),
+            items(&events).as_slice(),
+            || {
+                asked += 1;
+                false
+            },
+            |_, _| {},
+        );
+        assert_eq!(asked, 3, "no extra step without commands after stats");
+    }
+
+    #[test]
+    fn an_aggregates_result_keeps_its_matched_count_and_its_cut() {
+        // BR3.2: carried to the screen's summary as the events' are.
+        let output = aggregates("stats count(*) by n", &levels(10_005));
+        let result = QueryResult::from_aggregates(2, output);
+        assert_eq!(
+            (result.row_count(), result.matched_count(), result.truncated_at()),
+            (10_000, 10_005, Some(10_000))
+        );
     }
 }
 
@@ -2373,6 +2835,86 @@ mod speed {
         println!(
             "JSON sort of 1,000,000 events: longest step (the most a Cancel waits) {longest:?}; \
              stopped after 3 steps in {stopped:?}"
+        );
+    }
+
+    /// Evaluates the `stats` query `text` step by step as the runner does
+    /// and returns the output, the whole time and the longest step.
+    fn measure_stats(text: &str, items: &GroupEvents<'_>) -> (AggregatesOutput, Duration, Duration) {
+        let plan = parse_query(text).unwrap();
+        let started = Instant::now();
+        let mut longest = Duration::ZERO;
+        let mut evaluation = Evaluation::new(&plan, items.len());
+        evaluation.advance(&plan, items);
+        while !evaluation.is_done() {
+            let before = Instant::now();
+            evaluation.step(&plan, items);
+            longest = longest.max(before.elapsed());
+        }
+        let elapsed = started.elapsed();
+        let Some(EvalOutput::Aggregates(output)) = evaluation.into_output() else {
+            panic!("{text:?} gave no aggregates output");
+        };
+        (output, elapsed, longest)
+    }
+
+    /// 261025-insights-stats U2:BR2.6, NFR2 (DD review R-10, FR review
+    /// R-06): the heavy `stats` (every @message kept for count_distinct, every
+    /// latency for pct) over the same 1,000,000 events as U1's
+    /// `stats count(*) by bin(5m)`, within three times its time. Every
+    /// message of [`held_events`] differs, so count_distinct keeps 1,000,000
+    /// texts: the worst case.
+    #[test]
+    #[ignore = "measures speed; run with --release --ignored"]
+    fn the_heavy_stats_takes_at_most_three_times_the_bin_count() {
+        let events = held_events(1_000_000);
+        let items = GroupEvents {
+            events: &events,
+            log_group_name: GROUP,
+        };
+        let baseline = "stats count(*) by bin(5m)";
+        let heavy = "stats count_distinct(@message), pct(latency, 99) by @logStream";
+        let every = "stats count(*), count(level), count_distinct(level), sum(latency), \
+                     avg(latency), min(latency), max(latency), pct(latency, 50), \
+                     stddev(latency), earliest(level), latest(level), sortsFirst(level), \
+                     sortsLast(level) by bin(5m)";
+        // One run first, so the allocator and caches are warm for both.
+        measure_stats(baseline, &items);
+        for part in [
+            "stats count(*) by @logStream",
+            "stats count_distinct(@message) by @logStream",
+            "stats pct(latency, 99) by @logStream",
+            "stats sum(latency) by @logStream",
+        ] {
+            let (_, time, step) = measure_stats(part, &items);
+            println!("  part {part}: {time:?} (longest step {step:?})");
+        }
+        let (base, base_time, base_step) = measure_stats(baseline, &items);
+        let (heavy_output, heavy_time, heavy_step) = measure_stats(heavy, &items);
+        let (every_output, every_time, every_step) = measure_stats(every, &items);
+        println!(
+            "stats over 1,000,000 events:\n  {baseline}: {base_time:?} (longest step {base_step:?}), {} rows\n  \
+             {heavy}: {heavy_time:?} (longest step {heavy_step:?}), {} rows, {:.2}x\n  \
+             all functions by bin(5m): {every_time:?} (longest step {every_step:?}), {} rows, {:.2}x",
+            base.rows.len(),
+            heavy_output.rows.len(),
+            heavy_time.as_secs_f64() / base_time.as_secs_f64(),
+            every_output.rows.len(),
+            every_time.as_secs_f64() / base_time.as_secs_f64(),
+        );
+        assert_eq!(heavy_output.rows.len(), 8, "one row per stream");
+        let distinct: i64 = heavy_output
+            .rows
+            .iter()
+            .map(|row| match row[1] {
+                CellValue::Integer(count) => count,
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(distinct, 1_000_000, "every message counted once");
+        assert!(
+            heavy_time <= base_time * 3,
+            "the heavy stats took {heavy_time:?}, more than 3 x {base_time:?}"
         );
     }
 }

@@ -2826,6 +2826,8 @@ mod tests {
                     CellValue::Integer(3),
                 ]],
                 evaluated_count: 3,
+                matched_count: 1,
+                truncated_at: None,
             },
         ));
         let view = serde_json::to_value(lock(&session).view()).unwrap();

@@ -683,6 +683,8 @@ mod tests {
                     vec![CellValue::Timestamp(1_756_051_500_000), CellValue::Missing],
                 ],
                 evaluated_count: 42,
+                matched_count: 2,
+                truncated_at: None,
             },
         );
         assert_eq!(

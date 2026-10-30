@@ -79,45 +79,45 @@ Testing Contract の custom の順番に従う。純粋なロジック（一覧�
 
 ### 準備
 
-- [ ] **Step 1** — テストの実行の確認：unit-test-instructions.md のコマンドが今の状態で通ることを確かめ、通過の数を記録する
-- [ ] **Step 2** — 置き場所の用意：`crates/local-sights-core/src/query/catalog.rs` を新しく作り、`query/mod.rs` に `pub mod catalog;` を足す（中身は Step 4 から）
+- [x] **Step 1** — テストの実行の確認：unit-test-instructions.md のコマンドが今の状態で通ることを確かめ、通過の数を記録する
+- [x] **Step 2** — 置き場所の用意：`crates/local-sights-core/src/query/catalog.rs` を新しく作り、`query/mod.rs` に `pub mod catalog;` を足す（中身は Step 4 から）
 
 ### 一覧（純粋なロジック：テスト先行）
 
-- [ ] **Step 3** — `catalog.rs` のテストを先に書く：`QueryVocabulary`（name・kind・supported・reserved）と `QueryCatalog` の固定の一覧。supported の命令は fields・filter・sort・limit・stats、unsupported の命令は parse・dedup・display・pattern・diff・unmask・unnest・lookup・filterIndex・source、集計の関数は 12、ほかの関数は toMillis・bin、キーワードは by・as・and・or・not・like・in・asc・desc で reserved は and・or・not・like・in の 5 つだけ、決まった項目は 4 つ、名前の重複がないこと、命令の引き方は大文字・小文字を区別しないこと。実行して失敗を確かめる（BR4.1、FR6.2）
-- [ ] **Step 4** — `catalog.rs` を実装し、Step 3 のテストを通す（画面へ渡す形は `serde::Serialize`、名前は camelCase）
+- [x] **Step 3** — `catalog.rs` のテストを先に書く：`QueryVocabulary`（name・kind・supported・reserved）と `QueryCatalog` の固定の一覧。supported の命令は fields・filter・sort・limit・stats、unsupported の命令は parse・dedup・display・pattern・diff・unmask・unnest・lookup・filterIndex・source、集計の関数は 12、ほかの関数は toMillis・bin、キーワードは by・as・and・or・not・like・in・asc・desc で reserved は and・or・not・like・in の 5 つだけ、決まった項目は 4 つ、名前の重複がないこと、命令の引き方は大文字・小文字を区別しないこと。実行して失敗を確かめる（BR4.1、FR6.2）
+- [x] **Step 4** — `catalog.rs` を実装し、Step 3 のテストを通す（画面へ渡す形は `serde::Serialize`、名前は camelCase）
 
 ### 計画の型と読み取り（純粋なロジック：テスト先行）
 
-- [ ] **Step 5** — `plan.rs` と `parser.rs` のテストを先に書く：
+- [x] **Step 5** — `plan.rs` と `parser.rs` のテストを先に書く：
   - 関数：12 の関数名がそれぞれ読めること（BR1.1）、`sortsfirst` は Unsupported（BR1.1）。
   - pct：`pct(latency, 95)`・`pct(latency, 99.9)`・`pct(latency, 0)`・`pct(latency, 100)` が読め、百分位を（分子, 小数の桁）で持つこと、`pct(latency, 101)`・`pct(latency, -1)` は Syntax の PCT_OUT_OF_RANGE、`pct(latency)` と `count_distinct(a, b)` は引き数の数の違い、`stddev(*)` は Syntax（BR1.2）、as なしの列の名前 `pct(latency, 95)`（BR1.3）。
   - stats のあと：`stats count(*) as n by level | filter n > 10 | sort n desc | limit 5` が `StatsCommand.after` に書いた順に入ること、`` `count(*)` `` のバッククォートで列を引けること、列どうしの比較、ない列の名前は Syntax の UNKNOWN_RESULT_COLUMN、`limit` の上限は今と同じ（BR1.4）。stats のあとの `fields` は FIELDS_AFTER_STATS、2 つ目の `stats` は SECOND_STATS の Unsupported（BR1.5）。
   - 一覧からの振り分け：unsupported の命令は今と同じ問題になること、`desc`・`by` という名前の項目を裸で書いても今のとおり項目として読むこと（BR4.1）、`filter @timestamp > 5m` など前の作業のエラーが変わらないこと（BR5.1）。
   - 実行して失敗を確かめる（FR1.2・FR1.4・FR6.2・FR6.3）
-- [ ] **Step 6** — `plan.rs` と `parser.rs` を実装し、Step 5 のテストを通す：`AggregateFunction` を 12 に、`AggregateSpec.percentile`、`StatsCommand.after`（`AfterStatsCommand`：filter・sort・limit）、`FieldRef::Column(index)` と列の名前の引き方。`OTHER_COMMANDS`・`KEYWORDS`（reserved）・関数の振り分けを QueryCatalog から作り、U1 の暫定の表を消す。新しい問題の鍵（PCT_OUT_OF_RANGE・UNKNOWN_RESULT_COLUMN・FIELDS_AFTER_STATS・SECOND_STATS など）を `keys` に足す。U1 で U2 の関数や stats のあとの命令を「対応していない」と確かめていたテストは、U2 の振る舞いに合わせて直す（BR5.1）
+- [x] **Step 6** — `plan.rs` と `parser.rs` を実装し、Step 5 のテストを通す：`AggregateFunction` を 12 に、`AggregateSpec.percentile`、`StatsCommand.after`（`AfterStatsCommand`：filter・sort・limit）、`FieldRef::Column(index)` と列の名前の引き方。`OTHER_COMMANDS`・`KEYWORDS`（reserved）・関数の振り分けを QueryCatalog から作り、U1 の暫定の表を消す。新しい問題の鍵（PCT_OUT_OF_RANGE・UNKNOWN_RESULT_COLUMN・FIELDS_AFTER_STATS・SECOND_STATS など）を `keys` に足す。U1 で U2 の関数や stats のあとの命令を「対応していない」と確かめていたテストは、U2 の振る舞いに合わせて直す（BR5.1）
 
 ### 集計（純粋なロジック：テスト先行）
 
-- [ ] **Step 7** — `stats.rs` の 7 つの関数のテストを先に書く：
+- [x] **Step 7** — `stats.rs` の 7 つの関数のテストを先に書く：
   - count_distinct：値の文字が同じものを 1 つに数える（数の 200 と文字の "200" は同じ）、Missing は無視、真偽値は 1 / 0 の文字で数える（BR2.1）。
   - stddev：Welford の標本標準偏差（n − 1）、値 1 つで 0、0 個で値なし、大きな値（1e9 前後）で桁落ちしないこと（BR2.3）。
   - sortsFirst・sortsLast：min・max と同じ値、文字と数が混ざるとき（BR2.4）。
   - earliest・latest：view の順で最初・最後に見た値、Missing のイベントは飛ばす、同じ時刻なら並びの先・後（BR2.5）。
   - by ありで複数の関数を同時に使うときの列の順（U1 の BR3.3）。
   - 実行して失敗を確かめる（FR1.2・FR1.6）
-- [ ] **Step 8** — `stats.rs` の pct の順位の表のテストを先に書く：p = 0・7・50・99.9・100 と n = 1・100・101 の組で、k = max(1, ceil(a × n ÷ (100 × 10^d))) 番目の値になること、n = 0 は値なし、数に読めない値は数えないこと（BR2.2）。実行して失敗を確かめる（FR1.2）
-- [ ] **Step 9** — `stats.rs` を実装し、Step 7・8 のテストを通す：`Accumulator` に関数ごとの累積（distinct の集まり・Welford の mean と m2・pct の値の一覧・extreme・chosen）を足す。pct の順位は u128 の整数で求め、並べるのはグループごとに finish のとき 1 回
+- [x] **Step 8** — `stats.rs` の pct の順位の表のテストを先に書く：p = 0・7・50・99.9・100 と n = 1・100・101 の組で、k = max(1, ceil(a × n ÷ (100 × 10^d))) 番目の値になること、n = 0 は値なし、数に読めない値は数えないこと（BR2.2）。実行して失敗を確かめる（FR1.2）
+- [x] **Step 9** — `stats.rs` を実装し、Step 7・8 のテストを通す：`Accumulator` に関数ごとの累積（distinct の集まり・Welford の mean と m2・pct の値の一覧・extreme・chosen）を足す。pct の順位は u128 の整数で求め、並べるのはグループごとに finish のとき 1 回
 
 ### 評価の仕上げ（純粋なロジック：テスト先行）
 
-- [ ] **Step 10** — `evaluator.rs` のテストを先に書く：
+- [x] **Step 10** — `evaluator.rs` のテストを先に書く：
   - stats のあとの命令：filter は CellValue を FieldValue に写して今の比べ方（比較・and/or/not・like・正規表現・in、Missing はどれにも合わない）、timestamp の列は @timestamp と同じ扱い、sort は NaturalSort で同じ値は前の並びのまま、limit 0 は 0 行、limit が複数あれば書いた順にすべて（BR3.1・BR1.4）。
   - 打ち切り：limit なしで 10,001 グループなら 10,000 行で truncatedAt = 10,000 と matchedCount = 10,001、limit が残りより小さいときの truncatedAt、limit のあとの filter では数え直さない、0 行は truncatedAt なし（BR3.2、FR1.7）。
   - 止める信号：仕上げの途中（10,000 行ごと）で止まると結果を捨てる（BR3.1）。
   - stats のないクエリと U1 の stats のクエリの結果が今と同じ（BR5.1）。
   - 実行して失敗を確かめる（FR1.4・FR1.7）
-- [ ] **Step 11** — `evaluator.rs` を実装し、Step 10 のテストと既存のテストを通す：Aggregate の段の仕上げで `StatsCommand.after` を書いた順に適用し、10,000 行ごとに止める信号を確かめ、events と同じ判定で打ち切る。U1 の「aggregates は打ち切らない」の分岐を改める
+- [x] **Step 11** — `evaluator.rs` を実装し、Step 10 のテストと既存のテストを通す：Aggregate の段の仕上げで `StatsCommand.after` を書いた順に適用し、10,000 行ごとに止める信号を確かめ、events と同じ判定で打ち切る。U1 の「aggregates は打ち切らない」の分岐を改める
 - [ ] **Step 12** — 測定のテストを 1 つ足す（`#[ignore]`、手で `--ignored` を付けて流す）：作ったイベント 100 万件（実際の AWS は使わない）で、`stats count_distinct(@message), pct(latency, 99) by @logStream` と U1 の `stats count(*) by bin(5m)` の評価の時間を測って出し、3 倍以内であることを確かめる。満たさないときは BR2.6 の手（count_distinct を値の文字のハッシュで持つ、pct を数の配列だけにする）を試し、それでも満たさなければ記録して利用者に諮る（BR2.6、NFR2）
 
 ### 補完（中核の境界：実装してからテスト）

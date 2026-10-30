@@ -16,6 +16,7 @@
 //! Nothing here calls an AWS API by itself: the fetch is the existing
 //! FetchCoordinator flow (DescribeLogStreams and GetLogEvents only, U1:BR2.2).
 
+pub mod catalog;
 pub mod evaluator;
 pub mod fields;
 pub mod instant;

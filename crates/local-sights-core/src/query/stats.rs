@@ -10,7 +10,11 @@
 //! start of the period the event falls in, a multiple of the period from the
 //! epoch (BR2.5). Each group keeps one accumulator per aggregate: counts,
 //! sums of what reads as a number, and the smallest and largest value in the
-//! order of `sort` (BR2.2-BR2.4). [`StatsAggregator::finish`] makes the rows
+//! order of `sort` (BR2.2-BR2.4); since U2 also the texts of the distinct
+//! values, the numbers for `pct` (ordered once, when the group is finished,
+//! and ranked in whole numbers), Welford's running mean for `stddev`, and
+//! the value of the first or last event in the result's order for
+//! `earliest` and `latest` (U2:BR2.1-BR2.5). [`StatsAggregator::finish`] makes the rows
 //! in ascending order of their keys, with "no value" last (BR2.7), and one
 //! row for no event without `by` (BR2.6).
 //!
@@ -21,14 +25,17 @@
 //! for no event, the four decimal places, the default order) are provisional
 //! until U4 compares them with the console.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, DefaultHasher, Hasher};
 
 use crate::query::evaluator::number_of_digits;
 use crate::query::fields::{EventFields, FieldValue};
 use crate::query::natural::{SortKeyRef, SortValue, compare_sort_keys};
 use crate::query::plan::{
-    AggregateArgument, AggregateFunction, AggregateSpec, FieldRef, GroupKeyKind, StatsCommand,
+    AggregateArgument, AggregateFunction, AggregateSpec, FieldRef, GroupKeyKind, Percentile,
+    StatsCommand,
 };
 
 /// Largest whole number every smaller one of which an `f64` holds exactly:
@@ -169,6 +176,41 @@ fn key_text(cell: &CellValue) -> Option<String> {
     cell_text(cell, &|time| time.to_string())
 }
 
+/// Where an event stands in the result's order (entities.md EventOrderKey):
+/// its time, then its log group, stream and order in the stream
+/// (261017-insights-query U2:BR4.4), here oldest first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EventOrder {
+    timestamp: i64,
+    log_group_name: String,
+    log_stream_name: String,
+    sequence: u64,
+}
+
+impl EventOrder {
+    fn of(fields: &EventFields<'_>) -> Self {
+        let event = fields.event();
+        Self {
+            timestamp: event.timestamp,
+            log_group_name: fields.log_group_name().to_string(),
+            log_stream_name: event.log_stream_name.clone(),
+            sequence: event.sequence,
+        }
+    }
+
+    /// How the event of `fields` stands against this one, without copying
+    /// its names.
+    fn compare_with(&self, fields: &EventFields<'_>) -> Ordering {
+        let event = fields.event();
+        event
+            .timestamp
+            .cmp(&self.timestamp)
+            .then_with(|| fields.log_group_name().cmp(self.log_group_name.as_str()))
+            .then_with(|| event.log_stream_name.as_str().cmp(&self.log_stream_name))
+            .then_with(|| event.sequence.cmp(&self.sequence))
+    }
+}
+
 /// The running value of one aggregate of one group (entities.md
 /// Accumulator).
 #[derive(Debug, Clone)]
@@ -177,8 +219,20 @@ enum Accumulator {
     Count(i64),
     /// `sum` or `avg`: the total and how many values were added.
     Sum { total: f64, added: u64 },
-    /// `min` or `max`: the value kept so far, with its order.
+    /// `min`, `max`, `sortsFirst` or `sortsLast`: the value kept so far,
+    /// with its order (U1:BR2.4, U2:BR2.4).
     Extreme(Option<(SortValue, CellValue)>),
+    /// `count_distinct`: the 64-bit hashes of the texts of the values seen
+    /// (U2:BR2.1, BR2.6's first remedy: no text is copied).
+    Distinct(HashSet<u64, BuildHasherDefault<HashedKey>>),
+    /// `pct`: every value read as a number, ordered at the end (U2:BR2.2).
+    Values(Vec<f64>),
+    /// `stddev`: Welford's count, mean and sum of squared differences
+    /// (U2:BR2.3).
+    Spread { count: u64, mean: f64, m2: f64 },
+    /// `earliest` or `latest`: the value of the first (last) event in the
+    /// result's order so far (U2:BR2.5).
+    Chosen(Option<(EventOrder, CellValue)>),
 }
 
 impl Accumulator {
@@ -189,11 +243,22 @@ impl Accumulator {
                 total: 0.0,
                 added: 0,
             },
-            AggregateFunction::Min | AggregateFunction::Max => Accumulator::Extreme(None),
+            AggregateFunction::Min
+            | AggregateFunction::Max
+            | AggregateFunction::SortsFirst
+            | AggregateFunction::SortsLast => Accumulator::Extreme(None),
+            AggregateFunction::CountDistinct => Accumulator::Distinct(HashSet::default()),
+            AggregateFunction::Pct => Accumulator::Values(Vec::new()),
+            AggregateFunction::Stddev => Accumulator::Spread {
+                count: 0,
+                mean: 0.0,
+                m2: 0.0,
+            },
+            AggregateFunction::Earliest | AggregateFunction::Latest => Accumulator::Chosen(None),
         }
     }
 
-    /// Adds the event of `fields` (BR2.2-BR2.4).
+    /// Adds the event of `fields` (U1:BR2.2-BR2.4, U2:BR2.1-BR2.5).
     fn add(&mut self, spec: &AggregateSpec, fields: &EventFields<'_>) {
         let field = match &spec.argument {
             AggregateArgument::All => {
@@ -222,10 +287,9 @@ impl Accumulator {
                     return;
                 }
                 let order = SortValue::of(value);
-                let wanted = if spec.function == AggregateFunction::Min {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
+                let wanted = match spec.function {
+                    AggregateFunction::Min | AggregateFunction::SortsFirst => Ordering::Less,
+                    _ => Ordering::Greater,
                 };
                 // Of two values in the same place, the first seen stays.
                 let replaces = kept.as_ref().is_none_or(|(held, _)| {
@@ -235,16 +299,51 @@ impl Accumulator {
                     *kept = Some((order, CellValue::of_value(field, value)));
                 }
             }
+            Accumulator::Distinct(seen) => {
+                if let Some(text) = distinct_text(field, value) {
+                    seen.insert(text_hash(&text));
+                }
+            }
+            Accumulator::Values(values) => {
+                if let Some(number) = number_of(value) {
+                    values.push(number);
+                }
+            }
+            Accumulator::Spread { count, mean, m2 } => {
+                if let Some(number) = number_of(value) {
+                    // Welford: no large sums of squares, so no lost digits.
+                    *count += 1;
+                    let delta = number - *mean;
+                    *mean += delta / *count as f64;
+                    *m2 += delta * (number - *mean);
+                }
+            }
+            Accumulator::Chosen(chosen) => {
+                if value == FieldValue::Missing {
+                    return;
+                }
+                let wanted = if spec.function == AggregateFunction::Earliest {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                };
+                let replaces = chosen
+                    .as_ref()
+                    .is_none_or(|(held, _)| held.compare_with(fields) == wanted);
+                if replaces {
+                    *chosen = Some((EventOrder::of(fields), CellValue::of_value(field, value)));
+                }
+            }
         }
     }
 
-    /// The cell of the finished aggregate.
-    fn into_cell(self, function: AggregateFunction) -> CellValue {
+    /// The cell of the finished aggregate of `spec`.
+    fn into_cell(self, spec: &AggregateSpec) -> CellValue {
         match self {
             Accumulator::Count(count) => CellValue::Integer(count),
             Accumulator::Sum { added: 0, .. } => CellValue::Missing,
             Accumulator::Sum { total, added } => {
-                if function == AggregateFunction::Avg {
+                if spec.function == AggregateFunction::Avg {
                     // At most 2^64 values: the quotient is what f64 can say.
                     CellValue::Decimal(total / added as f64)
                 } else {
@@ -252,8 +351,87 @@ impl Accumulator {
                 }
             }
             Accumulator::Extreme(kept) => kept.map_or(CellValue::Missing, |(_, cell)| cell),
+            Accumulator::Distinct(seen) => {
+                CellValue::Integer(i64::try_from(seen.len()).unwrap_or(i64::MAX))
+            }
+            Accumulator::Values(mut values) => {
+                let rank = spec
+                    .percentile
+                    .and_then(|percentile| percentile_rank(percentile, values.len()));
+                let Some(rank) = rank else {
+                    return CellValue::Missing;
+                };
+                // Ordered once per group, when it is finished (BR2.2).
+                values.sort_unstable_by(f64::total_cmp);
+                values
+                    .get(rank - 1)
+                    .map_or(CellValue::Missing, |value| CellValue::Decimal(*value))
+            }
+            Accumulator::Spread { count: 0, .. } => CellValue::Missing,
+            Accumulator::Spread { count: 1, .. } => CellValue::Decimal(0.0),
+            Accumulator::Spread { count, m2, .. } => {
+                CellValue::Decimal((m2 / (count - 1) as f64).sqrt())
+            }
+            Accumulator::Chosen(chosen) => chosen.map_or(CellValue::Missing, |(_, cell)| cell),
         }
     }
+}
+
+/// The 64-bit hash `count_distinct` keeps of a value's text (BR2.6): two
+/// different texts share one with a chance of about n² / 2^65, below one in
+/// ten million for a million values.
+fn text_hash(text: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hasher.write(text.as_bytes());
+    hasher.finish()
+}
+
+/// The hasher of a set of [`text_hash`]es: the key is a hash already, so it
+/// is used as it is.
+#[derive(Debug, Clone, Copy, Default)]
+struct HashedKey(u64);
+
+impl Hasher for HashedKey {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // Only u64 keys are hashed here; any other input is folded in.
+        for byte in bytes {
+            self.0 = self.0.rotate_left(8) ^ u64::from(*byte);
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value;
+    }
+}
+
+/// The text `count_distinct` tells a value apart by (U2:BR2.1): the key text
+/// of U1:BR2.1, borrowed when the value is a text; `None` for no value.
+fn distinct_text<'a>(field: &FieldRef, value: FieldValue<'a>) -> Option<Cow<'a, str>> {
+    match value {
+        FieldValue::Missing => None,
+        FieldValue::Text(text) => Some(Cow::Borrowed(text)),
+        FieldValue::Boolean(flag) => Some(Cow::Borrowed(if flag { "1" } else { "0" })),
+        FieldValue::Number(_) => key_text(&CellValue::of_value(field, value)).map(Cow::Owned),
+    }
+}
+
+/// The 1-based rank of `percentile` among `count` ordered values
+/// (261025-insights-stats U2:BR2.2): the nearest rank
+/// `max(1, ceil(numerator × count ÷ (100 × 10^scale)))`, worked out in whole
+/// numbers so that it is exact; `None` for no value.
+pub fn percentile_rank(percentile: Percentile, count: usize) -> Option<usize> {
+    if count == 0 {
+        return None;
+    }
+    let whole = percentile.whole();
+    // numerator ≤ 100 × 10^15 and count < 2^64: the product fits in u128.
+    let product = u128::from(percentile.numerator).checked_mul(count as u128)?;
+    let rank = product.div_ceil(whole).max(1);
+    usize::try_from(rank).ok().map(|rank| rank.min(count))
 }
 
 /// A value `sum` and `avg` add (BR2.3): a number, or a text of digits;
@@ -303,6 +481,11 @@ impl StatsAggregator {
             index: HashMap::new(),
             groups: Vec::new(),
         }
+    }
+
+    /// The `stats` command aggregated.
+    pub fn stats(&self) -> &StatsCommand {
+        &self.stats
     }
 
     /// The groups made so far.
@@ -370,12 +553,7 @@ impl StatsAggregator {
                 .find(|order| *order != Ordering::Equal)
                 .unwrap_or(Ordering::Equal)
         });
-        let functions: Vec<AggregateFunction> = self
-            .stats
-            .aggregates
-            .iter()
-            .map(|spec| spec.function)
-            .collect();
+        let specs = &self.stats.aggregates;
         let rows = groups
             .into_iter()
             .map(|group| {
@@ -384,8 +562,8 @@ impl StatsAggregator {
                     group
                         .accumulators
                         .into_iter()
-                        .zip(&functions)
-                        .map(|(accumulator, function)| accumulator.into_cell(*function)),
+                        .zip(specs)
+                        .map(|(accumulator, spec)| accumulator.into_cell(spec)),
                 );
                 cells
             })
@@ -811,5 +989,401 @@ mod tests {
             Some("123456789.1235")
         );
         assert_eq!(formatted(1e-9).as_deref(), Some("0"));
+    }
+
+    // ---- 261025-insights-stats U2:BR2.1-BR2.5 ------------------------------
+
+    /// An event of `stream` at `timestamp`, `sequence` in its stream.
+    fn event_in(timestamp: i64, stream: &str, sequence: u64, message: &str) -> LogEvent {
+        LogEvent {
+            timestamp,
+            ingestion_time: None,
+            message: message.to_string(),
+            log_stream_name: stream.to_string(),
+            sequence,
+        }
+    }
+
+    fn decimal_of(cell: &CellValue) -> f64 {
+        match cell {
+            CellValue::Decimal(value) => *value,
+            other => panic!("{other:?} is no decimal"),
+        }
+    }
+
+    #[test]
+    fn count_distinct_counts_values_shown_alike_once() {
+        // BR2.1: 200 and "200" are one value, true and "1" too; a missing
+        // value is not counted.
+        let events = [
+            json(1, r#"{"v":200}"#),
+            json(2, r#"{"v":"200"}"#),
+            json(3, r#"{"v":"a"}"#),
+            json(4, r#"{"v":"a"}"#),
+            json(5, r#"{"v":null}"#),
+            json(6, "plain"),
+            json(7, r#"{"v":true}"#),
+            json(8, r#"{"v":"1"}"#),
+            json(9, r#"{"v":2.00001}"#),
+            json(10, r#"{"v":2}"#),
+        ];
+        assert_eq!(
+            rows("stats count_distinct(v)", &events),
+            vec![vec![CellValue::Integer(4)]],
+            "200, a, 1 and 2 (2.00001 is shown 2)"
+        );
+    }
+
+    #[test]
+    fn count_distinct_counts_each_group_apart_and_zero_for_nothing() {
+        // BR2.1, U1:BR2.6.
+        let events = [
+            json(1, r#"{"g":"x","u":"a"}"#),
+            json(2, r#"{"g":"x","u":"b"}"#),
+            json(3, r#"{"g":"y","u":"a"}"#),
+            json(4, r#"{"g":"y","u":"a"}"#),
+            json(5, r#"{"g":"z"}"#),
+        ];
+        assert_eq!(
+            rows("stats count_distinct(u) by g", &events),
+            vec![
+                vec![text("x"), CellValue::Integer(2)],
+                vec![text("y"), CellValue::Integer(1)],
+                vec![text("z"), CellValue::Integer(0)],
+            ]
+        );
+        assert_eq!(
+            rows("stats count_distinct(u)", &[]),
+            vec![vec![CellValue::Integer(0)]]
+        );
+    }
+
+    #[test]
+    fn count_distinct_of_the_time_counts_the_times() {
+        // BR2.1: the time is told apart by its milliseconds.
+        let events = [json(FOUR_PM, "a"), json(FOUR_PM, "b"), json(FOUR_PM + 1, "c")];
+        assert_eq!(
+            rows("stats count_distinct(@timestamp), count_distinct(@message)", &events),
+            vec![vec![CellValue::Integer(2), CellValue::Integer(3)]]
+        );
+    }
+
+    #[test]
+    fn stddev_is_the_sample_standard_deviation_of_the_numbers() {
+        // BR2.3: divided by n - 1; texts of digits are numbers, other values
+        // are left out as in sum.
+        let events = [
+            json(1, r#"{"n":2}"#),
+            json(2, r#"{"n":4}"#),
+            json(3, r#"{"n":"4"}"#),
+            json(4, r#"{"n":4}"#),
+            json(5, r#"{"n":5}"#),
+            json(6, r#"{"n":5}"#),
+            json(7, r#"{"n":7}"#),
+            json(8, r#"{"n":9}"#),
+            json(9, r#"{"n":"abc"}"#),
+            json(10, r#"{"n":true}"#),
+            json(11, "plain"),
+        ];
+        let found = decimal_of(&rows("stats stddev(n)", &events)[0][0]);
+        assert!((found - (32.0_f64 / 7.0).sqrt()).abs() < 1e-12, "{found}");
+    }
+
+    #[test]
+    fn stddev_of_one_value_is_zero_and_of_none_no_value() {
+        // BR2.3.
+        assert_eq!(
+            rows("stats stddev(n)", &[json(1, r#"{"n":42}"#)]),
+            vec![vec![CellValue::Decimal(0.0)]]
+        );
+        assert_eq!(
+            rows("stats stddev(n)", &[json(1, r#"{"m":42}"#)]),
+            vec![vec![CellValue::Missing]]
+        );
+        assert_eq!(rows("stats stddev(n)", &[]), vec![vec![CellValue::Missing]]);
+    }
+
+    #[test]
+    fn stddev_of_large_close_values_loses_no_digit() {
+        // BR2.3: Welford's method, so values near 1e9 keep their spread.
+        let events: Vec<LogEvent> = [4, 7, 13, 16]
+            .iter()
+            .map(|offset| json(1, &format!(r#"{{"n":{}}}"#, 1_000_000_000 + offset)))
+            .collect();
+        let found = decimal_of(&rows("stats stddev(n)", &events)[0][0]);
+        assert!((found - 30.0_f64.sqrt()).abs() < 1e-9, "{found}");
+        let many: Vec<LogEvent> = (0..10_000)
+            .map(|index: i64| json(index, &format!(r#"{{"n":{}}}"#, 1_000_000_000 + index % 2)))
+            .collect();
+        let found = decimal_of(&rows("stats stddev(n)", &many)[0][0]);
+        // Half 0s and half 1s around 1e9: sqrt(n / (4 (n - 1))).
+        let expected = (10_000.0_f64 / (4.0 * 9_999.0)).sqrt();
+        assert!((found - expected).abs() < 1e-9, "{found}");
+    }
+
+    #[test]
+    fn sorts_first_and_sorts_last_are_the_values_min_and_max_give() {
+        // BR2.4 (Q5 A): the order of sort; texts before numbers.
+        let mixed = [
+            json(1, r#"{"v":5}"#),
+            json(2, r#"{"v":"x10"}"#),
+            json(3, r#"{"v":"x2"}"#),
+            json(4, r#"{"v":1.25}"#),
+            json(5, "plain"),
+        ];
+        assert_eq!(
+            rows("stats sortsFirst(v), sortsLast(v), min(v), max(v)", &mixed),
+            vec![vec![
+                text("x2"),
+                CellValue::Integer(5),
+                text("x2"),
+                CellValue::Integer(5)
+            ]]
+        );
+        let numbers = [json(1, r#"{"v":3}"#), json(2, r#"{"v":-1.5}"#)];
+        assert_eq!(
+            rows("stats sortsFirst(v), sortsLast(v)", &numbers),
+            vec![vec![CellValue::Decimal(-1.5), CellValue::Integer(3)]]
+        );
+        assert_eq!(
+            rows("stats sortsFirst(gone), sortsLast(gone)", &numbers),
+            vec![vec![CellValue::Missing, CellValue::Missing]]
+        );
+    }
+
+    #[test]
+    fn earliest_and_latest_are_the_values_of_the_first_and_last_events_in_time() {
+        // BR2.5: whatever order the events come in.
+        let events = [
+            json(FOUR_PM + 20, r#"{"level":"c"}"#),
+            json(FOUR_PM, r#"{"level":"a"}"#),
+            json(FOUR_PM + 30, r#"{"level":"d"}"#),
+            json(FOUR_PM + 10, r#"{"level":"b"}"#),
+        ];
+        assert_eq!(
+            rows("stats earliest(level), latest(level)", &events),
+            vec![vec![text("a"), text("d")]]
+        );
+        assert_eq!(
+            rows("stats earliest(@timestamp), latest(@timestamp)", &events),
+            vec![vec![
+                CellValue::Timestamp(FOUR_PM),
+                CellValue::Timestamp(FOUR_PM + 30)
+            ]],
+            "of the time, times"
+        );
+    }
+
+    #[test]
+    fn earliest_and_latest_pass_over_events_without_the_field() {
+        // BR2.5: a missing value is no candidate.
+        let events = [
+            json(FOUR_PM, "plain"),
+            json(FOUR_PM + 1, r#"{"n":1}"#),
+            json(FOUR_PM + 2, r#"{"n":2}"#),
+            json(FOUR_PM + 3, r#"{"n":null}"#),
+        ];
+        assert_eq!(
+            rows("stats earliest(n), latest(n)", &events),
+            vec![vec![CellValue::Integer(1), CellValue::Integer(2)]]
+        );
+        assert_eq!(
+            rows("stats earliest(gone), latest(gone)", &events),
+            vec![vec![CellValue::Missing, CellValue::Missing]]
+        );
+    }
+
+    #[test]
+    fn of_events_at_the_same_time_earliest_takes_the_first_and_latest_the_last_in_order() {
+        // BR2.5 (FR review R-07): equal times are ordered as the result
+        // rows are, by log group, stream and order in the stream.
+        let events = [
+            event_in(FOUR_PM, "b", 0, r#"{"v":"b0"}"#),
+            event_in(FOUR_PM, "a", 1, r#"{"v":"a1"}"#),
+            event_in(FOUR_PM, "a", 0, r#"{"v":"a0"}"#),
+            event_in(FOUR_PM, "b", 1, r#"{"v":"b1"}"#),
+        ];
+        assert_eq!(
+            rows("stats earliest(v), latest(v)", &events),
+            vec![vec![text("a0"), text("b1")]]
+        );
+        let mut aggregator = StatsAggregator::new(stats("stats earliest(v), latest(v)"));
+        aggregator.add(&EventFields::new(&events[0], "/z"));
+        aggregator.add(&EventFields::new(&events[3], "/a"));
+        assert_eq!(
+            aggregator.finish().rows,
+            vec![vec![text("b1"), text("b0")]],
+            "the log group comes before the stream"
+        );
+    }
+
+    #[test]
+    fn every_function_by_a_key_gives_the_keys_then_the_aggregates() {
+        // U1:BR3.3 with U2's functions.
+        let events = [
+            json(FOUR_PM, r#"{"level":"e","latency":10,"user":"u1"}"#),
+            json(FOUR_PM + 1, r#"{"level":"e","latency":30,"user":"u2"}"#),
+            json(FOUR_PM + 2, r#"{"level":"i","latency":5,"user":"u1"}"#),
+        ];
+        let table = table(
+            "stats pct(latency, 50) as p, stddev(latency), count_distinct(user), \
+             earliest(user), latest(user), sortsFirst(user), sortsLast(user) by level",
+            &events,
+        );
+        assert_eq!(
+            table.columns,
+            vec![
+                "level",
+                "p",
+                "stddev(latency)",
+                "count_distinct(user)",
+                "earliest(user)",
+                "latest(user)",
+                "sortsFirst(user)",
+                "sortsLast(user)"
+            ]
+        );
+        assert_eq!(
+            table.rows,
+            vec![
+                vec![
+                    text("e"),
+                    CellValue::Decimal(10.0),
+                    CellValue::Decimal(200.0_f64.sqrt()),
+                    CellValue::Integer(2),
+                    text("u1"),
+                    text("u2"),
+                    text("u1"),
+                    text("u2"),
+                ],
+                vec![
+                    text("i"),
+                    CellValue::Decimal(5.0),
+                    CellValue::Decimal(0.0),
+                    CellValue::Integer(1),
+                    text("u1"),
+                    text("u1"),
+                    text("u1"),
+                    text("u1"),
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn no_event_gives_no_value_for_the_value_functions() {
+        // U1:BR2.6 with U2's functions.
+        assert_eq!(
+            rows(
+                "stats pct(a, 50), stddev(a), earliest(a), latest(a), sortsFirst(a), sortsLast(a)",
+                &[]
+            ),
+            vec![vec![CellValue::Missing; 6]]
+        );
+    }
+
+    // ---- 261025-insights-stats U2:BR2.2: the rank of pct ------------------
+
+    /// The `pct(n, p)` of the numbers 1 to `count`, given in reverse.
+    fn pct_of_one_to(count: i64, percentile: &str) -> CellValue {
+        let events: Vec<LogEvent> = (1..=count)
+            .rev()
+            .map(|value| json(value, &format!(r#"{{"n":{value}}}"#)))
+            .collect();
+        let text = format!("stats pct(n, {percentile})");
+        rows(&text, &events).remove(0).remove(0)
+    }
+
+    #[test]
+    fn pct_of_one_value_is_that_value_for_every_percentile() {
+        for percentile in ["0", "7", "50", "99.9", "100"] {
+            assert_eq!(
+                pct_of_one_to(1, percentile),
+                CellValue::Decimal(1.0),
+                "p {percentile}"
+            );
+        }
+    }
+
+    #[test]
+    fn pct_of_a_hundred_values_is_the_nearest_rank() {
+        for (percentile, rank) in [("0", 1.0), ("7", 7.0), ("50", 50.0), ("99.9", 100.0), ("100", 100.0)] {
+            assert_eq!(
+                pct_of_one_to(100, percentile),
+                CellValue::Decimal(rank),
+                "p {percentile}"
+            );
+        }
+    }
+
+    #[test]
+    fn pct_of_a_hundred_and_one_values_rounds_the_rank_up() {
+        // ceil(7 × 101 / 100) = 8, ceil(50.5) = 51, ceil(100.899) = 101.
+        for (percentile, rank) in [("0", 1.0), ("7", 8.0), ("50", 51.0), ("99.9", 101.0), ("100", 101.0)] {
+            assert_eq!(
+                pct_of_one_to(101, percentile),
+                CellValue::Decimal(rank),
+                "p {percentile}"
+            );
+        }
+    }
+
+    #[test]
+    fn pct_of_no_value_is_no_value() {
+        assert_eq!(rows("stats pct(n, 50)", &[]), vec![vec![CellValue::Missing]]);
+        assert_eq!(
+            rows("stats pct(n, 50)", &[json(1, r#"{"n":"abc"}"#)]),
+            vec![vec![CellValue::Missing]]
+        );
+    }
+
+    #[test]
+    fn pct_reads_only_what_reads_as_a_number() {
+        // BR2.2: as sum does (U1:BR2.3).
+        let events = [
+            json(1, r#"{"n":"abc"}"#),
+            json(2, r#"{"n":true}"#),
+            json(3, r#"{"n":20}"#),
+            json(4, "plain"),
+            json(5, r#"{"n":"10"}"#),
+            json(6, r#"{"n":null}"#),
+        ];
+        assert_eq!(
+            rows("stats pct(n, 50), pct(n, 51)", &events),
+            vec![vec![CellValue::Decimal(10.0), CellValue::Decimal(20.0)]]
+        );
+    }
+
+    #[test]
+    fn pct_orders_negative_numbers_and_fractions() {
+        let events = [
+            json(1, r#"{"n":0.5}"#),
+            json(2, r#"{"n":-3}"#),
+            json(3, r#"{"n":2}"#),
+            json(4, r#"{"n":-0.25}"#),
+        ];
+        assert_eq!(
+            rows("stats pct(n, 25), pct(n, 26), pct(n, 75), pct(n, 100)", &events),
+            vec![vec![
+                CellValue::Decimal(-3.0),
+                CellValue::Decimal(-0.25),
+                CellValue::Decimal(0.5),
+                CellValue::Decimal(2.0)
+            ]]
+        );
+    }
+
+    #[test]
+    fn the_rank_is_worked_out_in_whole_numbers() {
+        // BR2.2 (FR review R-05): no floating point, even for large counts.
+        use crate::query::plan::Percentile;
+        let p = |text: &str| Percentile::parse(text).unwrap();
+        assert_eq!(percentile_rank(p("50"), 0), None);
+        assert_eq!(percentile_rank(p("0"), 5), Some(1));
+        assert_eq!(percentile_rank(p("100"), 5), Some(5));
+        assert_eq!(percentile_rank(p("99.9"), 1_000_000_007), Some(999_000_007));
+        assert_eq!(percentile_rank(p("0.000000000000001"), 1_000_000), Some(1));
+        assert_eq!(percentile_rank(p("33.3"), 1_000), Some(333));
+        assert_eq!(percentile_rank(p("33.3"), 1_001), Some(334));
     }
 }

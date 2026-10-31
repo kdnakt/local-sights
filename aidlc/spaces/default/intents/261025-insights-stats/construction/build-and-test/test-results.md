@@ -94,3 +94,18 @@
 - 両 OS の画面の確かめ（T-WS-OS）
 
 2026-10-31：開発者の答えは「PR作ってCI結果みよう」。PR [kdnakt/local-sights#50](https://github.com/kdnakt/local-sights/pull/50) を作り、macOS・Windows の CI の結果で T-NFR8-OS を確かめる。結果が出たら Target Verification Matrix を更新する。残りの手元の確かめ（T-NFR1、T-SM1、T-WS-OS）は、まだ終わっていない。
+
+## 8. PR の CI（kdnakt/local-sights#50）
+
+- **最初の CI（`66cc7f2`）**：`Rust library (fmt, clippy, test)` が失敗した。
+  - 原因：CI の Rust（1.99.1）で、確認用プログラム `fetch_check` のコンパイルが `queries overflow the depth limit` で止まった。`main` の非同期の処理に `run_query` の処理をそのまま埋め込んでいて、型の入れ子が深くなっていた。このコンテナの Rust（1.97.0）では出なかった。
+  - 再現：Rust 1.99.1 を入れて、`cargo clippy -p local-sights-core --all-targets` で同じ誤りが出ることを確かめた。
+  - 直し：`fetch_check.rs` で `run_query` の処理を `Box::pin` で包んだ。直したあと、1.99.1 でライブラリとワークスペース全体の `cargo clippy --all-targets`、`cargo fmt --check`、examples のテスト（85・11）が通った。
+  - この直しは手元の確かめ用のプログラムだけで、アプリのコードは変えていない。CI の失敗を直すための変更で、Loop-back は使っていない。
+- **直したあとの CI（`4393fcc`、run 41200634761）**：すべて成功した。
+  - `Rust library (fmt, clippy, test)`
+  - `Tauri app (ubuntu-latest)`・`Tauri app (macos-latest)`・`Tauri app (windows-latest)`
+  - `Front end (tsc, eslint, prettier, vitest, build)`
+  - `cargo-deny`
+  - `GitGuardian Security Checks`
+- T-NFR8-OS は Met。

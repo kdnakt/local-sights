@@ -35,7 +35,7 @@
 | T-C5 | requirements.md C5・NFR8、各計画の BR5.1 | 既存のテストがすべて通る | 中核 848・Vitest 597 を含め、すべて通った（Linux） | test-results.md の 2 | build-and-test | Met |
 | T-NFR8-CORE | NFR8、Testing Contract（80%） | 中核ライブラリの行カバレッジ 80% 以上 | 96.17% | test-results.md の 3 | build-and-test | Met |
 | T-NFR8-UI | NFR8、Testing Contract（80%） | 画面の行カバレッジ 80% 以上 | 91.03% | test-results.md の 3 | build-and-test | Met |
-| T-NFR8-OS | NFR8・NFR6、team.md Testing Posture | Rust のテストが Linux・macOS・Windows で通る | Linux だけ通った。macOS・Windows は流していない | test-results.md の 6 | PR の CI | Unverified |
+| T-NFR8-OS | NFR8・NFR6、team.md Testing Posture | Rust のテストが Linux・macOS・Windows で通る | PR kdnakt/local-sights#50 の CI（`4393fcc`）で、Rust library・Tauri app（ubuntu-latest・macos-latest・windows-latest）・Front end・cargo-deny がすべて成功 | test-results.md の 8 | PR の CI | Met |
 | T-U2-BR26 | U2 rules.md BR2.6、U2 Q1 A | 重いクエリが基準 `stats sum(latency) by @logStream` の 3 倍以内（100 万件） | 2.14〜2.37 倍、測定のテストが通った | test-results.md の 4 | build-and-test | Met |
 | T-NFR2 | NFR2 | 100 万件に `stats` を実行しても落ちず、評価を止められる | 落ちず、止める信号のテストと速さのテストが通った | test-results.md の 4 | build-and-test | Met |
 | T-U3-COPY | U3 計画 Step 22 | 取得中の保持の写しの 1 回の鍵が 50 ms 以内 | 8〜13 ms（塊に分けたあと） | test-results.md の 4 | build-and-test | Met |
@@ -52,7 +52,7 @@
 ## 4. 準備の具合
 
 - ビルド：できている（build-ready）。
-- テスト：このコンテナで流せるものは、すべて通った。`Unverified` が 4 つ（T-NFR8-OS、T-NFR1、T-SM1、T-WS-OS）、`Not Met` が 1 つ（T-TRACE）残っているため、test-ready とはまだ言えない。
+- テスト：このコンテナで流せるものは、すべて通った。`Unverified` が 3 つ（T-NFR1、T-SM1、T-WS-OS。T-NFR8-OS は PR の CI で Met になった）、`Not Met` が 1 つ（T-TRACE）残っているため、test-ready とはまだ言えない。
 - 配布：まだできない。手元の確かめが済んでいないため。
 
 ## 5. 残っていること

@@ -8,6 +8,7 @@ import { LogGroupPane } from "../components/LogGroupPane";
 import { StatusLine } from "../components/StatusLine";
 import type { ApiFailure, FailureKind } from "../api";
 import { connectedView, sessionView } from "../test/fixtures";
+import parserRs from "../../crates/local-sights-core/src/query/parser.rs?raw";
 import {
   detectLocale,
   englishSingular,
@@ -118,6 +119,23 @@ const QUERY_PROBLEM_KEYS = [
   "query.unsupported.limitAny",
   // 261017-insights-query U3:BR5.1.
   "query.syntax.nestingTooDeep",
+  // 261025-insights-stats U1 (BR1.2-BR1.9).
+  "query.syntax.missingAggregate",
+  "query.syntax.expectedAggregate",
+  "query.syntax.missingGroupKey",
+  "query.syntax.trailingComma",
+  "query.syntax.argumentCount",
+  "query.syntax.aggregateStar",
+  "query.syntax.expectedAlias",
+  "query.syntax.duplicateColumn",
+  "query.syntax.invalidBinPeriod",
+  "query.unsupported.binUnit",
+  "query.unsupported.aggregateFunction",
+  // 261025-insights-stats U2 (BR1.2-BR1.5): U1's afterStats is replaced.
+  "query.syntax.pctOutOfRange",
+  "query.syntax.unknownResultColumn",
+  "query.unsupported.fieldsAfterStats",
+  "query.unsupported.secondStats",
 ];
 
 describe("message catalog", () => {
@@ -135,8 +153,9 @@ describe("message catalog", () => {
   });
 
   it("has every reading problem of the query in both languages, with its word (261017-insights-query NFR9)", () => {
-    // The core's keys::ALL: 31 in U1, 41 in U2, 42 since U3.
-    expect(QUERY_PROBLEM_KEYS).toHaveLength(42);
+    // The core's keys::ALL: 31 in U1, 41 in U2, 42 in U3, 54 since
+    // 261025-insights-stats U1, 57 since its U2.
+    expect(QUERY_PROBLEM_KEYS).toHaveLength(57);
     for (const key of QUERY_PROBLEM_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
@@ -149,6 +168,42 @@ describe("message catalog", () => {
     expect(translate("ja", "insights.error.at", { line: 2, column: 3 })).toBe("2 行 3 列：");
   });
 
+  it("lists the same reading problems as the core's keys::ALL (261025-insights-stats U2)", () => {
+    // parser.rs's `pub const NAME: &str = "query...."` keys.
+    const coreKeys = [
+      ...parserRs.matchAll(/pub const [A-Z_]+: &str = "(query\.[a-zA-Z.]+)";/g),
+    ].map((match) => match[1]);
+    expect([...coreKeys].sort()).toEqual([...QUERY_PROBLEM_KEYS].sort());
+    expect(isMessageKey("query.unsupported.afterStats")).toBe(false);
+  });
+
+  it("has the U2 texts of stats in both languages (261025-insights-stats U2:BR1.2-BR1.5, BR3.2, BR4.2)", () => {
+    for (const key of [
+      "query.syntax.pctOutOfRange",
+      "query.syntax.unknownResultColumn",
+      "query.unsupported.fieldsAfterStats",
+      "query.unsupported.secondStats",
+      "insights.error.functionList",
+      "insights.error.listSeparator",
+      "insights.completion.function",
+      "insights.results.rowsOfMatched",
+      "insights.results.truncatedRows",
+    ]) {
+      expect(isMessageKey(key), key).toBe(true);
+    }
+    expect(translate("ja", "query.unsupported.secondStats", { word: "stats" })).toBe(
+      "2 つ目の「stats」にはこの版では対応していません。stats は 1 つにしてください。",
+    );
+    expect(translate("en", "query.syntax.pctOutOfRange", { word: "101" })).toContain('"101"');
+    expect(translate("ja", "insights.error.supportedList", { names: "fields、stats" })).toBe(
+      "使える命令：fields、stats",
+    );
+    expect(translate("en", "insights.results.truncatedRows", { shown: 10000 })).toBe(
+      "Showing 10000 rows",
+    );
+    expect(translate("ja", "insights.error.listSeparator")).toBe("、");
+  });
+
   it("has the U2 result texts in the refined mockups' words (261017-insights-query U2:BR5.3, BR10.2)", () => {
     expect(translate("en", "insights.results.count", { shown: 20, matched: 1284 })).toBe(
       "20 of 1284 matched",
@@ -157,9 +212,10 @@ describe("message catalog", () => {
       "1284 件中 20 件",
     );
     expect(translate("en", "insights.results.truncated", { shown: 20 })).toBe("Showing 20");
-    expect(translate("en", "insights.error.supportedList")).toBe(
-      "Supported commands: fields, filter, sort, limit.",
-    );
+    // 261025-insights-stats U2:BR4.2: the commands are put in from the catalog.
+    expect(
+      translate("en", "insights.error.supportedList", { names: "fields, filter, sort, limit" }),
+    ).toBe("Supported commands: fields, filter, sort, limit.");
     expect(translate("en", "insights.evaluationFailed")).not.toMatch(/GetLogEvents/);
     expect(translate("ja", "query.syntax.missingFields", { word: "sort" })).toBe(
       "sort の後ろに項目がありません。",

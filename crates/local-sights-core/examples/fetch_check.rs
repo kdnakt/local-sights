@@ -50,10 +50,41 @@
 //! read is an argument error (exit 2) naming its line, column and message
 //! key; nothing is fetched then (U1:BR3.9).
 //!
+//! A `stats` query (261025-insights-stats U1, functional-spec 7.2): the
+//! first line is `aggregated M events into R rows`, then the `columns:` line
+//! (the keys, then the aggregates) and up to 1,000 rows with the cells
+//! written as the table writes them (four decimal places, times in UTC).
+//! Standard error also has `evaluated in N ms (from the end of the fetch to
+//! the final result)`, the time to note for NFR1. The fetch is the same
+//! GetLogEvents flow; the grouping is done here.
+//!
+//! ```text
+//! cargo run --release -p local-sights-core --example fetch_check -- --profile NAME \
+//!   --region us-east-1 --log-group NAME --start "2025/08/24 16:13:26" \
+//!   --end "2025/08/24 17:13:26" --query 'stats count(*) by bin(5m)'
+//! ```
+//!
 //! ```text
 //! cargo run -p local-sights-core --example fetch_check -- --profile NAME \
 //!   --region us-east-1 --log-group NAME --start "2025/08/24 16:13:26" \
 //!   --end "2025/08/24 17:13:26" --query 'filter @timestamp > 1756053806000'
+//! ```
+//!
+//! Partial results (261025-insights-stats U3, NFR1): with `--query` the run
+//! shows partial results while it fetches, as the app does
+//! (`--partial-results on`, the default); `--partial-results off` runs it
+//! without them, as before U3. Standard error then also has
+//! `fetched in N ms (partial results: on|off, K partial results)` (from the
+//! start of the run to the end of the fetch) and, with partial results,
+//! `first partial result N ms after the first page` (or `no partial
+//! result`). Compare the two on the same range, three times each, to set
+//! the pass mark of NFR1 from what is measured. The AWS calls are the same
+//! GetLogEvents flow either way.
+//!
+//! ```text
+//! cargo run --release -p local-sights-core --example fetch_check -- --profile NAME \
+//!   --region us-east-1 --log-group NAME --start ... --end ... \
+//!   --query 'stats count(*) by bin(5m)' --partial-results off
 //! ```
 //!
 //! Comparing with the version on `main` by hand (U1:NFR2.1, review R-03):
@@ -77,6 +108,7 @@
 use std::io::{self, BufWriter, Write};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Instant;
 
 use chrono_tz::Tz;
 use local_sights_core::coordinator::{BatchProgress, FetchJob, FetchSink, run_fetch};
@@ -84,12 +116,14 @@ use local_sights_core::event::LogEvent;
 use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::query::evaluator::{QueryResult, ResultRow, row_cells};
-use local_sights_core::query::fields::EventFields;
+use local_sights_core::insights_session::PartialCoverage;
+use local_sights_core::query::evaluator::{QueryResult, result_row_cells};
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
-use local_sights_core::query::plan::{FieldRef, QueryPlan};
-use local_sights_core::query::runner::{QueryRun, QueryRunSummary, QuerySink, run_query};
+use local_sights_core::query::plan::{QueryPlan, ResultShape};
+use local_sights_core::query::runner::{
+    FetchEnd, PARTIAL_EVALUATION_INTERVAL, QueryRun, QueryRunSummary, QuerySink, run_query,
+};
 use local_sights_core::query::store::{HoldingKey, QueryStore};
 use local_sights_core::request::{
     FetchInput, ValidatedFetch, ValidationError, validate_fetch_input,
@@ -101,13 +135,18 @@ use local_sights_core::time_range::format_utc_millis;
 use local_sights_core::timeline::EventTimeline;
 
 const USAGE: &str = "usage: fetch_check [--profile NAME] --region CODE --log-group NAME \
---start \"yyyy/mm/dd hh:mm:ss\" --end \"yyyy/mm/dd hh:mm:ss\" [--query TEXT]   (times in UTC)";
+--start \"yyyy/mm/dd hh:mm:ss\" --end \"yyyy/mm/dd hh:mm:ss\" [--query TEXT \
+[--partial-results on|off]]   (times in UTC)";
 
 const EXIT_FETCH_FAILED: u8 = 1;
 const EXIT_USAGE: u8 = 2;
 
 /// Matching events printed with `--query`.
 const FIRST_ROWS: usize = 10;
+
+/// Aggregate rows printed for a `stats` query (261025-insights-stats U1);
+/// the rest are counted.
+const AGGREGATE_ROWS: usize = 1_000;
 
 /// The parsed arguments: the raw fetch input, the region code and the
 /// query, when one was given.
@@ -116,6 +155,9 @@ struct CheckArgs {
     input: FetchInput,
     region: String,
     query: Option<String>,
+    /// 261025-insights-stats U3 (NFR1): partial results while a query
+    /// fetches; on unless `--partial-results off`.
+    partial_results: bool,
 }
 
 #[tokio::main]
@@ -151,7 +193,7 @@ async fn main() -> ExitCode {
             Ok(plan) => plan,
             Err(reason) => return usage_error(&[reason]),
         };
-        return check_query(&gateway, validated, plan, &retrier).await;
+        return check_query(&gateway, validated, (plan, args.partial_results), &retrier).await;
     }
     let timeline = Mutex::new(EventTimeline::new());
     let mut sink = ProgressSink;
@@ -191,7 +233,7 @@ fn read_query(text: &str) -> Result<QueryPlan, String> {
 async fn check_query(
     gateway: &AwsCloudWatchLogsGateway,
     validated: ValidatedFetch,
-    plan: QueryPlan,
+    (plan, partial_results): (QueryPlan, bool),
     retrier: &Retrier<'_>,
 ) -> ExitCode {
     let key = HoldingKey {
@@ -209,10 +251,18 @@ async fn check_query(
         cache: None,
         run_started_at_ms: now_epoch_ms(),
         clock: now_epoch_ms,
+        partial_interval: partial_results.then_some(PARTIAL_EVALUATION_INTERVAL),
     };
     let store = Arc::new(QueryStore::new());
     let mut sink = QueryCheckSink::default();
-    run_query(gateway, &run, &store, retrier, &mut sink).await;
+    let started = Instant::now();
+    // Boxed: the query run's future (fetch, partial evaluations, select!) is
+    // deep enough that laying it out inline in `main` overflows rustc's
+    // query depth limit on newer toolchains.
+    Box::pin(run_query(gateway, &run, &store, retrier, &mut sink)).await;
+    for line in sink.timings.lines(started, partial_results) {
+        eprintln!("{line}");
+    }
     let Some(job) = sink.ended else {
         eprintln!("error: the fetch ended without a result");
         return ExitCode::from(EXIT_FETCH_FAILED);
@@ -222,8 +272,16 @@ async fn check_query(
         eprintln!("error: the query was not evaluated");
         return ExitCode::from(EXIT_FETCH_FAILED);
     };
-    let first = result.window(result.run_id, 0, FIRST_ROWS);
-    if let Err(error) = write_query_result(&result, first) {
+    // 261025-insights-stats U1 (functional-spec 7.2, NFR1): from the end of
+    // the fetch to the final result.
+    if let (Some(fetched), Some(evaluated)) = (sink.timings.fetch_ended, sink.evaluated_at) {
+        eprintln!(
+            "evaluated in {} ms (from the end of the fetch to the final result)",
+            evaluated.saturating_duration_since(fetched).as_millis()
+        );
+    }
+    let mut out = BufWriter::new(io::stdout().lock());
+    if let Err(error) = write_query_result(&mut out, &result).and_then(|()| out.flush()) {
         eprintln!("error: could not write to standard output: {error}");
         return ExitCode::from(EXIT_FETCH_FAILED);
     }
@@ -233,32 +291,48 @@ async fn check_query(
 /// 261017-insights-query U2:BR6.1, BR6.3, BR7.1: the counts (matched,
 /// shown and, when the result was cut, where), the columns, then the cells
 /// of the first rows, one row a line, separated by tabs. A cell without a
-/// value is empty; newlines in a value become spaces.
-fn write_query_result(result: &QueryResult, first: &[ResultRow]) -> io::Result<()> {
-    let mut out = BufWriter::new(io::stdout().lock());
-    write!(
-        out,
-        "matched {} of {} events, showing {}",
-        result.matched_count(),
-        result.evaluated_count,
-        result.row_count()
-    )?;
-    if let Some(cut) = result.truncated_at() {
-        write!(out, " (cut at {cut})")?;
-    }
+/// value is empty; newlines in a value become spaces. An aggregates result
+/// (`stats`, 261025-insights-stats U1) says how many events made how many
+/// rows, then its columns and up to [`AGGREGATE_ROWS`] rows written as the
+/// table writes them (BR2.8; times in UTC).
+fn write_query_result<W: Write>(out: &mut W, result: &QueryResult) -> io::Result<()> {
+    let shown = match result.shape() {
+        ResultShape::Events => {
+            write!(
+                out,
+                "matched {} of {} events, showing {}",
+                result.matched_count(),
+                result.evaluated_count,
+                result.row_count()
+            )?;
+            if let Some(cut) = result.truncated_at() {
+                write!(out, " (cut at {cut})")?;
+            }
+            FIRST_ROWS
+        }
+        ResultShape::Aggregates => {
+            write!(
+                out,
+                "aggregated {} events into {} rows",
+                result.evaluated_count,
+                result.row_count()
+            )?;
+            AGGREGATE_ROWS
+        }
+    };
     writeln!(out)?;
-    let names: Vec<&str> = result.columns().iter().map(FieldRef::name).collect();
-    writeln!(out, "columns: {}", names.join("\t"))?;
-    for row in first {
-        let fields = EventFields::new(&row.event, &row.log_group_name);
-        let cells = row_cells(result.columns(), &fields, &format_utc_millis);
-        let line: Vec<String> = cells
+    writeln!(out, "columns: {}", result.columns().names().join("\t"))?;
+    for row in result.window(result.run_id, 0, shown) {
+        let line: Vec<String> = result_row_cells(result.columns(), row, &format_utc_millis)
             .into_iter()
             .map(|cell| one_line(&cell.unwrap_or_default()))
             .collect();
         writeln!(out, "{}", line.join("\t"))?;
     }
-    out.flush()
+    if result.row_count() > shown {
+        writeln!(out, "... {} more rows", result.row_count() - shown)?;
+    }
+    Ok(())
 }
 
 /// The time now in epoch milliseconds (0 before 1970): the base of the
@@ -337,12 +411,25 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<CheckArgs, Strin
     let mut input = FetchInput::default();
     let mut region = String::new();
     let mut query: Option<String> = None;
+    let mut partial_results = true;
     while let Some(flag) = args.next() {
         if flag == "--query" {
             let text = args
                 .next()
                 .ok_or_else(|| format!("missing value for {flag}"))?;
             query = Some(text);
+            continue;
+        }
+        if flag == "--partial-results" {
+            // 261025-insights-stats U3 (NFR1).
+            partial_results = match args.next().as_deref() {
+                Some("on") => true,
+                Some("off") => false,
+                Some(other) => {
+                    return Err(format!("--partial-results must be on or off, not {other}"));
+                }
+                None => return Err(format!("missing value for {flag}")),
+            };
             continue;
         }
         let slot = match flag.as_str() {
@@ -368,10 +455,14 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<CheckArgs, Strin
     if !looks_like_a_region {
         return Err("--region must be a region code such as ap-northeast-1".to_string());
     }
+    if !partial_results && query.is_none() {
+        return Err("--partial-results applies to --query only".to_string());
+    }
     Ok(CheckArgs {
         input,
         region,
         query,
+        partial_results,
     })
 }
 
@@ -432,6 +523,51 @@ impl FetchSink for ProgressSink {
 struct QueryCheckSink {
     ended: Option<FetchJob>,
     result: Option<QueryResult>,
+    /// When the final result came.
+    evaluated_at: Option<Instant>,
+    /// 261025-insights-stats U3 (NFR1).
+    timings: QueryTimings,
+}
+
+/// When the moments NFR1 compares came (261025-insights-stats U3).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct QueryTimings {
+    /// The first page of events.
+    first_page: Option<Instant>,
+    /// The first partial result.
+    first_partial: Option<Instant>,
+    /// Partial results told.
+    partial_count: usize,
+    /// The whole fetch ended (261025-insights-stats U1).
+    fetch_ended: Option<Instant>,
+}
+
+impl QueryTimings {
+    /// The lines written to standard error for a run started at `started`:
+    /// the time to the end of the fetch, then with partial results on the
+    /// time from the first page to the first partial result.
+    fn lines(&self, started: Instant, partial_results: bool) -> Vec<String> {
+        let millis = |from: Instant, to: Instant| to.saturating_duration_since(from).as_millis();
+        let mut lines = Vec::new();
+        if let Some(ended) = self.fetch_ended {
+            lines.push(format!(
+                "fetched in {} ms (partial results: {}, {} partial results)",
+                millis(started, ended),
+                if partial_results { "on" } else { "off" },
+                self.partial_count
+            ));
+        }
+        if partial_results {
+            lines.push(match (self.first_page, self.first_partial) {
+                (Some(page), Some(partial)) => format!(
+                    "first partial result {} ms after the first page",
+                    millis(page, partial)
+                ),
+                _ => "no partial result".to_string(),
+            });
+        }
+        lines
+    }
 }
 
 impl FetchSink for QueryCheckSink {
@@ -445,7 +581,9 @@ impl FetchSink for QueryCheckSink {
         ProgressSink.on_planned(job);
     }
 
-    fn on_batch(&mut self, _job_id: u64, _progress: BatchProgress) {}
+    fn on_batch(&mut self, _job_id: u64, _progress: BatchProgress) {
+        self.timings.first_page.get_or_insert_with(Instant::now);
+    }
 
     fn on_stream_finished(&mut self, _job: &FetchJob, _outcome: &StreamFetchOutcome) {}
 
@@ -453,6 +591,16 @@ impl FetchSink for QueryCheckSink {
 }
 
 impl QuerySink for QueryCheckSink {
+    fn on_partial_result(
+        &mut self,
+        _run_id: u64,
+        _result: QueryResult,
+        _coverage: PartialCoverage,
+    ) {
+        self.timings.first_partial.get_or_insert_with(Instant::now);
+        self.timings.partial_count += 1;
+    }
+
     fn on_reading_cache(&mut self, _run_id: u64) {}
 
     fn on_group_started(&mut self, _run_id: u64, _index: usize, _count: usize) {}
@@ -461,11 +609,12 @@ impl QuerySink for QueryCheckSink {
         self.ended = Some(job.clone());
     }
 
-    fn on_fetch_ended(&mut self, _run_id: u64, _summary: &QueryRunSummary) -> bool {
+    fn on_fetch_ended(&mut self, _run_id: u64, _summary: &QueryRunSummary) -> FetchEnd {
+        self.timings.fetch_ended = Some(Instant::now());
         if let Some(job) = &self.ended {
             eprintln!("evaluating {} events...", job.event_count);
         }
-        true
+        FetchEnd::Evaluate
     }
 
     fn on_evaluation_progress(&mut self, _run_id: u64, _evaluated: usize, _total: usize) -> bool {
@@ -473,6 +622,7 @@ impl QuerySink for QueryCheckSink {
     }
 
     fn on_evaluated(&mut self, result: QueryResult) {
+        self.evaluated_at = Some(Instant::now());
         self.result = Some(result);
     }
 
@@ -488,6 +638,7 @@ impl QuerySink for QueryCheckSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use local_sights_core::query::plan::FieldRef;
 
     fn args(list: &[&str]) -> impl Iterator<Item = String> {
         list.iter()
@@ -575,10 +726,12 @@ mod tests {
 
     #[test]
     fn a_query_that_cannot_be_read_names_its_place_and_reads_dates_as_utc() {
-        let error = read_query("filter @message like /a/\n| stats count(*)").unwrap_err();
+        // `stats` is read since 261025-insights-stats U1; `parse` is not.
+        let error =
+            read_query("filter @message like /a/\n| parse @message 'a*b' as x").unwrap_err();
         assert!(error.contains("line 2, column 3"), "{error}");
         assert!(
-            error.contains("query.unsupported.command (stats)"),
+            error.contains("query.unsupported.command (parse)"),
             "{error}"
         );
         assert!(read_query("filter @timestamp > '2025-08-24 16:43:26'").is_ok());
@@ -605,5 +758,140 @@ mod tests {
     fn a_value_is_written_on_one_line() {
         assert_eq!(one_line("a\r\nb\nc\rd"), "a b c d");
         assert_eq!(one_line(""), "");
+    }
+
+    // ---- 261025-insights-stats U1: stats -------------------------------
+
+    fn written(result: &QueryResult) -> String {
+        let mut out = Vec::new();
+        write_query_result(&mut out, result).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn a_stats_result_is_printed_as_a_table_of_its_columns_and_rows() {
+        use local_sights_core::query::evaluator::AggregatesOutput;
+        use local_sights_core::query::stats::CellValue;
+        assert!(read_query("filter level = 'ERROR' | stats count(*) by bin(5m)").is_ok());
+        let result = QueryResult::from_aggregates(
+            1,
+            AggregatesOutput {
+                columns: vec!["bin(5m)".to_string(), "avg(latency)".to_string()],
+                rows: vec![
+                    vec![
+                        CellValue::Timestamp(1_756_051_200_000),
+                        CellValue::Decimal(200.333_333),
+                    ],
+                    vec![CellValue::Timestamp(1_756_051_500_000), CellValue::Missing],
+                ],
+                evaluated_count: 42,
+                matched_count: 2,
+                truncated_at: None,
+            },
+        );
+        assert_eq!(
+            written(&result),
+            "aggregated 42 events into 2 rows\n\
+             columns: bin(5m)\tavg(latency)\n\
+             2025/08/24 16:00:00.000\t200.3333\n\
+             2025/08/24 16:05:00.000\t\n"
+        );
+    }
+
+    #[test]
+    fn an_events_result_is_printed_as_before() {
+        use local_sights_core::event::LogEvent;
+        use local_sights_core::query::evaluator::ResultRow;
+        let rows: Vec<ResultRow> = (0..12)
+            .map(|index| ResultRow::Event {
+                event: LogEvent {
+                    timestamp: 1_756_051_200_000 + index,
+                    ingestion_time: None,
+                    message: format!("line {index}\nnext"),
+                    log_stream_name: "s".to_string(),
+                    sequence: 0,
+                },
+                log_group_name: "/g".to_string(),
+            })
+            .collect();
+        let out = written(&QueryResult::new(1, 30, rows));
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[0], "matched 12 of 30 events, showing 12");
+        assert_eq!(lines[1], "columns: @timestamp\t@message");
+        assert_eq!(lines[2], "2025/08/24 16:00:00.000\tline 0 next");
+        assert_eq!(lines.len(), 2 + FIRST_ROWS + 1);
+        assert_eq!(lines.last(), Some(&"... 2 more rows"));
+    }
+
+    // ---- 261025-insights-stats U3 (NFR1) --------------------------------
+
+    #[test]
+    fn partial_results_are_on_by_default_and_switched_with_on_or_off() {
+        let query: Vec<&str> = BASE
+            .iter()
+            .copied()
+            .chain(["--region", "us-east-1", "--query", "limit 1"])
+            .collect();
+        assert!(
+            parse_args(args(&query)).unwrap().partial_results,
+            "as the app"
+        );
+        let with = |value: &'static str| -> Vec<&str> {
+            query
+                .iter()
+                .copied()
+                .chain(["--partial-results", value])
+                .collect()
+        };
+        assert!(parse_args(args(&with("on"))).unwrap().partial_results);
+        assert!(!parse_args(args(&with("off"))).unwrap().partial_results);
+        assert_eq!(
+            parse_args(args(&with("maybe"))).unwrap_err(),
+            "--partial-results must be on or off, not maybe"
+        );
+        let missing: Vec<&str> = query.iter().copied().chain(["--partial-results"]).collect();
+        assert_eq!(
+            parse_args(args(&missing)).unwrap_err(),
+            "missing value for --partial-results"
+        );
+        let without_query: Vec<&str> = BASE
+            .iter()
+            .copied()
+            .chain(["--region", "us-east-1", "--partial-results", "off"])
+            .collect();
+        assert_eq!(
+            parse_args(args(&without_query)).unwrap_err(),
+            "--partial-results applies to --query only"
+        );
+    }
+
+    #[test]
+    fn the_timings_say_the_fetch_time_and_the_first_partial_result() {
+        use std::time::Duration;
+        let started = Instant::now();
+        let timings = QueryTimings {
+            first_page: Some(started + Duration::from_millis(400)),
+            first_partial: Some(started + Duration::from_millis(650)),
+            partial_count: 3,
+            fetch_ended: Some(started + Duration::from_millis(9_000)),
+        };
+        assert_eq!(
+            timings.lines(started, true),
+            vec![
+                "fetched in 9000 ms (partial results: on, 3 partial results)".to_string(),
+                "first partial result 250 ms after the first page".to_string(),
+            ]
+        );
+        let without = QueryTimings {
+            first_partial: None,
+            partial_count: 0,
+            ..timings
+        };
+        assert_eq!(
+            without.lines(started, false),
+            vec!["fetched in 9000 ms (partial results: off, 0 partial results)".to_string()]
+        );
+        assert_eq!(without.lines(started, true)[1], "no partial result");
+        assert!(QueryTimings::default().lines(started, false).is_empty());
     }
 }

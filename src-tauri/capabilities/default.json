@@ -37,6 +37,8 @@
     "allow-get-query-rows",
     "allow-get-query-row-detail",
     "allow-get-completion-candidates",
+    "allow-get-query-catalog",
+    "allow-find-query-row",
     "allow-start-export",
     "allow-dismiss-export-notice"
   ]

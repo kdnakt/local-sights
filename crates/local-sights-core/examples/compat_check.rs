@@ -33,6 +33,14 @@
 //! not be made (wrong arguments or settings, a failed or incomplete fetch,
 //! an export missing or not Complete, or no query compared at all).
 //!
+//! 261025-insights-stats U4: a `stats` query is compared as aggregate rows
+//! (BR2.1, BR2.7): its column names and cells as the table writes them,
+//! times in UTC; the sort keys and the row cap of the commands after
+//! `stats`; a result cut when it shows fewer rows than matched; and rows of
+//! the first or the last bin of the period listed apart as period edges.
+//! The query set's fifth field gives column tolerances (BR1.3), and its
+//! provisional notes are summed up after the summary (BR1.4).
+//!
 //! Run it only on your own machine with your own credentials; `cargo test`
 //! compiles it and runs its tests with sample data and a fake gateway, never
 //! against AWS, and it is not part of the distributed app.
@@ -51,14 +59,18 @@ use local_sights_core::fetch_status::JobStatus;
 use local_sights_core::fetcher::StreamFetchOutcome;
 use local_sights_core::gateway::CloudWatchLogsGateway;
 use local_sights_core::gateway::aws::AwsCloudWatchLogsGateway;
-use local_sights_core::query::evaluator::{EvalOutput, Evaluation, QueryResult, ResultRow};
+use local_sights_core::insights_session::PartialCoverage;
+use local_sights_core::query::evaluator::{
+    AggregatesOutput, EvalOutput, Evaluation, EventsOutput, QueryResult, ResultRow,
+};
 use local_sights_core::query::instant::resolve_date_texts;
 use local_sights_core::query::parser::parse_query;
 use local_sights_core::query::plan::{
-    Command, CommandKind, DEFAULT_RESULT_LIMIT, FieldRef, QueryPlan, Span,
+    AfterStatsCommand, Command, CommandKind, DEFAULT_RESULT_LIMIT, FieldRef, GroupKeyKind,
+    QueryPlan, Span, StatsCommand,
 };
 use local_sights_core::query::runner::{
-    QueryOutcome, QueryRun, QueryRunSummary, QuerySink, run_query,
+    FetchEnd, QueryOutcome, QueryRun, QueryRunSummary, QuerySink, run_query,
 };
 use local_sights_core::query::store::{HoldingKey, QueryStore};
 use local_sights_core::retry::{RandomJitter, Retrier, RetryPolicy, StopSignal};
@@ -67,9 +79,9 @@ use local_sights_core::time_range::TimeRange;
 
 use compat::compare::{AppRows, AppSide, CompareSpec, compare_query};
 use compat::export::{InsightsSide, parse_export_of_run};
-use compat::format::app_row;
-use compat::queries::{CompareMode, CompatQuery, parse_query_set};
-use compat::report::{EXIT_NOT_COMPARED, exit_code, query_lines, summary_line};
+use compat::format::{aggregate_row, app_row, columns_with_values, insights_timestamp};
+use compat::queries::{CompatQuery, ProvisionalRuleCheck, read_query_set};
+use compat::report::{EXIT_NOT_COMPARED, exit_code, provisional_lines, query_lines, summary_line};
 use compat::settings::{RunSettings, check_end_age, check_outside, parse_settings};
 
 const USAGE: &str = "usage: compat_check --export-dir DIR [--queries FILE]   \
@@ -102,6 +114,8 @@ struct CheckArgs {
 struct Prepared {
     settings: RunSettings,
     queries: Vec<CompatQuery>,
+    /// The provisional notes of the query set (U4:BR1.4).
+    provisional: Vec<ProvisionalRuleCheck>,
     export_dir: PathBuf,
 }
 
@@ -192,10 +206,11 @@ fn prepare(args: &CheckArgs, repository: &Path, now_seconds: i64) -> Result<Prep
             args.queries.display()
         )
     })?;
-    let queries = parse_query_set(&queries_text).map_err(|error| error.to_string())?;
+    let set = read_query_set(&queries_text).map_err(|error| error.to_string())?;
     Ok(Prepared {
         settings,
-        queries,
+        queries: set.queries,
+        provisional: set.provisional,
         export_dir,
     })
 }
@@ -222,6 +237,7 @@ async fn run_check<G: CloudWatchLogsGateway>(
         store.view_len(epoch).unwrap_or(0)
     );
     let mut verdicts = Vec::new();
+    let mut by_id = Vec::new();
     for query in &prepared.queries {
         let Some(app) = evaluate_query(&store, epoch, &query.text, range) else {
             eprintln!("error: the evaluation of {} stopped", query.id);
@@ -232,9 +248,10 @@ async fn run_check<G: CloudWatchLogsGateway>(
             &query.id,
             settings.exported_at_seconds,
         );
-        let spec = app.spec(query.mode);
+        let spec = app.spec(query);
         let comparison = compare_query(&spec, &app.side, &insights);
         verdicts.push(comparison.verdict);
+        by_id.push((query.id.clone(), comparison.verdict));
         for line in query_lines(&query.id, &comparison, app.boundary_events) {
             if writeln!(out, "{line}").is_err() {
                 return EXIT_NOT_COMPARED;
@@ -243,6 +260,12 @@ async fn run_check<G: CloudWatchLogsGateway>(
     }
     if writeln!(out, "{}", summary_line(&verdicts)).is_err() {
         return EXIT_NOT_COMPARED;
+    }
+    // U4:BR1.4: the provisional rules, after the summary.
+    for line in provisional_lines(&prepared.provisional, &by_id) {
+        if writeln!(out, "{line}").is_err() {
+            return EXIT_NOT_COMPARED;
+        }
     }
     exit_code(&verdicts)
 }
@@ -286,6 +309,8 @@ async fn fetch_period<G: CloudWatchLogsGateway>(
         cache: None,
         run_started_at_ms: now_epoch_seconds().saturating_mul(1_000),
         clock: now_epoch_ms,
+        // Only the fetch is used here: no partial result (261025-insights-stats U3).
+        partial_interval: None,
     };
     let policy = RetryPolicy::default();
     let jitter = RandomJitter;
@@ -355,6 +380,10 @@ struct AppEvaluation {
     cap: usize,
     /// R-03: the result has events in the start or the end second.
     boundary_events: bool,
+    /// U4:BR2.8: the key columns of an aggregates result.
+    key_columns: Vec<String>,
+    /// U4:BR2.7 (5): `(column, value)` of the first and the last bin.
+    period_edges: Vec<(String, String)>,
 }
 
 impl AppEvaluation {
@@ -365,15 +394,22 @@ impl AppEvaluation {
             sort_keys: Vec::new(),
             cap: DEFAULT_RESULT_LIMIT,
             boundary_events: false,
+            key_columns: Vec::new(),
+            period_edges: Vec::new(),
         }
     }
 
-    fn spec(&self, mode: CompareMode) -> CompareSpec {
+    /// How `query` is compared with this result: its mode and column
+    /// tolerances from the query set (U4:BR1.3).
+    fn spec(&self, query: &CompatQuery) -> CompareSpec {
         CompareSpec {
-            mode,
+            mode: query.mode,
             sorted: self.sorted,
             sort_keys: self.sort_keys.clone(),
             cap: self.cap,
+            tolerances: query.tolerances.clone(),
+            key_columns: self.key_columns.clone(),
+            period_edges: self.period_edges.clone(),
         }
     }
 }
@@ -400,7 +436,15 @@ fn evaluate_query(
             )));
         }
     };
-    let (output, rows) = evaluate_on_store(store, epoch, &plan)?;
+    let (output, rows) = match evaluate_on_store(store, epoch, &plan)? {
+        StoreEvaluation::Events(output, rows) => (output, rows),
+        StoreEvaluation::Aggregates(output) => {
+            return Some(match plan.stats() {
+                Some(stats) => aggregate_evaluation(stats, output, range),
+                None => AppEvaluation::rejected("aggregate rows without stats".to_string()),
+            });
+        }
+    };
     let cut = output.truncated_at.is_some();
     let next_row = if cut && plan.has_sort() {
         next_row_after_cut(store, epoch, &plan, rows.len(), &output.columns)?
@@ -426,16 +470,115 @@ fn evaluate_query(
         sort_keys: visible_sort_keys(&plan),
         cap: row_cap(&plan),
         boundary_events,
+        key_columns: Vec::new(),
+        period_edges: Vec::new(),
     })
+}
+
+/// U4:BR2.7: the aggregate rows of `stats` as compared. (1) The column names
+/// and the cells as the table writes them (times in UTC), the columns being
+/// those with a value in some row; (2) the sort keys of the last `sort` after
+/// `stats`, which are column names (a `sort` before `stats` does not order
+/// the aggregate rows); (3) the row cap of the last `limit` after `stats`,
+/// or 10,000; (4) cut when fewer rows are shown than matched (the console's
+/// next row is not in its export, so the tie step uses the last row shown);
+/// (5) the first and the last bin of the period, for a `bin` key.
+fn aggregate_evaluation(
+    stats: &StatsCommand,
+    output: AggregatesOutput,
+    range: TimeRange,
+) -> AppEvaluation {
+    let result = QueryResult::from_aggregates(0, output);
+    let names = result.columns().names();
+    let rows: Vec<compat::format::Row> = result
+        .window(0, 0, result.row_count())
+        .iter()
+        .map(|row| aggregate_row(&names, row))
+        .collect();
+    let cut = result.truncated_at().is_some() || result.matched_count() > result.row_count();
+    let sort_keys = after_stats_sort_keys(stats);
+    AppEvaluation {
+        side: AppSide::Aggregates(AppRows {
+            columns: columns_with_values(&names, &rows),
+            rows,
+            cut,
+            next_row: None,
+        }),
+        sorted: !sort_keys.is_empty(),
+        sort_keys,
+        cap: after_stats_row_cap(stats),
+        boundary_events: false,
+        key_columns: stats
+            .group_keys
+            .iter()
+            .map(|key| key.column_name.clone())
+            .collect(),
+        period_edges: period_edges(stats, range),
+    }
+}
+
+/// U4:BR2.7 (2): the columns of the last `sort` after `stats`.
+fn after_stats_sort_keys(stats: &StatsCommand) -> Vec<String> {
+    stats
+        .after
+        .iter()
+        .rev()
+        .find_map(|command| match command {
+            AfterStatsCommand::Sort(keys) => Some(
+                keys.iter()
+                    .map(|key| key.field.name().to_string())
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// U4:BR2.7 (3): the last `limit` after `stats` from 1, or 10,000 (U2:BR3.2);
+/// a `limit` before `stats` only narrows what is aggregated.
+fn after_stats_row_cap(stats: &StatsCommand) -> usize {
+    stats
+        .after
+        .iter()
+        .rev()
+        .find_map(|command| match command {
+            AfterStatsCommand::Limit(count) if *count > 0 => usize::try_from(*count).ok(),
+            _ => None,
+        })
+        .unwrap_or(DEFAULT_RESULT_LIMIT)
+}
+
+/// U4:BR2.7 (5): for each `bin` key, its value in the bin of the period's
+/// first millisecond and in that of its last, as the rows write it.
+fn period_edges(stats: &StatsCommand, range: TimeRange) -> Vec<(String, String)> {
+    stats
+        .group_keys
+        .iter()
+        .filter_map(|key| match &key.kind {
+            GroupKeyKind::Bin(period) => Some((key.column_name.clone(), period.millis())),
+            GroupKeyKind::Field(_) => None,
+        })
+        .filter(|(_, millis)| *millis > 0)
+        .flat_map(|(column, millis)| {
+            [range.start_instant(), range.end_instant()].map(|instant| {
+                let bin = instant.div_euclid(millis).saturating_mul(millis);
+                (column.clone(), insights_timestamp(bin))
+            })
+        })
+        .collect()
+}
+
+/// What [`evaluate_on_store`] made of a plan.
+enum StoreEvaluation {
+    /// The event output and the copies of its rows.
+    Events(EventsOutput, Vec<ResultRow>),
+    /// Aggregate rows (`stats`, U4:BR2.1).
+    Aggregates(AggregatesOutput),
 }
 
 /// Evaluates `plan` on the view of `epoch` step by step and copies the
 /// result rows out (as the QueryRunner does). `None` when the view is gone.
-fn evaluate_on_store(
-    store: &QueryStore,
-    epoch: u64,
-    plan: &QueryPlan,
-) -> Option<(EvalOutput, Vec<ResultRow>)> {
+fn evaluate_on_store(store: &QueryStore, epoch: u64, plan: &QueryPlan) -> Option<StoreEvaluation> {
     let total = store.view_len(epoch)?;
     let mut evaluation = Evaluation::new(plan, total);
     while !evaluation.is_done() {
@@ -443,9 +586,13 @@ fn evaluate_on_store(
             return None;
         }
     }
-    let output = evaluation.into_output()?;
-    let rows = store.copy_rows(epoch, &output.rows)?;
-    Some((output, rows))
+    match evaluation.into_output()? {
+        EvalOutput::Events(output) => {
+            let rows = store.copy_rows(epoch, &output.rows)?;
+            Some(StoreEvaluation::Events(output, rows))
+        }
+        EvalOutput::Aggregates(output) => Some(StoreEvaluation::Aggregates(output)),
+    }
 }
 
 /// R-01: the first row the cut left out, from the same plan cut one row
@@ -474,7 +621,9 @@ fn next_row_after_cut(
             span: Span::new(1, 1, 1),
         }),
     }
-    let (output, _) = evaluate_on_store(store, epoch, &longer)?;
+    let StoreEvaluation::Events(output, _) = evaluate_on_store(store, epoch, &longer)? else {
+        return Some(None);
+    };
     let Some(position) = output.rows.get(kept) else {
         return Some(None);
     };
@@ -528,7 +677,9 @@ fn row_cap(plan: &QueryPlan) -> usize {
 /// R-03: whether `row`'s event lies in the first or the last second of
 /// `range`.
 fn in_boundary_second(row: &ResultRow, range: TimeRange) -> bool {
-    let time = row.event.timestamp;
+    let Some(time) = row.event().map(|event| event.timestamp) else {
+        return false;
+    };
     let first = range.start_instant();
     let last = range.end_instant();
     (first..first + 1_000).contains(&time) || (last - 999..=last).contains(&time)
@@ -598,9 +749,17 @@ impl QuerySink for FetchOnlySink {
         self.job = Some(job.clone());
     }
 
-    fn on_fetch_ended(&mut self, _run_id: u64, summary: &QueryRunSummary) -> bool {
+    fn on_fetch_ended(&mut self, _run_id: u64, summary: &QueryRunSummary) -> FetchEnd {
         self.summary = Some(summary.clone());
-        true
+        FetchEnd::Evaluate
+    }
+
+    fn on_partial_result(
+        &mut self,
+        _run_id: u64,
+        _result: QueryResult,
+        _coverage: PartialCoverage,
+    ) {
     }
 
     fn on_evaluation_progress(&mut self, _run_id: u64, _evaluated: usize, _total: usize) -> bool {
@@ -622,6 +781,7 @@ impl QuerySink for FetchOnlySink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use compat::queries::parse_query_set;
     use local_sights_core::failure::{ApiFailure, FailureKind, SafeDetailFields};
     use local_sights_core::gateway::{
         DescribeLogGroupsPage, DescribeLogGroupsRequest, DescribeLogStreamsPage,
@@ -764,8 +924,23 @@ mod tests {
         Prepared {
             settings: settings(),
             queries: parse_query_set(QUERIES).unwrap(),
+            provisional: Vec::new(),
             export_dir: folder.to_path_buf(),
         }
+    }
+
+    /// The fake's events with the query set `queries` read with its
+    /// provisional notes, and the report.
+    async fn run_set(folder: &Path, queries: &str) -> (u8, String) {
+        let set = read_query_set(queries).unwrap();
+        let prepared = Prepared {
+            queries: set.queries,
+            provisional: set.provisional,
+            ..prepared(folder)
+        };
+        let mut out = Vec::new();
+        let code = run_check(&FakeLogs::cloudtrail(), &prepared, &mut out).await;
+        (code, String::from_utf8(out).unwrap())
     }
 
     async fn run(gateway: &FakeLogs, folder: &Path) -> (u8, String) {
@@ -783,6 +958,167 @@ mod tests {
         assert!(out.contains("q1-like  Same  insights=2  app=2"), "{out}");
         assert!(out.contains("q2-latest  Same  insights=2  app=2"), "{out}");
         assert!(out.ends_with("Skipped=0  NotCompared=0\n"), "{out}");
+    }
+
+    /// 261025-insights-stats U4:BR2.1, BR2.7 (1), BR2.8, BR1.4: `stats`
+    /// queries are compared as aggregate rows, with the event queries as
+    /// before, and the provisional rules are summed up after the summary.
+    #[tokio::test]
+    async fn stats_queries_are_compared_as_aggregate_rows_with_the_event_queries() {
+        let folder = tempfile::tempdir().unwrap();
+        write_exports(folder.path(), "Decrypt");
+        // kms has 1 event and s3 2, keys in ascending order (U1:BR2.7).
+        let counts = r#"{"status":"Complete","results":[
+            [{"field":"eventSource","value":"kms.amazonaws.com"},{"field":"count(*)","value":"1"}],
+            [{"field":"eventSource","value":"s3.amazonaws.com"},{"field":"count(*)","value":"2"}]]}"#;
+        write_export(folder.path(), "q3-stats.json", counts);
+        write_export(folder.path(), "q4-keys.json", counts);
+        let queries = format!(
+            "# provisional: U1:BR2.7 = q4-keys\n{QUERIES}\
+             q3-stats\tset\tstats\tstats count(*) by eventSource\n\
+             q4-keys\tkeyorder\tkeys\tstats count(*) by eventSource\n"
+        );
+        let (code, out) = run_set(folder.path(), &queries).await;
+        assert_eq!(code, 0, "{out}");
+        assert!(out.contains("q1-like  Same  insights=2  app=2"), "{out}");
+        assert!(out.contains("q3-stats  Same  insights=2  app=2"), "{out}");
+        assert!(out.contains("q4-keys  Same  insights=2  app=2"), "{out}");
+        assert!(
+            out.contains("provisional rules:\n  U1:BR2.7  matches  q4-keys=Same\n"),
+            "{out}"
+        );
+        // The console giving the keys in another order is a difference of
+        // a keyorder query only.
+        write_export(
+            folder.path(),
+            "q4-keys.json",
+            r#"{"status":"Complete","results":[
+            [{"field":"eventSource","value":"s3.amazonaws.com"},{"field":"count(*)","value":"2"}],
+            [{"field":"eventSource","value":"kms.amazonaws.com"},{"field":"count(*)","value":"1"}]]}"#,
+        );
+        let (code, out) = run_set(folder.path(), &queries).await;
+        assert_eq!(code, 1, "{out}");
+        assert!(
+            out.contains("q4-keys  Different  insights=2  app=2  first-out-of-order-row=1"),
+            "{out}"
+        );
+        assert!(
+            out.contains("U1:BR2.7  differs  q4-keys=Different"),
+            "{out}"
+        );
+    }
+
+    /// U4:BR2.4, BR2.7 (3), (4): the row cap is the `limit` after `stats`; a
+    /// sorted result cut leaves out the rows tied with its last row, and an
+    /// unsorted one cut is not compared.
+    #[tokio::test]
+    async fn the_cut_of_an_aggregates_result_follows_the_commands_after_stats() {
+        let folder = tempfile::tempdir().unwrap();
+        // Matched 2 groups (s3 2, kms 1); `limit 1` shows s3 only.
+        write_export(
+            folder.path(),
+            "a1-top.json",
+            r#"{"status":"Complete","results":[
+                [{"field":"eventSource","value":"s3.amazonaws.com"},{"field":"n","value":"2"}]]}"#,
+        );
+        write_export(
+            folder.path(),
+            "a2-unsorted.json",
+            r#"{"status":"Complete","results":[
+                [{"field":"eventSource","value":"kms.amazonaws.com"},{"field":"count(*)","value":"1"}]]}"#,
+        );
+        // A `limit` before `stats` narrows the input only: no cut.
+        write_export(
+            folder.path(),
+            "a3-before.json",
+            r#"{"status":"Complete","results":[[{"field":"count(*)","value":"2"}]]}"#,
+        );
+        let queries = "a1-top\torder\ttop\tstats count(*) as n by eventSource | sort n desc | limit 1\n\
+             a2-unsorted\tset\tcut\tstats count(*) by eventSource | limit 1\n\
+             a3-before\tset\tbefore\tlimit 2 | stats count(*)\n";
+        let (code, out) = run_set(folder.path(), queries).await;
+        assert_eq!(code, 0, "{out}");
+        assert!(
+            out.contains("a1-top  Same  insights=1  app=1  tied-at-cut=1/1"),
+            "{out}"
+        );
+        assert!(
+            out.contains("a2-unsorted  Skipped  insights=1  app=1"),
+            "{out}"
+        );
+        assert!(
+            out.contains("a3-before  Same  insights=1  app=1\n"),
+            "{out}"
+        );
+    }
+
+    /// U4:BR2.7 (5): a count that differs in the first bin of the period is
+    /// listed apart as a period edge and is still a difference.
+    #[tokio::test]
+    async fn a_difference_in_the_first_bin_of_the_period_is_a_period_edge() {
+        let folder = tempfile::tempdir().unwrap();
+        // The period is 00:00:00 to 00:59:59.999; its bins of 30 minutes
+        // start at 00:00 (the three events) and 00:30 (no event).
+        write_export(
+            folder.path(),
+            "b1-bin.json",
+            r#"{"status":"Complete","results":[
+                [{"field":"bin(30m)","value":"2024-01-02 00:00:00.000"},{"field":"count(*)","value":"2"}]]}"#,
+        );
+        let (code, out) = run_set(
+            folder.path(),
+            "b1-bin\tset\tbin\tstats count(*) by bin(30m)\n",
+        )
+        .await;
+        assert_eq!(code, 1, "{out}");
+        assert!(
+            out.contains("b1-bin  Different  insights=1  app=1  period-edge-differences"),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "only in app (period edge): - bin(30m)=2024-01-02 00:00:00.000, count(*)=3"
+            ),
+            "{out}"
+        );
+    }
+
+    /// U4:BR1.3, BR2.2, BR2.5: a decimal column within its tolerance is the
+    /// same and is reported with its cell; the run is compatible.
+    #[tokio::test]
+    async fn a_decimal_cell_within_its_tolerance_is_the_same_and_reported() {
+        let folder = tempfile::tempdir().unwrap();
+        // The events are at seconds 10, 20 and 30: their mean is second 20.
+        let mean = (START + 20) * 1_000;
+        write_export(
+            folder.path(),
+            "n1-millis.json",
+            &format!(
+                r#"{{"status":"Complete","results":[
+                [{{"field":"avg(toMillis(@timestamp))","value":"{mean}.5"}}]]}}"#
+            ),
+        );
+        let queries = "n1-millis\tset\tmillis\tstats avg(toMillis(@timestamp))\t\
+                       avg(toMillis(@timestamp))=decimal\n";
+        let (code, out) = run_set(folder.path(), queries).await;
+        assert_eq!(code, 0, "{out}");
+        assert!(
+            out.contains("n1-millis  Same (within decimal tolerance: 1 cell)  insights=1  app=1"),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!(
+                "within decimal tolerance: avg(toMillis(@timestamp)) insights={mean}.5 app={mean}"
+            )),
+            "{out}"
+        );
+        // Without the tolerance the same cells differ.
+        let (code, out) = run_set(
+            folder.path(),
+            "n1-millis\tset\tmillis\tstats avg(toMillis(@timestamp))\n",
+        )
+        .await;
+        assert_eq!(code, 1, "{out}");
     }
 
     #[tokio::test]
@@ -917,7 +1253,8 @@ mod tests {
         write(outside.path(), SETTINGS_FILE, &settings_json);
         let ready = prepare(&args(outside.path()), &repository, END + 1_800).unwrap();
         assert_eq!(ready.settings, settings());
-        assert_eq!(ready.queries.len(), 23);
+        assert_eq!(ready.queries.len(), 39, "U4 adds s01-s16");
+        assert!(!ready.provisional.is_empty(), "U4:BR1.4");
         let too_soon = prepare(&args(outside.path()), &repository, END + 1_799).unwrap_err();
         assert!(too_soon.contains("30 minutes"), "{too_soon}");
         // A temporary folder inside the crate: removed when the test ends.
@@ -1230,6 +1567,36 @@ esac
             }
         }
 
+        /// 261025-insights-stats U4:BR1.3, BR2.8: a keyorder line is run, and
+        /// the fifth field (compat_check's tolerances) is not sent as part of
+        /// the query.
+        #[test]
+        fn the_script_runs_a_keyorder_line_without_its_tolerances() {
+            let fake = Fake::with_queries(
+                "s1-keys\tkeyorder\tkeys\tfields keyorder\n\
+                 s2-tolerant\tset\ttolerant\tfields tolerant\tcount_distinct(x)=approximate\n",
+            );
+            let out = fake.folder.path().join("export");
+            let output = fake.run(&out, END);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success(),
+                "{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                stdout.contains("queries: 2  Complete: 2  Error: 0  other: 0"),
+                "{stdout}"
+            );
+            let calls = fake.calls();
+            assert!(
+                calls.contains("--query-string fields tolerant --query queryId"),
+                "{calls}"
+            );
+            assert!(!calls.contains("approximate"), "{calls}");
+            assert!(out.join("s1-keys.json").exists());
+        }
+
         /// Code review R-01: start-query failing for expired credentials or
         /// a denied access is not Logs Insights refusing the query. It is
         /// written as Unknown, counted as not Complete, and compat_check
@@ -1284,6 +1651,7 @@ esac
             let prepared = Prepared {
                 settings: parse_settings(&settings_text).unwrap(),
                 queries: parse_query_set(queries).unwrap(),
+                provisional: Vec::new(),
                 export_dir: out.clone(),
             };
             let mut report = Vec::new();

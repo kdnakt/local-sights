@@ -4,8 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InsightsProgress, InsightsView, SessionView } from "../api";
 import { createTranslator } from "../i18n/messages";
 import {
+  QUERY_CATALOG,
+  aggregatesSummary,
+  cancelledSummary,
   connectedView,
   insightsView,
+  partialSummary,
   queryRow,
   queryRowWindow,
   resultSummary,
@@ -19,7 +23,9 @@ vi.mock("../api", async (importOriginal) => {
     ...original,
     getQueryRows: vi.fn(),
     getQueryRowDetail: vi.fn(),
+    findQueryRow: vi.fn(async () => null),
     getCompletionCandidates: vi.fn(),
+    getQueryCatalog: vi.fn(),
   };
 });
 vi.mock("../aceLoader", () => ({ loadAce: () => Promise.resolve({}) }));
@@ -74,11 +80,13 @@ const results = () => screen.getByTestId("log-analytics-results");
 describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-7)", () => {
   beforeEach(() => {
     vi.mocked(api.getQueryRows).mockReset();
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
-      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, version, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, version),
     );
     vi.mocked(api.getCompletionCandidates).mockReset();
     vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
+    vi.mocked(api.getQueryCatalog).mockReset();
+    vi.mocked(api.getQueryCatalog).mockResolvedValue([...QUERY_CATALOG]);
   });
 
   it("lays out the log group, the range, the query and the run row, with no results yet", () => {
@@ -209,6 +217,28 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     expect(screen.queryByTestId("log-analytics-initial")).not.toBeInTheDocument();
   });
 
+  it("counts an aggregates result in rows and says when it has none (261025-insights-stats BR3.4, BR4.5)", () => {
+    const { rerender } = renderPage(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level", "count(*)"], { rowCount: 0 }),
+      }),
+    );
+    expect(screen.getByTestId("log-analytics-no-rows")).toHaveTextContent(
+      "The query returned 0 rows.",
+    );
+    expect(screen.queryByTestId("log-analytics-no-match")).not.toBeInTheDocument();
+    expect(results()).toHaveTextContent("(0 rows)");
+    rerender(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["bin(5m)", "count(*)"], { rowCount: 3 }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(3 rows)");
+    expect(screen.getByTestId("query-result-table")).toHaveAttribute("data-shape", "aggregates");
+  });
+
   it("shows the rows of a result with their count", async () => {
     renderPage(
       view({
@@ -220,7 +250,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
     );
-    expect(api.getQueryRows).toHaveBeenCalledWith(1, 0, 2);
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 1, 0, 2);
   });
 
   it("warns that a partial result is based on part of the logs and lists the failures (U1:BR2.5)", async () => {
@@ -278,8 +308,11 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
         },
       }),
     );
-    expect(screen.getByTestId("query-problem")).toHaveTextContent(
-      'Line 1, column 30: "stats" is not supported in this version. Supported commands: fields, filter, sort, limit.',
+    // 261025-insights-stats U2:BR4.2: the list is the catalog's, stats included.
+    await waitFor(() =>
+      expect(screen.getByTestId("query-problem")).toHaveTextContent(
+        'Line 1, column 30: "stats" is not supported in this version. Supported commands: fields, filter, sort, limit, stats.',
+      ),
     );
     expect(editor()).toHaveValue("filter @message like /ERROR/");
     await act(async () => undefined);
@@ -405,9 +438,84 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() => expect(api.getCompletionCandidates).toHaveBeenCalledTimes(3));
   });
 
+  // ---- 261025-insights-stats U2:BR3.2, BR4.2 ----------------------------
+
+  it("asks the core for the catalog once, however the run changes (BR4.2)", async () => {
+    const { rerender } = renderPage();
+    await waitFor(() => expect(api.getQueryCatalog).toHaveBeenCalledTimes(1));
+    rerender(view({ phase: "Fetching", runId: 1, canRun: false }));
+    rerender(view({ phase: "Done", runId: 1, result: resultSummary() }));
+    await act(async () => undefined);
+    expect(api.getQueryCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it("names no command list and shows no error when the catalog cannot be had (BR4.2)", async () => {
+    vi.mocked(api.getQueryCatalog).mockRejectedValue(new Error("denied"));
+    const { onError } = renderPage(
+      view({
+        phase: "QueryError",
+        runId: 2,
+        problem: {
+          kind: "Unsupported",
+          messageKey: "query.unsupported.command",
+          word: "parse",
+          span: { line: 1, column: 1, length: 5 },
+        },
+      }),
+    );
+    await act(async () => undefined);
+    expect(screen.getByTestId("query-problem")).toHaveTextContent(
+      'Line 1, column 1: "parse" is not supported in this version.',
+    );
+    expect(screen.getByTestId("query-problem")).not.toHaveTextContent("Supported commands");
+    expect(onError).not.toHaveBeenCalled();
+    expect(editor()).toHaveAttribute("data-language", "text");
+  });
+
+  it("says in rows how an aggregates result was cut (BR3.2)", () => {
+    const { rerender } = renderPage(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level", "count(*)"], {
+          rowCount: 10_000,
+          matchedCount: 10_003,
+          truncatedAt: 10_000,
+        }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(10000 of 10003 rows)");
+    expect(screen.getByTestId("log-analytics-truncated")).toHaveTextContent("Showing 10000 rows");
+    rerender(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level", "count(*)"], { rowCount: 2, matchedCount: 2 }),
+      }),
+    );
+    expect(results()).toHaveTextContent("(2 rows)");
+    expect(screen.queryByTestId("log-analytics-truncated")).not.toBeInTheDocument();
+  });
+
+  it("says the aggregates cut in Japanese too (BR3.2, NFR9)", () => {
+    renderPage(
+      view({
+        phase: "Done",
+        result: aggregatesSummary(["level"], { rowCount: 5, matchedCount: 9, truncatedAt: 5 }),
+      }),
+      "ja",
+    );
+    expect(results()).toHaveTextContent("(9 行中 5 行)");
+    expect(screen.getByTestId("log-analytics-truncated")).toHaveTextContent("5 行まで表示");
+  });
+
   it("shows the columns of fields with their cells (U2:BR7.1)", async () => {
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
-      queryRowWindow([queryRow(0, "ERROR 0", ["core time 0", "500", null])], offset, limit, runId),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, version, offset, limit) =>
+      queryRowWindow(
+        [queryRow(0, "ERROR 0", ["core time 0", "500", null])],
+        offset,
+        limit,
+        runId,
+        version,
+      ),
     );
     renderPage(
       view({
@@ -507,7 +615,7 @@ describe("LogAnalyticsPage (261017-insights-query U1, refined-mockups screens 2-
     await waitFor(() =>
       expect(screen.getAllByTestId("query-result-row")[1]).toHaveTextContent("ERROR 1"),
     );
-    expect(api.getQueryRows).toHaveBeenCalledWith(1, 0, 2);
+    expect(api.getQueryRows).toHaveBeenCalledWith(1, 1, 0, 2);
     rerender(
       view({
         phase: "Evaluating",
@@ -583,8 +691,8 @@ describe("LogAnalyticsPage progress placement (261020-carryover-fixes FR4.4)", (
 
   beforeEach(() => {
     vi.mocked(api.getQueryRows).mockReset();
-    vi.mocked(api.getQueryRows).mockImplementation(async (runId, offset, limit) =>
-      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId),
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, version, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, version),
     );
     vi.mocked(api.getCompletionCandidates).mockReset();
     vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
@@ -715,5 +823,185 @@ describe("LogAnalyticsPage export menu (261022-small-features U2:BR3.2, BR4.1)",
     await user.click(exportMenu());
     await user.click(screen.getByRole("menuitem", { name: "Copy as CSV" }));
     expect(onExport).toHaveBeenCalledWith("csv", "clipboard");
+  });
+});
+
+describe("LogAnalyticsPage partial and cancelled results (261025-insights-stats U3)", () => {
+  beforeEach(() => {
+    vi.mocked(api.getQueryRows).mockReset();
+    vi.mocked(api.getQueryRows).mockImplementation(async (runId, version, offset, limit) =>
+      queryRowWindow([queryRow(0), queryRow(1)], offset, limit, runId, version),
+    );
+    vi.mocked(api.getCompletionCandidates).mockReset();
+    vi.mocked(api.getCompletionCandidates).mockResolvedValue([]);
+    vi.mocked(api.getQueryCatalog).mockReset();
+    vi.mocked(api.getQueryCatalog).mockResolvedValue([...QUERY_CATALOG]);
+  });
+
+  const fetching = (result: InsightsView["result"], overrides: Partial<InsightsView> = {}) =>
+    view({
+      runId: 1,
+      phase: "Fetching",
+      canRun: false,
+      cancelAvailable: true,
+      progress: progress(),
+      result,
+      ...overrides,
+    });
+  const announcement = () => screen.getByTestId("log-analytics-result-announcement");
+
+  it("marks a partial result with the log group and the events it holds, in both languages (BR2.6)", () => {
+    const { rerender } = renderPage(
+      fetching(partialSummary({ groupNumber: 2, groupCount: 5, included: 48_210 })),
+    );
+    expect(within(results()).getByTestId("log-analytics-partial-mark")).toHaveTextContent(
+      "Partial results (fetching: log group 2 / 5, up to 48210 events)",
+    );
+    rerender(fetching(partialSummary({ groupCount: 1, included: 300 })));
+    expect(screen.getByTestId("log-analytics-partial-mark")).toHaveTextContent(
+      "Partial results (fetching: up to 300 events)",
+    );
+    expect(screen.getByTestId("log-analytics-partial-mark")).not.toHaveTextContent("log group");
+    expect(screen.queryByTestId("query-result-previous")).not.toBeInTheDocument();
+  });
+
+  it("says the partial mark in Japanese too (NFR9)", () => {
+    renderPage(fetching(partialSummary({ groupNumber: 1, groupCount: 3, included: 12 })), "ja");
+    expect(screen.getByTestId("log-analytics-partial-mark")).toHaveTextContent(
+      "途中の結果（取得中：ロググループ 1 / 3、12 件まで）",
+    );
+  });
+
+  it("drops the mark with the final result and shows the table all along (BR2.6, BR2.9)", async () => {
+    const { rerender } = renderPage(fetching(partialSummary()));
+    expect(await screen.findAllByTestId("query-result-row")).not.toHaveLength(0);
+    expect(within(results()).getByTestId("export-menu")).toBeInTheDocument();
+    rerender(view({ runId: 1, phase: "Done", result: resultSummary({ version: 2 }) }));
+    expect(screen.queryByTestId("log-analytics-partial-mark")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("log-analytics-cancelled-mark")).not.toBeInTheDocument();
+  });
+
+  it("reads out only the changes of state, not every new version (BR2.7)", () => {
+    const { rerender } = renderPage(fetching(null));
+    expect(announcement()).toHaveTextContent("");
+    expect(announcement()).toHaveAttribute("aria-live", "polite");
+    rerender(fetching(partialSummary({}, { version: 1 })));
+    expect(announcement()).toHaveTextContent("Partial results are shown.");
+    const before = announcement().textContent;
+    const node = announcement().firstChild;
+    rerender(fetching(partialSummary({ included: 90 }, { version: 2, rowCount: 9 })));
+    expect(announcement().textContent).toBe(before);
+    expect(announcement().firstChild).toBe(node);
+    rerender(view({ runId: 1, phase: "Done", result: resultSummary({ version: 3 }) }));
+    expect(announcement()).toHaveTextContent("The final results are shown.");
+    rerender(view({ runId: 1, phase: "Cancelled", result: cancelledSummary({ version: 3 }) }));
+    expect(announcement()).toHaveTextContent("Results of part of the logs are shown (cancelled).");
+  });
+
+  it("says nothing of the previous run's result while the next run fetches", () => {
+    renderPage(fetching(resultSummary({ runId: 1 }), { runId: 2 }));
+    expect(announcement()).toHaveTextContent("");
+    expect(screen.getByTestId("query-result-previous")).toBeInTheDocument();
+  });
+
+  it("marks a cancelled result and lists its failed streams too (BR3.4, FR5.4)", async () => {
+    const user = userEvent.setup();
+    renderPage(
+      view({
+        runId: 1,
+        phase: "Cancelled",
+        partial: true,
+        failedStreams: [
+          {
+            logGroupName: "/aws/lambda/orders",
+            logStreamName: "stream-x",
+            failure: { kind: "AccessDenied", safeDetail: "", retryable: false },
+          },
+        ],
+        result: cancelledSummary(),
+        canExport: true,
+      }),
+    );
+    expect(within(results()).getByTestId("log-analytics-cancelled-mark")).toHaveTextContent(
+      "Results of part of the logs (cancelled)",
+    );
+    expect(screen.getByTestId("log-analytics-cancelled")).toHaveTextContent(
+      "Query cancelled. Results of part of the logs are shown.",
+    );
+    expect(screen.getByTestId("log-analytics-partial")).toHaveTextContent("1 stream");
+    await user.click(screen.getByTestId("log-analytics-show-failures-button"));
+    expect(screen.getByTestId("failure-list")).toHaveTextContent("stream-x");
+  });
+
+  it("says just cancelled when no result of the run is left (BR3.2 ELSE)", () => {
+    renderPage(view({ runId: 2, phase: "Cancelled", result: resultSummary({ runId: 1 }) }));
+    expect(screen.getByTestId("log-analytics-cancelled")).toHaveTextContent("Query cancelled.");
+    expect(screen.getByTestId("log-analytics-cancelled")).not.toHaveTextContent("part of the logs");
+    expect(screen.queryByTestId("log-analytics-cancelled-mark")).not.toBeInTheDocument();
+  });
+
+  it("says the cancelled mark and words in Japanese too (NFR9)", () => {
+    renderPage(view({ runId: 1, phase: "Cancelled", result: cancelledSummary() }), "ja");
+    expect(screen.getByTestId("log-analytics-cancelled-mark")).toHaveTextContent(
+      "一部のログだけの結果（中断）",
+    );
+    expect(screen.getByTestId("log-analytics-cancelled")).toHaveTextContent(
+      "一部のログだけの結果を出しました。",
+    );
+  });
+
+  it("keeps the inputs and [Export] locked while cancelling and lets [Cancel] be pressed once more (BR3.2, BR3.7)", async () => {
+    const user = userEvent.setup();
+    const cancelling = fetching(partialSummary(), {
+      phase: "Cancelling",
+      cancelling: true,
+      cancelAvailable: true,
+      canExport: false,
+      progress: progress({ evaluatedCount: 10_000, totalCount: 25_000 }),
+    });
+    const { onCancel, onChange, rerender } = renderPage(cancelling);
+    expect(runButton()).toBeDisabled();
+    fireEvent.change(editor(), { target: { value: "changed" } });
+    expect(onChange).not.toHaveBeenCalled();
+    const exportButton = within(within(results()).getByTestId("export-menu")).getByRole("button");
+    expect(
+      exportButton.hasAttribute("disabled") ||
+        exportButton.getAttribute("aria-disabled") === "true",
+    ).toBe(true);
+    expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent(
+      "Making the results of what was fetched: 10000 / 25000 events",
+    );
+    const cancel = screen.getByTestId("log-analytics-cancel-button");
+    expect(cancel).toHaveTextContent("Cancel");
+    await user.click(cancel);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    rerender({
+      ...cancelling,
+      insights: { ...cancelling.insights, cancelAvailable: false },
+    });
+    expect(screen.getByTestId("log-analytics-cancel-button")).toHaveTextContent("Cancelling…");
+    await user.click(screen.getByTestId("log-analytics-cancel-button"));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the fetch is being stopped before the results are made (BR3.7)", () => {
+    renderPage(fetching(null, { phase: "Cancelling", cancelling: true }), "ja");
+    expect(screen.getByTestId("log-analytics-progress")).toHaveTextContent("取得を止めています…");
+  });
+
+  it("keeps the aggregates cut note on a partial result (U2 review R-03)", () => {
+    renderPage(
+      fetching(
+        aggregatesSummary(["n"], {
+          stage: "partial",
+          coverage: { groupNumber: 1, groupCount: 1, includedEventCount: 20_000 },
+          rowCount: 10_000,
+          matchedCount: 10_003,
+          truncatedAt: 10_000,
+        }),
+      ),
+    );
+    expect(within(results()).getByTestId("log-analytics-truncated")).toBeInTheDocument();
+    expect(screen.getByTestId("log-analytics-partial-mark")).toBeInTheDocument();
   });
 });

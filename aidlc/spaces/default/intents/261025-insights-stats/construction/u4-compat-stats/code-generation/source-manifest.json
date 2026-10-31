@@ -1,0 +1,23 @@
+{
+  "stage": "code-generation",
+  "unit": "u4-compat-stats",
+  "version": 1,
+  "writes": [
+    { "path": "crates/local-sights-core/examples/compat/queries.rs" },
+    { "path": "crates/local-sights-core/examples/compat/format.rs" },
+    { "path": "crates/local-sights-core/examples/compat/compare.rs" },
+    { "path": "crates/local-sights-core/examples/compat/report.rs" },
+    { "path": "crates/local-sights-core/examples/compat_check.rs" },
+    { "path": "crates/local-sights-core/examples/compat_queries.txt" },
+    { "path": "crates/local-sights-core/examples/compat_queries_numeric.txt" },
+    { "path": "scripts/compat/insights-export.sh" },
+    { "path": "README.md" },
+    { "path": "src/components/QueryResultTable.tsx" },
+    { "path": "src/components/QueryResultTable.test.tsx" },
+    { "path": "src/App.tsx" },
+    { "path": "src/App.test.tsx" },
+    { "path": "src/analytics.ts" },
+    { "path": "src/components/ExportNoticeAlert.tsx" },
+    { "path": "src/components/ExportNoticeAlert.test.tsx" }
+  ]
+}

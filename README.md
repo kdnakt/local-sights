@@ -184,17 +184,19 @@ for how to write one. This version reads the following part of it.
 
 | Supported                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Commands `fields`, `filter`, `sort` (`asc`, `desc`) and `limit` (0 to 100,000, `limit 0` giving no row; without one, 10,000 rows), joined with `\|` and applied in the order written                                                                                |
+| Commands: `fields`, `filter`, `sort` (ascending, or descending with desc), `limit` (0 to 100,000, `limit 0` giving no row; without one, 10,000 rows) and `stats`, joined with `\|` and applied in the order written                                                 |
 | Fields `@timestamp`, `@message`, `@logStream`, `@log` (the log group name only), and the fields of a message that is a JSON object: nested as `a.b`, a name with other characters in backquotes (`` `user.id` ``)                                                   |
 | Operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or`, `not (…)`, `like` and `not like` (a string or `/regex/`), `=~`, `in [ … ]` and `not in [ … ]`, and parentheses                                                                                              |
 | Comparing two fields, such as `a = b` or `@logStream != @log`: a name without quotes after `=`, `!=`, `<`, `<=`, `>` or `>=` is a field, so `readOnly = true` compares with a field named `true` (as the console reads it); write `readOnly = "true"` for the value |
 | `toMillis(@timestamp)`; and, as an extension of this app, `@timestamp` compared with `"YYYY-MM-DD HH:MM:SS[.sss]"` (the time zone shown) or `"YYYY-MM-DDTHH:MM:SS[.sss]Z"` (UTC)                                                                                    |
+| Aggregate functions in `stats`: `count(*)`, `count(field)`, `count_distinct`, `sum`, `avg`, `min`, `max`, `pct(field, percentile)`, `stddev`, `earliest`, `latest`, `sortsFirst` and `sortsLast`, grouped by fields or `bin(period)` (s, m, h, d)                   |
 
-| Not supported                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The other commands (`stats`, `parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)                                  |
-| Functions other than `toMillis(@timestamp)` (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]` |
-| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                                                |
+| Not supported                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------- |
+| The other commands (`parse`, `dedup`, `display`, `pattern`, `diff`, `unmask`, `unnest`, `lookup`, `filterIndex`, `source`)               |
+| `fields` after `stats`, a second `stats`, and `bin()` periods in `ms`, `w`, `mo`, `q` or `y`                                             |
+| Other functions (`ispresent`, `isempty`, string, number and date functions), arithmetic, and a field after `like`, `=~` or in `in [ … ]` |
+| `fields … as name`, `limit any`, array elements (`a.0`, `a[0]`), and the `account ID:` part of `@log`                                    |
 
 As in the console, a JSON `true` or `false` is shown as `1` or `0` in the
 result and in an opened row, but is compared as the text: `readOnly = "true"`
@@ -206,8 +208,52 @@ missing from an event, the event meets no comparison, not even `!=` (so
 `eventName != errorCode` keeps only events that have `errorCode`); a missing
 field against a value still meets `!=`.
 
+A `stats` query shows one row per group: the `by` columns, then the aggregate
+columns, each named by its `as name` or by its text as written, in ascending
+order of the `by` values (events without a `by` field make one group, shown
+last). `filter`, `sort` and `limit` written after `stats` work on these rows,
+in the order written, and name their columns (a name with signs in
+backquotes, such as `` `count(*)` ``); `fields` and a second `stats` cannot
+follow it. Without a `limit`, at most 10,000 rows are shown, and the result
+says when rows were cut. A `filter` after `stats` that compares a column with
+a value keeps, with `!=`, the rows where that column has no value too (an
+empty cell), as `!=` on a missing field does in any `filter`.
+
+`sum`, `avg`, `pct` and `stddev` use the values that read as numbers;
+decimals are shown to four places. `count_distinct` counts the different
+values exactly, `pct(field, p)` is the value at the nearest rank (`p` from 0
+to 100, read with at most 15 decimal places, such as `pct(latency, 99.9)`),
+`stddev` is the sample standard deviation, `earliest` and `latest`
+are the values of the first and the last event in time, and `sortsFirst` and
+`sortsLast` the first and the last in the order of `sort`. A time (a `bin()`,
+or a time kept by `min`, `max`, `earliest` and the like) is shown in the time
+zone chosen. These details are provisional until they are compared with the
+console.
+
 A query that uses what is not supported, or has a writing mistake, is not run;
 the screen says what and where, without fetching anything.
+
+While a query fetches, partial results are shown and replaced as the logs come
+in: the first as soon as the first page arrives, then at most once a second.
+They are made by the same evaluation as the final result, from what has been
+fetched so far, so they are in the final order (a new row may appear between
+others) and the counts and aggregate values grow. Beside the results heading,
+"Partial results (fetching: log group n / m, up to N events)" says how far
+they go (without the log group part for one log group); it goes when the final
+result comes. An opened row and the row at the top of the list stay where they
+are when a partial result is replaced. The screen reader is told when partial
+results first appear and when the final or the cancelled result comes, not at
+every replacement. **Export** waits for the end of the run.
+
+**Cancel** while fetching stops the fetch and evaluates what was fetched until
+then once: the result is marked "Results of part of the logs (cancelled)",
+shown with the failed streams when some failed, and can be exported (the
+notice says it is of part of the logs; the file itself has no mark). While
+that result is being made, **Cancel** can be pressed once more to stop it: the
+last partial result is kept with the same mark, or, without one, the query is
+just cancelled. **Cancel** while evaluating after the fetch stops the
+evaluation in the same way. The parts fetched to their end before the cancel
+are kept as fetched; the rest is fetched again by the next run.
 
 ## Sign in with SSO
 
@@ -519,6 +565,51 @@ first 40 characters of each value), then the counts. Exit code 0 means every
 compared query was the same, 1 a difference, 2 that it could not compare.
 Give both the same `QUERIES=` / `--queries` file when you use another set.
 Record the summary, not the log contents, in the unit's `code-summary.md`.
+
+#### Aggregate queries (`stats`)
+
+The CloudTrail set also holds the `stats` queries `s01`–`s16`; they are
+compared as aggregate rows (the column names and the cells as the result table
+writes them, times in UTC). A line may have a fifth field of column
+tolerances, `<column>=decimal` (numbers within 1e-6 relative or 0.0001
+absolute are the same) or `<column>=approximate` (whole numbers within 2%,
+for the console's approximate `count_distinct`), separated by `;`. The mode
+`keyorder` compares the rows, then the order of the key values of a `stats`
+without `sort`. A query the same only within a tolerance prints
+`Same (within decimal tolerance: n cells)` or
+`Same (within approximate tolerance: n cells)` with its first five such
+cells, and still exits with 0. A count that differs in the first or the last
+`bin` of the period is marked `period-edge-differences` and listed apart; it
+is still a difference. After the counts, the check sums up each provisional
+rule the set names in its `# provisional:` notes as `matches`, `differs` or
+`notChecked`.
+
+For the numeric aggregates (`avg`, `sum`, `pct`, `stddev` and the rest), use
+`crates/local-sights-core/examples/compat_queries_numeric.txt` (`n01`–`n06`)
+on a log group whose events have a JSON number field. Copy it outside the
+repository and rewrite its field names to yours first: `latency` stands for a
+number field and `status` for a text field, in the queries and in the
+tolerance columns (`avg(latency)` becomes `avg(<your field>)`). Then give the
+copy to both:
+
+```bash
+cp crates/local-sights-core/examples/compat_queries_numeric.txt ~/numeric.txt
+# edit ~/numeric.txt: latency and status -> your field names
+PROFILE=dev REGION=us-east-1 GROUP=MyAppLogs START=1767435900 END=1767439500 \
+  OUT=~/insights-export-numeric QUERIES=~/numeric.txt ./scripts/compat/insights-export.sh
+cargo run -p local-sights-core --example compat_check -- \
+  --export-dir ~/insights-export-numeric --queries ~/numeric.txt
+```
+
+Without a log group that has a number field, keep only the line `n06`
+(`stats avg(toMillis(@timestamp))`, a number in every log group) in the copy,
+and compare that one query.
+
+Record the result in the unit's `code-summary.md`: for each provisional rule,
+the outcome (`matches`, `differs` or `notChecked`) and, for `differs`,
+whether the app was changed to the console's behaviour or the question was
+taken to the user. Never record the exports, log contents, account IDs or
+role names.
 
 ## App icon
 

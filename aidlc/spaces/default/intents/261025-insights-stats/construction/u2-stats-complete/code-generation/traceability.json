@@ -1,0 +1,43 @@
+{
+  "stage": "code-generation",
+  "unit": "u2-stats-complete",
+  "upstream_ids": [
+    "FR1.2", "FR1.4", "FR1.6", "FR1.7", "FR3.1", "FR6.1", "FR6.2", "FR6.3",
+    "NFR2", "NFR7",
+    "BR1.1", "BR1.2", "BR1.3", "BR1.4", "BR1.5",
+    "BR2.1", "BR2.2", "BR2.3", "BR2.4", "BR2.5", "BR2.6",
+    "BR3.1", "BR3.2",
+    "BR4.1", "BR4.2", "BR4.3", "BR4.4",
+    "BR5.1"
+  ],
+  "coverage": [
+    { "id": "FR1.2", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "FR1.4", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" },
+    { "id": "FR1.6", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "FR1.7", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" },
+    { "id": "FR3.1", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "FR6.1", "status": "OK", "target": "crates/local-sights-core/src/query/catalog.rs" },
+    { "id": "FR6.2", "status": "OK", "target": "crates/local-sights-core/src/query/catalog.rs" },
+    { "id": "FR6.3", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "NFR2", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" },
+    { "id": "NFR7", "status": "OK", "target": "crates/local-sights-core/src/query/catalog.rs" },
+    { "id": "BR1.1", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "BR1.2", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "BR1.3", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "BR1.4", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "BR1.5", "status": "OK", "target": "crates/local-sights-core/src/query/parser.rs" },
+    { "id": "BR2.1", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "BR2.2", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "BR2.3", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "BR2.4", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "BR2.5", "status": "OK", "target": "crates/local-sights-core/src/query/stats.rs" },
+    { "id": "BR2.6", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" },
+    { "id": "BR3.1", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" },
+    { "id": "BR3.2", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" },
+    { "id": "BR4.1", "status": "OK", "target": "crates/local-sights-core/src/query/catalog.rs" },
+    { "id": "BR4.2", "status": "OK", "target": "src/analytics.ts" },
+    { "id": "BR4.3", "status": "OK", "target": "crates/local-sights-core/src/insights_session.rs" },
+    { "id": "BR4.4", "status": "OK", "target": "crates/local-sights-core/src/query/catalog.rs" },
+    { "id": "BR5.1", "status": "OK", "target": "crates/local-sights-core/src/query/evaluator.rs" }
+  ]
+}

@@ -12,6 +12,59 @@
 /** `${logStreamName}\u0000${sequence}`: one held event. */
 export type RowKey = string;
 
+/**
+ * 261025-insights-stats U3:BR2.8: the opened rows of a query result, by the core's row
+ * key (`QueryRow.rowKey`), each with its place in the version they were last placed in.
+ * A newer version of the result keeps a row open where the same key is found and closes
+ * it where it is not. These functions are pure and serve the query screen only; the Log
+ * Management list keeps its own state above.
+ */
+export type OpenedRows = ReadonlyMap<string, number>;
+
+/** Opens the row `rowKey` at `position` when closed, closes it when open. */
+export function toggleOpenedRow(opened: OpenedRows, rowKey: string, position: number): OpenedRows {
+  const next = new Map(opened);
+  if (!next.delete(rowKey)) {
+    next.set(rowKey, position);
+  }
+  return next;
+}
+
+/**
+ * The opened rows in a newer version (BR2.8): each key `found` there moves to its new
+ * place, each key `found` missing (`null`) is closed; a key not asked about stays.
+ */
+export function reopenedRows(
+  opened: OpenedRows,
+  found: ReadonlyMap<string, number | null>,
+): OpenedRows {
+  const next = new Map<string, number>();
+  for (const [rowKey, position] of opened) {
+    const placed = found.get(rowKey);
+    if (placed === undefined) {
+      next.set(rowKey, position);
+    } else if (placed !== null) {
+      next.set(rowKey, placed);
+    }
+  }
+  return next;
+}
+
+/** The places of the opened rows, for the layout. */
+export function openedPositions(opened: OpenedRows): number[] {
+  return [...opened.values()];
+}
+
+/** The key of the opened row at `position`, if one is open there. */
+export function openedKeyAt(opened: OpenedRows, position: number): string | undefined {
+  for (const [rowKey, placed] of opened) {
+    if (placed === position) {
+      return rowKey;
+    }
+  }
+  return undefined;
+}
+
 /** The selected row: its key when known, and its position in the list. */
 export interface Selection {
   key: RowKey | null;

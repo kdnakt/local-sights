@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import CodeEditor, { type CodeEditorProps } from "@cloudscape-design/components/code-editor";
-import { loadAce, type AceModule } from "../aceLoader";
+import { loadAce, registerQueryMode, type AceModule } from "../aceLoader";
 import {
   QUERY_LANGUAGE,
   completionItems,
   offsetOf,
   problemRange,
   type CompletionItem,
+  type HighlightRule,
   type ProblemRange,
 } from "../analytics";
 import type { CompletionCandidate, QueryProblem } from "../api";
@@ -19,6 +20,12 @@ export const PROBLEM_MARK_CLASS = "query-problem-mark";
 /** The editor's height before the user drags it: about five lines (mockups screen 2). */
 const INITIAL_HEIGHT = 96;
 
+/** Ace's plain text mode: the field before the query's colours can be made. */
+export const PLAIN_LANGUAGE = "text";
+
+/** No syntax colours (the catalog has not come). */
+const NO_RULES: readonly HighlightRule[] = [];
+
 export interface QueryEditorProps {
   value: string;
   /** The text cannot be changed (Fetching, Evaluating, a dialog open; U1:BR2.4). */
@@ -29,6 +36,11 @@ export interface QueryEditorProps {
   problemMessage?: string;
   /** What Ctrl+Space and typing offer (U2:BR9.1, Should); JSON names only once fetched. */
   candidates?: readonly CompletionCandidate[];
+  /**
+   * The syntax colours, made from the core's QueryCatalog
+   * (261025-insights-stats U2:BR4.2); none (plain text) until it has come.
+   */
+  highlightRules?: readonly HighlightRule[];
   /** Increases each time the editor must take the focus at the problem (U1:BR3.9). */
   focusRequest: number;
   /** Whether the shortcut is Cmd (macOS) rather than Ctrl. */
@@ -120,6 +132,7 @@ export function QueryEditor({
   problem,
   problemMessage = "",
   candidates = [],
+  highlightRules = NO_RULES,
   focusRequest,
   mac,
   t,
@@ -153,6 +166,31 @@ export function QueryEditor({
   useEffect(() => {
     aceEditorIn(containerRef.current)?.setReadOnly(readOnly);
   }, [readOnly, ace]);
+
+  // 261025-insights-stats U2:BR4.2: the query's mode is registered with the
+  // catalog's rules once they have come (the page keeps them the same), and
+  // before CodeEditor asks Ace for the mode; until then the field is plain
+  // text. Since U3 (U2 code review R-05) the registration is an effect, not
+  // part of the render: the field asks for the mode only once the effect has
+  // registered it for these rules, a moment later.
+  const [registeredRules, setRegisteredRules] = useState<readonly HighlightRule[] | null>(null);
+  useEffect(() => {
+    const config = (ace as { config?: Partial<AceModule["config"]> } | null)?.config;
+    if (highlightRules.length === 0 || ace === null || !config?.setModuleLoader) {
+      return undefined;
+    }
+    registerQueryMode(ace, highlightRules);
+    let current = true;
+    void Promise.resolve().then(() => {
+      if (current) {
+        setRegisteredRules(highlightRules);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [ace, highlightRules]);
+  const coloured = ace !== null && highlightRules.length > 0 && registeredRules === highlightRules;
 
   // U2:BR9.1: the completer reads the latest candidates and words.
   const candidatesRef = useRef(candidates);
@@ -265,7 +303,7 @@ export function QueryEditor({
       <CodeEditor
         ace={ace ?? undefined}
         value={value}
-        language={QUERY_LANGUAGE}
+        language={coloured ? QUERY_LANGUAGE : PLAIN_LANGUAGE}
         languageLabel={t("insights.query.language")}
         onChange={handleChange}
         preferences={{ wrapLines: true }}

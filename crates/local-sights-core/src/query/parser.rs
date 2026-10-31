@@ -1,6 +1,21 @@
-//! QueryParser: reads a query of `fields`, `filter`, `sort` and `limit`
-//! commands (261017-insights-query U1:BR3.1-BR3.9, BR5.4, BR5.6, BR5.7,
-//! U2:BR1.1, BR1.3, BR1.4, BR2.1-BR2.5, BR4.1, BR5.1, BR10.3).
+//! QueryParser: reads a query of `fields`, `filter`, `sort`, `limit` and
+//! `stats` commands (261017-insights-query U1:BR3.1-BR3.9, BR5.4, BR5.6,
+//! BR5.7, U2:BR1.1, BR1.3, BR1.4, BR2.1-BR2.5, BR4.1, BR5.1, BR10.3;
+//! 261025-insights-stats U1:BR1.1-BR1.9).
+//!
+//! `stats` takes aggregates (the twelve functions of the documentation, each
+//! with an optional `as name`; `pct` also takes its percentile) and
+//! optionally `by` keys (fields or `bin(period)`). Inside `bin(` alone the
+//! period is one word, so `5m` is read there and stays a mistake elsewhere
+//! (BR1.8). A column without `as` is named by its text as written, blanks
+//! made one and notes left out (BR1.9). After `stats`, `filter`, `sort` and
+//! `limit` are read into it and name the columns of its rows, not fields of
+//! the events; `fields` and a second `stats` are Unsupported
+//! (261025-insights-stats U2:BR1.1-BR1.5).
+//!
+//! Which commands are read and which are Unsupported, which aggregate
+//! functions there are and which keywords are never fields all come from the
+//! [`QueryCatalog`] (U2:BR4.1).
 //!
 //! The text is read word by word, in order, and the first problem found is
 //! returned with its place, kind and words (U1:BR3.9, U2:BR2.2). Blanks and
@@ -35,10 +50,13 @@
 //! arithmetic operators, which are not run (U1:BR5.7). The word reader is
 //! told which of the two it is reading, so a query is read in one pass.
 
+use crate::query::catalog::{BIN, QueryCatalog, TO_MILLIS};
 use crate::query::instant::is_date_text;
 use crate::query::plan::{
-    Command, CommandKind, CompareOp, Condition, ConditionKind, FieldRef, JsonPath, LikePattern,
-    Literal, MAX_LIMIT, QueryPlan, QueryProblem, QueryRegex, SortDirection, SortKey, Span,
+    AfterStatsCommand, AggregateArgument, AggregateFunction, AggregateSpec, BinPeriod, BinUnit,
+    ColumnRef, Command, CommandKind, CompareOp, Condition, ConditionKind, FieldRef, GroupKey,
+    GroupKeyKind, JsonPath, LikePattern, Literal, MAX_LIMIT, Percentile, QueryPlan, QueryProblem,
+    QueryRegex, SortDirection, SortKey, Span, StatsCommand,
 };
 
 /// Message-catalog keys of the reading problems (the screen's
@@ -130,9 +148,41 @@ pub mod keys {
     /// Parentheses nested deeper than
     /// [`MAX_NESTING`](super::MAX_NESTING) (261017-insights-query U3:BR5.1).
     pub const NESTING_TOO_DEEP: &str = "query.syntax.nestingTooDeep";
+    /// `stats` with no aggregate after it (261025-insights-stats BR1.7).
+    pub const MISSING_AGGREGATE: &str = "query.syntax.missingAggregate";
+    /// Something else than `function(...)` where an aggregate is expected
+    /// (BR1.1).
+    pub const EXPECTED_AGGREGATE: &str = "query.syntax.expectedAggregate";
+    /// `by` with no key after it (BR1.7).
+    pub const MISSING_GROUP_KEY: &str = "query.syntax.missingGroupKey";
+    /// A `,` with nothing after it in `stats` (BR1.7).
+    pub const TRAILING_COMMA: &str = "query.syntax.trailingComma";
+    /// An aggregate function with the wrong number of arguments (BR1.7).
+    pub const ARGUMENT_COUNT: &str = "query.syntax.argumentCount";
+    /// `*` as the argument of another function than `count` (BR1.3).
+    pub const AGGREGATE_STAR: &str = "query.syntax.aggregateStar";
+    /// `as` with no column name after it (BR1.4).
+    pub const EXPECTED_ALIAS: &str = "query.syntax.expectedAlias";
+    /// Two `stats` columns of the same name (BR1.4).
+    pub const DUPLICATE_COLUMN: &str = "query.syntax.duplicateColumn";
+    /// A `bin()` period in no accepted form (BR1.5, BR1.8).
+    pub const INVALID_BIN_PERIOD: &str = "query.syntax.invalidBinPeriod";
+    /// A `bin()` unit of the console this version does not read (BR1.5).
+    pub const UNSUPPORTED_BIN_UNIT: &str = "query.unsupported.binUnit";
+    /// An aggregate function the QueryCatalog lists as not run (BR1.2; since
+    /// U2 the catalog runs all twelve).
+    pub const UNSUPPORTED_AGGREGATE: &str = "query.unsupported.aggregateFunction";
+    /// A `pct` percentile outside 0 to 100 (U2:BR1.2).
+    pub const PCT_OUT_OF_RANGE: &str = "query.syntax.pctOutOfRange";
+    /// A name after `stats` that is no column of its rows (U2:BR1.4).
+    pub const UNKNOWN_RESULT_COLUMN: &str = "query.syntax.unknownResultColumn";
+    /// `fields` after `stats` (U2:BR1.5).
+    pub const FIELDS_AFTER_STATS: &str = "query.unsupported.fieldsAfterStats";
+    /// A second `stats` (U2:BR1.5).
+    pub const SECOND_STATS: &str = "query.unsupported.secondStats";
 
     /// Every key above, for the screen's catalog check.
-    pub const ALL: [&str; 42] = [
+    pub const ALL: [&str; 57] = [
         NO_COMMAND,
         EMPTY_COMMAND,
         UNKNOWN_COMMAND,
@@ -175,6 +225,21 @@ pub mod keys {
         UNSUPPORTED_ALIAS,
         UNSUPPORTED_LIMIT_ANY,
         NESTING_TOO_DEEP,
+        MISSING_AGGREGATE,
+        EXPECTED_AGGREGATE,
+        MISSING_GROUP_KEY,
+        TRAILING_COMMA,
+        ARGUMENT_COUNT,
+        AGGREGATE_STAR,
+        EXPECTED_ALIAS,
+        DUPLICATE_COLUMN,
+        INVALID_BIN_PERIOD,
+        UNSUPPORTED_BIN_UNIT,
+        UNSUPPORTED_AGGREGATE,
+        PCT_OUT_OF_RANGE,
+        UNKNOWN_RESULT_COLUMN,
+        FIELDS_AFTER_STATS,
+        SECOND_STATS,
     ];
 }
 
@@ -182,27 +247,12 @@ pub mod keys {
 /// as one (261017-insights-query U3:BR5.1, U2 code review R-01).
 pub const MAX_NESTING: usize = 100;
 
-/// The console's commands other than the four read ones, in lower case
-/// (U2:BR2.1).
-const OTHER_COMMANDS: [&str; 11] = [
-    "stats",
-    "parse",
-    "dedup",
-    "display",
-    "pattern",
-    "diff",
-    "unmask",
-    "unnest",
-    "lookup",
-    "filterindex",
-    "source",
-];
+/// The `bin()` units of the console not read yet (BR1.5, Q1 A).
+const LATER_BIN_UNITS: [&str; 5] = ["ms", "w", "mo", "q", "y"];
 
-/// Words that join or negate conditions and name operators (U1:BR3.3).
-const KEYWORDS: [&str; 5] = ["and", "or", "not", "like", "in"];
-
-/// The only function read, written with this case (U1:BR3.7).
-const TO_MILLIS: &str = "toMillis";
+/// Largest count of a `bin()` period (BR1.8): with days it stays far inside
+/// `i64` milliseconds.
+const MAX_BIN_COUNT: u64 = 1_000_000;
 
 /// Reads `text` into a plan, or returns the first problem found, in the
 /// order of the text (U1:BR3.9, U2:BR2.2).
@@ -223,12 +273,43 @@ pub fn parse_query(text: &str) -> Result<QueryPlan, QueryProblem> {
             }
             Some(token) => token,
         };
-        commands.push(parser.command(command)?);
+        let Command { kind, span } = parser.command(command)?;
+        // U2:BR1.4: a command after `stats` goes into it.
+        match (
+            commands.last_mut().map(|last: &mut Command| &mut last.kind),
+            kind,
+        ) {
+            (Some(CommandKind::Stats(stats)), kind) => stats.after.push(after_stats(kind, span)?),
+            (_, CommandKind::Stats(stats)) => {
+                parser.result_columns = Some(stats.result_columns());
+                commands.push(Command {
+                    kind: CommandKind::Stats(stats),
+                    span,
+                });
+            }
+            (_, kind) => commands.push(Command { kind, span }),
+        }
         match parser.next()? {
             None => return Ok(QueryPlan { commands }),
             Some(token) if token.kind == TokenKind::Pipe => previous_pipe = Some(token.span),
             Some(token) => return Err(unexpected(token)),
         }
+    }
+}
+
+/// A command read after `stats`, written at `span`, as one of its commands
+/// (U2:BR1.4, BR1.5). The reader refuses `fields` and `stats` there already.
+fn after_stats(kind: CommandKind, span: Span) -> Result<AfterStatsCommand, QueryProblem> {
+    match kind {
+        CommandKind::Filter(condition) => Ok(AfterStatsCommand::Filter(condition)),
+        CommandKind::Sort(sort_keys) => Ok(AfterStatsCommand::Sort(sort_keys)),
+        CommandKind::Limit(count) => Ok(AfterStatsCommand::Limit(count)),
+        CommandKind::Fields(_) => Err(QueryProblem::unsupported(
+            keys::FIELDS_AFTER_STATS,
+            "fields",
+            span,
+        )),
+        CommandKind::Stats(_) => Err(QueryProblem::unsupported(keys::SECOND_STATS, "stats", span)),
     }
 }
 
@@ -573,6 +654,101 @@ impl Lexer {
             self.bump();
         }
     }
+
+    fn skip_blanks(&mut self) {
+        while self.peek_char(0).is_some_and(char::is_whitespace) {
+            self.bump();
+        }
+    }
+
+    /// The period just after `bin(`, read as one word up to a blank, `)` or
+    /// `|` (261025-insights-stats BR1.8), so that `5m` is not a number run
+    /// into letters here; an empty word has the place of what follows.
+    fn bin_word(&mut self) -> (String, Span) {
+        self.skip_blanks();
+        let start = self.here();
+        let first = self.pos;
+        while self
+            .peek_char(0)
+            .is_some_and(|c| !c.is_whitespace() && c != ')' && c != '|')
+        {
+            self.bump();
+        }
+        let length = u32::try_from(self.pos - first).unwrap_or(u32::MAX);
+        (
+            self.chars[first..self.pos].iter().collect(),
+            Span::new(start.line, start.column, length),
+        )
+    }
+
+    /// What follows the period of `bin(`: its `)`, taken, or why not.
+    fn close_bin(&mut self) -> BinClose {
+        self.skip_blanks();
+        match self.peek_char(0) {
+            Some(')') => {
+                self.bump();
+                BinClose::Closed
+            }
+            None | Some('|') => BinClose::Unclosed,
+            Some(_) => BinClose::Other,
+        }
+    }
+}
+
+/// What follows the period of `bin(` (BR1.8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BinClose {
+    /// Its `)`.
+    Closed,
+    /// The end of the text or of the command.
+    Unclosed,
+    /// Something else.
+    Other,
+}
+
+/// The period `word` of `bin(`, written at `span` (BR1.5, BR1.8): a whole
+/// number from 1 to [`MAX_BIN_COUNT`] and one of `s`, `m`, `h`, `d`; the
+/// console's other units are Unsupported, anything else a mistake.
+fn bin_period_of(word: &str, span: Span) -> Result<BinPeriod, QueryProblem> {
+    let invalid = || QueryProblem::syntax(keys::INVALID_BIN_PERIOD, span).with_word(word);
+    let digits_end = word
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(word.len());
+    let (digits, unit) = word.split_at(digits_end);
+    if digits.is_empty() || unit.is_empty() {
+        return Err(invalid());
+    }
+    let unit = match unit {
+        "s" => BinUnit::Seconds,
+        "m" => BinUnit::Minutes,
+        "h" => BinUnit::Hours,
+        "d" => BinUnit::Days,
+        later if LATER_BIN_UNITS.contains(&later) => {
+            return Err(QueryProblem::unsupported(
+                keys::UNSUPPORTED_BIN_UNIT,
+                word,
+                span,
+            ));
+        }
+        _ => return Err(invalid()),
+    };
+    let count = digits
+        .parse::<u64>()
+        .ok()
+        .filter(|count| (1..=MAX_BIN_COUNT).contains(count))
+        .and_then(|count| u32::try_from(count).ok())
+        .ok_or_else(invalid)?;
+    Ok(BinPeriod { count, unit })
+}
+
+/// Records the column `name` written at `span`, unless a column of that
+/// name was written before (BR1.4).
+fn push_column(names: &mut Vec<String>, name: &str, span: Span) -> Result<(), QueryProblem> {
+    if names.iter().any(|seen| seen == name) {
+        return Err(QueryProblem::syntax(keys::DUPLICATE_COLUMN, span).with_word(name));
+    }
+    names.push(name.to_string());
+    Ok(())
 }
 
 fn is_word_start(c: char) -> bool {
@@ -590,10 +766,10 @@ fn is_name_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-' || c == '@'
 }
 
+/// Whether `word` is a reserved keyword of the catalog, never a field name
+/// (U1:BR3.3, U2:BR4.1).
 fn is_keyword(word: &str) -> bool {
-    KEYWORDS
-        .iter()
-        .any(|keyword| word.eq_ignore_ascii_case(keyword))
+    QueryCatalog::is_reserved(word)
 }
 
 /// The field a bare word names, with its exact case (U1:BR3.6).
@@ -678,6 +854,9 @@ struct Parser {
     peeked: Option<Option<Token>>,
     /// Offset just after the last word taken, in characters.
     last_end: usize,
+    /// After `stats`: the columns of its rows, which the names of the
+    /// commands after it refer to (U2:BR1.4).
+    result_columns: Option<Vec<ColumnRef>>,
 }
 
 /// What opened one level of a condition being read
@@ -770,6 +949,7 @@ impl Parser {
             lexer: Lexer::new(text),
             peeked: None,
             last_end: 0,
+            result_columns: None,
         }
     }
 
@@ -837,7 +1017,9 @@ impl Parser {
         self.lexer.here()
     }
 
-    /// One command (U2:BR2.1).
+    /// One command (U2:BR2.1); after `stats`, `fields` and `stats` are
+    /// Unsupported (261025-insights-stats U2:BR1.5). Which names are
+    /// commands, and which of them are run, is the catalog's (BR4.1).
     fn command(&mut self, token: Token) -> Result<Command, QueryProblem> {
         let Some(word) = token.kind.bare().map(str::to_string) else {
             if matches!(token.kind, TokenKind::Name(_)) {
@@ -848,7 +1030,28 @@ impl Parser {
             return Err(unexpected(token));
         };
         let span = token.span;
-        let kind = match word.to_ascii_lowercase().as_str() {
+        let Some(listed) = QueryCatalog::command(&word) else {
+            return Err(QueryProblem::syntax(keys::UNKNOWN_COMMAND, span).with_word(word));
+        };
+        if !listed.supported {
+            return Err(QueryProblem::unsupported(
+                keys::UNSUPPORTED_COMMAND,
+                word,
+                span,
+            ));
+        }
+        let after_stats = self.result_columns.is_some();
+        let kind = match listed.name {
+            "fields" if after_stats => {
+                return Err(QueryProblem::unsupported(
+                    keys::FIELDS_AFTER_STATS,
+                    word,
+                    span,
+                ));
+            }
+            "stats" if after_stats => {
+                return Err(QueryProblem::unsupported(keys::SECOND_STATS, word, span));
+            }
             "filter" => {
                 if self.at_command_end()? {
                     return Err(QueryProblem::syntax(keys::MISSING_CONDITION, span));
@@ -858,14 +1061,16 @@ impl Parser {
             "fields" => CommandKind::Fields(self.fields(&word, span)?),
             "sort" => CommandKind::Sort(self.sort_keys(&word, span)?),
             "limit" => CommandKind::Limit(self.limit(span)?),
-            lower if OTHER_COMMANDS.contains(&lower) => {
+            "stats" => CommandKind::Stats(self.stats(span)?),
+            // A supported command of the catalog that is not read here: none
+            // today; the catalog test keeps the two in step.
+            _ => {
                 return Err(QueryProblem::unsupported(
                     keys::UNSUPPORTED_COMMAND,
                     word,
                     span,
                 ));
             }
-            _ => return Err(QueryProblem::syntax(keys::UNKNOWN_COMMAND, span).with_word(word)),
         };
         Ok(Command { kind, span })
     }
@@ -974,6 +1179,384 @@ impl Parser {
         }
         // A whole number from 0 to MAX_LIMIT: the conversion is exact.
         u32::try_from(number as u64).map_err(|_| invalid())
+    }
+
+    /// The aggregates and `by` keys of `stats` (261025-insights-stats
+    /// BR1.1-BR1.9): at least one aggregate, separated by commas, then
+    /// optionally `by` and at least one key.
+    fn stats(&mut self, span: Span) -> Result<StatsCommand, QueryProblem> {
+        if self.at_command_end()? || self.peek_keyword("by")? {
+            return Err(QueryProblem::syntax(keys::MISSING_AGGREGATE, span));
+        }
+        let mut names = Vec::new();
+        let mut aggregates = Vec::new();
+        loop {
+            let (aggregate, name_span) = self.aggregate()?;
+            push_column(&mut names, &aggregate.column_name, name_span)?;
+            aggregates.push(aggregate);
+            if self.at_command_end()? {
+                break;
+            }
+            match self.next()? {
+                None => break,
+                Some(token) if token.kind == TokenKind::Comma => {
+                    if self.at_command_end()? || self.peek_keyword("by")? {
+                        return Err(QueryProblem::syntax(keys::TRAILING_COMMA, token.span));
+                    }
+                }
+                Some(token) if token.kind.is_word("by") => {
+                    let group_keys = self.group_keys(token.span, &mut names)?;
+                    return Ok(StatsCommand {
+                        aggregates,
+                        group_keys,
+                        after: Vec::new(),
+                    });
+                }
+                Some(token) => return Err(unexpected(token)),
+            }
+        }
+        Ok(StatsCommand {
+            aggregates,
+            group_keys: Vec::new(),
+            after: Vec::new(),
+        })
+    }
+
+    /// The keys after `by`, written at `by` (BR1.1, BR1.7).
+    fn group_keys(
+        &mut self,
+        by: Span,
+        names: &mut Vec<String>,
+    ) -> Result<Vec<GroupKey>, QueryProblem> {
+        if self.at_command_end()? {
+            return Err(QueryProblem::syntax(keys::MISSING_GROUP_KEY, by));
+        }
+        let mut group_keys = Vec::new();
+        loop {
+            let (key, name_span) = self.group_key()?;
+            push_column(names, &key.column_name, name_span)?;
+            group_keys.push(key);
+            if self.at_command_end()? {
+                return Ok(group_keys);
+            }
+            match self.next()? {
+                None => return Ok(group_keys),
+                Some(token) if token.kind == TokenKind::Comma => {
+                    if self.at_command_end()? {
+                        return Err(QueryProblem::syntax(keys::TRAILING_COMMA, token.span));
+                    }
+                }
+                Some(token) => return Err(unexpected(token)),
+            }
+        }
+    }
+
+    /// One aggregate, `function(argument)[ as name]` (BR1.2-BR1.4, BR1.9),
+    /// with where its column name was written.
+    fn aggregate(&mut self) -> Result<(AggregateSpec, Span), QueryProblem> {
+        let Some(token) = self.next()? else {
+            return Err(QueryProblem::syntax(keys::EXPECTED_AGGREGATE, self.end()));
+        };
+        let Some(name) = token.kind.bare().map(str::to_string) else {
+            if matches!(token.kind, TokenKind::Name(_)) {
+                return Err(
+                    QueryProblem::syntax(keys::EXPECTED_AGGREGATE, token.span).with_word(token.raw)
+                );
+            }
+            return Err(unexpected(token));
+        };
+        if !self.peek_is(&TokenKind::LParen)? {
+            return Err(
+                QueryProblem::syntax(keys::EXPECTED_AGGREGATE, token.span).with_word(token.raw)
+            );
+        }
+        // The functions are the catalog's, written as the documentation
+        // writes them (BR1.1, U2:BR1.1, BR4.1).
+        let listed = QueryCatalog::aggregate_function(&name)
+            .and_then(|listed| AggregateFunction::from_name(listed.name).map(|f| (listed, f)));
+        let function = match listed {
+            Some((listed, function)) if listed.supported => function,
+            Some(_) => {
+                return Err(QueryProblem::unsupported(
+                    keys::UNSUPPORTED_AGGREGATE,
+                    name,
+                    token.span,
+                ));
+            }
+            None => {
+                return Err(QueryProblem::unsupported(
+                    keys::UNSUPPORTED_FUNCTION,
+                    name,
+                    token.span,
+                ));
+            }
+        };
+        let Some(open) = self.next()? else {
+            return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+        };
+        let (argument, percentile) = if function == AggregateFunction::Pct {
+            let (field, percentile) = self.pct_arguments(open.span)?;
+            (field, Some(percentile))
+        } else {
+            (self.aggregate_argument(function, open.span)?, None)
+        };
+        let written = self.source_text(token.start, self.last_end);
+        let written_span = self.span_since(Start::of(&token));
+        let (column_name, name_span) = self.alias()?.unwrap_or((written, written_span));
+        Ok((
+            AggregateSpec {
+                function,
+                argument,
+                percentile,
+                column_name,
+            },
+            name_span,
+        ))
+    }
+
+    /// The field, `,`, percentile and `)` of `pct(`, the `(` being at
+    /// `open` (U2:BR1.2): a percentile from 0 to 100, kept as written.
+    fn pct_arguments(
+        &mut self,
+        open: Span,
+    ) -> Result<(AggregateArgument, Percentile), QueryProblem> {
+        let unclosed = || QueryProblem::syntax(keys::UNCLOSED_PAREN, open);
+        let argument = match self.aggregate_field(AggregateFunction::Pct, open)? {
+            Some(argument) => argument,
+            None => return Err(QueryProblem::syntax(keys::ARGUMENT_COUNT, open)),
+        };
+        match self.next()? {
+            Some(comma) if comma.kind == TokenKind::Comma => {}
+            Some(close) if close.kind == TokenKind::RParen => {
+                return Err(QueryProblem::syntax(keys::ARGUMENT_COUNT, open));
+            }
+            Some(other) if other.kind != TokenKind::Pipe => return Err(unexpected(other)),
+            _ => return Err(unclosed()),
+        }
+        let token = match self.next_value()? {
+            Some(token) if token.kind == TokenKind::Pipe => return Err(unclosed()),
+            Some(token) if token.kind == TokenKind::RParen => {
+                return Err(QueryProblem::syntax(keys::ARGUMENT_COUNT, open));
+            }
+            Some(token) => token,
+            None => return Err(unclosed()),
+        };
+        let percentile = match token.kind {
+            TokenKind::Number(_) => Percentile::parse(&token.raw).ok_or_else(|| {
+                QueryProblem::syntax(keys::PCT_OUT_OF_RANGE, token.span)
+                    .with_word(token.raw.clone())
+            })?,
+            _ => {
+                return Err(
+                    QueryProblem::syntax(keys::EXPECTED_VALUE, token.span).with_word(token.raw)
+                );
+            }
+        };
+        self.close_arguments(open)?;
+        Ok((argument, percentile))
+    }
+
+    /// The `)` after the last argument of a function opened at `open`; a
+    /// `,` means one argument too many (BR1.7).
+    fn close_arguments(&mut self, open: Span) -> Result<(), QueryProblem> {
+        match self.next()? {
+            Some(close) if close.kind == TokenKind::RParen => Ok(()),
+            Some(comma) if comma.kind == TokenKind::Comma => {
+                Err(QueryProblem::syntax(keys::ARGUMENT_COUNT, open))
+            }
+            Some(other) if other.kind != TokenKind::Pipe => Err(unexpected(other)),
+            _ => Err(QueryProblem::syntax(keys::UNCLOSED_PAREN, open)),
+        }
+    }
+
+    /// The argument of an aggregate and its `)`, the `(` being at `open`
+    /// (BR1.3, BR1.7): `*` for `count` only (and `count()`, which counts the
+    /// same), else one field.
+    fn aggregate_argument(
+        &mut self,
+        function: AggregateFunction,
+        open: Span,
+    ) -> Result<AggregateArgument, QueryProblem> {
+        match self.aggregate_field(function, open)? {
+            // `count()`: its `)` is taken.
+            None => Ok(AggregateArgument::All),
+            Some(argument) => {
+                self.close_arguments(open)?;
+                Ok(argument)
+            }
+        }
+    }
+
+    /// The first argument of an aggregate opened at `open`: `*` (for
+    /// `count` only) or one field; `None` when `count()` closes at once,
+    /// its `)` taken (BR1.3).
+    fn aggregate_field(
+        &mut self,
+        function: AggregateFunction,
+        open: Span,
+    ) -> Result<Option<AggregateArgument>, QueryProblem> {
+        let unclosed = || QueryProblem::syntax(keys::UNCLOSED_PAREN, open);
+        let Some(token) = self.next()? else {
+            return Err(unclosed());
+        };
+        match &token.kind {
+            TokenKind::RParen if function == AggregateFunction::Count => Ok(None),
+            TokenKind::RParen => Err(QueryProblem::syntax(keys::ARGUMENT_COUNT, open)),
+            TokenKind::Pipe => Err(unclosed()),
+            TokenKind::Arith if token.raw == "*" => {
+                if function != AggregateFunction::Count {
+                    return Err(QueryProblem::syntax(keys::AGGREGATE_STAR, token.span));
+                }
+                Ok(Some(AggregateArgument::All))
+            }
+            TokenKind::Name(_) if token.kind.bare().is_some_and(is_keyword) => {
+                Err(unexpected(token))
+            }
+            TokenKind::Name(_) => Ok(Some(AggregateArgument::Field(self.operand(token)?))),
+            TokenKind::Arith | TokenKind::LParen => Err(unexpected(token)),
+            _ => Err(QueryProblem::syntax(keys::EXPECTED_FIELD, token.span).with_word(token.raw)),
+        }
+    }
+
+    /// One `by` key, a field or `bin(period)`, `[ as name]` (BR1.3, BR1.4,
+    /// BR1.8), with where its column name was written.
+    fn group_key(&mut self) -> Result<(GroupKey, Span), QueryProblem> {
+        let Some(token) = self.next()? else {
+            return Err(QueryProblem::syntax(keys::EXPECTED_FIELD, self.end()));
+        };
+        match &token.kind {
+            TokenKind::Name(_) if token.kind.bare().is_some_and(is_keyword) => {
+                return Err(unexpected(token));
+            }
+            TokenKind::Name(_) => {}
+            TokenKind::Arith | TokenKind::RParen => return Err(unexpected(token)),
+            _ => {
+                return Err(
+                    QueryProblem::syntax(keys::EXPECTED_FIELD, token.span).with_word(token.raw)
+                );
+            }
+        }
+        let start = Start::of(&token);
+        let function = match token.kind.bare() {
+            Some(word) if self.peek_is(&TokenKind::LParen)? => Some(word.to_string()),
+            _ => None,
+        };
+        let kind = match function {
+            Some(word) if word == BIN => GroupKeyKind::Bin(self.bin_period()?),
+            // toMillis(@timestamp) and any other function is no key (Q6 A).
+            Some(word) => {
+                return Err(QueryProblem::unsupported(
+                    keys::UNSUPPORTED_FUNCTION,
+                    word,
+                    token.span,
+                ));
+            }
+            None => {
+                let field = field_of(&token)?;
+                if self.peek_is(&TokenKind::LBracket)? {
+                    return Err(QueryProblem::unsupported(
+                        keys::UNSUPPORTED_ARRAY_ELEMENT,
+                        token.raw,
+                        token.span,
+                    ));
+                }
+                GroupKeyKind::Field(field)
+            }
+        };
+        let written = self.source_text(token.start, self.last_end);
+        let written_span = self.span_since(start);
+        let (column_name, name_span) = self.alias()?.unwrap_or((written, written_span));
+        Ok((GroupKey { kind, column_name }, name_span))
+    }
+
+    /// The period of `bin(` and its `)`; the `(` is the next word (BR1.5,
+    /// BR1.8). The period is read by the lexer as one word.
+    fn bin_period(&mut self) -> Result<BinPeriod, QueryProblem> {
+        let Some(open) = self.next()? else {
+            return Err(QueryProblem::syntax(keys::UNEXPECTED_END, self.end()));
+        };
+        let (word, span) = self.lexer.bin_word();
+        let close = self.lexer.close_bin();
+        self.last_end = self.lexer.pos;
+        match close {
+            BinClose::Closed => bin_period_of(&word, span),
+            BinClose::Unclosed => Err(QueryProblem::syntax(keys::UNCLOSED_PAREN, open.span)),
+            BinClose::Other => {
+                Err(QueryProblem::syntax(keys::INVALID_BIN_PERIOD, span).with_word(word))
+            }
+        }
+    }
+
+    /// `as name` after an aggregate or a key, when written (BR1.4): the name
+    /// of one part, bare or in backquotes, and where it was written.
+    fn alias(&mut self) -> Result<Option<(String, Span)>, QueryProblem> {
+        if !self.peek_keyword("as")? {
+            return Ok(None);
+        }
+        let before = self.last_end;
+        let Some(word) = self.next()? else {
+            return Ok(None);
+        };
+        let expected = || QueryProblem::syntax(keys::EXPECTED_ALIAS, word.span);
+        let token = match self.next()? {
+            None => return Err(expected()),
+            Some(token) if token.kind == TokenKind::Pipe => {
+                self.unread(token, before);
+                return Err(expected());
+            }
+            Some(token) => token,
+        };
+        let is_word = |word: &str| is_keyword(word) || word.eq_ignore_ascii_case("by");
+        match &token.kind {
+            TokenKind::Name(parts)
+                if parts.len() == 1 && !token.kind.bare().is_some_and(is_word) =>
+            {
+                Ok(parts.first().map(|part| (part.text.clone(), token.span)))
+            }
+            _ => Err(QueryProblem::syntax(keys::EXPECTED_ALIAS, token.span).with_word(token.raw)),
+        }
+    }
+
+    /// The text from character `start` to `end` as a column name (BR1.9):
+    /// notes left out, every run of blanks and line breaks made one blank,
+    /// none at either end; quoted parts as written.
+    fn source_text(&self, start: usize, end: usize) -> String {
+        let chars = &self.lexer.chars;
+        let end = end.min(chars.len());
+        let mut text = String::new();
+        let mut quote: Option<char> = None;
+        let mut blank = false;
+        let mut index = start.min(end);
+        while index < end {
+            let c = chars[index];
+            index += 1;
+            if let Some(open) = quote {
+                text.push(c);
+                if c == '\\' && open != '`' && index < end {
+                    text.push(chars[index]);
+                    index += 1;
+                } else if c == open {
+                    quote = None;
+                }
+            } else if c == '#' {
+                while index < end && chars[index] != '\n' {
+                    index += 1;
+                }
+                blank = true;
+            } else if c.is_whitespace() {
+                blank = true;
+            } else {
+                if blank && !text.is_empty() {
+                    text.push(' ');
+                }
+                blank = false;
+                if matches!(c, '"' | '\'' | '`') {
+                    quote = Some(c);
+                }
+                text.push(c);
+            }
+        }
+        text
     }
 
     /// One field of `fields` or `sort`: a fixed field, a JSON field or
@@ -1110,6 +1693,9 @@ impl Parser {
     /// `toMillis(@timestamp)` (U1:BR3.6, BR3.7, U2:BR1.1). A `[` after it is
     /// an array element (U2:BR1.4).
     fn operand(&mut self, token: Token) -> Result<FieldRef, QueryProblem> {
+        if self.result_columns.is_some() {
+            return self.result_column(token);
+        }
         if let Some(word) = token.kind.bare() {
             if self.peek_is(&TokenKind::LParen)? {
                 return self.function(word.to_string(), token.span);
@@ -1124,6 +1710,33 @@ impl Parser {
             ));
         }
         Ok(field)
+    }
+
+    /// The result column a name refers to after `stats` (U2:BR1.4 (b)): the
+    /// parts joined by `.`, backquotes left out, the same as a column name
+    /// in case too. A name followed by `(` is no column: `count(*)` is
+    /// written in backquotes.
+    fn result_column(&mut self, token: Token) -> Result<FieldRef, QueryProblem> {
+        let unknown = |word: &str| {
+            QueryProblem::syntax(keys::UNKNOWN_RESULT_COLUMN, token.span).with_word(word)
+        };
+        let TokenKind::Name(parts) = &token.kind else {
+            return Err(unexpected(token));
+        };
+        if self.peek_is(&TokenKind::LParen)? {
+            return Err(unknown(&token.raw));
+        }
+        let name = parts
+            .iter()
+            .map(|part| part.text.as_str())
+            .collect::<Vec<_>>()
+            .join(".");
+        self.result_columns
+            .iter()
+            .flatten()
+            .find(|column| column.name == name)
+            .map(|column| FieldRef::Column(column.clone()))
+            .ok_or_else(|| unknown(&token.raw))
     }
 
     /// `name(`: only `toMillis(@timestamp)` is read (U1:BR3.7).
@@ -1375,6 +1988,7 @@ mod tests {
                 CommandKind::Fields(_) => "fields",
                 CommandKind::Sort(_) => "sort",
                 CommandKind::Limit(_) => "limit",
+                CommandKind::Stats(_) => "stats",
             })
             .collect()
     }
@@ -1484,12 +2098,13 @@ mod tests {
     fn other_console_commands_are_unsupported_and_unknown_words_are_mistakes() {
         // U1:BR3.2, U2:BR2.1: the console's other commands are named;
         // anything else is a writing mistake. `fields`, `sort` and `limit`
-        // are read since U2.
-        let stats = problem("filter @message like /a/\n| stats count(*) by bin(5m)");
-        assert_eq!(stats.kind, ProblemKind::Unsupported);
-        assert_eq!(stats.message_key, keys::UNSUPPORTED_COMMAND);
-        assert_eq!(stats.word.as_deref(), Some("stats"));
-        assert_eq!(stats.span, at(2, 3, 5));
+        // are read since U2, `stats` since 261025-insights-stats U1, so
+        // `parse` stands for the commands still not read here.
+        let parse = problem("filter @message like /a/\n| parse @message 'a*b' as x");
+        assert_eq!(parse.kind, ProblemKind::Unsupported);
+        assert_eq!(parse.message_key, keys::UNSUPPORTED_COMMAND);
+        assert_eq!(parse.word.as_deref(), Some("parse"));
+        assert_eq!(parse.span, at(2, 3, 5));
         for command in ["display", "parse", "dedup", "SOURCE", "unnest"] {
             let found = problem(&format!("{command} @message"));
             assert_eq!(found.message_key, keys::UNSUPPORTED_COMMAND, "{command}");
@@ -2548,6 +3163,798 @@ mod tests {
                 a_is(4.0)
             ])),
             "a run of or is one list of its parts"
+        );
+    }
+
+    // ---- 261025-insights-stats U1:BR1.1-BR1.9 ----------------------------
+
+    /// The `stats` command of `text`, which must be read.
+    fn stats_of(text: &str) -> crate::query::plan::StatsCommand {
+        match plan(text).stats() {
+            Some(stats) => stats.clone(),
+            None => panic!("{text:?} has no stats"),
+        }
+    }
+
+    fn aggregate(
+        function: crate::query::plan::AggregateFunction,
+        argument: crate::query::plan::AggregateArgument,
+        name: &str,
+    ) -> crate::query::plan::AggregateSpec {
+        crate::query::plan::AggregateSpec {
+            function,
+            argument,
+            percentile: None,
+            column_name: name.to_string(),
+        }
+    }
+
+    fn field_key(field: FieldRef, name: &str) -> crate::query::plan::GroupKey {
+        crate::query::plan::GroupKey {
+            kind: crate::query::plan::GroupKeyKind::Field(field),
+            column_name: name.to_string(),
+        }
+    }
+
+    fn bin_key(
+        count: u32,
+        unit: crate::query::plan::BinUnit,
+        name: &str,
+    ) -> crate::query::plan::GroupKey {
+        crate::query::plan::GroupKey {
+            kind: crate::query::plan::GroupKeyKind::Bin(crate::query::plan::BinPeriod {
+                count,
+                unit,
+            }),
+            column_name: name.to_string(),
+        }
+    }
+
+    fn assert_problem(text: &str, kind: ProblemKind, key: &str, span: Span) -> QueryProblem {
+        let found = problem(text);
+        assert_eq!(found.kind, kind, "{text:?}: {found:?}");
+        assert_eq!(found.message_key, key, "{text:?}: {found:?}");
+        assert_eq!(found.span, span, "{text:?}: {found:?}");
+        found
+    }
+
+    #[test]
+    fn stats_counts_by_a_bin_of_five_minutes() {
+        // BR1.1, BR1.5, BR1.8: the walking skeleton's query.
+        use crate::query::plan::{AggregateArgument, AggregateFunction, BinUnit};
+        let read = plan("filter @message like /ERROR/\n| stats count(*) by bin(5m)");
+        assert_eq!(kinds(&read), vec!["filter", "stats"]);
+        let stats = stats_of("stats count(*) by bin(5m)");
+        assert_eq!(
+            stats.aggregates,
+            vec![aggregate(
+                AggregateFunction::Count,
+                AggregateArgument::All,
+                "count(*)"
+            )]
+        );
+        assert_eq!(
+            stats.group_keys,
+            vec![bin_key(5, BinUnit::Minutes, "bin(5m)")]
+        );
+    }
+
+    #[test]
+    fn stats_reads_several_aggregates_with_as_names_and_no_by() {
+        // BR1.1, BR1.4: `as` names the column; without `by` there is no key.
+        use crate::query::plan::{AggregateArgument, AggregateFunction};
+        let latency = || AggregateArgument::Field(json(&["latency"], "latency"));
+        let stats = stats_of("stats avg(latency) as a, max(latency) as m");
+        assert_eq!(
+            stats.aggregates,
+            vec![
+                aggregate(AggregateFunction::Avg, latency(), "a"),
+                aggregate(AggregateFunction::Max, latency(), "m"),
+            ]
+        );
+        assert!(stats.group_keys.is_empty());
+        let stats = stats_of(
+            "STATS count(level), sum(bytes), min(@timestamp), \
+             sum(toMillis(@timestamp)) By level, @logStream as stream",
+        );
+        assert_eq!(
+            stats.aggregates,
+            vec![
+                aggregate(
+                    AggregateFunction::Count,
+                    AggregateArgument::Field(json(&["level"], "level")),
+                    "count(level)"
+                ),
+                aggregate(
+                    AggregateFunction::Sum,
+                    AggregateArgument::Field(json(&["bytes"], "bytes")),
+                    "sum(bytes)"
+                ),
+                aggregate(
+                    AggregateFunction::Min,
+                    AggregateArgument::Field(FieldRef::Timestamp),
+                    "min(@timestamp)"
+                ),
+                aggregate(
+                    AggregateFunction::Sum,
+                    AggregateArgument::Field(FieldRef::TimestampMillis),
+                    "sum(toMillis(@timestamp))"
+                ),
+            ]
+        );
+        assert_eq!(
+            stats.group_keys,
+            vec![
+                field_key(json(&["level"], "level"), "level"),
+                field_key(FieldRef::LogStream, "stream"),
+            ]
+        );
+        assert_eq!(
+            stats_of("stats count() by http.status").aggregates[0].argument,
+            AggregateArgument::All,
+            "count() counts every event as count(*) does"
+        );
+    }
+
+    #[test]
+    fn a_column_without_as_is_the_text_as_written_with_blanks_made_one() {
+        // BR1.9: cut from the text, line breaks and runs of blanks made one
+        // blank, notes left out.
+        let stats = stats_of("stats count( * ),  avg(\n   latency\t)\n# a note\n  by bin( 30s )");
+        assert_eq!(
+            stats.column_names(),
+            vec!["bin( 30s )", "count( * )", "avg( latency )"]
+        );
+        let noted = stats_of("stats count(\n# a note\n*)");
+        assert_eq!(noted.column_names(), vec!["count( *)"]);
+    }
+
+    #[test]
+    fn bin_reads_seconds_minutes_hours_and_days() {
+        // BR1.5, BR1.8.
+        use crate::query::plan::BinUnit;
+        for (text, count, unit) in [
+            ("bin(30s)", 30, BinUnit::Seconds),
+            ("bin(5m)", 5, BinUnit::Minutes),
+            ("bin(2h)", 2, BinUnit::Hours),
+            ("bin(1d)", 1, BinUnit::Days),
+            ("bin(1000000m)", 1_000_000, BinUnit::Minutes),
+        ] {
+            let stats = stats_of(&format!("stats count(*) by {text}"));
+            assert_eq!(stats.group_keys, vec![bin_key(count, unit, text)], "{text}");
+        }
+    }
+
+    #[test]
+    fn bin_units_of_the_console_not_read_yet_are_unsupported() {
+        // BR1.5 (Q1 A): ms, w, mo, q and y.
+        for unit in ["ms", "w", "mo", "q", "y"] {
+            let text = format!("stats count(*) by bin(5{unit})");
+            let length = u32::try_from(unit.len()).unwrap() + 1;
+            let found = assert_problem(
+                &text,
+                ProblemKind::Unsupported,
+                keys::UNSUPPORTED_BIN_UNIT,
+                at(1, 23, length),
+            );
+            assert_eq!(found.word, Some(format!("5{unit}")));
+        }
+    }
+
+    #[test]
+    fn a_bin_period_of_zero_above_the_limit_or_of_no_form_is_a_mistake() {
+        // BR1.5, BR1.8: 0, above 1,000,000, no number, no unit, an unknown
+        // unit; an unclosed bin( is the unclosed parenthesis.
+        for (period, span) in [
+            ("0m", at(1, 23, 2)),
+            ("1000001m", at(1, 23, 8)),
+            ("99999999999999999999m", at(1, 23, 21)),
+            ("m", at(1, 23, 1)),
+            ("5", at(1, 23, 1)),
+            ("5x", at(1, 23, 2)),
+            ("5M", at(1, 23, 2)),
+            ("-5m", at(1, 23, 3)),
+            ("", at(1, 23, 1)),
+        ] {
+            let text = format!("stats count(*) by bin({period})");
+            assert_problem(&text, ProblemKind::Syntax, keys::INVALID_BIN_PERIOD, span);
+        }
+        assert_problem(
+            "stats count(*) by bin(5m",
+            ProblemKind::Syntax,
+            keys::UNCLOSED_PAREN,
+            at(1, 22, 1),
+        );
+        assert_problem(
+            "stats count(*) by bin(5m | limit 1",
+            ProblemKind::Syntax,
+            keys::UNCLOSED_PAREN,
+            at(1, 22, 1),
+        );
+    }
+
+    #[test]
+    fn the_console_functions_are_read_and_others_unknown() {
+        // U1:BR1.2 named the rest of the documentation's functions
+        // Unsupported; U2:BR1.1 reads them (changed as BR5.1 allows). Any
+        // other name (or another case) is still an unknown function.
+        use crate::query::plan::{AggregateArgument, AggregateFunction};
+        for name in [
+            "count_distinct",
+            "stddev",
+            "earliest",
+            "latest",
+            "sortsFirst",
+            "sortsLast",
+        ] {
+            let stats = stats_of(&format!("stats {name}(x)"));
+            assert_eq!(
+                stats.aggregates,
+                vec![aggregate(
+                    AggregateFunction::from_name(name).unwrap(),
+                    AggregateArgument::Field(json(&["x"], "x")),
+                    &format!("{name}(x)")
+                )],
+                "{name}"
+            );
+        }
+        assert_eq!(
+            stats_of("stats pct(x, 50)").aggregates[0].function,
+            AggregateFunction::Pct
+        );
+        for name in ["COUNT", "toMillis", "median", "sortsfirst"] {
+            let text = format!("stats {name}(x)");
+            let found = problem(&text);
+            assert_eq!(found.message_key, keys::UNSUPPORTED_FUNCTION, "{text}");
+            assert_eq!(found.word.as_deref(), Some(name));
+        }
+    }
+
+    #[test]
+    fn only_count_takes_a_star_and_arguments_are_fields() {
+        // BR1.3.
+        for function in ["sum", "avg", "min", "max"] {
+            let text = format!("stats {function}(*)");
+            let column = u32::try_from(function.len()).unwrap() + 8;
+            assert_problem(
+                &text,
+                ProblemKind::Syntax,
+                keys::AGGREGATE_STAR,
+                at(1, column, 1),
+            );
+        }
+        let operator = problem("stats sum(a + b)");
+        assert_eq!(operator.message_key, keys::UNSUPPORTED_OPERATOR);
+        assert_eq!(operator.span, at(1, 13, 1));
+        let key_function = problem("stats count(*) by toMillis(@timestamp)");
+        assert_eq!(key_function.kind, ProblemKind::Unsupported);
+        assert_eq!(key_function.message_key, keys::UNSUPPORTED_FUNCTION);
+        let key_operator = problem("stats count(*) by bin(5m) + 1");
+        assert_eq!(key_operator.message_key, keys::UNSUPPORTED_OPERATOR);
+        let value = problem("stats sum(5)");
+        assert_eq!(value.message_key, keys::EXPECTED_FIELD);
+        assert_eq!(value.span, at(1, 11, 1));
+        let array = problem("stats max(a.0)");
+        assert_eq!(array.message_key, keys::UNSUPPORTED_ARRAY_ELEMENT);
+    }
+
+    #[test]
+    fn stats_mistakes_are_found_with_their_place() {
+        // BR1.7.
+        for (text, key, span) in [
+            ("stats count(*) by", keys::MISSING_GROUP_KEY, at(1, 16, 2)),
+            (
+                "stats count(*) by | limit 1",
+                keys::MISSING_GROUP_KEY,
+                at(1, 16, 2),
+            ),
+            ("stats count(*", keys::UNCLOSED_PAREN, at(1, 12, 1)),
+            ("stats sum(a, b)", keys::ARGUMENT_COUNT, at(1, 10, 1)),
+            ("stats sum()", keys::ARGUMENT_COUNT, at(1, 10, 1)),
+            ("stats count(*),", keys::TRAILING_COMMA, at(1, 15, 1)),
+            (
+                "stats count(*), by level",
+                keys::TRAILING_COMMA,
+                at(1, 15, 1),
+            ),
+            (
+                "stats count(*) by level,",
+                keys::TRAILING_COMMA,
+                at(1, 24, 1),
+            ),
+            ("stats by level", keys::MISSING_AGGREGATE, at(1, 1, 5)),
+            ("stats", keys::MISSING_AGGREGATE, at(1, 1, 5)),
+            ("stats | limit 1", keys::MISSING_AGGREGATE, at(1, 1, 5)),
+            ("stats level", keys::EXPECTED_AGGREGATE, at(1, 7, 5)),
+            ("stats count(*) as", keys::EXPECTED_ALIAS, at(1, 16, 2)),
+            ("stats count(*) as 5", keys::EXPECTED_ALIAS, at(1, 19, 1)),
+        ] {
+            assert_problem(text, ProblemKind::Syntax, key, span);
+        }
+        assert_eq!(
+            problem("stats count(*) level").message_key,
+            keys::UNEXPECTED_TOKEN
+        );
+    }
+
+    #[test]
+    fn two_columns_of_the_same_name_are_a_mistake_at_the_second() {
+        // BR1.4: the keys and the aggregates share their names.
+        for (text, span) in [
+            ("stats count(*), count(*)", at(1, 17, 8)),
+            ("stats count(*) as n, sum(x) as n", at(1, 32, 1)),
+            ("stats count(*) as level by level", at(1, 28, 5)),
+            ("stats count(*) by level, level", at(1, 26, 5)),
+        ] {
+            assert_problem(text, ProblemKind::Syntax, keys::DUPLICATE_COLUMN, span);
+        }
+        assert_eq!(
+            stats_of("stats count(*) as n, count(*)").column_names(),
+            vec!["n", "count(*)"]
+        );
+    }
+
+    #[test]
+    fn after_stats_fields_and_a_second_stats_are_unsupported_and_others_read() {
+        // U1:BR1.6 made stats the last command; U2:BR1.4, BR1.5 read filter,
+        // sort and limit after it and keep only fields and a second stats
+        // Unsupported (changed as BR5.1 allows). The ones before it are read.
+        for (text, word, key, span) in [
+            (
+                "stats count(*) | fields a",
+                "fields",
+                keys::FIELDS_AFTER_STATS,
+                at(1, 18, 6),
+            ),
+            (
+                "stats count(*)\n| stats count(*)",
+                "stats",
+                keys::SECOND_STATS,
+                at(2, 3, 5),
+            ),
+            (
+                "stats count(*) | Parse x",
+                "Parse",
+                keys::UNSUPPORTED_COMMAND,
+                at(1, 18, 5),
+            ),
+        ] {
+            let found = assert_problem(text, ProblemKind::Unsupported, key, span);
+            assert_eq!(found.word.as_deref(), Some(word));
+        }
+        assert_problem(
+            "stats count(*) | flter x = 1",
+            ProblemKind::Syntax,
+            keys::UNKNOWN_COMMAND,
+            at(1, 18, 5),
+        );
+        assert_eq!(
+            stats_of("stats count(*) | limit 5").after,
+            vec![crate::query::plan::AfterStatsCommand::Limit(5)]
+        );
+        let read = plan("fields a | filter a = 1 | sort @timestamp | limit 9 | stats count(*)");
+        assert_eq!(
+            kinds(&read),
+            vec!["fields", "filter", "sort", "limit", "stats"]
+        );
+        assert_eq!(problem("stats count(*) |").message_key, keys::EMPTY_COMMAND);
+    }
+
+    #[test]
+    fn the_number_and_alias_mistakes_outside_stats_stay_as_they_were() {
+        // BR1.8: `5m` outside bin( is still a number run into letters, and
+        // `fields ... as` is still Unsupported.
+        let number = problem("filter @timestamp > 5m");
+        assert_eq!(number.message_key, keys::INVALID_NUMBER);
+        assert_eq!(number.span, at(1, 21, 2));
+        assert_eq!(
+            problem("fields @message as m").message_key,
+            keys::UNSUPPORTED_ALIAS
+        );
+        assert_eq!(
+            problem("filter bin(5m) = 1").message_key,
+            keys::UNSUPPORTED_FUNCTION
+        );
+    }
+
+    #[test]
+    fn every_key_is_listed_once() {
+        let mut all = keys::ALL.to_vec();
+        all.sort_unstable();
+        all.dedup();
+        assert_eq!(all.len(), keys::ALL.len());
+        for key in [
+            keys::MISSING_AGGREGATE,
+            keys::EXPECTED_AGGREGATE,
+            keys::MISSING_GROUP_KEY,
+            keys::TRAILING_COMMA,
+            keys::ARGUMENT_COUNT,
+            keys::AGGREGATE_STAR,
+            keys::EXPECTED_ALIAS,
+            keys::DUPLICATE_COLUMN,
+            keys::INVALID_BIN_PERIOD,
+            keys::UNSUPPORTED_BIN_UNIT,
+            keys::UNSUPPORTED_AGGREGATE,
+            // U2 (U1's UNSUPPORTED_AFTER_STATS is replaced by the two
+            // narrower keys of BR1.5).
+            keys::PCT_OUT_OF_RANGE,
+            keys::UNKNOWN_RESULT_COLUMN,
+            keys::FIELDS_AFTER_STATS,
+            keys::SECOND_STATS,
+        ] {
+            assert!(keys::ALL.contains(&key), "{key}");
+        }
+    }
+
+    // ---- 261025-insights-stats U2:BR1.1-BR1.5, BR4.1, BR5.1 ---------------
+
+    fn column(index: usize, name: &str, is_timestamp: bool) -> FieldRef {
+        FieldRef::Column(crate::query::plan::ColumnRef {
+            index,
+            name: name.to_string(),
+            is_timestamp,
+        })
+    }
+
+    /// The commands after `stats` in `text`, their conditions bare.
+    fn after_of(text: &str) -> Vec<crate::query::plan::AfterStatsCommand> {
+        use crate::query::plan::AfterStatsCommand;
+        stats_of(text)
+            .after
+            .iter()
+            .map(|command| match command {
+                AfterStatsCommand::Filter(condition) => AfterStatsCommand::Filter(bare(condition)),
+                other => other.clone(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_twelve_functions_are_read_each_with_its_one_field() {
+        // BR1.1, BR1.2.
+        use crate::query::plan::{AggregateArgument, AggregateFunction};
+        let stats = stats_of(
+            "stats count(*), count(user), count_distinct(user), sum(latency), avg(latency), \
+             min(latency), max(latency), pct(latency, 95), stddev(latency), \
+             earliest(@message), latest(level), sortsFirst(user), sortsLast(user)",
+        );
+        let functions: Vec<AggregateFunction> = stats
+            .aggregates
+            .iter()
+            .map(|aggregate| aggregate.function)
+            .collect();
+        use AggregateFunction::*;
+        assert_eq!(
+            functions,
+            vec![
+                Count,
+                Count,
+                CountDistinct,
+                Sum,
+                Avg,
+                Min,
+                Max,
+                Pct,
+                Stddev,
+                Earliest,
+                Latest,
+                SortsFirst,
+                SortsLast
+            ]
+        );
+        assert_eq!(
+            stats.aggregates[9].argument,
+            AggregateArgument::Field(FieldRef::Message)
+        );
+        assert!(
+            stats
+                .aggregates
+                .iter()
+                .all(|aggregate| (aggregate.function == Pct) == aggregate.percentile.is_some())
+        );
+        let unknown = problem("stats sortsfirst(user)");
+        assert_eq!(unknown.kind, ProblemKind::Unsupported);
+        assert_eq!(unknown.message_key, keys::UNSUPPORTED_FUNCTION);
+        assert_eq!(unknown.word.as_deref(), Some("sortsfirst"));
+    }
+
+    #[test]
+    fn pct_takes_a_field_and_a_percentile_from_0_to_100() {
+        // BR1.2, BR1.3: the column is the text as written.
+        use crate::query::plan::Percentile;
+        for (text, numerator, scale) in [
+            ("pct(latency, 95)", 95, 0),
+            ("pct(latency, 99.9)", 999, 1),
+            ("pct(latency, 0)", 0, 0),
+            ("pct(latency, 100)", 100, 0),
+        ] {
+            let stats = stats_of(&format!("stats {text}"));
+            let aggregate = &stats.aggregates[0];
+            assert_eq!(
+                aggregate.percentile,
+                Some(Percentile { numerator, scale }),
+                "{text}"
+            );
+            assert_eq!(aggregate.column_name, text);
+        }
+        assert_eq!(
+            stats_of("stats pct(latency,95) as p95").column_names(),
+            vec!["p95"]
+        );
+        assert_eq!(
+            stats_of("stats pct( latency ,  95 )").column_names(),
+            vec!["pct( latency , 95 )"]
+        );
+    }
+
+    #[test]
+    fn a_percentile_out_of_range_or_no_number_is_a_mistake_at_its_place() {
+        // BR1.2.
+        for (text, span) in [
+            ("stats pct(latency, 101)", at(1, 20, 3)),
+            ("stats pct(latency, -1)", at(1, 20, 2)),
+            ("stats pct(latency, 100.5)", at(1, 20, 5)),
+        ] {
+            let found = assert_problem(text, ProblemKind::Syntax, keys::PCT_OUT_OF_RANGE, span);
+            assert!(found.word.is_some(), "{text}");
+        }
+        assert_problem(
+            "stats pct(latency, x)",
+            ProblemKind::Syntax,
+            keys::EXPECTED_VALUE,
+            at(1, 20, 1),
+        );
+        assert_problem(
+            "stats pct(latency, 95",
+            ProblemKind::Syntax,
+            keys::UNCLOSED_PAREN,
+            at(1, 10, 1),
+        );
+    }
+
+    #[test]
+    fn every_function_takes_its_number_of_arguments() {
+        // BR1.2, U1:BR1.3, BR1.7.
+        for (text, key, span) in [
+            ("stats pct(latency)", keys::ARGUMENT_COUNT, at(1, 10, 1)),
+            (
+                "stats pct(latency, 1, 2)",
+                keys::ARGUMENT_COUNT,
+                at(1, 10, 1),
+            ),
+            (
+                "stats count_distinct(a, b)",
+                keys::ARGUMENT_COUNT,
+                at(1, 21, 1),
+            ),
+            ("stats latest()", keys::ARGUMENT_COUNT, at(1, 13, 1)),
+            ("stats stddev(*)", keys::AGGREGATE_STAR, at(1, 14, 1)),
+            ("stats pct(*, 95)", keys::AGGREGATE_STAR, at(1, 11, 1)),
+        ] {
+            assert_problem(text, ProblemKind::Syntax, key, span);
+        }
+    }
+
+    #[test]
+    fn filter_sort_and_limit_after_stats_are_kept_in_order_on_the_result_columns() {
+        // BR1.4, UC1.
+        use crate::query::plan::AfterStatsCommand;
+        let text = "stats count(*) as n by level | filter n > 10 | sort n desc | limit 5";
+        assert_eq!(kinds(&plan(text)), vec!["stats"]);
+        assert_eq!(
+            after_of(text),
+            vec![
+                AfterStatsCommand::Filter(compare(
+                    column(1, "n", false),
+                    CompareOp::Gt,
+                    Literal::Number(10.0)
+                )),
+                AfterStatsCommand::Sort(vec![SortKey {
+                    field: column(1, "n", false),
+                    direction: SortDirection::Desc,
+                }]),
+                AfterStatsCommand::Limit(5),
+            ]
+        );
+        assert_eq!(
+            after_of("stats count(*) as n | limit 1 | filter n = 2 | limit 0"),
+            vec![
+                AfterStatsCommand::Limit(1),
+                AfterStatsCommand::Filter(compare(
+                    column(0, "n", false),
+                    CompareOp::Eq,
+                    Literal::Number(2.0)
+                )),
+                AfterStatsCommand::Limit(0),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_result_column_is_named_as_written_backquotes_left_out() {
+        // BR1.4 (b), (d), (e).
+        use crate::query::plan::AfterStatsCommand;
+        assert_eq!(
+            after_of("stats count(*) by level | filter `count(*)` >= 1"),
+            vec![AfterStatsCommand::Filter(compare(
+                column(1, "count(*)", false),
+                CompareOp::GtEq,
+                Literal::Number(1.0)
+            ))]
+        );
+        assert_eq!(
+            after_of("stats count(*) by http.status, @logStream | sort http.status, `@logStream`"),
+            vec![AfterStatsCommand::Sort(vec![
+                SortKey {
+                    field: column(0, "http.status", false),
+                    direction: SortDirection::Asc,
+                },
+                SortKey {
+                    field: column(1, "@logStream", false),
+                    direction: SortDirection::Asc,
+                },
+            ])]
+        );
+        assert_eq!(
+            after_of("stats count(*) as n, sum(x) as m | filter n != m"),
+            vec![AfterStatsCommand::Filter(condition(
+                ConditionKind::CompareFields {
+                    field: column(0, "n", false),
+                    op: CompareOp::NotEq,
+                    other: column(1, "m", false),
+                }
+            ))]
+        );
+        assert_eq!(
+            after_of("stats count(*) as n by level | filter level in ['a'] and not (n < 2)"),
+            vec![AfterStatsCommand::Filter(and(
+                within(
+                    column(0, "level", false),
+                    vec![Literal::Text("a".to_string())],
+                    false
+                ),
+                not(compare(
+                    column(1, "n", false),
+                    CompareOp::Lt,
+                    Literal::Number(2.0)
+                ))
+            ))]
+        );
+    }
+
+    #[test]
+    fn a_name_that_is_no_result_column_is_a_mistake_at_its_place() {
+        // BR1.4 (b): exact case; a name like count(*) needs backquotes.
+        for (text, word, span) in [
+            (
+                "stats count(*) as n | filter level = 'a'",
+                "level",
+                at(1, 30, 5),
+            ),
+            ("stats count(*) as n | sort N", "N", at(1, 28, 1)),
+            (
+                "stats count(*) by level | filter count(*) > 1",
+                "count",
+                at(1, 34, 5),
+            ),
+            ("stats count(*) as n | filter n = m", "m", at(1, 34, 1)),
+        ] {
+            let found =
+                assert_problem(text, ProblemKind::Syntax, keys::UNKNOWN_RESULT_COLUMN, span);
+            assert_eq!(found.word.as_deref(), Some(word), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_limit_after_stats_has_the_bounds_of_every_limit() {
+        // BR1.4 (e).
+        use crate::query::plan::AfterStatsCommand;
+        assert_eq!(
+            stats_of("stats count(*) | limit 100000").after,
+            vec![AfterStatsCommand::Limit(100_000)]
+        );
+        assert_problem(
+            "stats count(*) | limit 100001",
+            ProblemKind::Syntax,
+            keys::LIMIT_TOO_LARGE,
+            at(1, 24, 6),
+        );
+        assert_problem(
+            "stats count(*) | limit",
+            ProblemKind::Syntax,
+            keys::MISSING_LIMIT,
+            at(1, 18, 5),
+        );
+        assert_problem(
+            "stats count(*) | sort",
+            ProblemKind::Syntax,
+            keys::MISSING_FIELDS,
+            at(1, 18, 4),
+        );
+        assert_problem(
+            "stats count(*) | filter",
+            ProblemKind::Syntax,
+            keys::MISSING_CONDITION,
+            at(1, 18, 6),
+        );
+    }
+
+    #[test]
+    fn a_time_column_takes_date_texts_and_refuses_like_as_the_timestamp_does() {
+        // BR1.4 (c): a time column is read as @timestamp is.
+        use crate::query::plan::AfterStatsCommand;
+        assert_eq!(
+            after_of("stats count(*) by bin(5m) as t | filter t > \"2025-08-25 01:43:26\""),
+            vec![AfterStatsCommand::Filter(compare(
+                column(0, "t", true),
+                CompareOp::Gt,
+                Literal::DateText {
+                    text: "2025-08-25 01:43:26".to_string(),
+                    span: at(1, 45, 21),
+                }
+            ))]
+        );
+        assert_problem(
+            "stats count(*) by bin(5m) as t | filter t like 'x'",
+            ProblemKind::Unsupported,
+            keys::UNSUPPORTED_TIMESTAMP_OPERATOR,
+            at(1, 43, 4),
+        );
+        assert_problem(
+            "stats count(*) by bin(5m) as t | filter t > 'yesterday'",
+            ProblemKind::Syntax,
+            keys::INVALID_DATE_TIME,
+            at(1, 45, 11),
+        );
+        assert_eq!(
+            after_of("stats count(*) as n | filter n = '5'"),
+            vec![AfterStatsCommand::Filter(compare(
+                column(0, "n", false),
+                CompareOp::Eq,
+                Literal::Text("5".to_string())
+            ))],
+            "a column that holds no time keeps the text"
+        );
+    }
+
+    #[test]
+    fn the_catalog_decides_the_unsupported_commands_and_the_reserved_words() {
+        // BR4.1: commands in any case; only the reserved keywords are never
+        // fields, so `desc`, `by`, `as` and `asc` are still read as fields
+        // (FR review R-04, BR5.1).
+        use crate::query::catalog::{QueryCatalog, VocabularyKind};
+        for name in QueryCatalog::names(VocabularyKind::Command, false) {
+            for written in [name.to_string(), name.to_ascii_uppercase()] {
+                let found = problem(&format!("{written} x"));
+                assert_eq!(found.kind, ProblemKind::Unsupported, "{written}");
+                assert_eq!(found.message_key, keys::UNSUPPORTED_COMMAND, "{written}");
+                assert_eq!(found.word.as_deref(), Some(written.as_str()));
+            }
+        }
+        for word in ["and", "or", "not", "like", "in"] {
+            assert!(
+                parse_query(&format!("filter {word} = 1")).is_err(),
+                "{word}"
+            );
+            assert!(parse_query(&format!("sort {word}")).is_err(), "{word}");
+        }
+        for word in ["by", "as", "asc", "desc"] {
+            assert_eq!(
+                only(&format!("filter {word} = 1")),
+                compare(json(&[word], word), CompareOp::Eq, Literal::Number(1.0)),
+                "{word}"
+            );
+        }
+        let read = plan("filter desc = 'x' | sort by desc");
+        let CommandKind::Sort(sort_keys) = &read.commands[1].kind else {
+            panic!("no sort: {read:?}");
+        };
+        assert_eq!(
+            sort_keys,
+            &vec![SortKey {
+                field: json(&["by"], "by"),
+                direction: SortDirection::Desc,
+            }]
         );
     }
 }

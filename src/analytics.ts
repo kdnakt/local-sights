@@ -4,10 +4,22 @@
  * reading problem (U1:BR3.9) and the place of a problem in the query text.
  * Since U2 the range of a problem in the editor's own positions (U2:BR6.1)
  * and the first line of a cell (U2:BR7.1). Since U3 the choice of up to 50
- * log groups (U3:BR4.1).
+ * log groups (U3:BR4.1). Since 261025-insights-stats U2 the syntax colours and
+ * the lists of commands and functions in a problem's words come from the
+ * core's QueryCatalog (BR4.2). Since U4 whether an export copies a cancelled
+ * result (U3 code review R-05).
  */
 
-import type { CompletionCandidate, CompletionKind, QueryProblem, QuerySpan } from "./api";
+import type {
+  CompletionCandidate,
+  CompletionKind,
+  ExportScreen,
+  QueryProblem,
+  QuerySpan,
+  QueryVocabulary,
+  ResultStage,
+  VocabularyKind,
+} from "./api";
 import type { Translate } from "./i18n/messages";
 
 /** The two screens of the app (FR1.1). */
@@ -22,22 +34,51 @@ export const PAGE_NAME_KEY: Record<AppPage, string> = {
   logAnalytics: "nav.logAnalytics",
 };
 
+/** The problems followed by the functions this version runs (U2:BR4.2). */
+const FUNCTION_PROBLEMS: readonly string[] = [
+  "query.unsupported.function",
+  "query.unsupported.aggregateFunction",
+];
+
+/** The names of the catalog's words of `kinds` that this version runs, in its order. */
+function supportedNames(
+  catalog: readonly QueryVocabulary[] | null,
+  kinds: readonly VocabularyKind[],
+): string[] {
+  return (catalog ?? [])
+    .filter((word) => word.supported && kinds.includes(word.kind))
+    .map((word) => word.name);
+}
+
 /**
  * The words of a reading problem: the line and column, then what is wrong,
  * and for an unsupported command the commands this version runs (U1:BR3.9,
- * refined-mockups screen 7). Only the query's own word is put in (FR6.4).
+ * refined-mockups screen 7). Only the query's own word is put in
+ * (FR6.4). Since 261025-insights-stats U2:BR4.2 the commands, and for an
+ * unsupported function the functions, are the core's QueryCatalog's; before
+ * the catalog has come (or when it could not be had) the list is left out.
  */
-export function problemText(problem: QueryProblem, t: Translate): string {
+export function problemText(
+  problem: QueryProblem,
+  t: Translate,
+  catalog: readonly QueryVocabulary[] | null = null,
+): string {
   const place = t("insights.error.at", {
     line: problem.span.line,
     column: problem.span.column,
   });
   const words = t(problem.messageKey, { word: problem.word ?? "" });
-  const supported =
-    problem.messageKey === "query.unsupported.command"
-      ? ` ${t("insights.error.supportedList")}`
-      : "";
-  return `${place}${words}${supported}`;
+  const separator = t("insights.error.listSeparator");
+  const list = (key: string, names: string[]) =>
+    names.length === 0 ? "" : ` ${t(key, { names: names.join(separator) })}`;
+  if (problem.messageKey === "query.unsupported.command") {
+    return `${place}${words}${list("insights.error.supportedList", supportedNames(catalog, ["command"]))}`;
+  }
+  if (FUNCTION_PROBLEMS.includes(problem.messageKey)) {
+    const functions = supportedNames(catalog, ["aggregateFunction", "function"]);
+    return `${place}${words}${list("insights.error.functionList", functions)}`;
+  }
+  return `${place}${words}`;
 }
 
 /**
@@ -105,6 +146,24 @@ export interface HighlightRule {
   caseInsensitive?: boolean;
 }
 
+/** `name` written into a regular expression as it is. */
+function escapeRegex(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** One rule matching any of `names` as a whole word, or none when there are none. */
+function wordRule(
+  token: string,
+  names: readonly string[],
+  caseInsensitive: boolean,
+): HighlightRule[] {
+  if (names.length === 0) {
+    return [];
+  }
+  const regex = `\\b(?:${names.map(escapeRegex).join("|")})\\b(?![.\\-])`;
+  return [caseInsensitive ? { token, regex, caseInsensitive } : { token, regex }];
+}
+
 /**
  * U2:BR9.2 (Should): the syntax colours of the query field, as Ace highlight
  * rules. Commands, fields, strings, numbers, regular expressions and
@@ -112,23 +171,37 @@ export interface HighlightRule {
  * themes colour; the colours only help reading, a problem is always told in
  * words too (U2:BR6.1). At one place the first rule that matches wins, so
  * the words come before the JSON names they would also match.
+ *
+ * Since 261025-insights-stats U2:BR4.2 the words are the core's QueryCatalog's:
+ * every command (run or not), the keywords (any case, as the parser reads
+ * them) and the functions (as written). Without the catalog there are no
+ * rules: the field is plain text until it comes.
  */
-export const QUERY_HIGHLIGHT_RULES: readonly HighlightRule[] = [
+export function highlightRules(catalog: readonly QueryVocabulary[] | null): HighlightRule[] {
+  if (catalog === null || catalog.length === 0) {
+    return [];
+  }
+  const named = (kinds: readonly VocabularyKind[]) =>
+    catalog.filter((word) => kinds.includes(word.kind)).map((word) => word.name);
+  return [
+    ...WORDLESS_RULES_BEFORE,
+    ...wordRule("keyword", named(["command"]), true),
+    ...wordRule("keyword.operator", named(["keyword"]), true),
+    ...wordRule("support.function", named(["aggregateFunction", "function"]), false),
+    ...WORDLESS_RULES_AFTER,
+  ];
+}
+
+/** The rules before the words: notes, strings and regular expressions. */
+const WORDLESS_RULES_BEFORE: readonly HighlightRule[] = [
   { token: "comment", regex: "#.*$" },
   { token: "string", regex: '"(?:[^"\\\\]|\\\\.)*"?' },
   { token: "string", regex: "'(?:[^'\\\\]|\\\\.)*'?" },
   { token: "string.regexp", regex: "/(?:[^/\\\\]|\\\\.)*/?" },
-  {
-    token: "keyword",
-    regex: "\\b(?:fields|filter|sort|limit)\\b(?![.\\-])",
-    caseInsensitive: true,
-  },
-  {
-    token: "keyword.operator",
-    regex: "\\b(?:and|or|not|like|in|asc|desc)\\b(?![.\\-])",
-    caseInsensitive: true,
-  },
-  { token: "support.function", regex: "\\btoMillis\\b" },
+];
+
+/** The rules after the words: fields, numbers, operators and signs. */
+const WORDLESS_RULES_AFTER: readonly HighlightRule[] = [
   { token: "variable.language", regex: "@[A-Za-z]+" },
   { token: "variable", regex: "`[^`]*`?(?:\\.(?:`[^`]*`?|[\\w-]+))*" },
   {
@@ -148,12 +221,15 @@ export interface HighlightToken {
 }
 
 /**
- * The pieces of `line` as {@link QUERY_HIGHLIGHT_RULES} colours them: at each
- * place the first rule that matches there, else one character of plain
- * text. Used by the tests; Ace runs the same rules itself.
+ * The pieces of `line` as `highlight` (from {@link highlightRules}) colours
+ * them: at each place the first rule that matches there, else one character
+ * of plain text. Used by the tests; Ace runs the same rules itself.
  */
-export function highlightTokens(line: string): HighlightToken[] {
-  const rules = QUERY_HIGHLIGHT_RULES.map((rule) => ({
+export function highlightTokens(
+  line: string,
+  highlight: readonly HighlightRule[],
+): HighlightToken[] {
+  const rules = highlight.map((rule) => ({
     token: rule.token,
     pattern: new RegExp(rule.regex, rule.caseInsensitive ? "iy" : "y"),
   }));
@@ -193,6 +269,7 @@ export const COMPLETION_KIND_KEY: Record<CompletionKind, string> = {
   Keyword: "insights.completion.keyword",
   FixedField: "insights.completion.field",
   JsonField: "insights.completion.jsonField",
+  Function: "insights.completion.function",
 };
 
 /** One entry of the completion list as the editor shows it. */
@@ -283,4 +360,16 @@ export function limitSelection(values: readonly string[], max: number): string[]
     }
   }
   return chosen;
+}
+
+/**
+ * 261025-insights-stats U3:BR3.5, U3 code review R-05: whether an export started from
+ * `screen` while the query screen's result is at `stage` copies a result made from part
+ * of the logs, decided as the export starts so that a later run does not change it.
+ */
+export function isPartialResultExport(
+  screen: ExportScreen,
+  stage: ResultStage | null | undefined,
+): boolean {
+  return screen === "logAnalytics" && stage === "cancelledPartial";
 }

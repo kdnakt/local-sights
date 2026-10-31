@@ -262,7 +262,18 @@ export type AnalyticsPhase =
   | "QueryError"
   | "FetchFailed"
   | "Cancelled"
-  | "EvaluationFailed";
+  | "EvaluationFailed"
+  /**
+   * [Cancel] was pressed while fetching: the fetch stops, then what was fetched is
+   * evaluated into the cancelled result; running, as Fetching and Evaluating are
+   * (261025-insights-stats U3:BR3.1, BR3.7).
+   */
+  | "Cancelling";
+
+/** Whether a query run is under way: Fetching, Evaluating or Cancelling (U3:BR3.7). */
+export function isQueryRunning(phase: AnalyticsPhase): boolean {
+  return phase === "Fetching" || phase === "Evaluating" || phase === "Cancelling";
+}
 
 /**
  * A field of the Log Analytics screen. `logGroup` takes the chosen log groups as
@@ -308,6 +319,9 @@ export interface InsightsProgress {
   totalCount: number;
 }
 
+/** The shape of a result (261025-insights-stats ADR-001). */
+export type ResultShape = "events" | "aggregates";
+
 /**
  * The shown result; its rows are read with `runId` alone (U3:BR3.2: the core keeps
  * copies of them, so they stay readable while the next run fetches, U3:BR3.4;
@@ -315,6 +329,11 @@ export interface InsightsProgress {
  */
 export interface ResultSummary {
   runId: number;
+  /**
+   * Event rows, or the aggregate rows of a `stats` (261025-insights-stats BR4.1): the
+   * table draws the rows by it.
+   */
+  shape: ResultShape;
   /** Result rows shown (U2:BR7.2). */
   rowCount: number;
   evaluatedCount: number;
@@ -324,6 +343,27 @@ export interface ResultSummary {
   matchedCount: number;
   /** The rows shown when a `limit` or the default 10,000 cut dropped some (U2:BR5.3). */
   truncatedAt: number | null;
+  /**
+   * The version within the run, from 1: the rows and details are read with
+   * `(runId, version)` (261025-insights-stats U3:BR2.4, BR4.1).
+   */
+  version: number;
+  /** Partial while fetching, final, or cancelled after [Cancel] (U3:BR4.1). */
+  stage: ResultStage;
+  /** What a partial result holds (U3:BR2.6); `null` otherwise. */
+  coverage: PartialCoverage | null;
+}
+
+/** Which result a version is (261025-insights-stats U3:BR4.1). */
+export type ResultStage = "partial" | "final" | "cancelledPartial";
+
+/** What a partial result holds (U3:BR2.6). */
+export interface PartialCoverage {
+  /** The log group under fetch, from 1. */
+  groupNumber: number;
+  groupCount: number;
+  /** Events the partial result was made from. */
+  includedEventCount: number;
 }
 
 /** The Log Analytics screen as the core shows it (261017-insights-query U1). */
@@ -365,12 +405,23 @@ export interface InsightsView {
   canExport: boolean;
 }
 
-/** One result row (U1:BR6.3): the event, its time in the chosen zone and `@log`. */
-export interface QueryRow extends LogEvent {
-  displayTime: string;
-  logGroupName: string;
-  /** One cell per result column; `null` without a value (U2:BR7.1). */
+/**
+ * One result row (U1:BR6.3): an event row has the event, its time in the chosen zone
+ * and `@log`; an aggregate row has its cells only (261025-insights-stats BR4.1).
+ */
+export interface QueryRow extends Partial<LogEvent> {
+  displayTime?: string;
+  logGroupName?: string;
+  /**
+   * One cell per result column; `null` without a value (U2:BR7.1). An aggregate row's
+   * cells are written by the core, times in the chosen zone (BR2.8, BR4.2).
+   */
   values: (string | null)[];
+  /**
+   * What tells the row apart across versions (261025-insights-stats U3:BR4.2): an
+   * event row's log group, stream and order, an aggregate row's key cells.
+   */
+  rowKey: string;
 }
 
 /** One field of an opened row (U2:BR7.3). */
@@ -383,13 +434,39 @@ export interface QueryDetailField {
 /** The fields of one opened result row (U2:BR7.3). */
 export interface QueryRowDetail {
   runId: number;
+  /** The version asked for (U3:BR2.4). */
+  version: number;
   index: number;
-  /** `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; empty when stale. */
+  /**
+   * `@timestamp`, `@log`, `@logStream`, `@message`, then the JSON fields by name; for an
+   * aggregate row its columns with their cells (261025-insights-stats BR4.3); empty when
+   * stale.
+   */
   fields: QueryDetailField[];
 }
 
-/** What a completion candidate is (U2:BR9.1). */
-export type CompletionKind = "Command" | "Keyword" | "FixedField" | "JsonField";
+/**
+ * What a completion candidate is (U2:BR9.1); `Function` is an aggregate
+ * function of `stats` or `bin` (261025-insights-stats U2:BR4.3).
+ */
+export type CompletionKind = "Command" | "Keyword" | "FixedField" | "JsonField" | "Function";
+
+/** What a word of the core's QueryCatalog is (261025-insights-stats U2:BR4.1). */
+export type VocabularyKind =
+  "command" | "aggregateFunction" | "function" | "keyword" | "fixedField";
+
+/**
+ * One word of the core's QueryCatalog (261025-insights-stats U2:BR4.1, BR4.2):
+ * the screen colours the query and names the commands it can use from these.
+ */
+export interface QueryVocabulary {
+  name: string;
+  kind: VocabularyKind;
+  /** Whether this version runs it. */
+  supported: boolean;
+  /** A keyword never read as a field name (`and`, `or`, `not`, `like`, `in`). */
+  reserved: boolean;
+}
 
 /** One completion candidate of the query field (U2:BR9.1). */
 export interface CompletionCandidate {
@@ -400,8 +477,10 @@ export interface CompletionCandidate {
 /** The result rows of one viewport request (U1:BR6.4). */
 export interface QueryRowWindow {
   runId: number;
+  /** The version asked for (U3:BR2.4). */
+  version: number;
   offset: number;
-  /** Empty when the run is not the shown result's. */
+  /** Empty when the run and version are not the shown result's. */
   rows: QueryRow[];
   totalCount: number;
 }
@@ -908,23 +987,51 @@ export function cancelQuery(): Promise<void> {
   return invoke<void>("cancel_query");
 }
 
-/** At most `limit` result rows from `offset` of the shown result (U1:BR6.4). */
+/**
+ * At most `limit` result rows from `offset` of version `version` of the shown result
+ * (U1:BR6.4, 261025-insights-stats U3:BR2.4: none for another version).
+ */
 export function getQueryRows(
   runId: number,
+  version: number,
   offset: number,
   limit: number,
 ): Promise<QueryRowWindow> {
-  return invoke<QueryRowWindow>("get_query_rows", { runId, offset, limit });
+  return invoke<QueryRowWindow>("get_query_rows", { runId, version, offset, limit });
 }
 
-/** The fields of result row `index` of the shown result (U2:BR7.3). */
-export function getQueryRowDetail(runId: number, index: number): Promise<QueryRowDetail> {
-  return invoke<QueryRowDetail>("get_query_row_detail", { runId, index });
+/** The fields of result row `index` of version `version` of the shown result (U2:BR7.3). */
+export function getQueryRowDetail(
+  runId: number,
+  version: number,
+  index: number,
+): Promise<QueryRowDetail> {
+  return invoke<QueryRowDetail>("get_query_row_detail", { runId, version, index });
+}
+
+/**
+ * The place of the row whose key is `rowKey` in version `version` of the shown result
+ * (261025-insights-stats U3:BR2.8); `null` for another version or no such row.
+ */
+export function findQueryRow(
+  runId: number,
+  version: number,
+  rowKey: string,
+): Promise<number | null> {
+  return invoke<number | null>("find_query_row", { runId, version, rowKey });
 }
 
 /** The words and field names the query field completes (U2:BR9.1, Should). */
 export function getCompletionCandidates(): Promise<CompletionCandidate[]> {
   return invoke<CompletionCandidate[]>("get_completion_candidates");
+}
+
+/**
+ * The words of a query from the core's QueryCatalog (261025-insights-stats
+ * U2:BR4.2); fixed while the app runs, so it is asked once.
+ */
+export function getQueryCatalog(): Promise<QueryVocabulary[]> {
+  return invoke<QueryVocabulary[]>("get_query_catalog");
 }
 
 /**

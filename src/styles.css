@@ -534,6 +534,14 @@ body {
   color: var(--ls-color-text);
 }
 
+/*
+ * 261025-insights-stats BR4.5: an aggregates result may have many columns; the header
+ * and the rows (each given the same least width) scroll sideways together.
+ */
+.query-result-table.is-aggregates {
+  overflow-x: auto;
+}
+
 /* 261017-insights-query U3:BR3.4: the previous run's result, said in words, not dimmed. */
 .query-result-previous {
   padding: 4px 8px;

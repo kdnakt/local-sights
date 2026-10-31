@@ -1,0 +1,27 @@
+# 261025-insights-stats U4:BR1.2: the query set for the numeric aggregates, compared with the
+# console's Logs Insights. The same format as compat_queries.txt:
+# id<TAB>order|set|keyorder<TAB>purpose<TAB>query[<TAB>tolerances]. A query text cannot hold a tab.
+#
+# Rewrite the field names to those of your own log group before you use this file: latency
+# stands for a JSON number field and status for a JSON text field. Rewrite the tolerances'
+# column names with them (avg(latency) becomes avg(<your field>)). Pass the file with QUERIES=
+# (insights-export.sh) and --queries (compat_check). Without a log group that has a JSON number
+# field, compare n06 alone: toMillis(@timestamp) is a number in every log group.
+# Query texts only: never put log contents here (NFR4).
+#
+# A pct percentile has at most 15 decimal places (pct(latency, 99.9) is read; one with 16 or
+# more decimal places is not, plan.rs MAX_PERCENTILE_DECIMALS).
+# The decimal columns are compared within 1e-6 relative or 0.0001 absolute (U4:BR2.2): the app
+# writes four decimal places (U1:BR2.8).
+#
+# provisional: U1:BR2.3 = n05-avg-text
+# provisional: U1:BR2.5 = n03-avg-bin
+# provisional: U1:BR2.8 = n01-num-aggregates, n02-pct, n03-avg-bin, n04-sum-order, n06-to-millis
+# provisional: U2:BR2.2 = n02-pct
+# provisional: U2:BR2.3 = n01-num-aggregates
+n01-num-aggregates	set	数：avg・sum・min・max・stddev（U2:BR2.3 の標本の stddev）	stats avg(latency), sum(latency), min(latency), max(latency), stddev(latency) by status	avg(latency)=decimal;sum(latency)=decimal;min(latency)=decimal;max(latency)=decimal;stddev(latency)=decimal
+n02-pct	set	数：pct は最も近い順位（U2:BR2.2）	stats pct(latency, 50) as p50, pct(latency, 95) as p95, pct(latency, 99) as p99	p50=decimal;p95=decimal;p99=decimal
+n03-avg-bin	set	数：bin(5m) ごとの avg（U1:BR2.5）	stats avg(latency) by bin(5m)	avg(latency)=decimal
+n04-sum-order	order	数：sum の降順（order）	stats sum(latency) as s by status | sort s desc	s=decimal
+n05-avg-text	set	仮：数に読めない値だけの avg（U1:BR2.3）	stats avg(status)
+n06-to-millis	set	数：toMillis(@timestamp) の avg（どのロググループでも数）	stats avg(toMillis(@timestamp))	avg(toMillis(@timestamp))=decimal

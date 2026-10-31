@@ -8,6 +8,14 @@ export interface ExportNoticeAlertProps {
   t: Translate;
   /** The user closed the notice (U2:BR4.9). */
   onDismiss: () => void;
+  /**
+   * The export copied the cancelled result of a query, made from part of the logs
+   * (261025-insights-stats U3:BR3.5, FR5.2): a saved or copied notice says so. The file
+   * itself carries no mark. The caller decides it as the export starts
+   * (`isPartialResultExport`), so a new run does not take it off the notice of an
+   * export already made (U3 code review R-05).
+   */
+  partialResult?: boolean;
 }
 
 /**
@@ -37,11 +45,17 @@ function exportNoticeText(notice: ExportNotice, t: Translate): string {
  * status region for a saved or copied export, a dismissible error Alert in
  * an alert region for a failure. Closing it tells the core (`onDismiss`).
  */
-export function ExportNoticeAlert({ notice, t, onDismiss }: ExportNoticeAlertProps) {
+export function ExportNoticeAlert({
+  notice,
+  t,
+  onDismiss,
+  partialResult = false,
+}: ExportNoticeAlertProps) {
   if (notice === null) {
     return null;
   }
   const succeeded = notice.kind === "Saved" || notice.kind === "Copied";
+  const text = exportNoticeText(notice, t);
   return (
     <div role={succeeded ? "status" : "alert"} data-testid="export-notice">
       <Alert
@@ -51,7 +65,7 @@ export function ExportNoticeAlert({ notice, t, onDismiss }: ExportNoticeAlertPro
         statusIconAriaLabel={t(succeeded ? "export.notice.success" : "export.notice.failure")}
         onDismiss={onDismiss}
       >
-        {exportNoticeText(notice, t)}
+        {succeeded && partialResult ? `${text} ${t("export.notice.partialResult")}` : text}
       </Alert>
     </div>
   );

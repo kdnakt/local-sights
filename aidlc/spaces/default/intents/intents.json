@@ -77,5 +77,13 @@
     "scope": "refactor",
     "status": "complete",
     "request": "f0b493de"
+  },
+  {
+    "uuid": "01a1738c-0a0d-7210-9fe0-91da209713ef",
+    "slug": "insights-stats",
+    "dirName": "261025-insights-stats",
+    "scope": "refactor",
+    "status": "in-flight",
+    "request": "376b290c"
   }
 ]

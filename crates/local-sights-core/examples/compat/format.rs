@@ -10,11 +10,16 @@
 //! since U2 loop-back 2, compat run p04) and a string as it is. A column without a
 //! value is left out of the row, as Logs Insights leaves the field out of
 //! its row. `@ptr` is the console's own field and never compared (BR2.1).
+//!
+//! An aggregate row (`stats`, 261025-insights-stats U4:BR2.1, BR2.7 (1)) is
+//! its column names (the `as` names, or the text as written) with its cells
+//! written as the table writes them ([`cell_text`]: four decimal places,
+//! U1:BR2.8), a time as Logs Insights writes `@timestamp`.
 
 use chrono::DateTime;
 use local_sights_core::query::evaluator::{ResultRow, row_cells};
-use local_sights_core::query::fields::EventFields;
 use local_sights_core::query::plan::FieldRef;
+use local_sights_core::query::stats::cell_text;
 
 /// The console's pointer to the event, never compared (BR2.1).
 pub const PTR_FIELD: &str = "@ptr";
@@ -44,11 +49,42 @@ pub fn insights_row(cells: Vec<(String, String)>) -> Row {
     row
 }
 
-/// The app's result row for `columns` as a [`Row`] (BR2.2): the cells as
+/// The app's aggregate row for the column names `columns` as a [`Row`]
+/// (261025-insights-stats U4:BR2.1, BR2.7 (1)): the cells as the table
+/// writes them, times in UTC as Logs Insights writes `@timestamp`, cells
+/// without a value left out. An event row gives no pair.
+pub fn aggregate_row(columns: &[String], row: &ResultRow) -> Row {
+    let Some(cells) = row.cells() else {
+        return Row::new();
+    };
+    let mut pairs: Row = columns
+        .iter()
+        .zip(cells)
+        .filter_map(|(name, cell)| cell_text(cell, &insights_timestamp).map(|v| (name.clone(), v)))
+        .collect();
+    pairs.sort();
+    pairs
+}
+
+/// The names of `names` that have a value in some row of `rows`, in their
+/// order: the columns of an aggregates result as compared, since Logs
+/// Insights' columns are the fields of its rows (BR2.1).
+pub fn columns_with_values(names: &[String], rows: &[Row]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| rows.iter().any(|row| row.iter().any(|(n, _)| n == *name)))
+        .cloned()
+        .collect()
+}
+
+/// The app's event row for `columns` as a [`Row`] (BR2.2): the cells as
 /// the result shows them (U2:BR7.1), `@timestamp` written as Logs Insights
-/// writes it, columns without a value left out.
+/// writes it, columns without a value left out. An aggregate row gives no
+/// pair here; it is made by [`aggregate_row`].
 pub fn app_row(columns: &[FieldRef], row: &ResultRow) -> Row {
-    let fields = EventFields::new(&row.event, &row.log_group_name);
+    let Some(fields) = row.event_fields() else {
+        return Row::new();
+    };
     let mut pairs: Row = columns
         .iter()
         .zip(row_cells(columns, &fields, &insights_timestamp))
@@ -65,7 +101,7 @@ mod tests {
     use local_sights_core::query::parser::parse_query;
 
     fn result_row(timestamp: i64, message: &str) -> ResultRow {
-        ResultRow {
+        ResultRow::Event {
             event: LogEvent {
                 timestamp,
                 ingestion_time: None,
@@ -152,5 +188,86 @@ mod tests {
             ])
         );
         assert_eq!(insights_row(pairs(&[("@ptr", "x")])), Row::new());
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    /// 261025-insights-stats U4:BR2.1, BR2.7 (1): an aggregate row's cells as
+    /// the table writes them, a time as Logs Insights writes `@timestamp`
+    /// (UTC), a cell without a value left out.
+    #[test]
+    fn an_aggregate_row_is_its_column_names_and_the_cells_as_the_table_writes_them() {
+        use local_sights_core::query::stats::CellValue;
+        let row = ResultRow::Aggregate {
+            cells: vec![
+                CellValue::Timestamp(1_767_435_900_000),
+                CellValue::Text("s3.amazonaws.com".to_string()),
+                CellValue::Integer(3),
+                CellValue::Decimal(1.234_56),
+                CellValue::Missing,
+            ],
+        };
+        assert_eq!(
+            aggregate_row(
+                &names(&[
+                    "bin(5m)",
+                    "eventSource",
+                    "n",
+                    "avg(latency)",
+                    "max(latency)"
+                ]),
+                &row
+            ),
+            pairs(&[
+                ("avg(latency)", "1.2346"),
+                ("bin(5m)", "2026-01-03 10:25:00.000"),
+                ("eventSource", "s3.amazonaws.com"),
+                ("n", "3"),
+            ]),
+            "four decimal places (U1:BR2.8); max with nothing to aggregate is left out"
+        );
+    }
+
+    #[test]
+    fn an_event_row_or_a_row_without_cells_gives_no_aggregate_pair() {
+        use local_sights_core::query::stats::CellValue;
+        let columns = names(&["count(*)"]);
+        assert_eq!(
+            aggregate_row(&columns, &result_row(1_767_435_981_414, "{}")),
+            Row::new()
+        );
+        let empty = ResultRow::Aggregate {
+            cells: vec![CellValue::Missing],
+        };
+        assert_eq!(aggregate_row(&columns, &empty), Row::new());
+    }
+
+    /// The columns of an aggregates result as compared: the names with a
+    /// value in some row, in the result's order, as Logs Insights' columns
+    /// are the fields of its rows.
+    #[test]
+    fn the_compared_aggregate_columns_are_those_with_a_value_in_some_row() {
+        let rows = vec![
+            pairs(&[("errorCode", "AccessDenied"), ("n", "2")]),
+            pairs(&[("n", "5")]),
+        ];
+        assert_eq!(
+            columns_with_values(&names(&["errorCode", "n", "avg(status)"]), &rows),
+            names(&["errorCode", "n"])
+        );
+        assert!(columns_with_values(&names(&["n"]), &[]).is_empty());
+    }
+
+    #[test]
+    fn an_aggregate_row_gives_no_pair_until_u4() {
+        // 261025-insights-stats U1: only event rows are compared here.
+        use local_sights_core::query::stats::CellValue;
+        let row = ResultRow::Aggregate {
+            cells: vec![CellValue::Integer(3)],
+        };
+        let plan = parse_query("fields eventName").unwrap();
+        assert_eq!(app_row(&plan.columns(), &row), Row::new());
     }
 }

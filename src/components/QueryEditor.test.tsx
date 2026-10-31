@@ -2,15 +2,20 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   QUERY_EXAMPLES,
-  QUERY_HIGHLIGHT_RULES,
   completionItems,
+  highlightRules,
   highlightTokens,
   offsetOf,
   problemRange,
 } from "../analytics";
 import type { CompletionCandidate, QueryProblem } from "../api";
-import { t } from "../test/fixtures";
-import { PROBLEM_MARK_CLASS, QueryEditor } from "./QueryEditor";
+import { QUERY_CATALOG, t } from "../test/fixtures";
+import { PLAIN_LANGUAGE, PROBLEM_MARK_CLASS, QueryEditor } from "./QueryEditor";
+
+/** The rules the page makes from the core's catalog (261025-insights-stats U2:BR4.2). */
+const QUERY_HIGHLIGHT_RULES = highlightRules(QUERY_CATALOG);
+
+const { registerQueryMode } = vi.hoisted(() => ({ registerQueryMode: vi.fn() }));
 
 /** Stands in for Ace's Range: the four numbers only. */
 const { FakeRange } = vi.hoisted(() => ({
@@ -27,10 +32,12 @@ const { FakeRange } = vi.hoisted(() => ({
 /** Ace's config as far as completion uses it: modules are there at once. */
 const fakeConfig = {
   loadModule: (_name: string, onLoad: () => void) => onLoad(),
+  setModuleLoader: () => undefined,
 };
 
 vi.mock("../aceLoader", () => ({
   loadAce: () => Promise.resolve({ Range: FakeRange, config: fakeConfig }),
+  registerQueryMode,
 }));
 vi.mock("@cloudscape-design/components/code-editor", () => import("../test/codeEditorMock"));
 
@@ -332,7 +339,7 @@ describe("QueryEditor's help in writing (261017-insights-query U2:BR9.1, BR9.2, 
 
   it("colours commands, fields, strings, numbers, expressions and operators apart (pure)", () => {
     const kinds = (line: string) =>
-      highlightTokens(line)
+      highlightTokens(line, QUERY_HIGHLIGHT_RULES)
         .filter((token) => token.type !== "text")
         .map((token) => [token.type, token.value]);
     expect(kinds('FILTER level = "error" and http.status >= 500 # note')).toEqual([
@@ -378,7 +385,10 @@ describe("QueryEditor's help in writing (261017-insights-query U2:BR9.1, BR9.2, 
       require: (name: string) =>
         name === "ace/mode/text" ? { Mode: TextMode } : { TextHighlightRules },
     };
-    const { Mode } = actual.queryMode(ace as unknown as Parameters<typeof actual.queryMode>[0]);
+    const { Mode } = actual.queryMode(
+      ace as unknown as Parameters<typeof actual.queryMode>[0],
+      QUERY_HIGHLIGHT_RULES,
+    );
     const mode = new Mode() as {
       $id: string;
       HighlightRules: new () => { $rules: { start: unknown[] } };
@@ -386,6 +396,35 @@ describe("QueryEditor's help in writing (261017-insights-query U2:BR9.1, BR9.2, 
     expect(mode).toBeInstanceOf(TextMode);
     expect(mode.$id).toBe("ace/mode/logsinsights");
     expect(new mode.HighlightRules().$rules.start).toEqual([...QUERY_HIGHLIGHT_RULES]);
+  });
+
+  it("stays plain text until the catalog's rules come, then registers the query's mode once (261025-insights-stats U2:BR4.2)", async () => {
+    registerQueryMode.mockClear();
+    const { rerender, onChange, onRun } = renderEditor();
+    await act(async () => undefined);
+    expect(field()).toHaveAttribute("data-language", PLAIN_LANGUAGE);
+    expect(registerQueryMode).not.toHaveBeenCalled();
+    const withRules = (rules: typeof QUERY_HIGHLIGHT_RULES) => (
+      <QueryEditor
+        value=""
+        readOnly={false}
+        problem={null}
+        highlightRules={rules}
+        focusRequest={0}
+        mac={false}
+        t={t}
+        onChange={onChange}
+        onRun={onRun}
+      />
+    );
+    rerender(withRules(QUERY_HIGHLIGHT_RULES));
+    await act(async () => undefined);
+    expect(registerQueryMode).toHaveBeenCalledTimes(1);
+    expect(registerQueryMode.mock.calls[0]?.[1]).toBe(QUERY_HIGHLIGHT_RULES);
+    expect(field()).toHaveAttribute("data-language", "logsinsights");
+    rerender(withRules(QUERY_HIGHLIGHT_RULES));
+    await act(async () => undefined);
+    expect(registerQueryMode).toHaveBeenCalledTimes(1);
   });
 
   it("has examples the query language reads: only its four commands (U2:BR9.3)", () => {

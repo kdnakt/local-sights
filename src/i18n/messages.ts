@@ -541,6 +541,7 @@ export const messages = {
   "insights.completion.keyword": { en: "keyword", ja: "言葉" },
   "insights.completion.field": { en: "field", ja: "項目" },
   "insights.completion.jsonField": { en: "JSON field", ja: "JSON の項目" },
+  "insights.completion.function": { en: "function", ja: "関数" },
   "insights.examples": { en: "Examples", ja: "例" },
   "insights.examples.errors": {
     en: "Errors that are not timeouts",
@@ -624,6 +625,21 @@ export const messages = {
     en: "No matching events. No events in the selected log groups and time range matched the query.",
     ja: "一致するイベントはありません。選んだロググループと期間に、クエリに一致するイベントはありませんでした。",
   },
+  // ---- 261025-insights-stats U1: aggregate rows (BR3.4, BR4.5, BR4.6) ----
+  "insights.results.rows": { en: "{count} rows", ja: "{count} 行" },
+  // 261025-insights-stats U2:BR3.2: the cut of aggregate rows, in rows.
+  "insights.results.rowsOfMatched": {
+    en: "{shown} of {matched} rows",
+    ja: "{matched} 行中 {shown} 行",
+  },
+  "insights.results.truncatedRows": {
+    en: "Showing {shown} rows",
+    ja: "{shown} 行まで表示",
+  },
+  "insights.results.noRows": {
+    en: "The query returned 0 rows. No events in the selected log groups and time range made a group.",
+    ja: "結果は 0 行です。選んだロググループと期間に、グループになるイベントはありませんでした。",
+  },
   "insights.results.column.timestamp": { en: "@timestamp ({zone})", ja: "@timestamp（{zone}）" },
   "insights.results.column.message": { en: "@message", ja: "@message" },
   "insights.results.expand": { en: "Show details", ja: "詳細を開く" },
@@ -672,15 +688,62 @@ export const messages = {
   },
   "insights.partial.show": { en: "Show failed streams", ja: "失敗したストリームを見る" },
   "insights.cancelled": { en: "Query cancelled.", ja: "クエリを中止しました。" },
+  // 261025-insights-stats U3:BR2.6, BR2.7, BR3.4, BR3.5, BR3.7 (NFR9, NFR10).
+  "insights.results.partialMark": {
+    en: "Partial results (fetching: log group {number} / {groups}, up to {count} events)",
+    ja: "途中の結果（取得中：ロググループ {number} / {groups}、{count} 件まで）",
+  },
+  "insights.results.partialMarkOneGroup": {
+    en: "Partial results (fetching: up to {count} events)",
+    ja: "途中の結果（取得中：{count} 件まで）",
+  },
+  "insights.results.cancelledMark": {
+    en: "Results of part of the logs (cancelled)",
+    ja: "一部のログだけの結果（中断）",
+  },
+  "insights.results.announce.partial": {
+    en: "Partial results are shown. They are replaced as the logs are fetched.",
+    ja: "途中の結果を表示しました。取得が進むと差し替わります。",
+  },
+  "insights.results.announce.final": {
+    en: "The final results are shown.",
+    ja: "最終の結果を表示しました。",
+  },
+  "insights.results.announce.cancelled": {
+    en: "Results of part of the logs are shown (cancelled).",
+    ja: "一部のログだけの結果を表示しました（中断）。",
+  },
+  "insights.status.cancelling": {
+    en: "Making the results of what was fetched: {scanned} / {total} events",
+    ja: "結果を作っています：{scanned} / {total} 件",
+  },
+  "insights.status.cancellingFetch": {
+    en: "Stopping the fetch…",
+    ja: "取得を止めています…",
+  },
+  "insights.cancelledPartial": {
+    en: "Query cancelled. Results of part of the logs are shown.",
+    ja: "クエリを中止しました。一部のログだけの結果を出しました。",
+  },
+  "export.notice.partialResult": {
+    en: "These are results of part of the logs.",
+    ja: "一部のログだけの結果です。",
+  },
   "insights.notRun": { en: "The query was not run.", ja: "クエリは実行していません。" },
   "insights.error.at": {
     en: "Line {line}, column {column}: ",
     ja: "{line} 行 {column} 列：",
   },
+  // 261025-insights-stats U2:BR4.2: the lists come from the core's QueryCatalog.
   "insights.error.supportedList": {
-    en: "Supported commands: fields, filter, sort, limit.",
-    ja: "使える命令：fields、filter、sort、limit",
+    en: "Supported commands: {names}.",
+    ja: "使える命令：{names}",
   },
+  "insights.error.functionList": {
+    en: "Supported functions: {names}.",
+    ja: "使える関数：{names}",
+  },
+  "insights.error.listSeparator": { en: ", ", ja: "、" },
   "query.syntax.noCommand": {
     en: "The query has no command. Start it with fields, filter, sort or limit.",
     ja: "クエリに命令がありません。fields、filter、sort、limit のどれかで始めてください。",
@@ -786,8 +849,8 @@ export const messages = {
     ja: "項目「{word}」はこの版では使えません。@timestamp、@message、@logStream、@log か JSON の項目を使ってください。",
   },
   "query.unsupported.function": {
-    en: 'The function "{word}" is not supported in this version. Only toMillis(@timestamp) can be used.',
-    ja: "関数「{word}」にはこの版では対応していません。使えるのは toMillis(@timestamp) だけです。",
+    en: 'The function "{word}" is not supported here in this version.',
+    ja: "関数「{word}」はこの版ではここに使えません。",
   },
   "query.unsupported.toMillisArgument": {
     en: "toMillis can only take @timestamp.",
@@ -848,6 +911,68 @@ export const messages = {
   "query.unsupported.limitAny": {
     en: 'limit "{word}" is not supported in this version.',
     ja: "limit の「{word}」にはこの版では対応していません。",
+  },
+  // ---- 261025-insights-stats U1: reading stats (BR1.2-BR1.9, BR4.6) ----
+  "query.syntax.missingAggregate": {
+    en: "stats needs at least one function such as count(*).",
+    ja: "stats の後ろに count(*) のような関数がありません。",
+  },
+  "query.syntax.expectedAggregate": {
+    en: "A function such as count(*) or avg(field) is needed here.",
+    ja: "ここには count(*) や avg(項目) のような関数が要ります。",
+  },
+  "query.syntax.missingGroupKey": {
+    en: "by needs at least one field or bin().",
+    ja: "by の後ろに項目か bin() がありません。",
+  },
+  "query.syntax.trailingComma": {
+    en: 'There is nothing after ",".',
+    ja: "「,」の後ろに何もありません。",
+  },
+  "query.syntax.argumentCount": {
+    en: "The function has the wrong number of arguments. It takes one field.",
+    ja: "関数の引数の数が違います。項目を 1 つ書いてください。",
+  },
+  "query.syntax.aggregateStar": {
+    en: "Only count can take *. Write a field here.",
+    ja: "* を書けるのは count だけです。ここには項目を書いてください。",
+  },
+  "query.syntax.expectedAlias": {
+    en: "as needs a column name.",
+    ja: "as の後ろに列の名前がありません。",
+  },
+  "query.syntax.duplicateColumn": {
+    en: 'The column "{word}" is written twice. Give one of them another name with as.',
+    ja: "列「{word}」が 2 つあります。どちらかに as で別の名前を付けてください。",
+  },
+  "query.syntax.invalidBinPeriod": {
+    en: "bin() needs a period such as 5m: a whole number from 1 to 1000000 and s, m, h or d.",
+    ja: "bin() には 5m のような期間が要ります。1 から 1000000 までの整数と s・m・h・d のどれかです。",
+  },
+  "query.unsupported.binUnit": {
+    en: 'The period "{word}" is not supported in this version. Use s, m, h or d.',
+    ja: "期間「{word}」にはこの版では対応していません。s・m・h・d を使ってください。",
+  },
+  "query.unsupported.aggregateFunction": {
+    en: 'The stats function "{word}" is not supported in this version.',
+    ja: "stats の関数「{word}」にはこの版では対応していません。",
+  },
+  // ---- 261025-insights-stats U2: pct and the commands after stats (BR1.2-BR1.5) ----
+  "query.syntax.pctOutOfRange": {
+    en: 'The percentile of pct must be a number from 0 to 100 (up to 15 decimal places), not "{word}".',
+    ja: "pct の百分位には「{word}」ではなく 0 から 100 までの数（小数は 15 桁まで）を書いてください。",
+  },
+  "query.syntax.unknownResultColumn": {
+    en: 'After stats, "{word}" is not a column of its result. Write a column name as stats shows it, in backquotes when it has signs, such as `count(*)`.',
+    ja: "stats の後ろでは「{word}」は結果の列ではありません。列の名前を stats の結果のとおりに書き、`count(*)` のように記号を含む名前は ` で囲んでください。",
+  },
+  "query.unsupported.fieldsAfterStats": {
+    en: '"{word}" after stats is not supported in this version. Use filter, sort or limit after stats.',
+    ja: "stats の後ろの「{word}」にはこの版では対応していません。stats の後ろには filter・sort・limit を使えます。",
+  },
+  "query.unsupported.secondStats": {
+    en: 'A second "{word}" is not supported in this version. Write one stats.',
+    ja: "2 つ目の「{word}」にはこの版では対応していません。stats は 1 つにしてください。",
   },
   // ---- 261022-small-features U2: the export (BR4.1, BR4.9, review R-02) ----
   "export.menu": { en: "Export", ja: "エクスポート" },

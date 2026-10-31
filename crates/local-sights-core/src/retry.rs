@@ -17,6 +17,8 @@
 //! It replaced the reasonless abort signal of U3.
 
 use std::future::Future;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tokio::sync::watch;
@@ -213,20 +215,36 @@ impl StopReason {
 #[derive(Debug)]
 pub struct StopHandle {
     sender: watch::Sender<Option<StopReason>>,
+    abandoned: Arc<AtomicBool>,
 }
 
 /// The fetch's side of a stop signal (U3:BR2.3, BR5.5; 261012-parallel-fetch
 /// contract C7). Every wait of a fetch (a retry wait, a call permit) ends as
 /// soon as it fires.
+///
+/// Since 261025-insights-stats U3 it carries a second signal, abandon: the
+/// second [Cancel] of a query run, which stops the evaluation made after a
+/// [Cancel] (U3:BR3.2). It stops no fetch by itself.
 #[derive(Debug, Clone)]
 pub struct StopSignal {
     receiver: watch::Receiver<Option<StopReason>>,
+    abandoned: Arc<AtomicBool>,
 }
 
 /// A connected handle and signal, not stopped yet.
 pub fn stop_pair() -> (StopHandle, StopSignal) {
     let (sender, receiver) = watch::channel(None);
-    (StopHandle { sender }, StopSignal { receiver })
+    let abandoned = Arc::new(AtomicBool::new(false));
+    (
+        StopHandle {
+            sender,
+            abandoned: Arc::clone(&abandoned),
+        },
+        StopSignal {
+            receiver,
+            abandoned,
+        },
+    )
 }
 
 impl StopHandle {
@@ -246,7 +264,14 @@ impl StopHandle {
     pub fn signal(&self) -> StopSignal {
         StopSignal {
             receiver: self.sender.subscribe(),
+            abandoned: Arc::clone(&self.abandoned),
         }
+    }
+
+    /// 261025-insights-stats U3:BR3.2: the second [Cancel]; the evaluation
+    /// after a [Cancel] is abandoned.
+    pub fn abandon(&self) {
+        self.abandoned.store(true, Ordering::Release);
     }
 }
 
@@ -268,6 +293,11 @@ impl StopSignal {
     /// Whether the fetch was told to stop.
     pub fn is_stopped(&self) -> bool {
         self.reason().is_some()
+    }
+
+    /// Whether the evaluation after a [Cancel] was abandoned (U3:BR3.2).
+    pub fn is_abandoned(&self) -> bool {
+        self.abandoned.load(Ordering::Acquire)
     }
 
     /// Completes when the fetch is told to stop; never, when the handle was

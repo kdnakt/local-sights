@@ -3,7 +3,11 @@ import {
   MAX_EXPANDED_ROWS,
   initialExpansionState,
   moveSelection,
+  openedKeyAt,
+  openedPositions,
+  reopenedRows,
   rowKeyOf,
+  toggleOpenedRow,
   toggleRow,
   type ExpansionState,
   withDiscardGeneration,
@@ -140,5 +144,41 @@ describe("expansionState", () => {
     const state = { ...toggleRow(initialExpansionState(0), a, 1), limitReached: true };
     expect(withDiscardGeneration(state, 1).limitReached).toBe(false);
     expect(withPositions(state, new Map([[a, 2]]), 10).limitReached).toBe(true);
+  });
+});
+
+describe("opened rows of a query result by row key (261025-insights-stats U3:BR2.8)", () => {
+  const first = "/g\u001fs1\u001f0";
+  const second = "/g\u001fs2\u001f3";
+
+  it("opens a row by its key at its place and closes it again", () => {
+    const opened = toggleOpenedRow(new Map(), first, 4);
+    expect([...opened]).toEqual([[first, 4]]);
+    expect(openedKeyAt(opened, 4)).toBe(first);
+    expect(openedKeyAt(opened, 5)).toBeUndefined();
+    expect(openedPositions(toggleOpenedRow(opened, second, 9))).toEqual([4, 9]);
+    expect(toggleOpenedRow(opened, first, 4).size).toBe(0);
+  });
+
+  it("moves a row found in a newer version and closes one not found there", () => {
+    const opened = toggleOpenedRow(toggleOpenedRow(new Map(), first, 4), second, 9);
+    const next = reopenedRows(
+      opened,
+      new Map([
+        [first, 6],
+        [second, null],
+      ]),
+    );
+    expect([...next]).toEqual([[first, 6]]);
+  });
+
+  it("keeps a row not asked about, and changes nothing with nothing found", () => {
+    const opened = toggleOpenedRow(toggleOpenedRow(new Map(), first, 4), second, 9);
+    expect([...reopenedRows(opened, new Map([[first, 0]]))]).toEqual([
+      [first, 0],
+      [second, 9],
+    ]);
+    expect([...reopenedRows(opened, new Map())]).toEqual([...opened]);
+    expect(reopenedRows(new Map(), new Map([[first, 1]])).size).toBe(0);
   });
 });

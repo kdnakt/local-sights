@@ -92,3 +92,5 @@
 - NFR1 の実測と合否の数値（T-NFR1。U3 のレビュー R-01 の扱いも決める）
 - コンソールとの互換（T-SM1。U4 の code-summary.md の表）
 - 両 OS の画面の確かめ（T-WS-OS）
+
+2026-10-31：開発者の答えは「PR作ってCI結果みよう」。PR [kdnakt/local-sights#50](https://github.com/kdnakt/local-sights/pull/50) を作り、macOS・Windows の CI の結果で T-NFR8-OS を確かめる。結果が出たら Target Verification Matrix を更新する。残りの手元の確かめ（T-NFR1、T-SM1、T-WS-OS）は、まだ終わっていない。

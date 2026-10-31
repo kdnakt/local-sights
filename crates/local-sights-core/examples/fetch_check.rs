@@ -256,7 +256,10 @@ async fn check_query(
     let store = Arc::new(QueryStore::new());
     let mut sink = QueryCheckSink::default();
     let started = Instant::now();
-    run_query(gateway, &run, &store, retrier, &mut sink).await;
+    // Boxed: the query run's future (fetch, partial evaluations, select!) is
+    // deep enough that laying it out inline in `main` overflows rustc's
+    // query depth limit on newer toolchains.
+    Box::pin(run_query(gateway, &run, &store, retrier, &mut sink)).await;
     for line in sink.timings.lines(started, partial_results) {
         eprintln!("{line}");
     }
